@@ -1,0 +1,612 @@
+# ARCHITECTURE — Zeny Hotel Manager (servidor)
+
+> Arquitetura do servidor · versão 0.1 (rascunho para revisão) · 2026-10-09
+>
+> O **o quê** está em [SPEC.md](SPEC.md). Este documento trata do **como**.
+
+---
+
+## 1. Visão geral
+
+Este repositório contém **somente o servidor**: uma aplicação Kotlin/Spring Boot empacotada como imagem Docker. Ela expõe:
+
+- uma **API REST** versionada, cujo contrato OpenAPI é publicado como artefato;
+- um canal de **tempo real** (Server-Sent Events);
+- um protocolo de **sincronização offline** para o app operacional.
+
+Os clientes ficam em repositórios próprios e geram seus SDKs a partir do contrato OpenAPI:
+
+- desktop: recepção, gerência e eventos;
+- mobile: governança e manutenção;
+- PDV: restaurante e bar;
+- tela de produção: cozinha e bar;
+- agente de impressão.
+
+```mermaid
+flowchart LR
+  subgraph Clientes
+    D["Desktop<br/>recepção · gerência · eventos"]
+    M["App mobile<br/>governança · manutenção<br/>(offline)"]
+    P["PDV<br/>restaurante · bar"]
+    K["Tela de produção<br/>cozinha · bar"]
+  end
+
+  subgraph LAN["Rede do hotel"]
+    PA["Agente de impressão"]
+    PR[("Impressoras<br/>térmicas · A4")]
+    T["Pinpad TEF /<br/>Smart POS"]
+  end
+
+  API["Servidor Zeny<br/>Kotlin · Spring Boot<br/>(Docker)"]
+  DB[("PostgreSQL")]
+  S3[("Arquivos<br/>S3 / MinIO")]
+
+  subgraph Externos["Serviços externos"]
+    CM["Channel manager"]
+    FN["FNRH<br/>MTur / Serpro"]
+    FI["Middleware fiscal"]
+    PSP["PSP Pix"]
+    ACQ["Adquirente"]
+    FCM["Push (FCM)"]
+  end
+
+  D -->|REST + SSE| API
+  M -->|REST + sync| API
+  P -->|REST + SSE| API
+  K -->|SSE| API
+  PA -->|SSE / long-poll| API
+  PA --> PR
+  D --- T
+  P --- T
+  T <--> ACQ
+  API --> DB
+  API --> S3
+  API <--> CM
+  API --> FN
+  API <--> FI
+  API <--> PSP
+  API --> FCM
+```
+
+---
+
+## 2. Decisões arquiteturais
+
+| # | Tema | Decisão | Motivo | Alternativas descartadas |
+|---|---|---|---|---|
+| D1 | Estilo | **Monólito modular** com Spring Modulith. Há um único deployável e cada módulo corresponde a um contexto do SPEC. Os limites entre módulos são verificados em teste. | Um único hotel e equipe pequena: um processo, um banco e transações locais. Os limites explícitos permitem extrair um serviço no futuro, se fizer sentido. | Microsserviços (custo operacional desproporcional); monólito sem limites (vira acoplamento) |
+| D2 | Linguagem | **Kotlin 2.x** sobre **JDK 25 LTS** | Null-safety, `data`/`sealed`/`value` classes para um domínio rico, decidido na entrevista | Java 21+ |
+| D3 | Framework | **Spring Boot 4.x**, Spring Security, Spring Data JPA e Spring Modulith 2.x | Ecossistema maduro para domínio transacional; o Modulith dá eventos com outbox e verificação de módulos | Ktor, Quarkus |
+| D4 | Banco | **PostgreSQL 18**, com **um schema por módulo** | Transações ACID, `EXCLUDE` com `daterange` para evitar UH em dobro, JSONB para payloads e logs | MySQL |
+| D5 | Persistência | **JPA/Hibernate** para agregados e **SQL via `JdbcClient`** para consultas e relatórios. Migrações com **Flyway**. | O JPA cobre bem o lado de escrita. Leituras complexas ficam em SQL explícito. | jOOQ (opção futura se o JPA incomodar), Exposed |
+| D6 | API | REST/JSON em `/api/v1`, **code-first** com springdoc. O `api/openapi.yaml` é gerado no build e **versionado no repositório**. A CI barra mudanças incompatíveis. | Um único desenvolvedor do servidor. O contrato publicado continua sendo a fonte da verdade para os clientes. | Contract-first com geração de stubs (atrito em Kotlin); GraphQL |
+| D7 | Autenticação | Usuários locais. **JWT de acesso curto (15 min)** e **refresh token opaco e rotativo por dispositivo**, com revogação. | Atende celulares pessoais e desligamentos imediatos sem depender de um IdP externo | Keycloak/IdP externo (opção futura via OIDC) |
+| D8 | Autorização | Catálogo de permissões **em código**, roles no banco, **escopo** aplicado nas consultas, **limites** checados no domínio e **step-up** por PIN | Requisito da entrevista (SPEC §5.1) | RBAC fixo por enum de roles |
+| D9 | Comunicação entre módulos | Chamadas síncronas à **API pública** do módulo para consultas e comandos. **Eventos de domínio** com o *Event Publication Registry* (outbox transacional) para efeitos colaterais. | Consistência forte onde é preciso (check-in) e desacoplamento com garantia de entrega no resto | Broker externo (Kafka/RabbitMQ), desnecessário em processo único |
+| D10 | Tempo real | **SSE** por tópico, com reconexão via `Last-Event-ID` | Comunicação só servidor→cliente; mais simples que WebSocket e passa por proxies | WebSocket/STOMP |
+| D11 | Offline | **Comandos idempotentes** (UUIDv7 gerado no cliente) e **pull incremental por cursor**. O servidor tem a palavra final. | Requisito do app operacional. Tarefas e checklists são majoritariamente *append-only*, então há poucos conflitos. | CRDT/replicação de banco |
+| D12 | Integrações | **Portas e adaptadores** por provedor, com outbox, retry, backoff e idempotência. Modos **push e pull**. | Fornecedores ainda não definidos e servidor que pode ser local, sem portas abertas | Integração direta no código de domínio |
+| D13 | Impressão | **Agente de impressão** na LAN que abre a conexão até o servidor (só saída) e recebe jobs | Funciona com o servidor na nuvem ou no local | Servidor imprimindo direto (só funciona on-prem) |
+| D14 | Arquivos | Armazenamento **compatível com S3** (MinIO no compose; S3/R2 na nuvem), atrás de uma interface | Uma API para os dois ambientes, com URLs assinadas | Disco local, que complica backup e escala |
+| D15 | Identificadores | **UUIDv7** gerados na aplicação, com números legíveis por sequência (`R-2026-000123`) | Permite gerar IDs offline no cliente, é ordenável e se indexa bem | Autoincremento |
+| D16 | Tempo e dinheiro | `timestamptz` em UTC, `date` para datas de negócio, fuso do hotel na configuração. `Money` sobre `BigDecimal`/`numeric(14,2)`. | RN-01 e RN-02 | `double`, horário local no banco |
+| D17 | Idioma do código | Código, API e banco em **inglês**; termos de domínio mapeados no glossário do SPEC | Convenção do ecossistema; evita acentos em identificadores | Português no código |
+
+---
+
+## 3. Módulos
+
+### 3.1 Mapa de módulos
+
+| Módulo (pacote) | SPEC | Responsabilidade | Depende de |
+|---|---|---|---|
+| `shared` | — | Kernel compartilhado: `Money`, `Percent`, IDs, `Address`, CPF/CNPJ, erros, contexto de segurança, infraestrutura de sync, idempotência e SSE | — |
+| `iam` | ACS | Usuários, roles, catálogo de permissões, sessões e aprovações | shared |
+| `audit` | ACS | Trilha de auditoria *append-only* | shared |
+| `hotel` | CFG | Configuração, políticas, taxas e **data operacional** | shared |
+| `staff` | PES | Colaboradores, setores, turnos e escala | shared, iam |
+| `files` | — | Anexos (S3), URLs assinadas e cifragem de sensíveis | shared |
+| `notifications` | NOT | Notificações internas, preferências e push | shared, iam |
+| `printing` | NOT | Agentes, impressoras e fila de impressão | shared |
+| `checklists` | CHK | Modelos, versões, execuções e rotinas | shared, staff, files |
+| `rooms` | UH | Tipos de UH, UHs, áreas, status e OOO/OOS | shared, hotel |
+| `guests` | HOS | Hóspedes, empresas, consentimentos e LGPD | shared, files |
+| `payments` | PAG | `PaymentIntent`, Pix, cartão, tokens e conciliação | shared |
+| `fiscal` | FIS | Perfis fiscais, documentos e provedor fiscal | shared, hotel |
+| `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, payments, fiscal |
+| `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, rooms, billing |
+| `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing |
+| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH e recados | shared, reservations, rooms, guests, billing, payments, fiscal |
+| `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests |
+| `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations |
+| `housekeeping` | GOV | Tarefas, distribuição, inspeção, achados e danos | shared, hotel, rooms, reservations, staff, checklists, billing, notifications |
+| `inventory` | EST | Itens, locais, movimentos, fornecedores, compras e inventário | shared, checklists, files |
+| `maintenance` | MAN | OS, ativos e preventivas | shared, hotel, rooms, staff, checklists, inventory, files, notifications |
+| `linen` | ROU | Enxoval, lavanderia terceirizada e lavanderia do hóspede | shared, rooms, checklists, inventory, reservations, billing |
+| `pos` | PDV | Pontos de venda, cardápio, comandas, produção e fichas técnicas | shared, hotel, staff, billing, payments, fiscal, inventory, reservations, printing |
+| `events` | EVT | Espaços, eventos, propostas, contratos e BEO | shared, guests, reservations, billing, payments, pos, checklists, files |
+| `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting |
+| `reporting` | REL | Estatísticas diárias, KPIs e relatórios | shared, mais as *views* de leitura publicadas pelos módulos (§11) |
+
+O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo. Quando um módulo de baixo nível precisa reagir a algo de um módulo acima, a dependência é invertida:
+
+- **por evento**: o de cima publica, o de baixo não sabe quem escuta;
+- **por porta**: o de baixo define uma interface que o de cima implementa.
+
+Exemplos:
+
+- O fechamento do dia avança a data por meio de `hotel`. A governança escuta `BusinessDateAdvanced`, publicado por `hotel`, em vez de depender de `endofday`.
+- `checklists` não conhece estoque, rouparia nem manutenção. Esses módulos escutam `ChecklistCompleted` e tratam as ações que lhes dizem respeito.
+- `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`.
+
+### 3.2 Camadas de módulos
+
+Cada seta resume as dependências entre os grupos.
+
+```mermaid
+flowchart TB
+  subgraph PLAT["Plataforma"]
+    plat_m["shared · iam · audit · hotel · staff<br/>files · notifications · printing · checklists"]
+  end
+  subgraph CAD["Cadastros"]
+    cad_m["rooms · guests"]
+  end
+  subgraph FIN["Financeiro"]
+    fin_m["payments · fiscal · billing"]
+  end
+  subgraph HOSP["Hospedagem"]
+    hosp_m["rates · reservations · frontdesk"]
+  end
+  subgraph OPS["Operações"]
+    ops_m["housekeeping · maintenance<br/>inventory · linen"]
+  end
+  subgraph COM["Comercial"]
+    com_m["pos · events · distribution"]
+  end
+  subgraph GOVI["Integração governamental"]
+    gov_m["fnrh"]
+  end
+  subgraph FEC["Fechamento e relatórios"]
+    fec_m["endofday · reporting"]
+  end
+
+  CAD --> PLAT
+  FIN --> CAD
+  HOSP --> FIN
+  OPS --> HOSP
+  COM --> OPS
+  COM --> HOSP
+  GOVI --> HOSP
+  FEC --> HOSP
+```
+
+---
+
+## 4. Estrutura do código
+
+Há um único projeto Gradle (Kotlin DSL, com *version catalog*). Cada pacote de primeiro nível abaixo da raiz é um módulo do Modulith. O que fica **na raiz do pacote do módulo** é a API pública: interfaces de serviço, DTOs e eventos. Os subpacotes são internos.
+
+```
+.
+├── api/
+│   └── openapi.yaml                 # contrato publicado (gerado no build, versionado)
+├── docker/
+│   ├── Dockerfile
+│   └── compose.yaml                 # api, db, storage, proxy, backup
+├── gradle/libs.versions.toml
+├── build.gradle.kts
+└── src/
+    ├── main/
+    │   ├── kotlin/com/zeny/hotel/            # pacote base (a confirmar)
+    │   │   ├── ZenyHotelApplication.kt
+    │   │   ├── shared/                        # kernel: money, ids, time, errors, sync, sse, security
+    │   │   ├── iam/
+    │   │   ├── reservations/
+    │   │   │   ├── ReservationsApi.kt         # API pública (interface + DTOs)
+    │   │   │   ├── ReservationEvents.kt       # eventos publicados
+    │   │   │   ├── domain/                    # agregados, value objects, regras (sem Spring)
+    │   │   │   ├── application/               # casos de uso, transações, autorização
+    │   │   │   ├── infrastructure/            # JPA, adapters, jobs
+    │   │   │   └── web/                       # controllers REST, DTOs de API
+    │   │   └── …                              # demais módulos, mesma estrutura
+    │   └── resources/
+    │       ├── application.yaml
+    │       └── db/migration/<módulo>/V2026_10_09_1200__create_reservations.sql
+    └── test/
+        └── kotlin/com/zeny/hotel/
+            ├── ModularityTest.kt              # ApplicationModules.verify() + documentação gerada
+            └── …                              # testes por módulo
+```
+
+Regras internas de cada módulo, verificadas com ArchUnit:
+
+- `domain` não depende de Spring, JPA nem de `web`/`infrastructure`. As anotações JPA ficam toleradas nas entidades por pragmatismo.
+- `web` só fala com `application`.
+- Outros módulos só usam o que está na raiz do pacote.
+
+---
+
+## 5. Fluxo de uma requisição
+
+1. **`web`**: o controller valida o formato do DTO, converte para comando e chama o caso de uso.
+2. **`application`**: o caso de uso abre a transação, aplica **autorização** (permissão, escopo e aprovação), carrega o agregado, executa e persiste.
+3. **`domain`**: o agregado aplica as regras de negócio, incluindo limites (ex.: desconto ≤ limite) e transições de estado, e registra **eventos de domínio**.
+4. **Commit**: na mesma transação, os eventos são gravados no *Event Publication Registry*, a tabela de outbox do Modulith.
+5. **Pós-commit**: os listeners (`@ApplicationModuleListener`) rodam de forma assíncrona e em transação própria. O que falhar fica pendente e é reprocessado; o reprocessamento também acontece no restart.
+6. A **auditoria** é gravada na mesma transação do caso de uso, via aspecto `@Audited(action)` que captura antes e depois.
+7. O broadcaster **SSE** recebe os eventos relevantes depois do commit e notifica os clientes inscritos.
+
+Concorrência: os agregados têm `version` para lock otimista, que a API expõe como `ETag`/`If-Match`. Pontos de disputa usam lock pessimista curto, como os contadores de disponibilidade por tipo/data (§11).
+
+---
+
+## 6. Comunicação entre módulos — exemplos
+
+### 6.1 Check-in (orquestração síncrona e efeitos assíncronos)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Desktop (recepção)
+  participant FD as frontdesk
+  participant G as guests
+  participant RM as rooms
+  participant B as billing
+  participant R as reservations
+  participant OB as Outbox (eventos)
+  participant F as fnrh
+  participant HK as housekeeping
+
+  C->>FD: POST /api/v1/reservations/{id}/check-in
+  FD->>G: validar dados FNRH e menores
+  FD->>RM: isReadyForCheckIn(room)?
+  FD->>B: garantir contas e registrar caução
+  FD->>R: reservation.checkIn()
+  FD->>RM: markOccupied(room)
+  Note over FD,OB: mesma transação — tudo ou nada
+  R-->>OB: GuestCheckedIn
+  FD-->>C: 200 OK
+  OB-)F: enviar check-in à FNRH (retry automático)
+  OB-)HK: atualizar plano do dia
+```
+
+### 6.2 Checklist concluído offline
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant M as App da camareira
+  participant S as sync (shared)
+  participant HK as housekeeping
+  participant CK as checklists
+  participant RM as rooms
+  participant OB as Outbox (eventos)
+  participant INV as inventory
+  participant LN as linen
+  participant MT as maintenance
+
+  M->>S: POST /api/v1/sync/commands [CompleteHousekeepingTask{commandId,…}]
+  S->>S: commandId já processado? → devolve resultado anterior
+  S->>HK: handler registrado para o comando
+  HK->>CK: complete(execution, answers, occurredAt)
+  HK->>RM: markClean(room, requiresInspection)
+  CK-->>OB: ChecklistCompleted (com ações)
+  HK-->>OB: HousekeepingTaskCompleted
+  S-->>M: resultados por comando
+  OB-)INV: ConsumeStock → saída do carrinho
+  OB-)LN: LinenExchange → em uso ↔ suja
+  OB-)MT: OpenOccurrence(MAINTENANCE) → nova OS
+```
+
+### 6.3 Aprovação de superior (step-up)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Cliente (recepcionista logada)
+  participant A as iam
+  participant B as billing
+
+  C->>B: POST /folios/{id}/postings/{pid}/reverse
+  B-->>C: 403 APPROVAL_REQUIRED {action: "folio.reverse", resourceRef}
+  C->>A: POST /auth/approvals {action, resourceRef, approverLogin, approverPin, reason}
+  A->>A: aprovador tem a permissão? PIN válido?
+  A-->>C: approvalToken (uso único, 2 min, vinculado a ação + recurso + solicitante)
+  C->>B: repete a requisição com X-Approval-Token
+  B->>A: consumir token (valida vínculo)
+  B->>B: estorna e audita (solicitante + aprovador)
+  B-->>C: 201 Created
+```
+
+---
+
+## 7. API
+
+| Tema | Convenção |
+|---|---|
+| Base e versão | `/api/v1`. Mudança incompatível vai para `/api/v2`. Endpoints descontinuados recebem os headers `Deprecation`/`Sunset`. |
+| Recursos | Inglês, plural, kebab-case: `/reservations`, `/housekeeping-tasks`. Transições de estado como subrecurso de ação: `POST /reservations/{id}/check-in`. |
+| Contrato | Gerado com springdoc no build em `api/openapi.yaml` e versionado. A CI regenera e falha se houver diff não commitado. O `oasdiff` bloqueia *breaking changes* em `v1`. |
+| Erros | RFC 9457 (`application/problem+json`) com `code` estável (`ROOM_NOT_READY`, `APPROVAL_REQUIRED`, `LIMIT_EXCEEDED`), `detail` e `errors[]` por campo |
+| Idempotência | Header `Idempotency-Key` obrigatório em POSTs com efeito financeiro ou externo (pagamentos, lançamentos, emissão fiscal). A resposta fica guardada por 24h. |
+| Concorrência | `ETag` com a versão do agregado; `If-Match` nas alterações; `412` em conflito |
+| Paginação | Por cursor: `?cursor=…&limit=…` |
+| Datas e valores | ISO-8601. Instantes em UTC (`Z`), datas de negócio como `YYYY-MM-DD`. Dinheiro como string decimal (`"123.45"`), sempre em BRL. |
+| Documentação | Swagger UI só fora de produção |
+
+---
+
+## 8. Segurança
+
+### 8.1 Autenticação
+
+- O login (`POST /auth/login`) recebe login, senha e dados do dispositivo. Devolve:
+  - um **access token JWT** de 15 min, assinado pelo servidor (Spring Security Resource Server com chave própria);
+  - um **refresh token** opaco, com 30 dias de validade deslizante e **rotação a cada uso**. Ele fica armazenado como hash e vinculado a uma `DeviceSession`.
+- Detecção de reuso: um refresh token usado duas vezes revoga a sessão inteira.
+- Revogar uma sessão ou desativar o usuário bloqueia o próximo refresh. O access token expira em no máximo 15 min.
+- Senha e PIN são guardados com **Argon2id**. Login e PIN têm limite de tentativas com bloqueio progressivo.
+- O agente de impressão e integrações de entrada usam **credenciais de serviço** próprias, com permissões mínimas.
+
+### 8.2 Autorização
+
+- O **catálogo de permissões** é uma estrutura em código, por módulo, com código, escopos suportados, se é sensível e as chaves de limite. No boot, ele é sincronizado com a tabela de permissões, para o admin compor roles.
+- As **permissões efetivas** do usuário (união das roles) ficam em cache e são invalidadas por versão quando roles ou usuário mudam. Elas não vão dentro do JWT, para que a mudança valha na hora.
+- A checagem acontece na camada `application`, com `authz.require("housekeeping.task.complete", resource)`.
+- **Escopo `OWN`** é aplicado como filtro nas consultas (ex.: `assignee_id = :currentUser`) e como checagem de posse nos comandos.
+- **Limites** (ex.: `rates.discount.maxPercent`) são lidos do contexto de autorização e validados no domínio.
+- **Step-up**: ver §6.3. O `Approval` é persistido e referenciado pela entrada de auditoria.
+
+### 8.3 Dados e privacidade
+
+- **Cifragem em nível de campo** (AES-GCM, chave fora do banco, com identificador de chave para rotação) em:
+  - credenciais de integrações;
+  - dados sensíveis da FNRH;
+  - número de documento.
+- Anexos sensíveis são cifrados no armazenamento e servidos por URL assinada de curta duração. **Todo acesso é auditado.**
+- **LGPD**:
+  - um job de retenção anonimiza perfis vencidos e expurga dados sensíveis da FNRH (RN-19, RN-20);
+  - exportar os dados de um titular gera um pacote auditado.
+- **PCI-DSS**: o servidor nunca recebe número de cartão. A captura acontece no terminal (TEF/Smart POS) ou no componente do provedor, e o servidor guarda só token, bandeira e 4 últimos dígitos.
+- A **auditoria** fica numa tabela *append-only*: o usuário da aplicação não tem `UPDATE`/`DELETE` nela.
+
+---
+
+## 9. Offline e sincronização
+
+**Escopo offline**: tarefas de governança, checklists, ordens de serviço, achados, danos e troca de enxoval. Recepção, contas e PDV exigem conexão.
+
+**Download** (`GET /api/v1/sync/changes?cursor=…`):
+
+- Devolve tudo o que o usuário pode ver no escopo offline e que mudou desde o cursor:
+  - as próprias tarefas e OS;
+  - UHs (número e status, sem dados pessoais — RN-13);
+  - versões de checklist aplicáveis;
+  - catálogos (insumos ligados a ações, tipos de enxoval).
+- O cursor é um número de sequência global de alterações (`change_seq`) gravado nas tabelas sincronizáveis. Exclusões viajam como *tombstones*.
+
+**Upload** (`POST /api/v1/sync/commands`):
+
+- Lote ordenado de comandos `{commandId (UUIDv7), type, payload, occurredAt, deviceClock}`.
+- O servidor processa em ordem, com **idempotência por `commandId`** registrada em tabela.
+- Devolve o resultado de cada comando: aplicado, rejeitado com motivo, ou aplicado com alerta.
+
+**Conflitos**: o servidor decide, mas registra os fatos ocorridos.
+
+- Se a tarefa concluída offline foi reatribuída ou cancelada, a execução é registrada e sinalizada para a governanta (RN-22).
+- Registros criados offline (achados, OS) usam o UUID do cliente como ID.
+
+**Relógio**: o servidor calcula a defasagem do dispositivo no início de cada sincronização e corrige o `occurredAt` dentro de uma tolerância configurada.
+
+**Implementação**: o `shared` define a interface `OfflineCommandHandler`. Cada módulo registra os handlers dos seus comandos, de modo que o `sync` não depende dos módulos.
+
+---
+
+## 10. Tempo real
+
+- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications`, via SSE.
+- O payload é mínimo (`type`, `id`, `version`): o cliente aplica a mudança ou rebusca o recurso.
+- Os eventos são filtrados por permissão e escopo do usuário conectado.
+- Reconexão com `Last-Event-ID`, a partir de um buffer circular em memória. Se o ID já saiu do buffer, o servidor responde `reset` e o cliente recarrega.
+- O broadcaster roda em processo, já que há uma única instância. Se um dia houver mais de uma, o caminho é PostgreSQL `LISTEN/NOTIFY`.
+
+---
+
+## 11. Persistência e convenções de dados
+
+**Organização**
+
+- Um banco PostgreSQL com **um schema por módulo**.
+- **Sem FK entre schemas**: a referência é por ID, e a integridade entre módulos fica a cargo da aplicação e dos eventos. Dentro do schema, FKs normais.
+
+**Identificadores e tipos**
+
+- Chaves `uuid` (v7). Números legíveis vêm de *sequences* próprias.
+- Dinheiro em `numeric(14,2)` com tipo `Money` no domínio. Percentuais em `numeric(7,4)`.
+- Instantes em `timestamptz` (UTC); datas de negócio em `date`; períodos de estadia em `daterange`.
+
+**Garantias no banco**
+
+- **UH em dobro é impossível no banco**: `EXCLUDE USING gist (room_id WITH =, stay WITH &&)` sobre as alocações ativas (requer `btree_gist`).
+- **Disponibilidade**: contadores `room_type_inventory(room_type_id, date, total, sold, blocked, out_of_order)`.
+  - São atualizados na mesma transação da reserva, bloqueio ou OOO, com `SELECT … FOR UPDATE` nas datas envolvidas.
+  - Isso evita overbooking em reservas simultâneas, inclusive as vindas do channel manager.
+- **Imutabilidade financeira** (RN-03): tabelas de lançamentos e pagamentos sem `UPDATE`/`DELETE` para o usuário da aplicação; estornos são novas linhas.
+- Exclusão física só para dados transitórios. Entidades de negócio usam status (inativo, cancelado).
+
+**Migrações**
+
+- Flyway, com uma pasta por módulo e versão por timestamp (`V2026_10_09_1200__…`), o que evita colisão entre módulos.
+
+**Leitura para relatórios**
+
+- Cada módulo publica **views SQL de leitura** (`<schema>.report_*`) como parte da sua API.
+- O `reporting` consulta só essas views, nunca as tabelas internas. Assim ele não depende dos módulos em tempo de compilação.
+
+---
+
+## 12. Integrações
+
+Cada integração segue o mesmo padrão:
+
+- **porta** (interface no módulo) com **adaptador** por provedor;
+- **outbox** para envios;
+- **idempotência** nos recebimentos;
+- **retry** com backoff exponencial;
+- **log de integração** com payload redigido de dados sensíveis;
+- **painel de saúde**.
+
+Os testes de contrato usam WireMock.
+
+| Integração | Módulo | Saída | Entrada | Funciona com servidor local sem portas abertas? |
+|---|---|---|---|---|
+| Channel manager | `distribution` | ARI incremental | Reservas por **pull periódico** (padrão) ou webhook | Sim, em modo pull. HotelRunner suporta pull; Omnibees, a confirmar. |
+| FNRH (Serpro) | `fnrh` | REST, Basic Auth, header `cpf_solicitante` | — | Sim (só saída) |
+| Middleware fiscal | `fiscal` | Emissão e cancelamento | Status por webhook **ou polling** | Sim, com polling |
+| PSP Pix | `payments` | Cobrança (`cob`/`cobv`) e devolução | Confirmação por webhook **ou consulta periódica** da cobrança | Sim, com polling (confirmação mais lenta). Webhook pede túnel. |
+| Cartão — TEF | `payments` + cliente | O servidor cria o `PaymentIntent`; o cliente desktop/PDV executa o TEF pela biblioteca local (SiTef/PayGo) e reporta o resultado | — | Sim |
+| Cartão — Smart POS | `payments` | Pedido enviado ao terminal pela API em nuvem do adquirente, quando houver | Resultado por webhook/polling | Sim, com polling |
+| Push | `notifications` | FCM HTTP v1 | — | Sim |
+| E-mail (opcional) | `notifications` | SMTP (relatórios do fechamento à gerência) | — | Sim |
+| Impressão | `printing` | Jobs por SSE para o agente | Confirmação do agente | Sim (o agente inicia a conexão) |
+
+Como o servidor não verifica sozinho o resultado de um TEF reportado pelo cliente, a **conciliação** (RF-PAG-05) cobre esse risco.
+
+---
+
+## 13. Jobs agendados
+
+São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada mesmo após um restart no meio do job.
+
+| Job | Frequência padrão |
+|---|---|
+| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, horário do hotel |
+| Envio de ARI pendente; pull de reservas do channel manager | 1–5 min |
+| Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
+| Reprocessamento de eventos pendentes do outbox | 1 min, e no boot |
+| Expiração de pré-reservas | 5 min |
+| Renovação de pré-autorizações perto do vencimento | No fechamento |
+| Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |
+| Alertas de estoque mínimo | Por evento, com consolidação diária |
+| Retenção LGPD (anonimização e expurgo) | Semanal |
+
+---
+
+## 14. Arquivos e impressão
+
+**Arquivos**
+
+- O módulo `files` usa a API S3: MinIO no compose, ou S3/R2/B2 na nuvem.
+- Chaves organizadas por módulo e entidade.
+- Download só por URL assinada de curta duração.
+- Limites de tamanho e tipo por finalidade.
+- XMLs fiscais e de NF-e de entrada também são guardados aqui.
+
+**Impressão**
+
+- O **agente de impressão** é um cliente leve, em repositório próprio, instalado num computador da LAN. Ele:
+  - autentica com credencial de serviço;
+  - mantém uma conexão SSE com o servidor;
+  - recebe `PrintJob`s;
+  - imprime em ESC/POS (térmicas) ou PDF (A4);
+  - confirma cada job.
+- O servidor renderiza os documentos (PDF, ou comandos ESC/POS a partir de templates) e reenvia jobs não confirmados.
+- Fallback: clientes desktop podem imprimir localmente o PDF devolvido pela API.
+
+---
+
+## 15. Implantação
+
+### 15.1 Componentes (docker compose)
+
+```mermaid
+flowchart LR
+  subgraph HOST["Host Docker (VPS ou servidor no hotel)"]
+    proxy["proxy<br/>Caddy · TLS automático"]
+    api["api<br/>Spring Boot · JRE 25"]
+    db[("db<br/>PostgreSQL 18")]
+    storage[("storage<br/>MinIO")]
+    backup["backup<br/>pgBackRest / WAL-G"]
+  end
+  clients(("Clientes /<br/>Internet")) --> proxy --> api
+  api --> db
+  api --> storage
+  backup --> db
+  backup -->|cópia externa| offsite[("Armazenamento externo<br/>S3 / B2")]
+  storage -->|espelhamento| offsite
+```
+
+**Imagem**
+
+- Dockerfile multi-estágio: build com JDK 25, runtime com JRE 25 enxuto e camadas do Spring Boot.
+- Usuário não-root.
+- `HEALTHCHECK` em `/actuator/health/readiness`.
+
+**Configuração**
+
+- Variáveis de ambiente (12-factor) e profiles `local` e `prod`.
+- Segredos (chave de cifragem, chave de assinatura JWT, credenciais do banco) via Docker secrets ou variáveis do host. **Nunca no repositório.**
+
+**Migrações**
+
+- Flyway roda no boot da `api`. Com uma única instância, não há corrida.
+
+### 15.2 Nuvem vs. local
+
+| Aspecto | VPS / nuvem | Servidor no hotel |
+|---|---|---|
+| TLS e acesso externo | Caddy com Let's Encrypt | Rede local. Acesso externo opcional via túnel (ex.: Cloudflare Tunnel). |
+| Integrações | Webhooks habilitados | Modo pull/polling (§12) |
+| Queda de internet do hotel | Recepção e PDV param (contingência com 4G); app operacional segue offline | Equipe interna segue; integrações acumulam no outbox e sincronizam na volta |
+| Hardware e energia | Do provedor | Por conta do hotel (nobreak obrigatório) |
+| Backup | WAL contínuo para storage externo | **Igual, e obrigatório fora do hotel** |
+
+A decisão está em aberto (SPEC Q-06). O código é o mesmo nos dois casos; muda só a configuração.
+
+### 15.3 Backup e recuperação
+
+- **PostgreSQL**: base completa diária e **arquivamento contínuo de WAL** (pgBackRest ou WAL-G) para storage externo, com RPO ≤ 1h e na prática de minutos.
+- **Arquivos**: espelhamento do bucket para storage externo.
+- **Restauração testada** periodicamente em ambiente separado, com procedimento documentado no repositório.
+
+---
+
+## 16. Observabilidade
+
+- **Logs** estruturados em JSON (logging estruturado nativo do Spring Boot) com `traceId`, usuário e dispositivo. Dados pessoais e de cartão são mascarados.
+- **Métricas**: Micrometer com endpoint Prometheus.
+  - Técnicas: latência, erros, pool do banco, JVM.
+  - De negócio: falhas por integração, duração do fechamento, eventos pendentes no outbox, comandos offline rejeitados.
+- **Health**: liveness e readiness, mais indicadores por integração.
+- **Tracing**: OpenTelemetry opcional.
+- **Painel de integrações** (RF-DIS-06) alimentado pelos logs de integração no banco.
+
+---
+
+## 17. Testes e qualidade
+
+| Nível | Ferramentas | Foco |
+|---|---|---|
+| Domínio | JUnit 5, Kotest assertions, MockK | Regras: preço, políticas, transições de estado, limites, créditos de limpeza |
+| Módulo | `@ApplicationModuleTest` e `Scenario` do Spring Modulith | Caso de uso → eventos publicados → efeitos em outros módulos |
+| Integração | Testcontainers (PostgreSQL, MinIO), WireMock | Repositórios, constraints (`EXCLUDE`, contadores), adapters de provedores |
+| Arquitetura | `ApplicationModules.verify()`, ArchUnit | Ciclos entre módulos, acesso a pacotes internos, camadas dentro do módulo |
+| Contrato | Geração do OpenAPI e `oasdiff` | Sem quebra silenciosa da API |
+| Estático | detekt, ktlint, Kover (cobertura) | Estilo e cobertura nos módulos críticos |
+
+A CI (provedor a definir) roda build, testes, verificação de módulos, diff do contrato e build da imagem. O Spring Modulith também gera a **documentação dos módulos** (diagramas e canvas) como artefato do build.
+
+---
+
+## 18. Riscos e decisões pendentes
+
+| Risco / pendência | Impacto | Mitigação |
+|---|---|---|
+| Servidor local ou nuvem ainda indefinido (Q-06) | Integrações via webhook vs. polling; backup; acesso remoto | Arquitetura suporta ambos; decidir antes da Fase 2 |
+| Escolha do channel manager (Q-05) | Omnibees exige conector certificado (prazo); HotelRunner tem API pública com pull | Porta neutra `ChannelManagerProvider`; começar pelo provedor com API aberta |
+| TEF vs. Smart POS (Q-05, Q-13) | TEF exige biblioteca nos clientes desktop/PDV; Smart POS pode ser só servidor | `PaymentIntent` neutro; resultado do terminal sempre reportado à API |
+| Evolução da API FNRH (v2.x) e tramitação dos PDLs no Senado | Mudanças de campos ou obrigatoriedade | Adapter isolado; validação contra os domínios oficiais; monitorar o MTur |
+| Reforma tributária (IBS/CBS, Simples a partir de 2027) | Campos e regras fiscais mudando | Middleware fiscal absorve o layout; perfis fiscais configuráveis por código |
+| Atrito Kotlin + JPA (classes finais, construtor sem argumentos, lazy loading) | Produtividade | Plugins `kotlin-jpa` e `allopen`; agregados pequenos; leituras via SQL; jOOQ como plano B |
+| Conflitos de sincronização offline | Inconsistência de status | Comandos factuais e idempotentes; servidor decide; sinalização para a governanta |
+| Volume de escopo (sistema completo) para equipe pequena | Prazo | Fases do SPEC §9; módulos independentes; fundação primeiro |
