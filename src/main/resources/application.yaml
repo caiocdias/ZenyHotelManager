@@ -4,11 +4,64 @@ spring:
   application:
     name: zeny-hotel-manager
 
+  # Banco (ARCHITECTURE §11). Sem valor padrão: em `prod` a aplicação não sobe sem as variáveis.
+  datasource:
+    url: ${ZENY_DB_URL}
+    username: ${ZENY_DB_USERNAME}
+    password: ${ZENY_DB_PASSWORD}
+    hikari:
+      # Toda sessão em UTC, independente do fuso da JVM ou do servidor (RN-01, D16): o driver
+      # do PostgreSQL abre a sessão no fuso da JVM, e casts/`::date`/`to_char` dependem dele.
+      connection-init-sql: SET TIME ZONE 'UTC'
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      # O schema é do Flyway; o Hibernate só confere se as entidades batem com ele.
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+
+  # Migrações: uma pasta por módulo em db/migration/<módulo>/, versão por timestamp. O schema
+  # de cada módulo é o nome da pasta e o Flyway o cria (ModuleSchemasFlywayCustomizer). O
+  # histórico fica em shared.flyway_schema_history. Passo a passo no CLAUDE.md.
+  flyway:
+    locations: classpath:db/migration
+    default-schema: shared
+
+  modulith:
+    events:
+      # Outbox (Event Publication Registry) em JDBC, no schema shared; a tabela vem do Flyway.
+      jdbc:
+        schema: shared
+        schema-initialization:
+          enabled: false
+      # No boot, reenvia as publicações que ficaram incompletas (ARCHITECTURE §5 e §13).
+      republish-outstanding-events-on-restart: true
+      # Publicação parada há mais que isso (processo caiu no meio) passa a FAILED e entra no
+      # reprocessamento do EventPublicationResubmissionJob.
+      staleness:
+        published: PT10M
+        processing: PT10M
+        resubmitted: PT10M
+
+zeny:
+  events:
+    resubmission:
+      # Reprocessamento das publicações com falha (ARCHITECTURE §13: a cada minuto).
+      interval: PT1M
+      initial-delay: PT1M
+
 ---
 spring:
   config:
     activate:
       on-profile: local
+  # Valores só de desenvolvimento (banco local em localhost:5432); não são segredos.
+  datasource:
+    url: ${ZENY_DB_URL:jdbc:postgresql://localhost:5432/zeny}
+    username: ${ZENY_DB_USERNAME:zeny}
+    password: ${ZENY_DB_PASSWORD:zeny}
 
 logging:
   level:

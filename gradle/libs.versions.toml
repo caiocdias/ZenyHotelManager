@@ -12,6 +12,7 @@ detekt = "2.0.0-alpha.6"
 ktlint-plugin = "14.2.0"
 ktlint-cli = "1.8.0"
 kover = "0.9.11"
+shedlock = "7.10.1"
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -21,15 +22,24 @@ spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-b
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-modulith-starter-core = { module = "org.springframework.modulith:spring-modulith-starter-core" }
+spring-modulith-starter-jdbc = { module = "org.springframework.modulith:spring-modulith-starter-jdbc" }
+spring-boot-starter-data-jpa = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+spring-boot-starter-jackson = { module = "org.springframework.boot:spring-boot-starter-jackson" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
+jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }
+testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
 spring-modulith-starter-test = { module = "org.springframework.modulith:spring-modulith-starter-test" }
 spring-modulith-docs = { module = "org.springframework.modulith:spring-modulith-docs" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
-jakarta-persistence-api = { module = "jakarta.persistence:jakarta.persistence-api" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

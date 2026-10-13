@@ -12,7 +12,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 ## Pré-requisitos
 
 - JDK 25. O Gradle vem pelo wrapper (`./gradlew`); não use o `gradle` instalado pelo sistema.
-- Docker, a partir da etapa E02 do M0 (testes de integração com Testcontainers) e da E06 (ambiente em `docker compose`).
+- Docker: os testes de integração sobem um `postgres:18` pelo Testcontainers (`./gradlew build` e `./gradlew test` precisam dele), e a etapa E06 do M0 traz o ambiente em `docker compose`.
 
 ## Comandos
 
@@ -26,6 +26,14 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Subir a aplicação localmente | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
 Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+
+## Banco de dados
+
+PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)). A conexão vem das variáveis `ZENY_DB_URL`, `ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`; no profile `local` o padrão é um banco `zeny` em `localhost:5432`, com usuário e senha `zeny`. Para subir esse banco antes do compose da E06:
+
+```bash
+docker run -d --name zeny-db -e POSTGRES_DB=zeny -e POSTGRES_USER=zeny -e POSTGRES_PASSWORD=zeny -p 5432:5432 postgres:18
+```
 
 ## Convenções de módulo
 

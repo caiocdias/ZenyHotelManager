@@ -14,9 +14,9 @@ Documentação, mensagens ao usuário e commits ficam em pt-BR. Código, API e b
 
 ## Estado atual e comandos
 
-O esqueleto existe desde o M0 E01: projeto Gradle único (Kotlin DSL), aplicação Spring Boot vazia, módulo `shared` vazio, verificação de módulos, regras ArchUnit de camadas, detekt, ktlint e Kover. Ainda não há banco (E02), tipos do kernel (E03), endpoints nem contrato OpenAPI (E04), Docker (E06) nem CI (E07).
+O esqueleto existe desde o M0 E01: projeto Gradle único (Kotlin DSL), aplicação Spring Boot, módulo `shared`, verificação de módulos, regras ArchUnit de camadas, detekt, ktlint e Kover. Desde a E02 a aplicação usa PostgreSQL 18 com Flyway, JPA e `JdbcClient`, o outbox do Modulith (Event Publication Registry em JDBC) e jobs com ShedLock, e há testes de integração com Testcontainers. Ainda não há tipos do kernel (E03), endpoints nem contrato OpenAPI (E04), Docker (E06) nem CI (E07).
 
-Stack: Kotlin 2.4 sobre JDK 25, Spring Boot 4.1, Spring Modulith 2.1, Gradle 9.8 pelo wrapper. PostgreSQL 18, Flyway e Testcontainers chegam em E02. Use sempre `./gradlew`; não use o `gradle` do apt, que é antigo demais. Docker é obrigatório para os testes de integração (a partir de E02) e para o `docker/compose.yaml` (E06).
+Stack: Kotlin 2.4 sobre JDK 25, Spring Boot 4.1, Spring Modulith 2.1, Hibernate 7.4, Flyway 12, ShedLock 7, Testcontainers 2, Gradle 9.8 pelo wrapper. Use sempre `./gradlew`; não use o `gradle` do apt, que é antigo demais. Docker é obrigatório para `./gradlew build`/`test` (os testes de integração sobem um `postgres:18` pelo Testcontainers) e para o `docker/compose.yaml` (E06).
 
 **Comandos oficiais** (na raiz do repositório):
 
@@ -27,9 +27,11 @@ Stack: Kotlin 2.4 sobre JDK 25, Spring Boot 4.1, Spring Modulith 2.1, Gradle 9.8
 | Lint | `./gradlew lint` | `detekt`, `detektMain`, `detektTest` e `ktlintCheck` |
 | Corrigir formatação | `./gradlew ktlintFormat` | aplica o ktlint nos fontes |
 | Cobertura | `./gradlew koverHtmlReport` | relatório em `build/reports/kover/html/` |
-| Subir a aplicação | `./gradlew bootRun --args='--spring.profiles.active=local'` | fica rodando até Ctrl+C |
+| Subir a aplicação | `./gradlew bootRun --args='--spring.profiles.active=local'` | fica rodando até Ctrl+C; precisa de um PostgreSQL (abaixo) |
 
 Profiles: `local` (desenvolvimento) e `prod` (implantação), em `src/main/resources/application.yaml`. Não há profile padrão: informe sempre o profile.
+
+**Banco:** o datasource vem de `ZENY_DB_URL`, `ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`. Em `prod` não há valor padrão (sem as variáveis a aplicação não sobe); em `local` o padrão é `jdbc:postgresql://localhost:5432/zeny` com usuário e senha `zeny`, só de desenvolvimento. Até o compose da E06, suba o banco local com `docker run -d --name zeny-db -e POSTGRES_DB=zeny -e POSTGRES_USER=zeny -e POSTGRES_PASSWORD=zeny -p 5432:5432 postgres:18`. Toda conexão roda em UTC (`SET TIME ZONE 'UTC'` no Hikari) e o Hibernate grava em UTC (`hibernate.jdbc.time_zone`); `open-in-view` está desligado e `ddl-auto` é `validate` (o schema é do Flyway).
 
 **Versões** de dependências e plugins ficam só em `gradle/libs.versions.toml`. Os BOMs do Spring Boot e do Spring Modulith entram como `platform(...)`; libs gerenciadas por eles ficam no catálogo sem versão. Nunca escreva versão literal no `build.gradle.kts`. O detekt está na linha 2.0 (alpha), a única que entende Kotlin 2.4; sua configuração fica em `config/detekt/detekt.yml`, sobre os padrões. O estilo do ktlint (`ktlint_official`, 120 colunas) fica no `.editorconfig`.
 
@@ -49,6 +51,30 @@ com/zeny/hotel/<módulo>/
 - `LayerRulesTest` prova que cada regra falha diante de uma violação, usando as classes de exemplo em `src/test/kotlin/archfixtures/`. Ao mudar uma regra, mantenha ou acrescente o exemplo que a viola.
 - `shared` é declarado em `shared/SharedModule.kt` (`@PackageInfo` + `@ApplicationModule`, o equivalente Kotlin do `package-info.java`) e como módulo compartilhado em `@Modulithic(sharedModules = ["shared"])`. Ele não pode depender de nenhum outro módulo (`allowedDependencies = []`). Um módulo novo segue o mesmo padrão quando precisar declarar metadados.
 - Plugins `kotlin-spring`, `kotlin-jpa` e `allopen` já estão ligados: entidades `@Entity`, `@MappedSuperclass` e `@Embeddable` ficam abertas e com construtor sem argumentos.
+
+**Schemas e migrações** (ARCHITECTURE §11): um schema por módulo, com o nome do módulo, e uma pasta de migrações por módulo.
+
+- As migrações ficam em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (ex.: `V2026_10_14_0930__create_room.sql`), com descrição em inglês e `snake_case`. Só migrações versionadas (`V…`); arquivo aplicado nunca muda, corrige-se com uma migração nova.
+- O `ModuleSchemasFlywayCustomizer` (`shared/infrastructure/persistence/`) lê as pastas e passa cada nome como schema ao Flyway, que cria o schema antes de migrar. Há um único histórico, `shared.flyway_schema_history`, e as versões são globais: a ordem de aplicação é a do timestamp, nunca a das pastas. Duas migrações com a mesma versão, em qualquer pasta, impedem o boot.
+- `outOfOrder` está desligado: uma migração com timestamp anterior à última já aplicada (de uma branch longa, por exemplo) impede o boot com "Detected resolved migration not applied to database". A correção é renomeá-la para um timestamp novo antes do merge, nunca ligar `outOfOrder`.
+- `MigrationConventionTest` barra no build: arquivo fora de uma pasta de módulo, pasta que não é módulo do Modulith, nome fora do padrão ou com data inválida, versão repetida entre pastas (inclusive as de teste) e SQL que crie, altere, remova (inclusive cada nome de `DROP TABLE a, b`), referencie por FK (`REFERENCES`) ou trigger (`CREATE TRIGGER … ON`), popule (`INSERT INTO`) ou dê permissão (`GRANT`/`REVOKE … ON`) sobre objeto fora do schema do próprio módulo ou sem schema, além de `CREATE SCHEMA`. São expressões regulares, não um parser SQL: cobrem as formas usuais.
+- `shared` guarda a infraestrutura comum: `btree_gist` (no schema `public`), `shared.event_publication` (outbox do Modulith, estrutura v2 do `spring-modulith-events-jdbc`) e `shared.shedlock`.
+
+Passo a passo para um módulo novo persistir dados:
+
+1. Crie a pasta `src/main/resources/db/migration/<módulo>/`, com o mesmo nome do pacote do módulo (minúsculo, sem hífen).
+2. Crie a primeira migração com o timestamp atual em UTC (`date -u +%Y_%m_%d_%H%M`), qualificando todo objeto com o schema: `CREATE TABLE <módulo>.<tabela> (…)`, `CREATE INDEX … ON <módulo>.<tabela> …`. Não crie o schema; o Flyway cria a partir da pasta. Sem FK para outro schema.
+3. Nas entidades, use `@Table(name = "...", schema = "<módulo>")`; nas consultas com `JdbcClient`, qualifique as tabelas. Instantes em `timestamptz`.
+4. Rode `./gradlew test`: `MigrationConventionTest` confere a convenção e `DatabaseMigrationsTest` aplica tudo do zero num PostgreSQL 18 e confere que o schema existe.
+
+**Eventos e jobs** (ARCHITECTURE §5 e §13):
+
+- Eventos publicados dentro da transação do caso de uso são gravados em `shared.event_publication` no mesmo commit. Listeners `@ApplicationModuleListener` rodam depois, assíncronos e em transação própria; se falharem, a publicação fica `FAILED`.
+- O `EventPublicationResubmissionJob` reenvia as publicações `FAILED` a cada minuto (`zeny.events.resubmission.*`), e no boot o Modulith reenvia as incompletas (`republish-outstanding-events-on-restart`). Publicação parada há mais de 10 min vira `FAILED` (`spring.modulith.events.staleness.*`). Por isso todo listener precisa ser idempotente.
+- Jobs são `@Scheduled` com `@SchedulerLock(name = "<nome-único>")`; o ShedLock trava em `shared.shedlock` usando a hora do banco. `@EnableScheduling` e o `LockProvider` ficam em `shared/infrastructure/scheduling/SchedulingConfiguration.kt`.
+- O `spring-modulith-moments` está excluído do build: a data operacional só avança no fechamento do dia (`hotel`, M1).
+
+**Testes de integração:** anote a classe com `@IntegrationTest` (`src/test/kotlin/com/zeny/hotel/testsupport/`). Ela sobe o contexto com o profile `local` ligado a um único `postgres:18` compartilhado por todos os testes da JVM, acrescenta as migrações só de teste de `src/test/resources/db/testmigration/` (schema `test_support`) e adia o job de reprocessamento. Os testes rodam com a JVM em `America/Sao_Paulo` de propósito (`build.gradle.kts`), para pegar código que dependa do fuso da JVM.
 
 ## Como trabalhar com os roadmaps
 

@@ -142,7 +142,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E01 | Esqueleto Gradle, Spring Boot e Modulith | #concluida | — | Projeto que compila e testa, com verificação de módulos, ArchUnit, lint e comandos oficiais documentados |
-| E02 | Banco, migrações e testes de integração | #pendente | E01 | PostgreSQL 18, Flyway por módulo, JPA/JdbcClient, outbox do Modulith, ShedLock e base de Testcontainers |
+| E02 | Banco, migrações e testes de integração | #concluida | E01 | PostgreSQL 18, Flyway por módulo, JPA/JdbcClient, outbox do Modulith, ShedLock e base de Testcontainers |
 | E03 | Kernel compartilhado: tipos de valor e cifragem | #pendente | E01 | `Money`, `Percent`, UUIDv7, números legíveis, CPF/CNPJ, `Address` e cifragem de campo em `shared` |
 | E04 | Convenções de API e contrato OpenAPI | #pendente | E02, E03 | Erros RFC 9457, paginação por cursor, `ETag`/`If-Match`, `api/openapi.yaml` gerado e verificado |
 | E05 | Idempotência de requisições | #pendente | E04 | `Idempotency-Key` com respostas guardadas por 24h |
@@ -291,7 +291,7 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, v
 
 ---
 
-## E02 — Banco, migrações e testes de integração — #pendente
+## E02 — Banco, migrações e testes de integração — #concluida
 
 **Objetivo:** ligar a aplicação ao PostgreSQL 18 com Flyway (uma pasta por módulo, versão por timestamp), JPA/Hibernate e `JdbcClient`, ativar o *Event Publication Registry* do Spring Modulith e o ShedLock JDBC, e criar a base de testes de integração com Testcontainers.
 
@@ -376,12 +376,70 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `57b3aa26f1ea9b680a7e5567b94d5c7c6d7756aa` (recebido do orquestrador). Snapshot ao fim da implementação: `2196b84d8ca5a74f995b8d0fbe49bd6fb859412e` (antes de preencher este handoff).
+- Arquivos alterados:
+  - Build: `build.gradle.kts` (dependências de banco, outbox, ShedLock e Testcontainers; exclusão do `spring-modulith-moments`; testes com `user.timezone=America/Sao_Paulo`), `gradle/libs.versions.toml` (ShedLock 7.10.1 e libs gerenciadas pelos BOMs; saiu `jakarta-persistence-api`, que agora vem do JPA).
+  - Configuração: `src/main/resources/application.yaml` (datasource por `ZENY_DB_*`, Hikari em UTC, JPA, Flyway, Event Publication Registry, staleness e intervalo do job).
+  - Migrações (`src/main/resources/db/migration/shared/`): `V2026_10_13_1200__enable_btree_gist.sql`, `V2026_10_13_1201__create_event_publication.sql`, `V2026_10_13_1202__create_shedlock.sql`.
+  - Código (`src/main/kotlin/com/zeny/hotel/shared/infrastructure/`): `persistence/ModuleSchemasFlywayCustomizer.kt`, `scheduling/SchedulingConfiguration.kt`, `events/EventPublicationResubmissionJob.kt`.
+  - Testes: `testsupport/` (`IntegrationTest`, `PostgresContainer` + `PostgresInitializer`, entidade `TimeProbe`), `persistence/` (`DatabaseMigrationsTest`, `UtcTimeTest`, `MigrationConventionTest` + `MigrationConventions`, `ModuleSchemasFlywayCustomizerTest`), `events/` (`EventPublicationRegistryTest`, `ProbeListener`), `ZenyHotelApplicationTest` (passa a usar `@IntegrationTest` e confere `open-in-view`), `src/test/resources/db/testmigration/V2026_10_13_1900__create_time_probe.sql` (schema `test_support`, só de teste).
+  - Documentação: `CLAUDE.md` (estado atual, banco, convenção de schemas e migrações com passo a passo, eventos e jobs, base de testes de integração), `README.md` (pré-requisito Docker e seção "Banco de dados"), este roadmap.
+- Decisões:
+  - Versões: ShedLock 7.10.1 (`shedlock-spring` + `shedlock-provider-jdbc-template`, feito sobre Spring 7.0.9). Pelos BOMs: Hibernate 7.4.5, Flyway 12.4.0 (`flyway-database-postgresql`), driver PostgreSQL 42.7.13, Jackson 3.1.5 (`jackson-module-kotlin`), Testcontainers 2.0.5 (`testcontainers-postgresql`), Awaitility 4.3.0 (via `spring-modulith-starter-test`). Imagem de teste `postgres:18` (18.6 em 2026-10-13).
+  - Starters do Boot 4 modularizado: `spring-boot-starter-data-jpa`, `spring-boot-starter-flyway`, `spring-boot-starter-jackson`; outbox pelo `spring-modulith-starter-jdbc` (JDBC em vez de JPA: grava pelo mesmo `JpaTransactionManager`, com SQL explícito).
+  - Flyway: um único Flyway e um único histórico (`shared.flyway_schema_history`), locations `classpath:db/migration` (varredura recursiva). O `ModuleSchemasFlywayCustomizer` descobre as pastas com `classpath*:db/migration/*/*.sql` e passa os nomes como `schemas` (`shared` primeiro), e o Flyway cria os schemas. As versões são globais, então a ordem é a do timestamp e não a das pastas; versão repetida em qualquer pasta impede o boot ("Found more than one migration with version"). `outOfOrder` fica no padrão (desligado).
+  - Convenção verificada sem banco (`MigrationConventionTest`): arquivos só dentro de pasta de módulo; pasta = módulo do Modulith; nome `V<aaaa>_<mm>_<dd>_<hhmm>__<snake_case>.sql` com data e hora válidas (resolução estrita); versões únicas entre todas as pastas, inclusive `db/testmigration`; DDL (`CREATE/ALTER/DROP TABLE/VIEW/SEQUENCE/FUNCTION/TYPE…` e a tabela de `CREATE INDEX … ON`) sempre qualificado com o schema da pasta; `CREATE SCHEMA` proibido. Só migrações `V…` (sem `R__`) por enquanto.
+  - Outbox (Event Publication Registry, estrutura v2 do Modulith 2.x) em `shared.event_publication`, criado pelo Flyway (`spring.modulith.events.jdbc.schema-initialization.enabled=false`). `completion-mode` no padrão (`update`): publicações concluídas ficam na tabela.
+  - Reprocessamento: no boot, `spring.modulith.events.republish-outstanding-events-on-restart=true`; a cada minuto, `EventPublicationResubmissionJob` chama `FailedEventPublications.resubmit` (lotes de 100) sob `@SchedulerLock(name = "events-resubmit-failed", lockAtMostFor = PT5M)`; publicações paradas em `PUBLISHED`/`PROCESSING`/`RESUBMITTED` por mais de 10 min viram `FAILED` (`spring.modulith.events.staleness.*`, checagem a cada minuto pelo Modulith). Consequência: listeners precisam ser idempotentes (documentado no `CLAUDE.md`).
+  - ShedLock: `JdbcTemplateLockProvider` com `usingDbTime()` na tabela `shared.shedlock`, `@EnableScheduling` + `@EnableSchedulerLock(defaultLockAtMostFor = PT10M)`. A tabela usa `TIMESTAMP` sem fuso (esquema oficial do ShedLock): com `usingDbTime()` o ShedLock grava `timezone('utc', CURRENT_TIMESTAMP)`, e a coluna sem fuso não depende do fuso da sessão. É a única exceção à regra de `timestamptz`, comentada na migração.
+  - `btree_gist` instalada no schema `public` (`CREATE EXTENSION … WITH SCHEMA public`): é extensão confiável no PostgreSQL 13+, então o dono do banco a cria sem superusuário.
+  - UTC: `SET TIME ZONE 'UTC'` em toda conexão (`spring.datasource.hikari.connection-init-sql`), porque o driver abre a sessão no fuso da JVM; `hibernate.jdbc.time_zone=UTC`. Os testes rodam com a JVM em `America/Sao_Paulo` para expor dependência do fuso da JVM.
+  - JPA: `open-in-view=false`, `ddl-auto=validate`.
+  - Datasource: `ZENY_DB_URL`, `ZENY_DB_USERNAME`, `ZENY_DB_PASSWORD`, sem padrão na base (em `prod` a aplicação não sobe sem elas); no profile `local`, padrão `jdbc:postgresql://localhost:5432/zeny`, usuário e senha `zeny` (só desenvolvimento; E06 deve usar os mesmos nomes no compose e no `.env.example`).
+  - `spring-modulith-moments` excluído do build (decisão adiada da revisão da E01): a data operacional só avança no fechamento do dia (`hotel`, M1) e o moments acrescentaria uma tarefa agendada sem trava. **Ponto para a revisão humana.**
+  - Base de testes: `@IntegrationTest` (contexto completo, profile `local`, migrações de teste em `db/testmigration`, job adiado em 24 h). Um único container `postgres:18` por JVM, ligado por `ApplicationContextInitializer` e não por bean `@ServiceConnection`: o Boot para o container de um bean quando o contexto fecha, o que quebrava os outros contextos depois do teste de reinício. Por isso `spring-boot-testcontainers` e `testcontainers-junit-jupiter` não entraram.
+- Validações executadas:
+  - `docker info` → Docker 29.1.3 disponível. `java -version` → OpenJDK 25.0.4.1.
+  - Testes escritos antes da implementação e vistos falhando: primeiro a compilação (job inexistente); depois, com o job vazio e sem `connection-init-sql`, falharam `database sessions use UTC`, `creates one schema per module folder` e os testes de evento.
+  - `./gradlew clean build --no-build-cache` → `BUILD SUCCESSFUL`; rodou `detekt`, `detektMain`, `detektTest`, `ktlint*Check`, `test` e `koverVerify`. 47 testes, 0 falhas: `ModularityTest` 3, `LayerArchitectureTest` 5, `LayerRulesTest` 9, `ZenyHotelApplicationTest` 2, `DatabaseMigrationsTest` 7, `UtcTimeTest` 4, `MigrationConventionTest` 9, `ModuleSchemasFlywayCustomizerTest` 3, `EventPublicationRegistryTest` 5. `./gradlew test` e `./gradlew lint` → sucesso.
+  - Critério 1: `DatabaseMigrationsTest` (PostgreSQL 18 real) confere versão 18.x, todas as migrações aplicadas e nenhuma pendente, histórico em `shared`, um schema por pasta, `btree_gist` instalada e usável (tabela temporária com `EXCLUDE USING gist (room_id WITH =, stay WITH &&)`: diária encostada aceita, sobreposição recusada com SQLSTATE 23P01) e as colunas de `shared.event_publication` e `shared.shedlock`.
+  - Critério 3: `EventPublicationRegistryTest` — publicação gravada como `PUBLISHED` dentro da transação, antes de o listener rodar, e `COMPLETED` após a entrega; rollback não grava nem entrega; listener que falha deixa a publicação `FAILED` sem `completion_date`, e o job a reprocessa até `COMPLETED` (com a trava gravada em `shared.shedlock`); depois de uma falha, um segundo contexto da aplicação sobre o mesmo banco reenvia a publicação no boot e a conclui (o evento é desserializado do banco nos dois caminhos); o job está agendado com intervalo de 1 min.
+  - Mutações: corpo do job vazio → só `failed listener … resubmits it` falha; `republish-outstanding-events-on-restart: false` → só `… boots again` falha; sem `connection-init-sql` → `database sessions use UTC` falha; migração `rooms/V2026_10_13_1200__create_room.sql` (versão repetida em pasta que não é módulo) → `MigrationConventionTest` aponta a versão repetida e a pasta sem módulo, e o contexto não sobe ("Found more than one migration with version 2026.10.13.1200"). Tudo restaurado e `./gradlew test` verde de novo.
+  - Critério 4: `UtcTimeTest` com a JVM em `America/Sao_Paulo` (pré-condição conferida no teste): sessão em `UTC`; `TIMESTAMPTZ '2026-03-10 01:30:00+00'::date` = `2026-03-10`; JDBC e Hibernate gravam `2026-03-10T01:30:00Z` e o banco lê `2026-03-10T01:30:00` em UTC; a leitura devolve o mesmo `Instant`.
+  - Critério 5: `open-in-view` desligado no `application.yaml` e conferido em `ZenyHotelApplicationTest`.
+  - Aplicação real: PostgreSQL 18 em `localhost:5432` (`docker run postgres:18`) + `java -jar build/libs/zeny-hotel-manager-0.0.1-SNAPSHOT.jar --spring.profiles.active=local` → criou o schema `shared`, aplicou 3 migrações, "Started" em ~2 s, nenhum WARN/ERROR; SIGTERM encerrou pelo shutdown hook ("No publications outstanding!"). No banco: histórico com as 3 versões, schemas `public` e `shared`, `btree_gist` em `public`. Com `--spring.profiles.active=prod` e sem `ZENY_DB_URL`, a aplicação não sobe (código 1).
+  - Inspeção manual do `application.yaml`: nenhuma credencial real; só os padrões de desenvolvimento do profile `local` (`zeny`/`zeny`).
+  - `git status --short` → só fontes, recursos e documentação; nenhum artefato de build.
+- Parecer do verificador: **APROVADO** (verificador independente disparado pelo orquestrador, snapshot da verificação `3ef9ef213ff3ad145a2185c1d0622c0a69490f5b`). Os 6 critérios foram aprovados. Evidências: `./gradlew clean build --no-build-cache` e `./gradlew test lint --rerun-tasks` passaram (47 testes, 0 falhas); os testes usaram o container do Testcontainers, e não a porta 5432; mutações próprias foram pegas (job sem corpo, reenvio no boot desligado, sem `connection-init-sql`); uma pasta de módulo nova num banco já migrado criou o schema e aplicou a migração; em `prod`, sem as variáveis, a aplicação não sobe. Nenhum problema grave ou médio. Problemas baixos:
+  1. Nenhum teste sustenta `hibernate.jdbc.time_zone: UTC`: sem a propriedade, o `UtcTimeTest` continua verde, porque o Hibernate 7 já grava `Instant` sobre `timestamptz` em UTC.
+  2. Uma migração com timestamp anterior à última aplicada (de uma branch longa, por exemplo) impede o boot ("Detected resolved migration not applied to database"). O `CLAUDE.md` não explica esse efeito nem a correção (renomear para um timestamp novo).
+  3. `MigrationConventions` não detecta FK para outro schema (`REFERENCES outro_schema.tabela`, proibido pela ARCHITECTURE §11), `CREATE TRIGGER`, `INSERT`/`GRANT` sem schema nem `DROP TABLE a, b` além do primeiro nome.
+  4. No `CLAUDE.md`, o bullet dos plugins `kotlin-spring`, `kotlin-jpa` e `allopen` ficou solto depois de "Testes de integração"; pertencia à lista de "Estrutura de um módulo".
+  5. O teste de `open-in-view` só lê a propriedade; com o webmvc da E04, vale conferir o comportamento real.
+  6. Confirma os pontos de revisão humana abaixo. Sobre os padrões `zeny`/`zeny`: a restrição do roadmap prevê valores de desenvolvimento num `.env.example`, e aqui eles estão no YAML do profile `local`, embora não sejam segredos.
+- Decisões da revisão humana (usuário, 2026-10-13):
+  - (a) O `spring-modulith-moments` continua fora do build.
+  - (b) A exceção do `TIMESTAMP` sem fuso em `shared.shedlock` foi aceita.
+  - (c) O reprocessamento continua sem limite de tentativas. A E06 expõe uma métrica das publicações `FAILED` (contagem e idade da mais antiga) para alerta (bullet acrescentado ao escopo da E06). Limite e arquivamento ficam para quando houver listeners reais (M1).
+  - (d) Os nomes `ZENY_DB_*` e o padrão `zeny`/`zeny` no YAML do profile `local` ficam como estão; o `.env.example` da E06 usa os mesmos nomes e valores.
+  - Correções pós-revisão (problemas baixos 2, 3 e 4 do verificador):
+    - (2) `CLAUDE.md`, "Schemas e migrações": com `outOfOrder` desligado, uma migração com timestamp anterior à última aplicada impede o boot ("Detected resolved migration not applied to database"); a correção é renomeá-la para um timestamp novo antes do merge.
+    - (3) `MigrationConventions` passou a barrar, fora do schema do módulo ou sem schema: FK (`REFERENCES`), `CREATE [OR REPLACE] [CONSTRAINT] TRIGGER … ON`, `INSERT INTO`, `GRANT`/`REVOKE … ON` (lista de objetos, assinaturas de função ignoradas; nas formas `ON SCHEMA s` e `ON ALL … IN SCHEMA s`, `s` tem de ser o schema do módulo) e cada nome de `DROP TABLE a, b`. Testes escritos antes: `accepts references, triggers, inserts, grants and drops inside the module schema` e `rejects foreign or unqualified references, triggers, inserts, grants and drop lists` (13 casos com `assertSoftly`); antes da mudança, os 13 casos negativos falharam. Ficaram de fora, por exigirem um parser SQL: `UPDATE`/`DELETE`/`COPY` sobre tabela de outro schema, `DROP INDEX`, `DROP FUNCTION a(int), b(int)` (a lista para no parêntese), objetos citados dentro de corpo de função (`$$ … $$`) e SQL dinâmico. `CLAUDE.md` atualizado com as regras novas.
+    - (4) `CLAUDE.md`: o bullet dos plugins `kotlin-spring`, `kotlin-jpa` e `allopen` voltou à lista de "Estrutura de um módulo".
+    - Comandos: `./gradlew build` → `BUILD SUCCESSFUL`, 49 testes e 0 falhas (`MigrationConventionTest` com 11); `./gradlew lint --rerun-tasks` → `BUILD SUCCESSFUL`; `check_roadmap.py` neste roadmap → sem problemas estruturais.
+    - Reverificação: **APROVADO** (verificador independente novo, snapshot `f2586c1f1bbd87bed650fbb9a995ea5ef5fb9181`). Os 6 critérios passam: `./gradlew clean build --no-build-cache` com 49 testes e 0 falhas, `./gradlew test lint --rerun-tasks` também verde. A rodada mexeu só em 4 arquivos; na E06 mudou apenas o bullet de escopo; as tags estão corretas. Das 8 mutações de `MigrationConventions`, 7 foram pegas. Uma sonda de 56 casos SQL pegou todos os negativos e não deu falso positivo nas migrações reais. Nenhum problema grave ou médio. Problemas baixos, a tratar quando a primeira migração de domínio (M1) os tocar:
+      1. Nenhum teste negativo cobre `CREATE OR REPLACE TRIGGER` nem `CREATE CONSTRAINT TRIGGER`: a regra as barra, mas a mutação que as remove passa.
+      2. Falsos positivos, que falham fechado: `GRANT … ON FUNCTION f(numeric(14,2), text)` (parênteses aninhados na assinatura), `ALTER DEFAULT PRIVILEGES IN SCHEMA … GRANT … ON TABLES`, `GRANT … ON TYPE/DOMAIN` e texto dentro de literal (`COMMENT ON … IS 'references …'`). Os dois primeiros devem aparecer no M1, com as permissões de RN-03 e do `reporting`.
+      3. Outras lacunas de detecção: `LIKE`/`INHERITS` de outro schema, `CREATE CONSTRAINT TRIGGER … FROM`, `ALTER TABLE … SET SCHEMA`, `TRUNCATE`, `CREATE POLICY`/`CREATE RULE` e `COMMENT ON` objeto de outro schema.
+- Notas para a próxima etapa:
+  - Pontos para a revisão humana: decididos pelo usuário em 2026-10-13 (ver "Decisões da revisão humana" acima). Eram: (1) exclusão do `spring-modulith-moments`; (2) exceção do `TIMESTAMP` sem fuso em `shared.shedlock`; (3) staleness de 10 min e reprocessamento sem limite de tentativas; (4) nomes `ZENY_DB_*` e os padrões `zeny`/`zeny` do profile `local`.
+  - O problema baixo 5 do verificador (`open-in-view` conferido só pela propriedade) fica para a E04: com o webmvc, testar o comportamento real (sem sessão aberta na view). O problema baixo 1 (`hibernate.jdbc.time_zone` sem teste que dependa dele) fica como está: a propriedade é defensiva para tipos sem fuso.
+  - E03 (paralela) também mexe em `build.gradle.kts` e `gradle/libs.versions.toml`: integrar sem perder as linhas desta etapa.
+  - E04 (webmvc): o Jackson 3 já está no classpath (`spring-boot-starter-jackson` + `jackson-module-kotlin`); confira se o `JsonMapper` do Boot continua sendo o usado pelo outbox. Com web, `open-in-view=false` passa a ter efeito real.
+  - E05 (idempotência): tabela nova vai numa pasta de módulo (provavelmente `shared`), seguindo a convenção; o teste de convenção barra DDL sem schema.
+  - E06: o compose deve criar o banco `zeny` e passar `ZENY_DB_URL`/`ZENY_DB_USERNAME`/`ZENY_DB_PASSWORD`; a imagem deve usar `postgres:18`. Sem as variáveis, o erro do Hikari é pouco claro ("'url' must start with \"jdbc\""); vale uma mensagem melhor. O monitor de staleness do Modulith loga três linhas INFO por minuto ("No stale publications…"); ajustar o nível de log na configuração de observabilidade.
+  - M1: a primeira tabela de domínio deve conferir que o usuário de migração e o da aplicação são distintos quando chegar a imutabilidade financeira (RN-03: sem `UPDATE`/`DELETE` para o usuário da aplicação); hoje o Flyway roda com o usuário da aplicação.
+  - Avisos conhecidos e inofensivos nos testes: o `ERROR` do `SimpleAsyncUncaughtExceptionHandler` vem da falha simulada do `ProbeListener`.
 
 ---
 
@@ -674,6 +732,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 - Actuator: liveness, readiness e Prometheus expostos; demais endpoints fechados.
 - Logs estruturados em JSON (logging estruturado nativo do Spring Boot) no profile `prod`, com `traceId`; logs legíveis no `local`.
 - Métricas técnicas via Micrometer; métrica de eventos pendentes no outbox.
+- Métrica e alerta das publicações `FAILED` do outbox (`shared.event_publication`): contagem e idade da mais antiga, expostas no Prometheus para alerta. Decisão da revisão humana da E02: o reprocessamento segue sem limite de tentativas; limite e arquivamento ficam para M1, quando houver listeners reais.
 - `README.md`: como subir o ambiente.
 
 **Fora de escopo:** backup, TLS público e decisão nuvem × local (M8); métricas de negócio por integração (marcos das integrações).
