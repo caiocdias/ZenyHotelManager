@@ -21,7 +21,7 @@ Criar o esqueleto do servidor Zeny: um projeto Kotlin/Spring Boot com Spring Mod
 
 ## Contexto confirmado
 
-- Repositório greenfield: só há documentação (`docs/SPEC.md`, `docs/ARCHITECTURE.md`) e um `.gitignore` que ignora `*.pdf`. Não existe código, manifesto de build, `README.md` nem `CLAUDE.md`.
+- Repositório greenfield: só há documentação (`docs/SPEC.md`, `docs/ARCHITECTURE.md`, `docs/roadmaps/`), um `CLAUDE.md` com a visão do projeto e as convenções de git, e um `.gitignore` que ignora `*.pdf`. Não existe código, manifesto de build nem `README.md`.
 - Remoto git: `github.com/caiocdias/ZenyHotelManager`.
 - Stack decidida (ARCHITECTURE §2): Kotlin 2.x sobre JDK 25 LTS (D2); Spring Boot 4.x, Spring Security, Spring Data JPA e Spring Modulith 2.x (D3); PostgreSQL 18 com um schema por módulo (D4); JPA/Hibernate para escrita, `JdbcClient` para leitura e Flyway para migrações (D5); REST em `/api/v1`, code-first com springdoc, `api/openapi.yaml` gerado e versionado (D6); UUIDv7 gerados na aplicação (D15); `timestamptz` em UTC e `Money` sobre `numeric(14,2)` (D16); código, API e banco em inglês (D17).
 - Estrutura de pastas prevista: ARCHITECTURE §4 (projeto Gradle único em Kotlin DSL com *version catalog*, `docker/`, `api/`, um pacote por módulo com `domain/`, `application/`, `infrastructure/` e `web/`).
@@ -170,7 +170,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 - `shared` criado como pacote vazio de módulo, com `package-info` ou anotação do Modulith que o declare módulo compartilhado.
 - detekt, ktlint e Kover configurados.
 - `.gitignore` cobrindo `build/`, `.gradle/`, `.idea/`, `*.iml`, `.kotlin/`, `out/`, `.env` (mantendo `*.pdf`).
-- `CLAUDE.md` e `README.md` na raiz (a criar) com: visão de uma linha, links para `docs/`, comandos oficiais, convenções de módulo e onde ficam os roadmaps.
+- `CLAUDE.md` (já existe: atualizar a seção "Estado atual e comandos") e `README.md` (a criar) na raiz com: visão de uma linha, links para `docs/`, comandos oficiais, convenções de módulo e onde ficam os roadmaps.
 
 **Fora de escopo:** banco e Flyway (E02), tipos de `shared` (E03), endpoints e springdoc (E04), Docker (E06), CI (E07).
 
@@ -882,3 +882,4 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — H3 confirmada: JDK 25 e Docker instalados.
+- 2026-10-13 — `CLAUDE.md` criado antes de E01; E01 passa a atualizá-lo em vez de criá-lo.
