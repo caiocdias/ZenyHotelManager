@@ -2757,19 +2757,21 @@ classDiagram
 | Evento | Publicado por | Consumido por | Efeito |
 |---|---|---|---|
 | `ReservationCreated` / `Changed` / `Cancelled` | Reservas | Distribuição, FNRH, Governança | ARI atualizado; registro/cancelamento na FNRH; plano de chegadas |
-| `GuestCheckedIn` / `GuestCheckedOut` | Reservas | FNRH, Governança, Notificações | Envio à FNRH; tarefa de limpeza de saída; aviso à governança |
+| `GuestCheckedIn` / `GuestCheckedOut` | Reservas | FNRH, Governança | Envio à FNRH; tarefa de limpeza de saída; aviso à governança |
 | `RoomMoved` | Reservas | Governança | Tarefa na UH de origem |
 | `RoomStatusChanged` | UHs | Tempo real (SSE), Governança | Painel atualizado; UH pronta notificada à recepção |
 | `OutOfOrderChanged` | UHs | Reservas (disponibilidade) | Contadores de inventário recalculados; alerta se houver reserva alocada |
 | `AvailabilityChanged` | Reservas | Distribuição | ARI de disponibilidade enviado |
 | `RatesChanged` / `RestrictionsChanged` | Tarifas | Distribuição | ARI enviado |
 | `ChecklistCompleted` | Checklists | Estoque, Rouparia, Manutenção, Governança | Baixa de insumos; movimento de enxoval; OS; achado/dano |
-| `HousekeepingTaskCompleted` | Governança | UHs, Notificações | Status da UH; aviso de UH pronta ou de inspeção pendente |
-| `TabClosed` | Restaurante | Estoque, Fiscal | Baixa por ficha técnica; NFC-e |
+| `HousekeepingTaskCompleted` | Governança | UHs | Status da UH; aviso de UH pronta ou de inspeção pendente |
+| `TabClosed` | Restaurante | Restaurante (listener próprio, que chama Estoque e Fiscal) | Baixa por ficha técnica; NFC-e |
 | `PaymentSucceeded` | Pagamentos | Contas | Registra pagamento na conta/comanda/parcela |
-| `FiscalDocumentAuthorized` / `Rejected` | Fiscal | Contas, Notificações | Vínculo da nota; alerta de rejeição |
+| `FiscalDocumentAuthorized` / `Rejected` | Fiscal | Contas | Vínculo da nota; alerta de rejeição |
 | `BusinessDateAdvanced` | Hotel (via Fechamento) | Governança, Manutenção, Checklists | Tarefas do dia, preventivas e rotinas geradas |
-| `StockBelowMinimum` | Estoque | Notificações | Alerta ao almoxarife |
+| `StockBelowMinimum` | Estoque | Estoque (listener próprio, que chama Notificações) | Alerta ao almoxarife |
+
+Notificações e impressão não escutam eventos dos módulos de negócio. O módulo que gera o aviso ou é dono do documento chama esses serviços diretamente (ARCHITECTURE §3.1, regra por camadas). Por isso os avisos ligados aos eventos acima, como UH pronta, rejeição de nota e estoque mínimo, partem do módulo que publica o evento ou que o consome.
 
 ### 8.4 Máquinas de estado
 

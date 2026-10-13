@@ -103,32 +103,41 @@ flowchart LR
 | `shared` | — | Kernel compartilhado: `Money`, `Percent`, IDs, `Address`, CPF/CNPJ, erros, contexto de segurança, infraestrutura de sync, idempotência e SSE | — |
 | `iam` | ACS | Usuários, roles, catálogo de permissões, sessões e aprovações | shared |
 | `audit` | ACS | Trilha de auditoria *append-only* | shared |
-| `hotel` | CFG | Configuração, políticas, taxas e **data operacional** | shared |
+| `hotel` | CFG | Configuração, políticas, taxas e **data operacional** | shared, files |
 | `staff` | PES | Colaboradores, setores, turnos e escala | shared, iam |
 | `files` | — | Anexos (S3), URLs assinadas e cifragem de sensíveis | shared |
 | `notifications` | NOT | Notificações internas, preferências e push | shared, iam |
-| `printing` | NOT | Agentes, impressoras e fila de impressão | shared |
-| `checklists` | CHK | Modelos, versões, execuções e rotinas | shared, staff, files |
+| `printing` | NOT | Agentes, impressoras e fila de impressão | shared, hotel |
+| `checklists` | CHK | Modelos, versões, execuções e rotinas | shared, hotel, staff, files |
 | `rooms` | UH | Tipos de UH, UHs, áreas, status e OOO/OOS | shared, hotel |
 | `guests` | HOS | Hóspedes, empresas, consentimentos e LGPD | shared, files |
-| `payments` | PAG | `PaymentIntent`, Pix, cartão, tokens e conciliação | shared |
-| `fiscal` | FIS | Perfis fiscais, documentos e provedor fiscal | shared, hotel |
-| `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, payments, fiscal |
+| `payments` | PAG | `PaymentIntent`, Pix, cartão, tokens e conciliação | shared, notifications |
+| `fiscal` | FIS | Perfis fiscais, documentos e provedor fiscal | shared, hotel, files, notifications |
+| `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, payments, fiscal, printing |
 | `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, rooms, billing |
-| `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing |
-| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH e recados | shared, reservations, rooms, guests, billing, payments, fiscal |
-| `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests |
-| `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations |
+| `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, printing |
+| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, reservations, rooms, guests, billing, payments, fiscal, printing |
+| `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |
+| `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations, notifications |
 | `housekeeping` | GOV | Tarefas, distribuição, inspeção, achados e danos | shared, hotel, rooms, reservations, staff, checklists, billing, notifications |
-| `inventory` | EST | Itens, locais, movimentos, fornecedores, compras e inventário | shared, checklists, files |
+| `inventory` | EST | Itens, locais, movimentos, fornecedores, compras e inventário | shared, checklists, files, notifications |
 | `maintenance` | MAN | OS, ativos e preventivas | shared, hotel, rooms, staff, checklists, inventory, files, notifications |
 | `linen` | ROU | Enxoval, lavanderia terceirizada e lavanderia do hóspede | shared, rooms, checklists, inventory, reservations, billing |
 | `pos` | PDV | Pontos de venda, cardápio, comandas, produção e fichas técnicas | shared, hotel, staff, billing, payments, fiscal, inventory, reservations, printing |
-| `events` | EVT | Espaços, eventos, propostas, contratos e BEO | shared, guests, reservations, billing, payments, pos, checklists, files |
-| `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting |
-| `reporting` | REL | Estatísticas diárias, KPIs e relatórios | shared, mais as *views* de leitura publicadas pelos módulos (§11) |
+| `events` | EVT | Espaços, eventos, propostas, contratos e BEO | shared, guests, reservations, billing, payments, pos, checklists, files, printing |
+| `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting, notifications |
+| `reporting` | REL | Estatísticas diárias, KPIs, relatórios e arquivo de PDFs do fechamento | shared, files, printing, mais as *views* de leitura publicadas pelos módulos (§11) |
 
-O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo. Quando um módulo de baixo nível precisa reagir a algo de um módulo acima, a dependência é invertida:
+O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo.
+
+**Regra por camadas.** A tabela acima registra as dependências conhecidas, mas a regra que vale é a das camadas de §3.2: um módulo pode depender de qualquer módulo de uma **camada inferior** e de qualquer módulo da camada **Plataforma**, desde que o grafo continue acíclico. Uma dependência nova que siga essa regra não precisa de aprovação: basta acrescentá-la à tabela na mesma mudança. Depender de um módulo da mesma camada (fora da Plataforma) ou de uma camada superior exige inversão.
+
+Consequências práticas:
+
+- `files`, `notifications`, `printing` e `hotel` são serviços de plataforma: qualquer módulo de negócio pode chamá-los. Quem gera um aviso (estoque mínimo, falha de integração, pendência do fechamento) chama `notifications`; quem é dono de um documento (ficha, extrato, confirmação, proposta) monta os dados e chama `printing` para renderizar e enfileirar.
+- `notifications` e `printing` nunca escutam eventos de módulos de negócio, porque isso criaria dependência para cima.
+
+Quando um módulo de baixo nível precisa reagir a algo de um módulo acima, a dependência é invertida:
 
 - **por evento**: o de cima publica, o de baixo não sabe quem escuta;
 - **por porta**: o de baixo define uma interface que o de cima implementa.
@@ -138,6 +147,7 @@ Exemplos:
 - O fechamento do dia avança a data por meio de `hotel`. A governança escuta `BusinessDateAdvanced`, publicado por `hotel`, em vez de depender de `endofday`.
 - `checklists` não conhece estoque, rouparia nem manutenção. Esses módulos escutam `ChecklistCompleted` e tratam as ações que lhes dizem respeito.
 - `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`.
+- Ao fechar uma comanda, o próprio `pos` chama `fiscal` (NFC-e) e `inventory` (baixa por ficha técnica). `fiscal` e `inventory` estão em camadas inferiores e não escutam `TabClosed`.
 
 ### 3.2 Camadas de módulos
 
