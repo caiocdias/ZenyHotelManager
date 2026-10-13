@@ -207,7 +207,7 @@ Há um único projeto Gradle (Kotlin DSL, com *version catalog*). Cada pacote de
 ├── build.gradle.kts
 └── src/
     ├── main/
-    │   ├── kotlin/com/zeny/hotel/            # pacote base (a confirmar)
+    │   ├── kotlin/com/zeny/hotel/            # pacote base (confirmado em 2026-10-13)
     │   │   ├── ZenyHotelApplication.kt
     │   │   ├── shared/                        # kernel: money, ids, time, errors, sync, sse, security
     │   │   ├── iam/

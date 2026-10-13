@@ -1,0 +1,4 @@
+# Ajustes sobre a configuração padrão do detekt (buildUponDefaultConfig = true no build).
+# Acrescente aqui só as regras que o projeto decidir mudar, com o motivo ao lado.
+config:
+  validation: true

@@ -14,9 +14,41 @@ Documentação, mensagens ao usuário e commits ficam em pt-BR. Código, API e b
 
 ## Estado atual e comandos
 
-Por enquanto o repositório só tem documentação. O esqueleto Gradle e os comandos oficiais de build, teste e lint são criados pela etapa **E01 do M0** (`docs/roadmaps/roadmap-m0-fundacao-tecnica.md`), que também deve atualizar esta seção. Não invente comandos antes disso.
+O esqueleto existe desde o M0 E01: projeto Gradle único (Kotlin DSL), aplicação Spring Boot vazia, módulo `shared` vazio, verificação de módulos, regras ArchUnit de camadas, detekt, ktlint e Kover. Ainda não há banco (E02), tipos do kernel (E03), endpoints nem contrato OpenAPI (E04), Docker (E06) nem CI (E07).
 
-Stack decidida: Kotlin 2.x sobre JDK 25, Spring Boot 4.x, Spring Modulith 2.x, PostgreSQL 18, Flyway e Testcontainers. O build roda pelo Gradle Wrapper (`./gradlew`); não use o `gradle` do apt, que é antigo demais. Docker é obrigatório para os testes de integração e para o `docker/compose.yaml`.
+Stack: Kotlin 2.4 sobre JDK 25, Spring Boot 4.1, Spring Modulith 2.1, Gradle 9.8 pelo wrapper. PostgreSQL 18, Flyway e Testcontainers chegam em E02. Use sempre `./gradlew`; não use o `gradle` do apt, que é antigo demais. Docker é obrigatório para os testes de integração (a partir de E02) e para o `docker/compose.yaml` (E06).
+
+**Comandos oficiais** (na raiz do repositório):
+
+| Para quê | Comando | O que roda |
+|---|---|---|
+| Build completo | `./gradlew build` | compilação, testes (inclui `ModularityTest` e ArchUnit), detekt com e sem resolução de tipos, ktlint e `koverVerify` |
+| Testes | `./gradlew test` | todos os testes; um só: `./gradlew test --tests 'com.zeny.hotel.ModularityTest'` |
+| Lint | `./gradlew lint` | `detekt`, `detektMain`, `detektTest` e `ktlintCheck` |
+| Corrigir formatação | `./gradlew ktlintFormat` | aplica o ktlint nos fontes |
+| Cobertura | `./gradlew koverHtmlReport` | relatório em `build/reports/kover/html/` |
+| Subir a aplicação | `./gradlew bootRun --args='--spring.profiles.active=local'` | fica rodando até Ctrl+C |
+
+Profiles: `local` (desenvolvimento) e `prod` (implantação), em `src/main/resources/application.yaml`. Não há profile padrão: informe sempre o profile.
+
+**Versões** de dependências e plugins ficam só em `gradle/libs.versions.toml`. Os BOMs do Spring Boot e do Spring Modulith entram como `platform(...)`; libs gerenciadas por eles ficam no catálogo sem versão. Nunca escreva versão literal no `build.gradle.kts`. O detekt está na linha 2.0 (alpha), a única que entende Kotlin 2.4; sua configuração fica em `config/detekt/detekt.yml`, sobre os padrões. O estilo do ktlint (`ktlint_official`, 120 colunas) fica no `.editorconfig`.
+
+**Estrutura de um módulo** (pacote base `com.zeny.hotel`):
+
+```
+com/zeny/hotel/<módulo>/
+├── <Módulo>Api.kt, <Módulo>Events.kt   # raiz = API pública: interfaces, DTOs e eventos
+├── domain/          # agregados e regras; sem Spring; de JPA só anotações (e seus enums)
+├── application/     # casos de uso, transações, autorização
+├── infrastructure/  # JPA, adaptadores, jobs
+└── web/             # controllers; só fala com application (e com os DTOs da raiz)
+```
+
+- `ModularityTest` roda `ApplicationModules.verify()` (sem ciclos, sem acesso a internos de outro módulo) e gera a documentação dos módulos em `build/spring-modulith-docs/`.
+- `LayerArchitectureTest` aplica as regras de `architecture/LayerRules.kt` (código de teste) ao código de produção: `domain` sem Spring, sem a API JPA/Hibernate e sem `application`/`infrastructure`/`web`; `web` sem `domain`/`infrastructure`; nenhum módulo usa `domain`/`application`/`infrastructure`/`web` de outro módulo.
+- `LayerRulesTest` prova que cada regra falha diante de uma violação, usando as classes de exemplo em `src/test/kotlin/archfixtures/`. Ao mudar uma regra, mantenha ou acrescente o exemplo que a viola.
+- `shared` é declarado em `shared/SharedModule.kt` (`@PackageInfo` + `@ApplicationModule`, o equivalente Kotlin do `package-info.java`) e como módulo compartilhado em `@Modulithic(sharedModules = ["shared"])`. Ele não pode depender de nenhum outro módulo (`allowedDependencies = []`). Um módulo novo segue o mesmo padrão quando precisar declarar metadados.
+- Plugins `kotlin-spring`, `kotlin-jpa` e `allopen` já estão ligados: entidades `@Entity`, `@MappedSuperclass` e `@Embeddable` ficam abertas e com construtor sem argumentos.
 
 ## Como trabalhar com os roadmaps
 
@@ -27,7 +59,7 @@ Stack decidida: Kotlin 2.x sobre JDK 25, Spring Boot 4.x, Spring Modulith 2.x, P
 
 ## Arquitetura em uma página
 
-- **Monólito modular** com Spring Modulith. Cada pacote de primeiro nível sob o pacote base (`com.zeny.hotel`, a confirmar em M0 E01) é um módulo, correspondente a um contexto da SPEC.
+- **Monólito modular** com Spring Modulith. Cada pacote de primeiro nível sob o pacote base (`com.zeny.hotel`, adotado no M0 E01) é um módulo, correspondente a um contexto da SPEC.
   - O que fica na raiz do pacote do módulo é a API pública: interfaces, DTOs e eventos.
   - Os subpacotes `domain/`, `application/`, `infrastructure/` e `web/` são internos.
   - `domain` não depende de Spring; `web` só fala com `application`.
@@ -58,6 +90,15 @@ Stack decidida: Kotlin 2.x sobre JDK 25, Spring Boot 4.x, Spring Modulith 2.x, P
   - O app operacional sincroniza por `/api/v1/sync/changes` (cursor) e `/api/v1/sync/commands`, com idempotência por `commandId`. Cada módulo registra seus `OfflineCommandHandler`.
   - Mudanças de estado chegam aos clientes por SSE em `/api/v1/stream`.
 - **Integrações** (FNRH, channel manager, PSP Pix, adquirente, middleware fiscal, FCM): porta no módulo e adaptador por provedor, com outbox, retry e log redigido, testados com WireMock. Os fornecedores ainda não foram escolhidos (Q-05).
+
+## Decisões do usuário
+
+Quando houver pontos que cabem ao usuário decidir (hipóteses não confirmadas, trade-offs, escolhas de versão ou ferramenta, itens de "Revisão humana" de uma etapa), não os deixe só listados num relatório: conduza uma entrevista com `AskUserQuestion`.
+
+- Cada pergunta é de múltipla escolha e tem uma opção recomendada, que vem em primeiro lugar com o rótulo "(Recomendado)" e uma justificativa curta.
+- Agrupe até 4 perguntas por chamada.
+- Depois, registre as decisões onde o projeto as documenta: handoff da etapa, hipóteses do roadmap, ARCHITECTURE ou este arquivo.
+- Subagentes não fazem a entrevista: devolvem os pontos ao orquestrador ou à sessão principal, que entrevista o usuário.
 
 ## Git
 

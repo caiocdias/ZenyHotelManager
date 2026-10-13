@@ -1,0 +1,27 @@
+# Configuração base. Profiles: `local` (desenvolvimento) e `prod` (implantação).
+# Segredos nunca entram aqui: vêm de variáveis de ambiente (ARCHITECTURE §15.1).
+spring:
+  application:
+    name: zeny-hotel-manager
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+
+logging:
+  level:
+    com.zeny.hotel: DEBUG
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  main:
+    banner-mode: off
+
+logging:
+  level:
+    root: INFO

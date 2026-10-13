@@ -54,7 +54,7 @@ Criar o esqueleto do servidor Zeny: um projeto Kotlin/Spring Boot com Spring Mod
 
 | # | Hipótese ou decisão | Impacto se errada / sem decisão | Etapa afetada |
 |---|---|---|---|
-| H1 | Pacote base `com.zeny.hotel`, marcado "a confirmar" na ARCHITECTURE §4. | Renomear pacotes depois é mecânico, mas toca todos os arquivos. Confirmar com o usuário em E01 se possível. | E01 |
+| H1 | Pacote base `com.zeny.hotel`. **Confirmado pelo usuário em 2026-10-13**, na revisão humana da E01. | Renomear pacotes depois é mecânico, mas toca todos os arquivos. | E01 |
 | H2 | Versões exatas: a última estável de Spring Boot 4.x, Kotlin 2.x, Spring Modulith 2.x compatível e springdoc compatível com Boot 4, todas no *version catalog*. | Incompatibilidade entre versões aparece no primeiro build; E01 ajusta e registra as versões escolhidas. | E01 |
 | H3 | JDK 25 e Docker instalados na máquina que executa as etapas. Confirmado em 2026-10-13: OpenJDK 25.0.4.1, Docker 29.1.3 com acesso sem `sudo` e Docker Compose 2.40.3. Se rodar em outra máquina, confira de novo. | Sem JDK o Gradle não roda (E01); sem Docker não há Testcontainers (E02) nem compose (E06). A etapa confere e se bloqueia se faltar. | E01, E02, E06 |
 | H4 | CI no GitHub Actions, já que o remoto é GitHub. A ARCHITECTURE §17 diz "provedor a definir". | Trocar de provedor depois só reescreve o arquivo do pipeline. | E07 |
@@ -141,7 +141,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Esqueleto Gradle, Spring Boot e Modulith | #pendente | — | Projeto que compila e testa, com verificação de módulos, ArchUnit, lint e comandos oficiais documentados |
+| E01 | Esqueleto Gradle, Spring Boot e Modulith | #concluida | — | Projeto que compila e testa, com verificação de módulos, ArchUnit, lint e comandos oficiais documentados |
 | E02 | Banco, migrações e testes de integração | #pendente | E01 | PostgreSQL 18, Flyway por módulo, JPA/JdbcClient, outbox do Modulith, ShedLock e base de Testcontainers |
 | E03 | Kernel compartilhado: tipos de valor e cifragem | #pendente | E01 | `Money`, `Percent`, UUIDv7, números legíveis, CPF/CNPJ, `Address` e cifragem de campo em `shared` |
 | E04 | Convenções de API e contrato OpenAPI | #pendente | E02, E03 | Erros RFC 9457, paginação por cursor, `ETag`/`If-Match`, `api/openapi.yaml` gerado e verificado |
@@ -152,7 +152,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 ---
 
-## E01 — Esqueleto Gradle, Spring Boot e Modulith — #pendente
+## E01 — Esqueleto Gradle, Spring Boot e Modulith — #concluida
 
 **Objetivo:** criar o projeto Gradle (Kotlin DSL, *version catalog*) com a aplicação Spring Boot vazia, Spring Modulith, teste de modularidade, regras ArchUnit de camadas, detekt, ktlint e Kover, e definir os comandos oficiais de build, teste e lint.
 
@@ -240,12 +240,54 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, v
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `831eeec242ceaa8bc87940b9e6a4ae98c36bd8be` (recebido do orquestrador). Snapshot ao fim da implementação: `bf64452e1f8fe229636a5a57cff2cdad72387b3c` (antes de preencher este handoff).
+- Arquivos alterados:
+  - Build: `settings.gradle.kts`, `build.gradle.kts`, `gradle/libs.versions.toml`, wrapper (`gradlew`, `gradlew.bat`, `gradle/wrapper/*`), `config/detekt/detekt.yml`, `.editorconfig`, `.gitignore`.
+  - Aplicação: `src/main/kotlin/com/zeny/hotel/ZenyHotelApplication.kt`, `src/main/kotlin/com/zeny/hotel/shared/SharedModule.kt`, `src/main/resources/application.yaml`.
+  - Testes: `src/test/kotlin/com/zeny/hotel/ModularityTest.kt`, `ZenyHotelApplicationTest.kt`, `architecture/LayerRules.kt`, `architecture/LayerArchitectureTest.kt`, `architecture/LayerRulesTest.kt` e as classes de exemplo em `src/test/kotlin/archfixtures/` (um layout correto e cinco violações propositais).
+  - Documentação: `CLAUDE.md` (seção "Estado atual e comandos" reescrita; pacote base marcado como adotado), `README.md` (novo), este roadmap (tag e handoff).
+- Decisões:
+  - Versões (todas em `gradle/libs.versions.toml`, consultadas no Maven Central e no Gradle Plugin Portal em 2026-10-13): Gradle 9.8.1 (wrapper com `distributionSha256Sum`), Kotlin 2.4.21, Spring Boot 4.1.1, Spring Modulith 2.1.1 (feito sobre Boot 4.1.1 e Spring 7.0.9), ArchUnit 1.5.1, Kotest 6.2.5, MockK 1.14.11, detekt 2.0.0-alpha.6 (plugin `dev.detekt`), ktlint-gradle 14.2.0 com ktlint 1.8.0, Kover 0.9.11. JUnit, kotlin-reflect, Jakarta Persistence e os starters vêm dos BOMs.
+  - BOMs como `platform(...)` nativo do Gradle, sem o plugin `io.spring.dependency-management`: assim o Kotlin do catálogo (2.4.21) prevalece sobre o 2.3.21 que o BOM do Boot 4.1.1 traz.
+  - detekt na linha 2.0 alpha: a 1.23.8 (última estável, fev/2025) embute Kotlin 2.0.21 e não acompanha Kotlin 2.4 nem JDK 25; a 2.0.0-alpha.6 embute o compilador Kotlin 2.4.10. O `check` roda `detekt`, `detektMain` e `detektTest` (as duas últimas com resolução de tipos). Trocar pela 2.0 estável quando sair.
+  - Pacote base `com.zeny.hotel` (H1). Não foi possível confirmar com o usuário dentro do subagente; fica para a revisão humana desta etapa.
+  - `shared` declarado por `@PackageInfo` + `@ApplicationModule(displayName = "Shared kernel", allowedDependencies = [])` em `shared/SharedModule.kt` (Kotlin não tem `package-info.java`) e como módulo compartilhado por `@Modulithic(sharedModules = ["shared"])`.
+  - Regras ArchUnit (`LayerRules`, parametrizadas pelo pacote base): `domain` sem `org.springframework..`; `domain` sem `jakarta.persistence..`/`org.hibernate..` exceto anotações e enums; `domain` sem `application`/`infrastructure`/`web` (incluir `application` vai além do texto da ARCHITECTURE §4, por ser a camada mais interna); `web` sem `domain`/`infrastructure`; nenhum módulo usa `domain`/`application`/`infrastructure`/`web` de outro módulo (os demais subpacotes, como *named interfaces*, ficam com o `ApplicationModules.verify()`). Todas com `allowEmptyShould(true)` enquanto não há módulos.
+  - Aplicação sem web (só `spring-boot-starter` + `spring-modulith-starter-core`); E04 acrescenta o webmvc. Sem profile padrão: o profile é sempre explícito.
+  - Kover sem limite mínimo de cobertura por enquanto (ARCHITECTURE §17 fala em módulos críticos; definir quando existirem).
+  - Comandos oficiais registrados no `CLAUDE.md` e no `README.md`: `./gradlew build`, `./gradlew test`, `./gradlew lint` (tarefa agregadora nova: `detekt`, `detektMain`, `detektTest`, `ktlintCheck`), `./gradlew ktlintFormat`, `./gradlew koverHtmlReport`, `./gradlew bootRun --args='--spring.profiles.active=local'`.
+- Validações executadas:
+  - `java -version` → OpenJDK 25.0.4.1.
+  - Testes escritos antes do código: `./gradlew compileTestKotlin` falhou por falta de `ZenyHotelApplication` antes da implementação.
+  - `rm -rf build .gradle .kotlin && ./gradlew build --no-build-cache` → `BUILD SUCCESSFUL`; executou `detekt`, `detektMain`, `detektTest`, `ktlintMainSourceSetCheck`, `ktlintTestSourceSetCheck`, `ktlintKotlinScriptCheck`, `test` e `koverVerify`. Testes: `ModularityTest` 3/3, `LayerArchitectureTest` 5/5, `LayerRulesTest` 6/6, `ZenyHotelApplicationTest` 1/1, sem falhas. Documentação do Modulith gerada em `build/spring-modulith-docs/` (`components.puml`, `module-shared.*`, `all-docs.adoc`).
+  - Cópia limpa só com os arquivos não ignorados (`git ls-files -co --exclude-standard`) num diretório temporário → `./gradlew build --no-build-cache` com `BUILD SUCCESSFUL`.
+  - `./gradlew lint` → sucesso. Arquivo mal formatado de propósito em `shared/` → `ktlintMainSourceSetCheck` FAILED com 6 apontamentos; arquivo removido.
+  - Teste negativo permanente: `LayerRulesTest` comprova que `SpringAwareBooking` (domain → Spring), `WebAwareBooking` (domain → web), `PersistingBooking` (domain → `EntityManager`), `LeakyController` (web → domain) e `ChargeService` (módulo → `domain` de outro) violam a regra correspondente, e que o layout `compliant` (com `@Entity`/`@Enumerated` em domain) passa em todas.
+  - Violação proposital em código de produção (`com.zeny.hotel.probe.domain.BadDomain` com `@Component` e dependência de `probe.web`) → `LayerArchitectureTest` com 2 falhas (Spring e camadas externas); classe removida em seguida.
+  - Mutação das regras (Spring trocado por pacote inexistente; `domain` retirado da regra de `web`) → `LayerRulesTest` com 2 falhas; arquivo restaurado.
+  - Aplicação: `java -jar build/libs/zeny-hotel-manager-0.0.1-SNAPSHOT.jar --spring.profiles.active=local` sobe em ~0,7 s ("Started … profile local"), segue rodando e, com SIGTERM, encerra pelo shutdown hook com código 143 e nenhum `ERROR`/exceção no log. Ela não encerra sozinha porque o `spring-modulith-moments` (do starter core) agenda tarefas num executor não-daemon. `ZenyHotelApplicationTest` cobre a subida do contexto com o profile `local`.
+  - `./gradlew koverLog koverHtmlReport` → relatório gerado (cobertura de linhas 33%: só o `main` fica descoberto).
+  - `git status --short` após o build → só fontes, wrapper e documentação; nenhum artefato de `build/`, `.gradle/` ou `.kotlin/`.
+  - Correção do problema baixo 1 do verificador: fixtures `archfixtures.webinfra` (`RepositoryController`, web → infrastructure), `archfixtures.domainapp` (`CommandAwareBooking`, domain → application) e `archfixtures.domaininfra` (`RecordAwareBooking`, domain → infrastructure), com 3 testes novos em `LayerRulesTest` (9/9 verde, `compliant` segue passando em todas as regras). Mutações de `LayerRules.kt`, uma por vez (`infrastructure` retirado da regra de `web`; `application` e depois `infrastructure` retirados da regra de camadas externas de `domain`) → em cada uma, só o teste novo correspondente falhou; arquivo restaurado sem mudança. `./gradlew build` → `BUILD SUCCESSFUL`.
+- Parecer do verificador: **APROVADO** (verificador independente disparado pelo orquestrador, snapshot da verificação `b1a10e67b1ceea62f525ad86e05eeb6dc8ddbd83`). Os 6 critérios foram aprovados. Evidências: o build oficial passou numa cópia limpa com `--no-build-cache` e também com `GRADLE_USER_HOME` vazio; das 7 mutações das regras ArchUnit, 5 foram pegas; violações reais em produção, no detekt e no Modulith fizeram os testes falharem; todos os comandos documentados rodaram; o sha256 do wrapper confere com a distribuição oficial. Nenhum problema grave ou médio. Problemas baixos:
+  1. Faltam fixtures negativas para web→infrastructure, domain→application e domain→infrastructure (`LayerRules.kt:62` e `:72`): retirar essas camadas das regras mantém `LayerRulesTest` verde.
+  2. As regras passam sem examinar nada em produção (`allowEmptyShould(true)`, sem módulos ainda); revisar quando o primeiro módulo chegar.
+  3. A aplicação só encerra com SIGTERM por causa do executor não-daemon do `spring-modulith-moments` (documentado).
+  4. O detekt está em `2.0.0-alpha.6`, pré-release no build oficial (justificado).
+  5. `koverVerify` roda sem regra de cobertura e nunca falha (decisão documentada).
+  6. Aviso de recursos do Gradle incompatíveis com o Gradle 10, vindo de plugin.
+  7. O pacote base `com.zeny.hotel` (H1) ainda precisa da confirmação do usuário na revisão humana.
+- Revisão humana (2026-10-13, entrevista com o usuário; todas as opções recomendadas foram aceitas):
+  - Pacote base `com.zeny.hotel` confirmado (H1).
+  - detekt `2.0.0-alpha.6` mantido no build oficial; trocar pela 2.0 estável quando ela sair.
+  - Executor não-daemon do `spring-modulith-moments`: a decisão fica para a E02, junto com o agendador e o ShedLock.
+  - Lacunas de teste: as fixtures negativas web→infrastructure, domain→application e domain→infrastructure entram já, na revisão da E01; o limite mínimo do Kover fica para quando houver módulos críticos.
+- Notas para a próxima etapa:
+  - E02/E03 acrescentam dependências em `gradle/libs.versions.toml`; libs cobertas pelos BOMs entram sem versão. Não declarar versões no `build.gradle.kts`.
+  - O `spring-modulith-starter-core` já traz `spring-modulith-moments` (eventos `HourHasPassed`/`DayHasPassed`) e o log avisa "No TaskScheduler/ScheduledExecutorService bean found". E02 deve definir o agendador (ShedLock) e decidir se mantém o moments; o avanço da data operacional é do `hotel` (M1), não do moments.
+  - Ao criar o primeiro módulo de verdade, conferir que as regras de `LayerRules` não ficam largas demais; se uma regra mudar, manter o exemplo que a viola em `src/test/kotlin/archfixtures/`.
+  - Avisos conhecidos e inofensivos: `Configuration.setVisible` depreciado (vem de plugin, não do nosso script); `sun.misc.Unsafe` no compilador Kotlin 2.2.21 embutido no ktlint 1.8.0; "Sharing is only supported for boot loader classes" do agente do Kover/MockK nos testes.
+  - `bootRun` fica em primeiro plano até Ctrl+C (documentado).
 
 ---
 
