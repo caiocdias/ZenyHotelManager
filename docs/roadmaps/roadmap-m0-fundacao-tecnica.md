@@ -1,6 +1,6 @@
 # Roadmap — M0 Fundação técnica do servidor
 
-> Arquivo: `docs/roadmaps/roadmap-m0-fundacao-tecnica.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m0-fundacao-tecnica.md` · criado em 2026-10-13 · última revisão 2026-10-14
 >
 > Marco 0 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · próximo marco: [M1 — Acesso, auditoria e configuração](roadmap-m1-acesso-configuracao.md)
 
@@ -62,12 +62,14 @@ Criar o esqueleto do servidor Zeny: um projeto Kotlin/Spring Boot com Spring Mod
 
 ## Definição global de pronto
 
-- [ ] O comando oficial de build (registrado no `CLAUDE.md`) passa do zero numa cópia limpa do repositório, incluindo testes unitários, de integração, de arquitetura e lint.
-- [ ] `ApplicationModules.verify()` passa e gera a documentação dos módulos.
-- [ ] `api/openapi.yaml` é gerado pelo build, está versionado e a verificação de diff falha se ele estiver desatualizado.
-- [ ] `docker compose -f docker/compose.yaml up` sobe `api`, `db`, `storage` e `proxy`, e `/actuator/health/readiness` responde `UP`.
-- [ ] A CI roda build, testes, verificação de módulos, diff do contrato, oasdiff e build da imagem.
-- [ ] `CLAUDE.md` e `README.md` descrevem os comandos oficiais e as convenções estabelecidas neste marco.
+Conferida no gate E08 (2026-10-14) numa cópia limpa do commit `6e9bd9c` (árvore `3777a7b`), com `GRADLE_USER_HOME` novo e `--no-build-cache`; detalhes no handoff da E08.
+
+- [x] O comando oficial de build (registrado no `CLAUDE.md`) passa do zero numa cópia limpa do repositório, incluindo testes unitários, de integração, de arquitetura e lint. Evidência: `./gradlew build --no-build-cache` → `BUILD SUCCESSFUL` em 2 min 1 s, 26 tarefas executadas (inclusive o download do Gradle 9.8.1), 178 testes em 30 classes, 0 falhas, 0 pulados, com `detekt`, `detektMain`, `detektTest`, `ktlint*Check`, `generateOpenApi`, `checkOpenApi` e `koverVerify`.
+- [x] `ApplicationModules.verify()` passa e gera a documentação dos módulos. Evidência: `ModularityTest` 3/3 no build e sozinho (`./gradlew test --tests 'com.zeny.hotel.ModularityTest'`); `build/spring-modulith-docs/` com `all-docs.adoc`, `components.puml`, `module-shared.adoc` e `module-shared.puml`.
+- [x] `api/openapi.yaml` é gerado pelo build, está versionado e a verificação de diff falha se ele estiver desatualizado. Evidência: o `build/openapi/openapi.yaml` gerado é idêntico ao versionado (`cmp`); `checkOpenApi` falhou com "api/openapi.yaml está desatualizado" ao editar o arquivo à mão (linha 8) e ao mudar a rota do `MetaController` sem regenerar (linha 17); `updateOpenApi` regravou e o `checkOpenApi` voltou a passar.
+- [x] `docker compose -f docker/compose.yaml up` sobe `api`, `db`, `storage` e `proxy`, e `/actuator/health/readiness` responde `UP`. Evidência: imagem construída com `--no-cache`, `up -d` com o projeto `zeny-e08` e um `docker/.env` novo; `api`, `db` e `storage` `healthy`, `proxy` de pé, `storage-init` `Exited (0)`; `curl http://127.0.0.1/actuator/health/readiness` → 200 `{"status":"UP"}`; `down -v` no fim.
+- [x] A CI roda build, testes, verificação de módulos, diff do contrato, oasdiff e build da imagem. Evidência: `.github/workflows/ci.yml` (jobs `build`, `api-compatibility` e `image`; actionlint 1.7.12 com 0 erros); execução real `38502250745` do commit `6e9bd9c` (push na `main`, 2026-10-14) concluída com sucesso nos três jobs, com os artefatos `spring-modulith-docs` e `openapi`, confirmada pelo usuário.
+- [x] `CLAUDE.md` e `README.md` descrevem os comandos oficiais e as convenções estabelecidas neste marco. Evidência: todos os comandos da tabela rodaram como descritos na cópia limpa (`build`, `test`, `lint`, `ktlintFormat` sem mudar arquivo, `koverHtmlReport`, `checkOpenApi`, `updateOpenApi`, `bootRun` com o banco e as chaves documentados, o compose com `build`, `up -d`, `ps` e `down -v`, o actionlint e o `check-api-breaking.sh`); caminhos, classes e valores citados conferidos no código.
 
 ## Protocolo de execução
 
@@ -148,7 +150,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | E05 | Idempotência de requisições | #concluida | E04 | `Idempotency-Key` com respostas guardadas por 24h |
 | E06 | Imagem Docker, compose e observabilidade | #concluida | E04 | Dockerfile, `docker/compose.yaml`, health, logs JSON e métricas Prometheus |
 | E07 | Pipeline de CI | #concluida | E05, E06 | GitHub Actions com build, testes, contrato, oasdiff e imagem |
-| E08 | Gate do marco M0 | #pendente | E07 | Definição global de pronto verificada do zero |
+| E08 | Gate do marco M0 | #concluida | E07 | Definição global de pronto verificada do zero |
 
 ---
 
@@ -1103,7 +1105,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 ---
 
-## E08 — Gate do marco M0 — #pendente
+## E08 — Gate do marco M0 — #concluida
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório, que toda a definição global de pronto do M0 é atendida, e deixar o roadmap do M1 pronto para ser sincronizado.
 
@@ -1160,10 +1162,10 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, verificações, resul
 
 **Critérios de aceite:**
 
-- [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
-- [ ] A execução da CI no GitHub foi confirmada pelo usuário, ou a ausência dela está registrada como pendência explícita.
-- [ ] `CLAUDE.md` e `README.md` estão coerentes com o código (comandos rodam como descritos).
-- [ ] `docs/roadmaps/README.md` registra a conclusão do M0 no histórico de revisões.
+- [x] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
+- [x] A execução da CI no GitHub foi confirmada pelo usuário, ou a ausência dela está registrada como pendência explícita.
+- [x] `CLAUDE.md` e `README.md` estão coerentes com o código (comandos rodam como descritos).
+- [x] `docs/roadmaps/README.md` registra a conclusão do M0 no histórico de revisões.
 
 **Validação obrigatória:**
 
@@ -1178,12 +1180,36 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, verificações, resul
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para o marco M1: —
+- Snapshot inicial: `3777a7b470df87ecd370d141203a044b1b02ea21` (recebido do orquestrador; é a árvore do `HEAD` `6e9bd9c`, com a árvore de trabalho limpa).
+- Arquivos alterados (só documentação):
+  - Este roadmap: tag da E08, "Definição global de pronto" marcada com evidência, critérios de aceite, este handoff e o histórico de revisões.
+  - `docs/roadmaps/README.md`: conclusão do M0 no histórico de revisões.
+  - `CLAUDE.md`: uma frase em "Estado atual e comandos" registrando o gate do M0 e o próximo passo (sincronizar o roadmap do M1).
+  - `README.md`: nenhuma mudança necessária; conferido contra o código.
+- Cópia limpa e ambiente:
+  - `git clone` do repositório local para o scratchpad (`HEAD` `6e9bd9c`, árvore igual ao snapshot, `git status` vazio, sem `build/`, `.gradle/`, `.kotlin/` nem `docker/.env`). Modo 755 de `gradlew` e de `.github/scripts/check-api-breaking.sh` conferido no índice.
+  - Gradle sem estado local: `GRADLE_USER_HOME` novo e vazio dentro do scratchpad (o build baixou o Gradle 9.8.1 e todas as dependências) e `--no-build-cache`; nas execuções seguintes, também `--rerun-tasks`.
+  - Máquina: x86_64, OpenJDK 25.0.4.1, Docker 29.1.3, Compose 2.40.3. A CI roda em `ubuntu-24.04` (x86_64) com Temurin 25; nenhuma diferença de comportamento observada. As imagens base do Docker (`eclipse-temurin`, `postgres:18`, `pgsty/minio`, `caddy`) vieram do cache local de imagens; o build da imagem da aplicação foi `--no-cache`.
+- Verificações e resultados (cópia limpa):
+  - `./gradlew build --no-build-cache` → `BUILD SUCCESSFUL` em 2 min 1 s, 26 tarefas executadas: `compileKotlin`, `detekt`, `bootJar`, `compileTestKotlin`, `detektMain`, `generateOpenApi` (`OpenApiContractExport` 1/1), `checkOpenApi`, `detektTest`, `test`, `koverVerify` e `ktlint*Check`. Testes: 178 em 30 classes, 0 falhas, 0 erros, 0 pulados (entre eles `ModularityTest` 3, `LayerArchitectureTest` 5, `LayerRulesTest` 9, `MigrationConventionTest` 11, `DatabaseMigrationsTest` 8, `ApiSecurityTest` 8, `ActuatorExposureTest` 6, `IdempotencyTest` 21, `EventPublicationRegistryTest` 5), com o PostgreSQL 18 do Testcontainers.
+  - `./gradlew test --no-build-cache --rerun-tasks` → sucesso; `./gradlew test --tests 'com.zeny.hotel.ModularityTest'` → sucesso; `./gradlew lint --rerun-tasks` → sucesso; `./gradlew checkOpenApi --rerun-tasks` → `BUILD SUCCESSFUL`.
+  - Documentação do Modulith: `build/spring-modulith-docs/` com `all-docs.adoc`, `components.puml`, `module-shared.adoc` e `module-shared.puml`.
+  - Contrato: o `build/openapi/openapi.yaml` gerado é idêntico ao `api/openapi.yaml` versionado (`cmp`). Negativos: título editado à mão → `checkOpenApi` falha com "api/openapi.yaml está desatualizado (primeira diferença na linha 8)…", saída 1; `@GetMapping("/version")` trocado por `"/server-version"` sem regenerar → falha na linha 17, saída 1; `./gradlew updateOpenApi` → regrava 1 linha e o `checkOpenApi` passa; tudo restaurado com `git checkout` e o `checkOpenApi` passa de novo.
+  - Outros comandos da tabela do `CLAUDE.md`: `./gradlew koverHtmlReport` → `build/reports/kover/html/index.html`; `./gradlew ktlintFormat` → sucesso sem alterar nenhum arquivo; `bootRun --args='--spring.profiles.active=local'` com o `docker run … postgres:18` documentado (container de nome próprio) e as chaves geradas pelo comando documentado → "Started ZenyHotelApplicationKt in 2.5 seconds", `GET /api/v1/meta/version` 200, Swagger UI 200 e readiness `UP` na 8080; encerrado em seguida (fica em primeiro plano até Ctrl+C, como documentado).
+  - CI local: `docker run rhysd/actionlint:1.7.12 .github/workflows/ci.yml` → 0 erros; `.github/scripts/check-api-breaking.sh HEAD~1` → base `6105f69` × árvore, "Nenhuma mudança incompatível (nível ERR) em /api/v1", saída 0.
+  - Compose (projeto `-p zeny-e08`, para não tocar os volumes `zeny_*` do usuário): `docker/.env` criado a partir do `docker/.env.example` com chave de cifragem, senha do banco e senha do MinIO sorteadas na hora (só na cópia limpa, ignorado pelo Git: `.gitignore:21:.env`). `docker compose -p zeny-e08 -f docker/compose.yaml build --no-cache api` → 1 min 12 s; `up -d` → readiness `{"status":"UP"}` pelo proxy em 4 s depois do `up`; `api` (healthy), `db` (healthy), `storage` (healthy) e `proxy` de pé; `storage-init` `Exited (0)` com "Bucket created successfully `zeny/zeny-files`". Pelo proxy: liveness e readiness 200 `{"status":"UP"}`, `/api/v1/meta/version` 200, `/actuator/prometheus` 404 (Caddy), `/actuator/health`, `/actuator/env`, `/api/v1/rooms` e `/swagger-ui.html` 401 problema (profile `prod`). `exec api id` → `uid=10001(zeny)`. `http://api:8080/actuator/prometheus` pela rede interna → as quatro séries `zeny_outbox_*`. Logs do `api`: 33 linhas, todas JSON válido. Histórico do Flyway no banco do compose: as 4 migrações do `shared` com sucesso. Sem `docker/.env` (`--env-file /dev/null`), o `config` falha nomeando `ZENY_DB_USERNAME`. `down -v` → containers, rede e os volumes `zeny-e08_*` removidos.
+  - Estado local preservado: a imagem `zeny-hotel-manager:dev` do usuário (`f06537eed912`) foi guardada numa tag provisória antes do build e restaurada depois; a imagem construída no teste foi apagada. Os volumes `zeny_*` do usuário não foram tocados. O daemon do Gradle do `GRADLE_USER_HOME` provisório foi parado, e a cópia limpa e esse `GRADLE_USER_HOME` foram apagados no fim.
+  - CI no GitHub: **confirmada pelo usuário em 2026-10-14** (repassado pelo orquestrador). `gh run list` mostra o workflow "CI" do commit `6e9bd9c` (push na `main`, 2026-10-14T02:40:20Z, run `38502250745`) concluído com sucesso em 4 min 2 s. Conferido também nesta etapa: os três jobs (`Build, testes e contrato`, `Compatibilidade da API (oasdiff)` e `Imagem Docker (sem push)`) com `success` e os artefatos `spring-modulith-docs` e `openapi` publicados. O Dependabot já rodou duas vezes ("Dependabot Updates", sucesso); nenhum PR dele foi aberto até agora.
+  - Coerência da documentação: os caminhos, classes, tarefas e valores citados no `CLAUDE.md` e no `README.md` foram conferidos no código (versões em `gradle/libs.versions.toml` e no wrapper; tarefas `lint`, `generateOpenApi`, `checkOpenApi`, `updateOpenApi` no `build.gradle.kts`; `HALF_EVEN` em `Money.ROUNDING_MODE`; limite 50/200 em `Pagination.kt`; escopo `user:<login>` no `IdempotencyFilter`; `ClockConfiguration` em `shared/infrastructure/time/`; `spring-modulith-moments` excluído; serviços, variáveis e portas do compose, do `.env.example` e do Caddyfile; jobs e artefatos do `ci.yml`). Nenhuma divergência encontrada.
+- Decisões:
+  - O projeto do compose foi `zeny-e08` em vez do padrão `zeny`, e as senhas de teste foram sorteadas, para não reutilizar estado local (volumes e `.env`) do usuário. O comando em si é o documentado.
+  - Nenhum problema exigiu devolver uma etapa anterior.
+- Parecer do verificador: **APROVADO** (verificador independente disparado pelo orquestrador, snapshot da verificação `bd630106c273628ce963bc36b9b1b24fbfc9e610`). Os 4 critérios foram aprovados com evidência reproduzida numa cópia limpa própria (clone + diff da árvore de trabalho, `GRADLE_USER_HOME` vazio, `--no-build-cache`). `./gradlew build` passou com 178 testes e 0 falhas; `ModularityTest` gerou a documentação; o contrato gerado é idêntico ao versionado, e o `checkOpenApi` falhou como devia com o yaml editado à mão e com a rota do `MetaController` trocada; `bootRun` subiu como documentado; no compose (projeto `zeny-e08v`, `build --no-cache`), readiness `UP` pelo proxy, serviços healthy, uid 10001, logs JSON sem segredo e `down -v` limpo; actionlint e `check-api-breaking.sh` com saída 0; `gh run view 38502250745` com os 3 jobs em `success`. Nenhum problema grave ou médio, e nenhuma divergência entre `CLAUDE.md`/`README.md` e o código. Pontos menores: (1) a data de revisão no cabeçalho deste roadmap estava em 2026-10-13 (corrigida pelo orquestrador); (2) `docs/roadmaps/README.md` declarava o M0 concluído antes da troca da tag, resolvido com a tag `#concluida`; (3) informativo: o aviso de recursos do Gradle incompatíveis com o Gradle 10 vem de plugin e não foi investigado; (4) as imagens base do Docker vieram do cache local, mas o job `image` da CI as construiu do zero num runner limpo.
+- Notas para o marco M1:
+  - Antes da primeira etapa do M1, sincronizar `docs/roadmaps/roadmap-m1-acesso-configuracao.md` com o código real (skill `development-roadmap`, modo atualização), como manda o `CLAUDE.md`.
+  - Recomendado agora que a CI ficou verde: proteger a `main` no GitHub exigindo os três checks, ou passar a trabalhar com PR (hoje uma quebra que entra por push direto só aparece depois).
+  - Pendências herdadas dos handoffs, a tratar no M1: JWT na `SecurityConfiguration` e lista `PUBLIC_API_ENDPOINTS` do `ApiSecurityTest`; escopo do `Idempotency-Key` pelo id estável do usuário (`IdempotencyFilter.scopeOfCurrentUser`); usuário de migração distinto do usuário da aplicação antes das tabelas imutáveis (RN-03); `DataIntegrityViolationException` → `ConflictException`; teste do 412 por lock otimista; usuário e dispositivo no MDC dos logs; `files` com cifragem de bytes e credenciais `ZENY_STORAGE_*` no `api` do compose (com usuário de serviço do MinIO); conferir as regras de `LayerRules` e o `TypedIdConverter` com o primeiro módulo real; falsos positivos conhecidos do `MigrationConventions` com `GRANT … ON FUNCTION f(numeric(14,2))` e `ALTER DEFAULT PRIVILEGES`.
+  - Avisos conhecidos e inofensivos no build: "Deprecated Gradle features… incompatible with Gradle 10", vindo de plugin.
 
 ---
 
@@ -1192,3 +1218,4 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, verificações, resul
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — H3 confirmada: JDK 25 e Docker instalados.
 - 2026-10-13 — `CLAUDE.md` criado antes de E01; E01 passa a atualizá-lo em vez de criá-lo.
+- 2026-10-14 — E08 (gate do M0): definição global de pronto conferida numa cópia limpa e marcada com evidência; primeira execução da CI no GitHub confirmada.

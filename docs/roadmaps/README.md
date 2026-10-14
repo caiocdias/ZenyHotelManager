@@ -85,3 +85,4 @@ A ARCHITECTURE §3.1 e a SPEC §8.3 já foram atualizadas com essas decisões.
 
 - 2026-10-13 — marcos definidos e roadmaps criados.
 - 2026-10-13 — divergências entre SPEC e ARCHITECTURE resolvidas por entrevista (regra por camadas, empréstimos no `frontdesk`, documentos dono + `printing`, `TabClosed` tratado pelo próprio `pos`).
+- 2026-10-14 — **M0 (Fundação técnica) concluído**: gate E08 conferido numa cópia limpa (build oficial com 178 testes, contrato, `docker compose` com readiness `UP`) e primeira execução da CI no GitHub verde (run `38502250745`, commit `6e9bd9c`). Próximo passo: sincronizar o roadmap do M1 com o código antes da primeira etapa.
