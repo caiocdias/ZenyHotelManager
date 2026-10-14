@@ -49,6 +49,16 @@ interface Users {
     fun anyExists(): Boolean
 
     fun add(user: User)
+
+    /**
+     * Grava o usuário novo já no banco; devolve `false` se o login já é de outro usuário (a
+     * unicidade é do banco, `user_account_login_uk`, e vale também entre requisições simultâneas).
+     * Com `false`, a transação precisa ser desfeita.
+     */
+    fun tryAdd(user: User): Boolean
+
+    /** Grava já as mudanças pendentes (e confere a versão: lock otimista). */
+    fun flush()
 }
 
 /** Sessões de dispositivo persistidas. */

@@ -15,7 +15,21 @@ interface Roles {
 
     fun findByTemplate(template: RoleTemplate): Role?
 
+    fun findAllById(ids: Collection<RoleId>): List<Role>
+
     fun add(role: Role)
+
+    /**
+     * Grava a role nova já no banco; devolve `false` se o nome já é de outra role (sem diferenciar
+     * maiúsculas, `role_name_uk`). Com `false`, a transação precisa ser desfeita.
+     */
+    fun tryAdd(role: Role): Boolean
+
+    /**
+     * Grava já as mudanças pendentes (conferindo a versão: lock otimista); devolve `false` se o
+     * nome novo já é de outra role. Com `false`, a transação precisa ser desfeita.
+     */
+    fun tryFlush(): Boolean
 }
 
 /** Uma permissão como está na tabela do catálogo. */
@@ -82,6 +96,30 @@ interface AuthorizationData {
     /** As roles atribuídas ao usuário (ativas ou não), com as concessões. */
     fun roleGrantsOf(userId: UserId): List<RoleGrants>
 
+    /** O mesmo que [roleGrantsOf], por role. */
+    fun roleGrantsByRoleOf(userId: UserId): Map<RoleId, RoleGrants>
+
+    /** Os usuários que têm a role atribuída (ativos ou não). */
+    fun holdersOf(roleId: RoleId): List<UserId>
+
     /** As roles ativas atribuídas ao usuário, em ordem de nome. */
     fun activeRolesOf(userId: UserId): List<AssignedRole>
+
+    /** Se o usuário tem a role de sistema Administrador (ativo ou não). */
+    fun isAdministrator(userId: UserId): Boolean
+
+    /** Quantos usuários ativos têm a role de sistema Administrador. */
+    fun activeAdministratorCount(): Int
+}
+
+/**
+ * Trava das escritas de autorização (M1 E03): toda transação que muda roles, concessões,
+ * atribuições ou o estado ativo de um usuário trava primeiro a linha da versão das autorizações,
+ * a mesma que os triggers atualizam. Assim essas transações sempre pegam as travas na mesma
+ * ordem (sem deadlock entre, por exemplo, editar uma role e atribuí-la), ficam em fila e cada
+ * uma confere as regras (RF-ACS-09, último administrador) já com o que a anterior gravou.
+ */
+interface AuthorizationLock {
+    /** Trava até o fim da transação corrente. */
+    fun acquire()
 }

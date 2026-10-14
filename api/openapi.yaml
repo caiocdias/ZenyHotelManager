@@ -281,6 +281,611 @@ paths:
       summary: Listar o catálogo de permissões
       tags:
       - iam
+  /api/v1/roles:
+    get:
+      description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
+        \ `iam.roles.read`."
+      operationId: listRoles
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar roles
+      tags:
+      - iam
+    post:
+      description: "Exige `iam.roles.manage`. Ninguém concede permissão, escopo ou\
+        \ limite acima dos seus (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`). Permissão fora\
+        \ do catálogo: 400 `UNKNOWN_PERMISSION`; escopo não suportado, limite não\
+        \ declarado ou inválido, ou permissão repetida: 400 `INVALID_GRANT`. Nome\
+        \ já usado, sem diferenciar maiúsculas: 409 `ROLE_NAME_ALREADY_IN_USE`."
+      operationId: createRole
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: Role criada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar uma role
+      tags:
+      - iam
+  /api/v1/roles/{id}:
+    get:
+      description: "Exige `iam.roles.read`. O `ETag` vai no `If-Match` da edição.\
+        \ Inexistente: 404 `ROLE_NOT_FOUND`."
+      operationId: getRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma role
+      tags:
+      - iam
+    put:
+      description: "Troca nome, descrição e o conjunto inteiro de concessões. Exige\
+        \ `iam.roles.manage` e o `If-Match` (ausente: 428; versão diferente: 412).\
+        \ Cada concessão acrescentada ou mudada, inclusive numa role que o próprio\
+        \ usuário tem, não pode passar das permissões dele (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`).\
+        \ A role Administrador não é editada (422 `SYSTEM_ROLE_IMMUTABLE`). Vale na\
+        \ requisição seguinte de quem tem a role."
+      operationId: updateRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma role
+      tags:
+      - iam
+  /api/v1/roles/{id}/deactivate:
+    post:
+      description: A role deixa de conceder permissões já na requisição seguinte de
+        quem a tem; nada é apagado. Exige `iam.roles.manage`. A role Administrador
+        não é desativada (422 `SYSTEM_ROLE_IMMUTABLE`).
+      operationId: deactivateRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma role
+      tags:
+      - iam
+  /api/v1/roles/{id}/duplicate:
+    post:
+      description: Cria uma role nova com as concessões vigentes da outra. Exige `iam.roles.manage`
+        e ter todas elas (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`).
+      operationId: duplicateRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DuplicateRoleRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: Role criada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Duplicar uma role
+      tags:
+      - iam
+  /api/v1/roles/{id}/reactivate:
+    post:
+      description: As concessões da role voltam a valer. Exige `iam.roles.manage`
+        e ter todas elas (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`).
+      operationId: reactivateRole
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma role
+      tags:
+      - iam
+  /api/v1/users:
+    get:
+      description: "Todos os usuários, ativos e inativos, em ordem de login. Exige\
+        \ `iam.users.read`."
+      operationId: listUsers
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageUserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar usuários
+      tags:
+      - iam
+    post:
+      description: "Exige `iam.users.manage`. A senha é provisória: o usuário a troca\
+        \ no primeiro login. O PIN (4 a 8 dígitos) é opcional. Login já usado, sem\
+        \ diferenciar maiúsculas: 409 `LOGIN_ALREADY_IN_USE`. As roles seguem as regras\
+        \ de `PUT /users/{id}/roles`."
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: Usuário criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}:
+    get:
+      description: "Exige `iam.users.read`. O `ETag` vai no `If-Match` das edições.\
+        \ Inexistente: 404 `USER_NOT_FOUND`."
+      operationId: getUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um usuário
+      tags:
+      - iam
+    put:
+      description: "Troca o nome (o login não muda). Exige `iam.users.manage` e o\
+        \ `If-Match` (ausente: 428; versão diferente: 412). Um administrador só é\
+        \ editado por outro administrador (403 `ADMINISTRATOR_REQUIRED`)."
+      operationId: updateUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/deactivate:
+    post:
+      description: "Exige `iam.users.manage`. O usuário não entra mais, perde as permissõ\
+        es já na requisição seguinte e todas as sessões dele são revogadas (o pró\
+        ximo refresh falha; o access token vence em até 15 min). Nada é apagado. O\
+        \ último administrador ativo não é desativado (409 `LAST_ADMINISTRATOR`)."
+      operationId: deactivateUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/reactivate:
+    post:
+      description: "Exige `iam.users.manage` e cobrir as permissões do usuário (403\
+        \ `GRANT_EXCEEDS_OWN_PERMISSIONS`). As sessões revogadas não voltam: o usuá\
+        rio entra de novo."
+      operationId: reactivateUser
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/reset-password:
+    post:
+      description: "Define uma senha provisória (12 a 128 caracteres), que o usuá\
+        rio troca no próximo login; zera o bloqueio por tentativas e revoga todas\
+        \ as sessões dele. Exige `iam.users.manage` e cobrir as permissões do usuá\
+        rio (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`)."
+      operationId: resetUserPassword
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordRequest"
+        required: true
+      responses:
+        "204":
+          description: Senha redefinida.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Redefinir a senha de um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/reset-pin:
+    post:
+      description: "PIN de 4 a 8 dígitos, usado para aprovar ações sensíveis de outro\
+        \ usuário. Exige `iam.users.manage` e cobrir as permissões do usuário (403\
+        \ `GRANT_EXCEEDS_OWN_PERMISSIONS`)."
+      operationId: resetUserPin
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPinRequest"
+        required: true
+      responses:
+        "204":
+          description: PIN definido.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir o PIN de aprovação de um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/roles:
+    put:
+      description: "Troca o conjunto inteiro de roles do usuário. Exige `iam.users.manage`\
+        \ e o `If-Match`. Cada role acrescentada não pode conceder permissão, escopo\
+        \ ou limite acima dos seus (403 `GRANT_EXCEEDS_OWN_PERMISSIONS`); só um administrador\
+        \ dá ou tira a role Administrador e gere administradores (403 `ADMINISTRATOR_REQUIRED`);\
+        \ o último administrador ativo não perde a role (409 `LAST_ADMINISTRATOR`).\
+        \ Role inexistente: 400 `UNKNOWN_ROLE`. Vale na requisição seguinte."
+      operationId: setUserRoles
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetUserRolesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir as roles de um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/sessions:
+    get:
+      description: "Sessões não revogadas e não vencidas, da mais nova para a mais\
+        \ antiga. Exige `iam.sessions.manage`; as de um administrador, só outro administrador\
+        \ (403 `ADMINISTRATOR_REQUIRED`)."
+      operationId: listUserSessions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageSessionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as sessões ativas de um usuário
+      tags:
+      - iam
+  /api/v1/users/{id}/sessions/{sessionId}/revoke:
+    post:
+      description: "O refresh token da sessão deixa de valer (o access token vence\
+        \ em até 15 min). Revogar de novo não muda nada. Exige `iam.sessions.manage`.\
+        \ Sessão de outro usuário ou inexistente: 404 `SESSION_NOT_FOUND`."
+      operationId: revokeUserSession
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: sessionId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Sessão revogada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Revogar uma sessão de um usuário
+      tags:
+      - iam
 components:
   headers:
     IdempotentReplayed:
@@ -326,6 +931,46 @@ components:
       required:
       - currentPassword
       - newPassword
+    CreateUserRequest:
+      type: object
+      properties:
+        login:
+          type: string
+          description: "Login ou e-mail: 3 a 100 caracteres (letras, dígitos e . _\
+            \ @ + -); não diferencia maiúsculas."
+          example: maria.silva
+          maxLength: 100
+          minLength: 0
+        name:
+          type: string
+          maxLength: 200
+          minLength: 0
+        password:
+          type: string
+          format: password
+          description: "Senha provisória, de 12 a 128 caracteres."
+          maxLength: 128
+          minLength: 12
+        pin:
+          type: string
+          format: password
+          description: "PIN de aprovação, de 4 a 8 dígitos (opcional)."
+          nullable: true
+          pattern: "\\d{4,8}"
+        roleIds:
+          type: array
+          description: Roles do usuário (opcional).
+          items:
+            type: string
+            format: uuid
+            description: Roles do usuário (opcional).
+          maxItems: 50
+          minItems: 0
+      required:
+      - login
+      - name
+      - password
+      - roleIds
     CursorPagePermissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -340,6 +985,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageRoleResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageSessionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -348,6 +1007,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SessionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageUserResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -373,6 +1046,22 @@ components:
           minLength: 0
       required:
       - id
+      - name
+    DuplicateRoleRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          description: "Descrição da role nova; sem ela, a da original."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        name:
+          type: string
+          description: Nome da role nova.
+          maxLength: 100
+          minLength: 0
+      required:
       - name
     EffectivePermissionResponse:
       type: object
@@ -440,6 +1129,28 @@ components:
       - description
       - key
       - unit
+    LimitRequest:
+      type: object
+      description: "O limite de uma chave: um teto (max) ou sem teto (unlimited),\
+        \ exatamente um dos dois."
+      properties:
+        key:
+          type: string
+          example: maxPercent
+          maxLength: 100
+          minLength: 0
+        max:
+          type: string
+          description: "O teto, como decimal em string, na unidade do limite."
+          example: "10.5"
+          nullable: true
+          pattern: "\\d{1,14}(\\.\\d{1,4})?"
+        unlimited:
+          type: boolean
+          description: Sem teto.
+      required:
+      - key
+      - unlimited
     LimitValueResponse:
       type: object
       description: "O limite efetivo de uma chave: sem teto ou o teto."
@@ -621,6 +1332,161 @@ components:
           minLength: 0
       required:
       - refreshToken
+    ResetPasswordRequest:
+      type: object
+      properties:
+        newPassword:
+          type: string
+          format: password
+          description: "Senha provisória, de 12 a 128 caracteres."
+          maxLength: 128
+          minLength: 12
+      required:
+      - newPassword
+    ResetPinRequest:
+      type: object
+      properties:
+        newPin:
+          type: string
+          format: password
+          description: "PIN de aprovação, de 4 a 8 dígitos."
+          minLength: 1
+          pattern: "\\d{4,8}"
+      required:
+      - newPin
+    RoleGrantRequest:
+      type: object
+      description: O conjunto completo das concessões da role.
+      properties:
+        limits:
+          type: array
+          description: "Limites, só das chaves que a permissão declara; chave omitida\
+            \ vale teto zero."
+          items:
+            $ref: "#/components/schemas/LimitRequest"
+          maxItems: 20
+          minItems: 0
+        permission:
+          type: string
+          description: Código de uma permissão do catálogo (`GET /permissions`).
+          example: iam.users.read
+          maxLength: 100
+          minLength: 0
+        scope:
+          type: string
+          description: Um dos escopos que a permissão suporta.
+          enum:
+          - OWN
+          - ALL
+      required:
+      - limits
+      - permission
+      - scope
+    RoleGrantResponse:
+      type: object
+      description: "Uma concessão: a permissão, o escopo e os limites."
+      properties:
+        limits:
+          type: array
+          description: Por chave declarada; uma chave sem valor vale teto zero.
+          items:
+            $ref: "#/components/schemas/LimitValueResponse"
+        permission:
+          type: string
+          example: iam.users.read
+        scope:
+          type: string
+          enum:
+          - OWN
+          - ALL
+      required:
+      - limits
+      - permission
+      - scope
+    RoleRequest:
+      type: object
+      properties:
+        description:
+          type: string
+          maxLength: 500
+          minLength: 0
+        grants:
+          type: array
+          description: O conjunto completo das concessões da role.
+          items:
+            $ref: "#/components/schemas/RoleGrantRequest"
+          maxItems: 500
+          minItems: 0
+        name:
+          type: string
+          description: "Único, sem diferenciar maiúsculas."
+          example: Recepção noturna
+          maxLength: 100
+          minLength: 0
+      required:
+      - description
+      - grants
+      - name
+    RoleResponse:
+      type: object
+      description: "Uma role: um conjunto de concessões de permissões do catálogo."
+      properties:
+        active:
+          type: boolean
+          description: Role inativa não concede nada.
+        createdAt:
+          type: string
+          format: date-time
+        customized:
+          type: boolean
+          description: Se a role de modelo foi editada (não recebe mais as sugestões
+            do catálogo).
+        description:
+          type: string
+        grants:
+          type: array
+          description: "Concessões de permissões vigentes, em ordem de código."
+          items:
+            $ref: "#/components/schemas/RoleGrantResponse"
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        systemRole:
+          type: boolean
+          description: "A role de sistema Administrador: todas as permissões, sem\
+            \ edição."
+        template:
+          type: string
+          description: "Modelo da SPEC §3.1 de onde a role veio, se veio de um."
+          enum:
+          - ADMINISTRATOR
+          - MANAGER
+          - RECEPTIONIST
+          - HOUSEKEEPER
+          - ROOM_ATTENDANT
+          - MAINTENANCE
+          - WAITER
+          - FNB_CASHIER
+          - KITCHEN_BAR
+          - SALES_EVENTS
+          - STOREKEEPER
+          - FINANCE
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - customized
+      - description
+      - grants
+      - id
+      - name
+      - systemRole
+      - updatedAt
     ServerVersionResponse:
       type: object
       properties:
@@ -671,6 +1537,20 @@ components:
       - expiresAt
       - id
       - lastSeenAt
+    SetUserRolesRequest:
+      type: object
+      properties:
+        roleIds:
+          type: array
+          description: O conjunto completo de roles do usuário.
+          items:
+            type: string
+            format: uuid
+            description: O conjunto completo de roles do usuário.
+          maxItems: 50
+          minItems: 0
+      required:
+      - roleIds
     TokenResponse:
       type: object
       properties:
@@ -712,6 +1592,81 @@ components:
       - sessionId
       - tokenType
       - userId
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - name
+    UserResponse:
+      type: object
+      description: Um usuário do sistema. Senha e PIN nunca saem.
+      properties:
+        active:
+          type: boolean
+        administrator:
+          type: boolean
+          description: Se o usuário tem a role de sistema Administrador.
+        createdAt:
+          type: string
+          format: date-time
+        hasPin:
+          type: boolean
+          description: Se o usuário tem PIN de aprovação.
+        id:
+          type: string
+          format: uuid
+        lockedUntil:
+          type: string
+          format: date-time
+          description: Até quando o login está bloqueado por tentativas erradas.
+          nullable: true
+        login:
+          type: string
+          description: Login normalizado (minúsculo).
+        name:
+          type: string
+        passwordChangeRequired:
+          type: boolean
+          description: Se o usuário precisa trocar a senha no próximo login.
+        roles:
+          type: array
+          description: "Roles atribuídas, ativas ou não, em ordem de nome."
+          items:
+            $ref: "#/components/schemas/UserRoleResponse"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - administrator
+      - createdAt
+      - hasPin
+      - id
+      - login
+      - name
+      - passwordChangeRequired
+      - roles
+      - updatedAt
+    UserRoleResponse:
+      type: object
+      description: Uma role atribuída a um usuário.
+      properties:
+        active:
+          type: boolean
+          description: Role inativa não concede nada.
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - active
+      - id
+      - name
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

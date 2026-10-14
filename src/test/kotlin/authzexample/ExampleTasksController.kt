@@ -39,6 +39,10 @@ object ExamplePermissions : ModulePermissions {
     val DISCOUNTS_APPLY = PermissionCode("examples.discounts.apply")
     const val MAX_PERCENT = "maxPercent"
 
+    /** Escopo e limite juntos: a união de `ALL` com teto 0 e `OWN` com teto 100 é `ALL` com teto 100. */
+    val REFUNDS_ISSUE = PermissionCode("examples.refunds.issue")
+    const val MAX_AMOUNT = "maxAmount"
+
     override val permissions =
         listOf(
             PermissionDefinition(TASKS_READ, "Consultar tarefas de exemplo", setOf(OWN, ALL)),
@@ -49,6 +53,13 @@ object ExamplePermissions : ModulePermissions {
                 setOf(ALL),
                 sensitive = true,
                 limits = listOf(LimitDefinition(MAX_PERCENT, LimitUnit.PERCENT, "Desconto máximo em %")),
+            ),
+            PermissionDefinition(
+                REFUNDS_ISSUE,
+                "Estornar de exemplo",
+                setOf(OWN, ALL),
+                sensitive = true,
+                limits = listOf(LimitDefinition(MAX_AMOUNT, LimitUnit.MONEY, "Valor máximo do estorno")),
             ),
         )
 }

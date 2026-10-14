@@ -130,6 +130,12 @@ enum class SessionRevocationReason {
     /** O usuário trocou a senha: as outras sessões dele caem. */
     PASSWORD_CHANGED,
 
-    /** O refresh chegou com o usuário desativado. */
+    /** O usuário foi desativado pelo administrador (ou o refresh chegou com ele desativado). */
     USER_DISABLED,
+
+    /** Um administrador revogou a sessão pela lista de sessões do usuário (M1 E03). */
+    REVOKED_BY_ADMINISTRATOR,
+
+    /** O administrador redefiniu a senha do usuário: todas as sessões dele caem (M1 E03). */
+    PASSWORD_RESET,
 }

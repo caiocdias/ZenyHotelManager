@@ -22,6 +22,7 @@ import java.time.Instant
  */
 @Entity
 @Table(name = "user_account", schema = "iam")
+@Suppress("TooManyFunctions") // operações do agregado: login, senha, PIN, roles e estado ativo
 class User private constructor(
     @Id
     val id: UserId,
@@ -91,6 +92,61 @@ class User private constructor(
         now: Instant,
     ): Boolean = roleIdSet.remove(roleId).also { if (it) updatedAt = now }
 
+    /** Troca o nome exibido. */
+    fun rename(
+        name: String,
+        now: Instant,
+    ) {
+        val checked = checkedName(name)
+        if (checked != this.name) {
+            this.name = checked
+            updatedAt = now
+        }
+    }
+
+    /**
+     * Desativa o usuário (RF-ACS-10 e 12): ele não entra mais, perde as permissões e as sessões
+     * dele são revogadas fora do agregado. Nunca é apagado. Devolve se mudou.
+     */
+    fun deactivate(now: Instant): Boolean {
+        if (!active) return false
+        active = false
+        updatedAt = now
+        return true
+    }
+
+    /** Reativa o usuário; as sessões revogadas não voltam. Devolve se mudou. */
+    fun reactivate(now: Instant): Boolean {
+        if (active) return false
+        active = true
+        updatedAt = now
+        return true
+    }
+
+    /**
+     * Senha nova definida pelo administrador: é provisória (o usuário a troca no próximo login)
+     * e zera o bloqueio por tentativas.
+     */
+    fun resetPassword(
+        newHash: String,
+        now: Instant,
+    ) {
+        passwordHash = newHash
+        passwordChangeRequired = true
+        failedLoginCount = 0
+        lockedUntil = null
+        updatedAt = now
+    }
+
+    /** PIN novo (hash Argon2id) para as aprovações de superior (RF-ACS-01 e 07). */
+    fun resetPin(
+        newHash: String,
+        now: Instant,
+    ) {
+        pinHash = newHash
+        updatedAt = now
+    }
+
     /** Se o login está bloqueado em [now] (recusado mesmo com a senha certa). */
     fun isLocked(now: Instant): Boolean = lockedUntil?.isAfter(now) == true
 
@@ -133,6 +189,14 @@ class User private constructor(
     }
 
     companion object {
+        const val MAX_NAME_LENGTH = 200
+
+        private fun checkedName(name: String): String {
+            val trimmed = name.trim()
+            require(trimmed.isNotEmpty() && trimmed.length <= MAX_NAME_LENGTH) { "Nome de usuário inválido" }
+            return trimmed
+        }
+
         /**
          * Usuário novo e ativo. [login] precisa estar normalizado; [passwordChangeRequired]
          * obriga a trocar a senha no primeiro login (administrador inicial, senha provisória).
@@ -147,12 +211,11 @@ class User private constructor(
             id: UserId = UserId.new(),
         ): User {
             require(Logins.normalize(login) == login) { "O login precisa estar normalizado" }
-            require(name.isNotBlank()) { "O nome do usuário é obrigatório" }
             return User(
                 id = id,
                 login = login,
                 createdAt = now,
-                name = name.trim(),
+                name = checkedName(name),
                 passwordHash = passwordHash,
                 passwordChangeRequired = passwordChangeRequired,
             )

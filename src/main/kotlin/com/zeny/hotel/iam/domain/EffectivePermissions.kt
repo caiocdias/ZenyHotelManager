@@ -27,10 +27,36 @@ class EffectivePermissions private constructor(
 
     fun of(permission: PermissionCode): GrantedPermission? = byCode[permission]
 
+    /**
+     * Se estas permissões cobrem a concessão [requested] (RF-ACS-09: ninguém concede o que não
+     * tem): a mesma permissão, com escopo ao menos tão amplo e, em cada chave de limite pedida,
+     * um limite ao menos tão alto (uma chave sem valor aqui vale teto zero).
+     */
+    fun covers(requested: GrantedPermission): Boolean {
+        val own = of(requested.code) ?: return false
+        return own.scope.breadth >= requested.scope.breadth &&
+            requested.limits.all { (key, value) ->
+                val mine = own.limit(key)
+                LimitValue.max(value, mine) == mine
+            }
+    }
+
+    /** As concessões de [requested] que estas permissões não cobrem ([covers]). */
+    fun uncovered(requested: EffectivePermissions): List<GrantedPermission> = requested.all.filterNot(::covers)
+
     override fun toString(): String = "EffectivePermissions(${byCode.keys.sortedBy { it.value }})"
 
     companion object {
         val NONE = EffectivePermissions(emptyMap())
+
+        /**
+         * O que um conjunto de concessões concede de fato pelo catálogo vigente: as mesmas regras
+         * da união (permissão obsoleta, escopo não suportado e chave não declarada não contam).
+         */
+        fun of(
+            grants: Collection<Grant>,
+            catalog: PermissionCatalog,
+        ): EffectivePermissions = union(userActive = true, listOf(RoleGrants(true, grants.toList())), catalog)
 
         fun union(
             userActive: Boolean,

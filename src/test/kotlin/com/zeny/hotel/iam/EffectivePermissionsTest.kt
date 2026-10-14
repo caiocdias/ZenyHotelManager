@@ -165,4 +165,52 @@ class EffectivePermissionsTest {
             .limits.keys
             .shouldBeEmpty()
     }
+
+    // --- RF-ACS-09: cobrir uma concessão ---------------------------------------------------------
+
+    private fun own(vararg grants: Grant) = EffectivePermissions.union(true, listOf(active(*grants)), catalog)
+
+    private fun requested(vararg grants: Grant) = EffectivePermissions.of(grants.toList(), catalog)
+
+    @Test
+    fun `the same permission with a scope as broad and limits as high is covered`() {
+        val mine = own(Grant(read, ALL), Grant(discount, ALL, mapOf("maxPercent" to max("10"))))
+
+        mine.uncovered(requested(Grant(read, OWN))).shouldBeEmpty()
+        mine.uncovered(requested(Grant(read, ALL))).shouldBeEmpty()
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxPercent" to max("10"))))).shouldBeEmpty()
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxPercent" to max("9.5"))))).shouldBeEmpty()
+        // Chave omitida é teto zero: sempre coberta.
+        mine.uncovered(requested(Grant(discount, ALL))).shouldBeEmpty()
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxAmount" to max("0"))))).shouldBeEmpty()
+    }
+
+    @Test
+    fun `a missing permission, a broader scope or a higher limit is not covered`() {
+        val mine = own(Grant(read, OWN), Grant(discount, ALL, mapOf("maxPercent" to max("10"))))
+
+        mine.uncovered(requested(Grant(read, ALL))).map { it.code } shouldBe listOf(read)
+        mine.uncovered(requested(Grant(reverse, OWN))).map { it.code } shouldBe listOf(reverse)
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxPercent" to max("10.0001"))))).map { it.code } shouldBe
+            listOf(discount)
+        mine
+            .uncovered(
+                requested(Grant(discount, ALL, mapOf("maxPercent" to LimitValue.Unlimited))),
+            ).map { it.code } shouldBe
+            listOf(discount)
+        // Chave que eu não tenho vale teto zero para mim.
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxAmount" to max("0.01"))))).map { it.code } shouldBe
+            listOf(discount)
+        EffectivePermissions.NONE.uncovered(requested(Grant(read, OWN))).map { it.code } shouldBe listOf(read)
+    }
+
+    @Test
+    fun `unlimited covers any ceiling, and what the catalog no longer grants is not checked`() {
+        val mine = own(Grant(discount, ALL, mapOf("maxPercent" to LimitValue.Unlimited)))
+
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxPercent" to LimitValue.Unlimited)))).shouldBeEmpty()
+        mine.uncovered(requested(Grant(discount, ALL, mapOf("maxPercent" to max("100"))))).shouldBeEmpty()
+        // Permissão fora do catálogo e escopo não suportado não concedem nada: não há o que cobrir.
+        mine.uncovered(requested(Grant(PermissionCode("rooms.gone.away"), ALL), Grant(reverse, ALL))).shouldBeEmpty()
+    }
 }

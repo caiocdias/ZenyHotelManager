@@ -12,21 +12,27 @@ import com.zeny.hotel.shared.PermissionDefinition
 import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.testsupport.TestAdmin
+import com.zeny.hotel.testsupport.asUser
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.request
+import org.springframework.test.web.servlet.request.RequestPostProcessor
 import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
+import java.util.UUID
 
 /** Um usuário criado pelo teste, com a senha em claro só na memória do teste. */
 data class TestUser(
@@ -43,8 +49,8 @@ data class TestGrant(
 )
 
 /**
- * Apoio dos testes do `iam`: cria usuários e roles direto pelos repositórios (a gestão de
- * usuários e roles chega na E03) e chama a API de autenticação pelo `MockMvc`. Entra no contexto pelo
+ * Apoio dos testes do `iam`: cria usuários e roles direto pelos repositórios (para preparar o
+ * cenário sem depender da API de gestão da E03) e chama a API pelo `MockMvc`. Entra no contexto pelo
  * [IamTestConfiguration] (fora da varredura de componentes).
  */
 @Suppress("LongParameterList") // os beans de que o apoio precisa, injetados pela configuração de teste
@@ -68,7 +74,7 @@ class IamTestSupport(
         return TestUser(user.id, login, password)
     }
 
-    /** Desativa o usuário direto no banco (a desativação pela API chega na E03). */
+    /** Desativa o usuário direto no banco (sem passar pela API de gestão). */
     fun deactivate(user: TestUser) {
         jdbc
             .sql("UPDATE iam.user_account SET active = false WHERE id = :id")
@@ -174,12 +180,50 @@ class IamTestSupport(
             }.andReturn()
             .response
 
+    /** O id do administrador inicial dos testes ([TestAdmin]). */
+    fun adminId(): UUID =
+        jdbc
+            .sql("SELECT id FROM iam.user_account WHERE login = :login")
+            .param("login", TestAdmin.LOGIN)
+            .query(UUID::class.java)
+            .single()
+
+    /** Autentica a requisição como o administrador inicial (as permissões vêm do banco). */
+    fun asAdmin(): RequestPostProcessor = asUser(adminId())
+
+    fun asTestUser(user: TestUser): RequestPostProcessor = asUser(user.id.value)
+
+    /** Uma requisição à API como [auth], com corpo JSON e `If-Match` opcionais. */
+    fun call(
+        method: HttpMethod,
+        path: String,
+        auth: RequestPostProcessor,
+        body: Any? = null,
+        ifMatch: String? = null,
+    ): MockHttpServletResponse =
+        mockMvc
+            .request(method, path) {
+                with(auth)
+                if (ifMatch != null) header(HttpHeaders.IF_MATCH, ifMatch)
+                if (body != null) {
+                    contentType = MediaType.APPLICATION_JSON
+                    content = jsonMapper.writeValueAsString(body)
+                }
+            }.andReturn()
+            .response
+
     fun json(response: MockHttpServletResponse): JsonNode =
         jsonMapper.readTree(response.getContentAsString(Charsets.UTF_8))
 
     fun MockHttpServletResponse.ok(): JsonNode {
         withClue(getContentAsString(Charsets.UTF_8)) { status shouldBe 200 }
         return json(this)
+    }
+
+    /** Confere o status (com o corpo na mensagem de falha) e devolve o corpo, se houver. */
+    fun MockHttpServletResponse.expectStatus(expected: Int): JsonNode? {
+        withClue(getContentAsString(Charsets.UTF_8)) { status shouldBe expected }
+        return getContentAsString(Charsets.UTF_8).takeIf { it.isNotBlank() }?.let { jsonMapper.readTree(it) }
     }
 
     /** Confere um problema RFC 9457 com o status e o código. */

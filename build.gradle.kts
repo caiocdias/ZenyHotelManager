@@ -58,7 +58,8 @@ dependencies {
     // Jobs agendados com trava no banco (ARCHITECTURE §13).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
-    runtimeOnly(libs.postgresql)
+    // Compilação também: o iam lê o nome da restrição violada no PSQLException (409 por unicidade).
+    implementation(libs.postgresql)
 
     // API REST (ARCHITECTURE §7): Spring MVC, validação de DTOs, Spring Security e o springdoc, que gera o contrato api/openapi.yaml e serve o Swagger UI fora de prod.
     implementation(libs.spring.boot.starter.webmvc)

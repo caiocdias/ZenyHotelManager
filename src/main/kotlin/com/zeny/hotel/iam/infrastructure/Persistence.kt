@@ -66,6 +66,15 @@ class JpaUsers(
     override fun add(user: User) {
         repository.save(user)
     }
+
+    override fun tryAdd(user: User): Boolean =
+        UniqueConstraints.unlessViolated(LOGIN_CONSTRAINT) { repository.saveAndFlush(user) }
+
+    override fun flush() = repository.flush()
+
+    private companion object {
+        const val LOGIN_CONSTRAINT = "user_account_login_uk"
+    }
 }
 
 @Component

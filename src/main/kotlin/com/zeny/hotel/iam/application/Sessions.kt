@@ -1,13 +1,17 @@
 package com.zeny.hotel.iam.application
 
 import com.zeny.hotel.iam.IamErrorCodes
+import com.zeny.hotel.iam.IamPermissions
 import com.zeny.hotel.iam.domain.SessionRevocationReason
 import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.DeviceSessionId
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.UserId
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -29,7 +33,7 @@ data class SessionView(
 /**
  * As sessões do próprio usuário (RF-ACS-10): logout, lista das ativas e revogação de uma delas.
  * A revogação vale para o próximo refresh; o access token já emitido vence em até 15 min.
- * Gerir as sessões de outro usuário é do administrador (M1 E03).
+ * Gerir as sessões de outro usuário é do [UserSessionsService].
  */
 @Service
 class SessionService(
@@ -67,23 +71,78 @@ class SessionService(
         actor: Actor,
         sessionId: UUID,
     ) {
-        val session =
-            sessions
-                .findByIdForUpdate(DeviceSessionId(sessionId))
-                ?.takeIf { it.userId == actor.userId }
-                ?: throw NotFoundException(IamErrorCodes.SESSION_NOT_FOUND, "Sessão não encontrada.")
+        val session = sessionOf(sessions, actor.userId, sessionId)
         session.revoke(SessionRevocationReason.REVOKED_BY_USER, clock.instant())
         log.info("Sessão {} revogada pelo usuário", session.id)
     }
-
-    private fun SessionSummary.toView(actor: Actor) =
-        SessionView(
-            id = id,
-            deviceId = deviceId,
-            deviceName = deviceName,
-            createdAt = createdAt,
-            lastSeenAt = lastSeenAt,
-            expiresAt = expiresAt,
-            current = id == actor.deviceSessionId.value,
-        )
 }
+
+/**
+ * As sessões de outro usuário (RF-ACS-10): o administrador as lista e revoga, por exemplo para
+ * tirar o acesso de um celular perdido. Exige `iam.sessions.manage`; as de um administrador, só
+ * outro administrador (RF-ACS-09). A revogação vale no próximo refresh.
+ */
+@Service
+@Suppress("LongParameterList") // os colaboradores do caso de uso
+class UserSessionsService(
+    private val users: Users,
+    private val sessions: DeviceSessions,
+    private val directory: SessionDirectory,
+    private val rules: DelegationRules,
+    private val authorization: Authorization,
+    private val currentActor: CurrentActor,
+    private val clock: Clock,
+) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
+    @Transactional(readOnly = true)
+    fun list(
+        userId: UserId,
+        page: PageParams,
+    ): CursorPage<SessionView> {
+        val actor = authorize(userId)
+        val rows = directory.activeSessionsOf(userId, clock.instant(), page.decodedCursor()?.uuid(0), page.limit + 1)
+        return CursorPage.fromRows(rows, page.limit) { PageCursor.of(it.id.toString()) }.map { it.toView(actor) }
+    }
+
+    /** Revoga uma sessão do usuário; de outro usuário ou inexistente, `404`. Revogar de novo não muda nada. */
+    @Transactional
+    fun revoke(
+        userId: UserId,
+        sessionId: UUID,
+    ) {
+        val actor = authorize(userId)
+        val session = sessionOf(sessions, userId, sessionId)
+        session.revoke(SessionRevocationReason.REVOKED_BY_ADMINISTRATOR, clock.instant())
+        log.info("Sessão {} do usuário {} revogada pelo usuário {}", session.id, userId, actor.userId)
+    }
+
+    private fun authorize(userId: UserId): Actor {
+        val actor = currentActor.current()
+        authorization.require(IamPermissions.SESSIONS_MANAGE)
+        users.findById(userId) ?: throw userNotFound()
+        rules.requireCanManage(actor, userId)
+        return actor
+    }
+}
+
+/** A sessão do usuário, travada; de outro usuário ou inexistente, `404`. */
+private fun sessionOf(
+    sessions: DeviceSessions,
+    userId: UserId,
+    sessionId: UUID,
+) = sessions
+    .findByIdForUpdate(DeviceSessionId(sessionId))
+    ?.takeIf { it.userId == userId }
+    ?: throw NotFoundException(IamErrorCodes.SESSION_NOT_FOUND, "Sessão não encontrada.")
+
+private fun SessionSummary.toView(actor: Actor) =
+    SessionView(
+        id = id,
+        deviceId = deviceId,
+        deviceName = deviceName,
+        createdAt = createdAt,
+        lastSeenAt = lastSeenAt,
+        expiresAt = expiresAt,
+        current = id == actor.deviceSessionId.value,
+    )

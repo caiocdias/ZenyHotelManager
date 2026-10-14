@@ -64,7 +64,7 @@ data class Grant(
  */
 @Entity
 @Table(name = "role", schema = "iam")
-@Suppress("LongParameterList") // estado da role; a criação passa pelas fábricas
+@Suppress("LongParameterList", "TooManyFunctions") // estado e operações do agregado; a criação passa pelas fábricas
 class Role private constructor(
     @Id
     val id: RoleId,
@@ -139,12 +139,37 @@ class Role private constructor(
         if (grantSet.removeIf { it.permission == permission }) touch(now, customize = true)
     }
 
-    /** Desativa a role: deixa de conceder qualquer permissão (RF-ACS-03). */
-    fun deactivate(now: Instant) {
+    /** Desativa a role: deixa de conceder qualquer permissão (RF-ACS-03). Devolve se mudou. */
+    fun deactivate(now: Instant): Boolean {
         requireEditable()
-        if (active) {
-            active = false
-            touch(now, customize = false)
+        if (!active) return false
+        active = false
+        touch(now, customize = false)
+        return true
+    }
+
+    /** Reativa a role: as concessões dela voltam a valer. Devolve se mudou. */
+    fun reactivate(now: Instant): Boolean {
+        requireEditable()
+        if (active) return false
+        active = true
+        touch(now, customize = false)
+        return true
+    }
+
+    /** Troca o nome e a descrição. Marca a role como editada quando algo muda. */
+    fun rename(
+        name: String,
+        description: String,
+        now: Instant,
+    ) {
+        requireEditable()
+        val newName = checkedName(name)
+        val newDescription = checkedDescription(description)
+        if (newName != this.name || newDescription != this.description) {
+            this.name = newName
+            this.description = newDescription
+            touch(now, customize = true)
         }
     }
 

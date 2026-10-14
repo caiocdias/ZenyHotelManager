@@ -2,6 +2,7 @@ package com.zeny.hotel.iam.infrastructure
 
 import com.zeny.hotel.iam.application.AssignedRole
 import com.zeny.hotel.iam.application.AuthorizationData
+import com.zeny.hotel.iam.application.AuthorizationLock
 import com.zeny.hotel.iam.application.PermissionStore
 import com.zeny.hotel.iam.application.Roles
 import com.zeny.hotel.iam.application.StoredPermission
@@ -41,8 +42,36 @@ class JpaRoles(
 
     override fun findByTemplate(template: RoleTemplate): Role? = repository.findByTemplate(template)
 
+    override fun findAllById(ids: Collection<RoleId>): List<Role> =
+        if (ids.isEmpty()) emptyList() else repository.findAllById(ids.map { it.value })
+
     override fun add(role: Role) {
         repository.save(role)
+    }
+
+    override fun tryAdd(role: Role): Boolean =
+        UniqueConstraints.unlessViolated(NAME_CONSTRAINT) {
+            repository.saveAndFlush(role)
+        }
+
+    override fun tryFlush(): Boolean = UniqueConstraints.unlessViolated(NAME_CONSTRAINT) { repository.flush() }
+
+    private companion object {
+        /** Índice único de `lower(name)`. */
+        const val NAME_CONSTRAINT = "role_name_uk"
+    }
+}
+
+/**
+ * Trava a linha única de `iam.authorization_version` (`SELECT … FOR UPDATE`) até o fim da
+ * transação: a mesma linha que os triggers atualizam a cada mudança de autorização.
+ */
+@Component
+class JdbcAuthorizationLock(
+    private val jdbc: JdbcClient,
+) : AuthorizationLock {
+    override fun acquire() {
+        jdbc.sql("SELECT value FROM iam.authorization_version WHERE id = 1 FOR UPDATE").query(Long::class.java).single()
     }
 }
 
@@ -188,7 +217,9 @@ class JdbcAuthorizationData(
             .optional()
             .orElse(false)
 
-    override fun roleGrantsOf(userId: UserId): List<RoleGrants> {
+    override fun roleGrantsOf(userId: UserId): List<RoleGrants> = roleGrantsByRoleOf(userId).values.toList()
+
+    override fun roleGrantsByRoleOf(userId: UserId): Map<RoleId, RoleGrants> {
         val rows =
             jdbc
                 .sql(
@@ -204,7 +235,7 @@ class JdbcAuthorizationData(
                 ).param("userId", userId.value)
                 .query { rs, _ -> GrantRow.of(rs) }
                 .list()
-        return rows.groupBy { it.roleId }.values.map { roleRows ->
+        return rows.groupBy { it.roleId }.entries.associate { (roleId, roleRows) ->
             val grants =
                 roleRows
                     .mapNotNull { it.grant }
@@ -217,9 +248,16 @@ class JdbcAuthorizationData(
                             limits = parts.mapNotNull { it.limit }.toMap(),
                         )
                     }
-            RoleGrants(roleActive = roleRows.first().roleActive, grants = grants)
+            RoleId(roleId) to RoleGrants(roleActive = roleRows.first().roleActive, grants = grants)
         }
     }
+
+    override fun holdersOf(roleId: RoleId): List<UserId> =
+        jdbc
+            .sql("SELECT user_id FROM iam.user_role WHERE role_id = :roleId ORDER BY user_id")
+            .param("roleId", roleId.value)
+            .query { rs, _ -> UserId(rs.getObject("user_id", UUID::class.java)) }
+            .list()
 
     override fun activeRolesOf(userId: UserId): List<AssignedRole> =
         jdbc
@@ -232,6 +270,29 @@ class JdbcAuthorizationData(
             ).param("userId", userId.value)
             .query { rs, _ -> AssignedRole(RoleId(rs.getObject("id", UUID::class.java)), rs.getString("name")) }
             .list()
+
+    override fun isAdministrator(userId: UserId): Boolean =
+        jdbc
+            .sql(
+                """
+                SELECT EXISTS (SELECT 1 FROM iam.user_role ur JOIN iam.role r ON r.id = ur.role_id
+                               WHERE ur.user_id = :userId AND r.system_role)
+                """.trimIndent(),
+            ).param("userId", userId.value)
+            .query(Boolean::class.java)
+            .single()
+
+    override fun activeAdministratorCount(): Int =
+        jdbc
+            .sql(
+                """
+                SELECT count(DISTINCT u.id) FROM iam.user_account u
+                JOIN iam.user_role ur ON ur.user_id = u.id
+                JOIN iam.role r ON r.id = ur.role_id
+                WHERE u.active AND r.system_role
+                """.trimIndent(),
+            ).query(Int::class.java)
+            .single()
 
     /** Uma linha da consulta: a role e, se houver, uma concessão com um dos limites dela. */
     private class GrantRow(

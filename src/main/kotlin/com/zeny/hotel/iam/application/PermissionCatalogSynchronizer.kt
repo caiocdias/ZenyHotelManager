@@ -29,13 +29,15 @@ data class CatalogSyncResult(
  * acesso. Na mesma transação, cria os modelos de role da SPEC §3.1 que faltam e aplica as
  * sugestões de cada permissão a eles (H5): a role de sistema Administrador recebe todas as
  * permissões, e cada outro modelo só ganha concessões novas enquanto o administrador não o
- * editar. Toda mudança troca a versão das autorizações (triggers do banco).
+ * editar. Toda mudança troca a versão das autorizações (triggers do banco); a trava das escritas
+ * de autorização ([AuthorizationLock]) vem logo depois da trava da sincronização.
  */
 @Service
 class PermissionCatalogSynchronizer(
     private val modules: List<ModulePermissions>,
     private val store: PermissionStore,
     private val roles: Roles,
+    private val lock: AuthorizationLock,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -48,6 +50,7 @@ class PermissionCatalogSynchronizer(
     fun synchronize(declared: Collection<ModulePermissions>): CatalogSyncResult {
         val catalog = PermissionCatalog.of(declared)
         store.lockForSynchronization()
+        lock.acquire()
         val now = clock.instant()
         val stored = store.findAll().associateBy { it.definition.code }
         val inserted = mutableSetOf<PermissionCode>()
