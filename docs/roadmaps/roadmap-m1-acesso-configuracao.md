@@ -1,10 +1,10 @@
 # Roadmap — M1 Acesso, auditoria e configuração
 
-> Arquivo: `docs/roadmaps/roadmap-m1-acesso-configuracao.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m1-acesso-configuracao.md` · criado em 2026-10-13 · última revisão 2026-10-14
 >
 > Marco 1 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M0 — Fundação técnica](roadmap-m0-fundacao-tecnica.md) · próximo marco: [M2 — Plataforma operacional](roadmap-m2-plataforma-operacional.md)
 >
-> **Pré-requisito:** etapa E08 ("Gate do marco M0") de `docs/roadmaps/roadmap-m0-fundacao-tecnica.md` marcada `#concluida`.
+> **Pré-requisito:** etapa E08 ("Gate do marco M0") de `docs/roadmaps/roadmap-m0-fundacao-tecnica.md` marcada `#concluida` — atendido em 2026-10-14 (commit `5dd29f5`, CI verde).
 
 ## Como usar
 
@@ -17,7 +17,7 @@ Etapas marcadas como paralelizáveis só devem rodar ao mesmo tempo em worktrees
 
 Em ambas, quem executa segue o "Protocolo de execução", atualiza a tag da etapa e preenche "Evidências e handoff". Não pule dependências. Revise e faça commit entre etapas ou lotes — nenhuma sessão faz commit por conta própria.
 
-**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, pacote base, comandos e convenções registrados nos handoffs de M0 e ajuste as etapas pendentes.
+**Sincronizado com o código em 2026-10-14**, depois do gate do M0 (commit `5dd29f5`): caminhos, comandos, convenções e pendências vêm do `CLAUDE.md` e dos handoffs de `docs/roadmaps/roadmap-m0-fundacao-tecnica.md`. As hipóteses H1–H4 e H9 foram confirmadas pelo usuário na mesma data.
 
 ## Objetivo
 
@@ -31,7 +31,17 @@ Entregar os módulos de plataforma que todo o resto usa para saber **quem** est�
 - Segurança: ARCHITECTURE §8.1 (JWT de 15 min, refresh opaco de 30 dias deslizantes, rotação a cada uso, detecção de reuso, Argon2id, bloqueio progressivo), §8.2 (catálogo em código sincronizado no boot, permissões efetivas em cache invalidado por versão e fora do JWT, `authz.require(...)` na camada `application`, escopo `OWN` como filtro, limites no domínio), §8.3 (cifragem de campo e de anexos, auditoria append-only) e §6.3 (fluxo de step-up com `X-Approval-Token`).
 - Fluxo de requisição e auditoria: ARCHITECTURE §5 (autorização em `application`, `@Audited(action)` na mesma transação, eventos pelo outbox).
 - Arquivos: ARCHITECTURE §14 (API S3, MinIO no compose, URL assinada curta, limites por finalidade) e D14.
-- Base técnica herdada de M0 (fonte: handoffs de M0 e `CLAUDE.md`): comandos oficiais de build, teste e lint (M0 E01); Flyway com um schema e uma pasta de migração por módulo, outbox e ShedLock (M0 E02); `Money`, `Percent`, UUIDv7, `Cpf`, `Cnpj`, `Address` e cifragem AES-GCM em `shared` (M0 E03); erros RFC 9457, paginação por cursor, `ETag`/`If-Match`, contrato `api/openapi.yaml` (M0 E04); `Idempotency-Key` com identificador de cliente provisório (M0 E05); compose com MinIO (M0 E06); CI (M0 E07).
+- Base técnica herdada de M0 (fonte: `CLAUDE.md` e handoffs de M0; conferida no código em 2026-10-14):
+  - Pacote base `com.zeny.hotel`; módulos em `src/main/kotlin/com/zeny/hotel/<módulo>/` com `domain/`, `application/`, `infrastructure/` e `web/`; hoje só existe `shared`. Regras de camadas em `src/test/kotlin/com/zeny/hotel/architecture/LayerRules.kt`, verificação de módulos no `ModularityTest`.
+  - Comandos oficiais na tabela do `CLAUDE.md` (`./gradlew build`, `test`, `lint`, `checkOpenApi`, `updateOpenApi`, `docker compose -f docker/compose.yaml up -d --build`). Versões só em `gradle/libs.versions.toml`; o catálogo **ainda não tem** Resource Server/JWT, implementação de Argon2, AOP, cliente S3 nem Testcontainers MinIO: cada etapa acrescenta o que usar.
+  - Banco: uma pasta de migração por módulo (`src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__…sql`), validada pelo `MigrationConventionTest` (`src/test/kotlin/com/zeny/hotel/persistence/`), que aceita `INSERT INTO`/`GRANT` só dentro do schema do módulo. O Flyway e a aplicação usam hoje **o mesmo usuário** (`ZENY_DB_*`); o compose cria só o `POSTGRES_USER`, e o `PostgresContainer` dos testes (`src/test/kotlin/com/zeny/hotel/testsupport/`) usa o usuário padrão do Testcontainers.
+  - Kernel `shared` (raiz pública): `Money`, `Percent`, IDs tipados com UUIDv7, `Cpf`, `Cnpj`, `Address`, `DocumentNumberGenerator`, `FieldCipher`/`EncryptedStringConverter` (só cifra `String`; o anel de chaves fica em `shared/infrastructure/crypto/EncryptionKeyRing.kt`) e o `Clock` UTC injetável.
+  - API: `@ApiV1Controller`, `DomainException` e famílias (`PermissionDeniedException` 403, `ConflictException` 409…), `ErrorCodes` (`UNAUTHENTICATED`, `ACCESS_DENIED`…), paginação por cursor, `ETags`/`requireCurrentVersion` e `@Idempotent`, todos documentados no `CLAUDE.md`.
+  - Segurança provisória em `src/main/kotlin/com/zeny/hotel/shared/web/SecurityConfiguration.kt`: só `GET /api/v1/meta/version` é público, o resto de `/api/**` exige autenticação sem nenhum mecanismo de login; recusas saem como `401 UNAUTHENTICATED`/`403 ACCESS_DENIED`. O `ApiSecurityTest` (`src/test/kotlin/com/zeny/hotel/shared/web/`) percorre todos os endpoints de `/api/**` sem autenticação, com exceção da lista `PUBLIC_API_ENDPOINTS`. Os testes de API autenticam com `@WithMockUser` sobre o `MockMvc` do `@IntegrationTest`.
+  - Idempotência: o escopo é `user:<authentication.name>` em `IdempotencyFilter.scopeOfCurrentUser` (`shared/web/`). O filtro recusa formulário e multipart com `415`, então endpoint multipart não pode ser `@Idempotent`.
+  - Compose (`docker/compose.yaml`, variáveis em `docker/.env`, modelo `docker/.env.example`): o `api` recebe só `ZENY_DB_*` e `ZENY_ENCRYPTION_*`; o MinIO (`pgsty/minio:RELEASE.2026-08-04T00-00-00Z`, porque a `minio/minio` deixou de ser publicada) usa o usuário root `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY`, e o `storage-init` cria o bucket `ZENY_STORAGE_BUCKET`. Variável obrigatória nova entra com `${VAR:?…}`.
+  - CI (`.github/workflows/ci.yml`): build completo com Testcontainers, contrato, oasdiff e imagem; não usa segredos, então tudo o que os testes precisam (chaves de cifragem, chave JWT) é gerado pelos próprios testes, como o `TestEncryptionKeys`.
+- Pendências herdadas do M0 e onde são tratadas aqui: JWT na `SecurityConfiguration` e `PUBLIC_API_ENDPOINTS` (E01); escopo do `Idempotency-Key` pelo id do usuário (E01, H9); usuário e sessão de dispositivo no MDC dos logs (E01); conferir `LayerRules` e o `TypedIdConverter` com o primeiro módulo real (E01); `DataIntegrityViolationException` → `ConflictException` e teste do `412` por lock otimista (E03); usuário de migração distinto do usuário da aplicação e falsos positivos do `MigrationConventions` com `GRANT … ON FUNCTION f(numeric(14,2))` e `ALTER DEFAULT PRIVILEGES` (E04, H4); cifragem de bytes, `ZENY_STORAGE_*` no `api` e usuário de serviço do MinIO (E08). O limite de tentativas e o arquivamento do outbox esperam o primeiro listener real (M2).
 
 ## Escopo
 
@@ -45,6 +55,7 @@ Entregar os módulos de plataforma que todo o resto usa para saber **quem** est�
 - Taxa de serviço por ponto de venda e por código de lançamento (RF-CFG-03): os pontos de venda e códigos de lançamento só existem em M3 e M8; aqui fica a taxa padrão e a estrutura para sobrescrita.
 - Uso da escala pela governança e pelas rotinas de checklist (RF-PES-04): M2 e M6 consomem a API pública criada aqui.
 - Notificações e tempo real: M2.
+- Limite de tentativas e arquivamento das publicações do outbox: nenhum módulo deste marco escuta eventos; fica para o primeiro listener real (M2).
 
 ## Restrições e invariantes
 
@@ -61,14 +72,15 @@ Entregar os módulos de plataforma que todo o resto usa para saber **quem** est�
 
 | # | Hipótese ou decisão | Impacto se errada / sem decisão | Etapa afetada |
 |---|---|---|---|
-| H1 | Pacote base `com.zeny.hotel`, herdado de M0 (confirmar no handoff de M0 E01). | Caminhos citados como "(a criar)" mudam de prefixo. | Todas |
-| H2 | O primeiro administrador é criado no primeiro boot a partir de variáveis de ambiente (login e senha inicial), com troca de senha obrigatória no primeiro login. A SPEC não define o bootstrap. | Trocar por um comando de linha ou endpoint de setup é barato. | E01 |
-| H3 | O JWT é assinado com chave assimétrica (provável EdDSA ou RS256) fornecida por variável de ambiente ou Docker secret, com `kid` para rotação. A ARCHITECTURE §8.1 diz só "chave própria". | Trocar o algoritmo afeta só a configuração do Resource Server. | E01 |
-| H4 | A imutabilidade da auditoria usa dois papéis no PostgreSQL: o dono do schema (usado pelo Flyway) e o usuário da aplicação, sem `UPDATE`/`DELETE` em `audit`. Testcontainers e o compose passam a criar os dois papéis. | Se dois papéis complicarem a operação, a alternativa é um *trigger* que rejeita `UPDATE`/`DELETE`; a etapa registra a escolha. | E04 |
+| H1 | Pacote base `com.zeny.hotel`. **Confirmado** (M0 E01, conferido no código em 2026-10-14). | — | Todas |
+| H2 | O primeiro administrador é criado no primeiro boot a partir de variáveis de ambiente (login e senha inicial), só quando não existe nenhum usuário, com troca de senha obrigatória no primeiro login. **Confirmado pelo usuário em 2026-10-14** (alternativa descartada: comando de linha). | Trocar por um comando de linha depois é barato. | E01 |
+| H3 | O JWT é assinado com **RS256**, com par de chaves RSA fornecido por variável de ambiente ou Docker secret e `kid` para rotação (mais de uma chave pública aceita na validação, uma ativa para assinar). **Decidido pelo usuário em 2026-10-14** (alternativas descartadas: ES256 e HS256). A E01 registra o algoritmo na ARCHITECTURE §8.1, que hoje diz só "chave própria". | Trocar o algoritmo afeta só a configuração do Resource Server. | E01 |
+| H4 | A imutabilidade da auditoria usa **dois papéis** no PostgreSQL: o dono dos schemas, usado pelo Flyway (variáveis `ZENY_DB_MIGRATION_*`), e o papel da aplicação (`ZENY_DB_*`), só com DML e sem `UPDATE`/`DELETE` nas tabelas imutáveis. O papel da aplicação é criado fora das migrações (sem senha no repositório); as migrações só concedem privilégios. Testcontainers e compose passam a criar os dois papéis. **Decidido pelo usuário em 2026-10-14** (alternativa descartada: *trigger* que rejeita `UPDATE`/`DELETE`). Vale também para os lançamentos e pagamentos do M3 (RN-03). | Se a etapa encontrar impedimento técnico real, para e relata em vez de cair no *trigger*. | E04 |
 | H5 | Os modelos de role da SPEC §3.1 são carregados com as permissões que já existem neste marco; cada marco seguinte acrescenta as permissões dos seus módulos aos modelos por migração ou seed do próprio módulo. | Se o administrador já tiver editado um modelo, o seed não pode sobrescrevê-lo: o seed só acrescenta em modelos não editados. | E02 |
 | H6 | Setores (RF-PES-01) ficam numa tabela `Department` com os seis setores da SPEC pré-carregados, editável pelo administrador. | Se o hotel quiser setores fixos, basta bloquear a edição. | E07 |
 | H7 | O vínculo usuário ↔ colaborador (RF-ACS-01, RF-PES-01) é guardado em `staff` (`Employee.userId`), porque `staff` já depende de `iam` e a aresta inversa criaria ciclo. | Consultar "colaborador do usuário" passa por `staff`. | E07 |
 | H8 | O logotipo do hotel (RF-CFG-01) é um arquivo de `files` com finalidade própria. E06 guarda o ID do arquivo; E08 cria a aresta `hotel` → `files` (já registrada na ARCHITECTURE §3.1) e passa a validar que o ID existe e tem a finalidade de logotipo. | Se a validação ficar complexa, `hotel` aceita o ID e o cliente garante o upload; registrar no handoff. | E06, E08 |
+| H9 | O `Idempotency-Key` passa a ser isolado pelo **id estável do usuário** do JWT (`user:<id>`), sem o dispositivo. **Decidido pelo usuário em 2026-10-14.** Chaves gravadas com o escopo antigo só vencem em 24h, sem migração. | Acrescentar o dispositivo depois só muda o escopo. | E01 |
 
 ## Definição global de pronto
 
@@ -176,13 +188,17 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 **Escopo:**
 
-- Módulo `iam` (a criar, em `src/main/kotlin/com/zeny/hotel/iam/`) com a estrutura de módulo documentada no `CLAUDE.md`; schema e pasta de migração `iam` (a criar).
+- Módulo `iam` (a criar, em `src/main/kotlin/com/zeny/hotel/iam/`) com a estrutura de módulo documentada no `CLAUDE.md`; schema e pasta de migração `src/main/resources/db/migration/iam/` (a criar). É o primeiro módulo real: conferir que `LayerRules` e `ModularityTest` o tratam como esperado e onde ficam as subclasses de `TypedIdConverter` usadas por entidades de `domain` (em `domain` ou na raiz do módulo, nunca em `infrastructure`).
 - Entidades `User` (nome, login, hash de senha e de PIN em Argon2id, ativo, contador de falhas, bloqueado até) e `DeviceSession` (ID e nome do dispositivo, hash do refresh token, família de rotação, última atividade, revogada) — SPEC §8.2.1.
 - Endpoints: `POST /api/v1/auth/login` (login, senha, dados do dispositivo), `POST /api/v1/auth/refresh`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/sessions` (sessões do próprio usuário) e `POST /api/v1/auth/sessions/{id}/revoke` (própria sessão).
-- Regras da ARCHITECTURE §8.1: JWT de 15 min assinado com chave própria (H3); refresh de 30 dias deslizantes, rotacionado a cada uso e guardado como hash; refresh reutilizado revoga a sessão inteira; usuário inativo ou sessão revogada não renovam; bloqueio progressivo após falhas de login.
-- Porta em `shared` para o ator corrente (usuário e sessão de dispositivo), consumida por qualquer módulo sem depender de `iam`.
-- Administrador inicial por variáveis de ambiente no primeiro boot, com troca de senha obrigatória (H2).
-- Remoção da regra provisória de M0 E04: tudo em `/api/**` exige token, exceto login e refresh. Idempotência de M0 E05 passa a isolar chaves por usuário.
+- Regras da ARCHITECTURE §8.1: JWT de 15 min assinado em RS256 com `kid` (H3), chaves por variável de ambiente sem valor padrão no código nem no YAML (mesmo padrão das chaves de cifragem) e geradas pelos próprios testes; refresh de 30 dias deslizantes, rotacionado a cada uso e guardado como hash; refresh reutilizado revoga a sessão inteira; usuário inativo ou sessão revogada não renovam; bloqueio progressivo após falhas de login. Registrar o algoritmo na ARCHITECTURE §8.1.
+- Dependências novas no `gradle/libs.versions.toml` (sem versão literal no build): Resource Server/JWT do Spring Boot e a implementação de Argon2 exigida pelo `Argon2PasswordEncoder` do Spring Security.
+- Porta em `shared` (raiz pública) para o ator corrente (id do usuário e da sessão de dispositivo), consumida por qualquer módulo sem depender de `iam`. Usuário e sessão de dispositivo entram no MDC dos logs (ARCHITECTURE §16), sem login, senha nem token.
+- Administrador inicial por variáveis de ambiente no primeiro boot, só quando não existe usuário, com troca de senha obrigatória (H2).
+- Variáveis novas (chaves JWT, administrador inicial) documentadas no `CLAUDE.md` e no `README.md`, passadas ao `api` no `docker/compose.yaml` com `${VAR:?…}` quando obrigatórias e listadas no `docker/.env.example` sem segredo real.
+- Fim da segurança provisória de M0 E04 na `SecurityConfiguration` (`shared/web/`): tudo em `/api/**` exige token, exceto login, refresh e o `GET /api/v1/meta/version` que já é público; Swagger e actuator seguem as regras atuais. A lista `PUBLIC_API_ENDPOINTS` do `ApiSecurityTest` ganha login e refresh.
+- Idempotência de M0 E05: `IdempotencyFilter.scopeOfCurrentUser` passa a usar o id do usuário do JWT (`user:<id>`, H9).
+- Apoio de teste em `src/test/kotlin/com/zeny/hotel/testsupport/` para autenticar como um usuário com id (os testes que usam `@WithMockUser`, como o `IdempotencyTest`, passam a usá-lo onde o id importar), e geração da chave JWT por JVM, também no `OpenApiContractExport`.
 - Códigos de erro estáveis: credenciais inválidas, conta bloqueada, refresh inválido, refresh reutilizado, troca de senha pendente.
 
 **Fora de escopo:** permissões e roles (E02); gestão de usuários pelo administrador (E03); PIN e aprovações (E05, aqui só o campo e o hash); credenciais de serviço (M5).
@@ -191,36 +207,37 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 1. Escrever testes de integração dos fluxos: login válido e inválido, refresh com rotação, reuso do refresh revogando a sessão, bloqueio progressivo, usuário desativado sem refresh, token expirado rejeitado, endpoint protegido sem token → `401`.
 2. Criar módulo, migrações, entidades e casos de uso.
-3. Configurar o Resource Server e a porta de ator corrente em `shared`; trocar a segurança provisória e a chave de idempotência.
-4. Implementar o administrador inicial; documentar no `README.md` as variáveis exigidas e no `.env.example` valores sem segredo real.
+3. Configurar o Resource Server e a porta de ator corrente em `shared`; trocar a segurança provisória, o escopo de idempotência e o MDC.
+4. Implementar o administrador inicial; documentar as variáveis no `CLAUDE.md` e no `README.md`, passá-las no `docker/compose.yaml` e listá-las no `docker/.env.example` sem segredo real.
 5. Regenerar `api/openapi.yaml`.
 
 **Estratégia de execução:** `padrão` · Revisão humana: sim
 
-- Investigação (`Explore`): "o que a ARCHITECTURE §8.1 e §8.2 e a SPEC RF-ACS-10 e RNF-08 exigem da autenticação e das sessões?"; "como M0 E04 e E05 deixaram a segurança provisória e a chave de idempotência (handoffs e `CLAUDE.md`)?".
+- Investigação (`Explore`): "o que a ARCHITECTURE §8.1, §8.2 e §16 e a SPEC RF-ACS-10 e RNF-08 exigem da autenticação, das sessões e dos logs?"; "quais testes de `src/test/kotlin` dependem de `@WithMockUser` ou do escopo `user:<login>` da idempotência?".
 - Partes paralelas: nenhuma.
-- Foco do verificador: refresh reutilizado que não revoga a sessão; refresh ou senha em claro no banco, log ou resposta; endpoint de `/api/**` acessível sem token; bloqueio contornável trocando maiúsculas do login; chave de assinatura com valor padrão no código.
+- Foco do verificador: refresh reutilizado que não revoga a sessão; refresh ou senha em claro no banco, log ou resposta; endpoint de `/api/**` acessível sem token; bloqueio contornável trocando maiúsculas do login; chave de assinatura com valor padrão no código, no YAML ou no `.env.example`; JWT aceito com `alg` diferente de RS256 ou `kid` desconhecido.
 
 **Prompt para uma sessão limpa:**
 
 ```text
 Execute a etapa E01 — "Autenticação e sessões por dispositivo" do roadmap docs/roadmaps/roadmap-m1-acesso-configuracao.md, neste repositório.
 
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo "Restrições e invariantes", as hipóteses H1–H3 e o "Protocolo de execução" —, a seção E01 inteira e o "Evidências e handoff" de E04, E05 e E08 de docs/roadmaps/roadmap-m0-fundacao-tecnica.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que a etapa E08 (gate) de docs/roadmaps/roadmap-m0-fundacao-tecnica.md está #concluida e que o código bate com os handoffs de M0; se não, ou se o código divergiu do plano, pare e relate sem implementar.
+Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo "Contexto confirmado", "Restrições e invariantes", as hipóteses H1–H3 e H9 e o "Protocolo de execução" —, a seção E01 inteira e o "Evidências e handoff" de E04, E05 e E08 de docs/roadmaps/roadmap-m0-fundacao-tecnica.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que a etapa E08 (gate) de docs/roadmaps/roadmap-m0-fundacao-tecnica.md está #concluida e que o código bate com os handoffs de M0; se não, ou se o código divergiu do plano, pare e relate sem implementar.
 
-Objetivo: criar o módulo iam com usuários (senha e PIN em Argon2id), login em POST /api/v1/auth/login, JWT de 15 min, refresh opaco rotativo por dispositivo com detecção de reuso que revoga a sessão, bloqueio progressivo, logout, listagem e revogação das próprias sessões, porta do ator corrente em shared e administrador inicial por variáveis de ambiente. Troque a segurança provisória de M0 E04 (todo /api/** passa a exigir token, exceto login e refresh) e isole as chaves de idempotência de M0 E05 por usuário. Não implemente permissões, roles, gestão de usuários nem aprovações.
+Objetivo: criar o módulo iam com usuários (senha e PIN em Argon2id), login em POST /api/v1/auth/login, JWT de 15 min em RS256 com kid, refresh opaco rotativo por dispositivo com detecção de reuso que revoga a sessão, bloqueio progressivo, logout, listagem e revogação das próprias sessões, porta do ator corrente em shared (também no MDC dos logs) e administrador inicial por variáveis de ambiente. Troque a segurança provisória da SecurityConfiguration (todo /api/** passa a exigir token, exceto login, refresh e GET /api/v1/meta/version) e o escopo do IdempotencyFilter para o id do usuário. Variáveis novas vão para CLAUDE.md, README.md, docker/compose.yaml e docker/.env.example, sem segredo real nem valor padrão. Não implemente permissões, roles, gestão de usuários nem aprovações.
 
 Siga o Protocolo de execução com a estratégia padrão:
 - tire o snapshot inicial e troque a tag de E01 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume docs/ARCHITECTURE.md §8.1 e §8.2, RF-ACS-10 e RNF-08 de docs/SPEC.md e como M0 deixou a segurança provisória e a idempotência;
-- escreva os testes de integração dos fluxos de login, refresh, reuso, bloqueio e acesso sem token primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build, teste e lint do CLAUDE.md;
+- investigação: um subagente Explore resume docs/ARCHITECTURE.md §8.1, §8.2 e §16, RF-ACS-10 e RNF-08 de docs/SPEC.md e lista os testes que dependem de @WithMockUser ou do escopo de idempotência pelo login;
+- escreva os testes de integração dos fluxos de login, refresh, reuso, bloqueio e acesso sem token primeiro, implemente, regenere api/openapi.yaml, rode os comandos oficiais de build, teste e lint do CLAUDE.md e suba o docker compose com as variáveis novas;
 - verificação independente com o Prompt do verificador, com foco em reuso de refresh sem revogação, segredo em claro, endpoint aberto e chave de assinatura com valor padrão.
 
 Critérios de aceite (detalhes na seção E01):
 - login, refresh com rotação, reuso revogando a sessão, bloqueio progressivo e usuário desativado cobertos por testes de integração;
 - nenhum endpoint de /api/** além de login e refresh responde sem token;
-- senha, PIN e refresh guardados só como hash; chave JWT fora do código;
-- contrato regenerado; build, testes e lint passam.
+- senha, PIN e refresh guardados só como hash; chave JWT fora do código e do YAML;
+- Idempotency-Key isolado pelo id do usuário;
+- contrato regenerado; build, testes e lint passam; compose sobe com readiness UP.
 
 Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
 
@@ -234,9 +251,11 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 - [ ] Após o número configurado de falhas, o login fica bloqueado por tempo crescente, inclusive com a senha correta, e o login é comparado sem diferenciar maiúsculas.
 - [ ] Usuário desativado ou sessão revogada não obtêm novo refresh.
 - [ ] Senha, PIN e refresh token aparecem no banco só como hash; nenhum deles aparece em log (teste ou inspeção do log de teste).
-- [ ] Todo endpoint de `/api/**`, exceto login e refresh, devolve `401` sem token (teste que percorre os endpoints mapeados).
+- [ ] Todo endpoint de `/api/**`, exceto login, refresh e `GET /api/v1/meta/version`, devolve `401` sem token (`ApiSecurityTest`, que percorre os endpoints mapeados); um token com assinatura, `kid` ou `alg` inválidos ou expirado também devolve `401`.
 - [ ] O administrador inicial é criado no primeiro boot a partir das variáveis de ambiente, só uma vez, e precisa trocar a senha antes de usar outros endpoints.
-- [ ] As chaves de `Idempotency-Key` ficam isoladas por usuário (teste de M0 E05 adaptado).
+- [ ] As chaves de `Idempotency-Key` ficam isoladas pelo id do usuário (H9; teste de M0 E05 adaptado).
+- [ ] Os logs de uma requisição autenticada trazem o id do usuário e da sessão de dispositivo, e nenhum login, senha ou token.
+- [ ] Sem a chave JWT a aplicação não sobe; `CLAUDE.md`, `README.md`, `docker/compose.yaml` e `docker/.env.example` (sem segredo real) trazem as variáveis novas.
 - [ ] `api/openapi.yaml` regenerado; build, testes e lint oficiais passam.
 
 **Validação obrigatória:**
@@ -244,12 +263,13 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 - Comandos oficiais de build, teste e lint (`CLAUDE.md`) → sucesso.
 - Verificação do contrato → sucesso.
 - `ApplicationModules.verify()` (parte do build) → `iam` depende só de `shared`.
+- `docker compose -f docker/compose.yaml up -d --build` com as variáveis novas no `docker/.env` → readiness `UP` e login do administrador inicial pelo proxy; `down` em seguida.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
-- Spring Security com Spring Boot 4 mudou APIs de configuração: seguir a documentação da versão registrada em M0 E01.
+- Spring Security 7 com Spring Boot 4.1 mudou APIs de configuração: seguir a documentação dessas versões (registradas no `CLAUDE.md`).
 - Argon2id lento nos testes: parâmetros reduzidos só no profile de teste.
 
 **Evidências e handoff:**
@@ -276,9 +296,9 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 - Em `shared`: interface para um módulo declarar suas permissões (código, escopos suportados, se é sensível, chaves de limite), a porta de autorização (`require(permission)`, `require(permission, resource)` com dono para escopo `OWN`, leitura de limites) e o filtro de escopo `OWN` para consultas.
 - Em `iam`: agregação das declarações de todos os módulos, sincronização com a tabela de permissões no boot (novas inseridas, removidas marcadas como obsoletas), `Role` com `RoleGrant(permission, scope, limits)`, vínculo usuário ↔ roles, cálculo da permissão efetiva (escopo mais amplo e maior limite — RF-ACS-04), cache por usuário invalidado por versão quando o usuário ou uma role muda.
 - Permissões do próprio `iam` declaradas (usuários, roles, sessões, catálogo).
-- Seed dos modelos de role da SPEC §3.1 com as permissões existentes (H5) e concessão de todas ao administrador inicial.
+- Seed dos modelos de role da SPEC §3.1 com as permissões existentes (H5) e concessão de todas ao administrador inicial. Seed por migração do `iam` (`INSERT INTO iam.…`, permitido pelo `MigrationConventionTest` só no próprio schema) ou no boot, junto da sincronização do catálogo.
 - Endpoint `GET /api/v1/permissions` (catálogo, para o cliente montar a tela de roles) e `GET /api/v1/auth/me` com as permissões efetivas do usuário logado.
-- Erro `403` com `code` estável quando falta permissão.
+- Erro `403` com `code` estável quando falta permissão, lançado como `PermissionDeniedException` (família já existente em `shared/DomainErrors.kt`), com o código declarado na API pública do módulo dono.
 
 **Fora de escopo:** endpoints de gestão de roles e usuários (E03); step-up e `APPROVAL_REQUIRED` (E05).
 
@@ -368,7 +388,8 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 - Endpoints (recursos em inglês, plural, kebab-case): `/api/v1/users` (lista paginada, detalhe, criação, edição, `POST …/{id}/deactivate`, `POST …/{id}/reactivate`, `POST …/{id}/reset-password`, `POST …/{id}/reset-pin`, atribuição de roles), `/api/v1/roles` (lista, detalhe, criação, edição de concessões, `POST …/{id}/duplicate`, `POST …/{id}/deactivate`), `GET /api/v1/users/{id}/sessions` e `POST /api/v1/users/{id}/sessions/{sessionId}/revoke`.
 - Regras: ninguém concede permissão, escopo ou limite que não possui (RF-ACS-09); só administrador gerencia administradores; desativar um usuário revoga todas as sessões (RF-ACS-10); nada é excluído (RF-ACS-12); login único.
-- `ETag`/`If-Match` nas edições (convenção de M0 E04).
+- `ETag`/`If-Match` nas edições (convenção de M0 E04), com o primeiro teste do `412` por conflito de lock otimista no commit (conversão que já existe no `ApiExceptionHandler`, mas sem teste desde M0 E04).
+- Violação de unicidade (login duplicado) convertida em `ConflictException` no caso de uso, sem deixar `DataIntegrityViolationException` virar `500` (pendência de M0 E04).
 - Permissões do `iam` para essas ações, marcadas como sensíveis conforme RF-ACS-08 ("gerenciar usuários e roles").
 
 **Fora de escopo:** auditoria das ações (E04 aplica `@Audited` a estes casos de uso); exigência de step-up nas ações sensíveis (E05); vínculo com colaborador (E07, do lado de `staff`).
@@ -401,6 +422,7 @@ Siga o Protocolo de execução com a estratégia padrão:
 - verificação independente com o Prompt do verificador, com foco em escalada de privilégio, usuário desativado com sessão ativa e exclusão física.
 
 Critérios de aceite (detalhes na seção E03):
+- login duplicado → 409 com code estável (sem 500 por violação de unicidade); conflito de lock otimista → 412;
 - conceder permissão, escopo ou limite acima do próprio → 403 com code estável, inclusive editando a própria role;
 - não administrador gerenciando administrador → 403;
 - desativar usuário invalida todas as sessões no próximo refresh; nenhum endpoint exclui fisicamente;
@@ -419,7 +441,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - [ ] Desativar um usuário revoga todas as sessões: o refresh seguinte falha.
 - [ ] Roles podem ser duplicadas e desativadas; role desativada deixa de conceder permissão.
 - [ ] Nenhum endpoint exclui usuário ou role fisicamente.
-- [ ] Edição sem `If-Match` correto → `412`.
+- [ ] Edição sem `If-Match` correto → `412`; duas edições concorrentes com o mesmo `If-Match` → uma passa e a outra recebe `412` (lock otimista).
 - [ ] Contrato regenerado; build, testes e lint passam.
 
 **Validação obrigatória:**
@@ -456,10 +478,15 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 - Em `shared`: anotação `@Audited(action)`, aspecto que captura antes e depois, e porta de gravação de auditoria; registro do ator corrente e da sessão de dispositivo (porta de E01).
 - Módulo `audit` (a criar) com schema próprio, tabela `AuditEntry` e implementação da porta.
-- Imutabilidade (H4): usuário da aplicação sem `UPDATE`/`DELETE` na tabela, com Flyway rodando como dono do schema; ajuste da base de Testcontainers e do compose de M0 para os dois papéis; documentação no `README.md`.
+- Imutabilidade com dois papéis (H4, decidido):
+  - o Flyway passa a conectar com o papel dono dos schemas (`spring.flyway.user`/`password` a partir de `ZENY_DB_MIGRATION_*`) e a aplicação com o papel restrito (`ZENY_DB_*`), só com DML;
+  - o papel da aplicação é criado fora das migrações, sem senha no repositório: no compose, por um script de inicialização do `db`; nos testes, pelo `PostgresContainer`; a implantação documenta o mesmo passo;
+  - as migrações concedem privilégios ao papel da aplicação em todos os schemas, inclusive os que já existem em `shared` (`event_publication`, `shedlock`, `idempotency_key`), e tiram `UPDATE`/`DELETE` da tabela de auditoria; o nome do papel vem de um placeholder do Flyway ou de convenção fixa, decisão registrada no handoff;
+  - o `MigrationConventions` (`src/test/kotlin/com/zeny/hotel/persistence/`) deixa de dar falso positivo em `GRANT … ON FUNCTION f(numeric(14,2))` e `ALTER DEFAULT PRIVILEGES IN SCHEMA … GRANT … ON TABLES`, com testes positivos e negativos;
+  - `CLAUDE.md`, `README.md`, `docker/compose.yaml` e `docker/.env.example` passam a descrever os dois papéis; um volume de banco de desenvolvimento antigo precisa ser recriado (`down -v`) ou receber o papel novo, e o handoff diz como.
 - Mascaramento: campos de senha, PIN, tokens e campos cifrados nunca aparecem nos valores antes/depois.
 - `GET /api/v1/audit-entries` paginado com filtros por usuário, tipo e ID de entidade e período, exigindo permissão `audit.read` (declarada no catálogo).
-- `@Audited` aplicado a todos os casos de uso de escrita de `iam` (usuários, roles, sessões, login com sucesso e falha conforme RF-ACS-11).
+- `@Audited` aplicado a todos os casos de uso de escrita de `iam` (usuários, roles, sessões, login com sucesso e falha conforme RF-ACS-11). O aspecto exige a dependência de AOP do Spring Boot 4 no catálogo.
 - Campo de referência à aprovação preparado para E05.
 
 **Fora de escopo:** auditoria de acesso a anexos (E08 usa esta porta); auditoria de leitura de dados pessoais de hóspedes (M3).
@@ -467,33 +494,34 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 **Passos de implementação:**
 
 1. Escrever testes de integração: escrita auditada na mesma transação (rollback não deixa entrada), antes/depois corretos, mascaramento, `UPDATE`/`DELETE` negados ao usuário da aplicação, filtros e permissão da consulta.
-2. Implementar aspecto, porta, módulo, migrações e papéis do banco.
+2. Implementar os dois papéis do banco (compose, Testcontainers, Flyway, grants e `MigrationConventions`) e confirmar que toda a suíte passa com a aplicação no papel restrito; depois, aspecto, porta, módulo e migrações de `audit`.
 3. Aplicar `@Audited` aos casos de uso de `iam`.
 4. Documentar no `CLAUDE.md` a regra "todo caso de uso de escrita leva `@Audited`" e como ela é verificada.
 
-**Estratégia de execução:** `padrão` · Revisão humana: não
+**Estratégia de execução:** `padrão` · Revisão humana: sim (estabelece a separação de papéis do banco que todas as migrações seguintes repetem)
 
-- Investigação (`Explore`): "o que RF-ACS-11, RNF-11, ARCHITECTURE §5 (passo 6) e §8.3 exigem da auditoria?"; "como o compose e a base de Testcontainers de M0 criam o usuário do banco (handoffs de M0 E02 e E06)?".
+- Investigação (`Explore`): "o que RF-ACS-11, RN-03, RNF-11, ARCHITECTURE §5 (passo 6), §8.3 e §11 exigem da auditoria e da imutabilidade?"; "onde o compose, o `PostgresContainer`/`@IntegrationTest`, o `OpenApiContractExport` e o `application.yaml` definem o usuário do banco e o do Flyway?".
 - Partes paralelas: nenhuma.
-- Foco do verificador: entrada gravada fora da transação (sobrevive a rollback) ou perdida em sucesso; senha, PIN ou token nos valores antes/depois; usuário da aplicação conseguindo `UPDATE`/`DELETE`; caso de uso de escrita de `iam` sem `@Audited`.
+- Foco do verificador: entrada gravada fora da transação (sobrevive a rollback) ou perdida em sucesso; senha, PIN ou token nos valores antes/depois; usuário da aplicação conseguindo `UPDATE`/`DELETE` (ou DDL) e testes que ainda rodam com o papel dono; senha de papel no repositório; caso de uso de escrita de `iam` sem `@Audited`.
 
 **Prompt para uma sessão limpa:**
 
 ```text
 Execute a etapa E04 — "Trilha de auditoria" do roadmap docs/roadmaps/roadmap-m1-acesso-configuracao.md, neste repositório.
 
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo "Restrições e invariantes", a hipótese H4 e o "Protocolo de execução" —, a seção E04 inteira e o "Evidências e handoff" de E01 a E03. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E03 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
+Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo "Contexto confirmado", "Restrições e invariantes", a hipótese H4 e o "Protocolo de execução" —, a seção E04 inteira e o "Evidências e handoff" de E01 a E03. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E03 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
 
-Objetivo: criar o módulo audit com a trilha append-only (quem, quando, dispositivo, ação, entidade, antes e depois, referência à aprovação), gravada na mesma transação por @Audited através de uma porta em shared, com campos sensíveis mascarados, usuário da aplicação sem UPDATE/DELETE na tabela e GET /api/v1/audit-entries filtrado e protegido por audit.read. Aplique @Audited a todos os casos de uso de escrita de iam. Não audite anexos nem dados de hóspedes ainda.
+Objetivo: separar os papéis do banco (Flyway como dono dos schemas com ZENY_DB_MIGRATION_*, aplicação com papel restrito criado fora das migrações, no compose e no Testcontainers) e criar o módulo audit com a trilha append-only (quem, quando, dispositivo, ação, entidade, antes e depois, referência à aprovação), gravada na mesma transação por @Audited através de uma porta em shared, com campos sensíveis mascarados, papel da aplicação sem UPDATE/DELETE na tabela e GET /api/v1/audit-entries filtrado e protegido por audit.read. Corrija os falsos positivos do MigrationConventions com GRANT ON FUNCTION e ALTER DEFAULT PRIVILEGES. Aplique @Audited a todos os casos de uso de escrita de iam. Não audite anexos nem dados de hóspedes ainda.
 
 Siga o Protocolo de execução com a estratégia padrão:
 - tire o snapshot inicial e troque a tag de E04 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume RF-ACS-11, RNF-11, docs/ARCHITECTURE.md §5 e §8.3 e como M0 cria o usuário do banco no compose e no Testcontainers;
-- escreva os testes de integração primeiro (transação, antes/depois, mascaramento, UPDATE/DELETE negados, filtros e permissão), implemente, documente no CLAUDE.md, regenere api/openapi.yaml e rode os comandos oficiais de build, teste e lint;
+- investigação: um subagente Explore resume RF-ACS-11, RN-03, RNF-11, docs/ARCHITECTURE.md §5, §8.3 e §11 e onde compose, testes e application.yaml definem o usuário do banco e o do Flyway;
+- escreva os testes de integração primeiro (transação, antes/depois, mascaramento, UPDATE/DELETE negados, filtros e permissão), separe os papéis antes do módulo audit, implemente, documente no CLAUDE.md e no README.md, regenere api/openapi.yaml, rode os comandos oficiais de build, teste e lint e suba o docker compose do zero;
 - verificação independente com o Prompt do verificador, com foco em entrada fora da transação, segredo nos valores, imutabilidade contornável e escrita de iam sem @Audited.
 
 Critérios de aceite (detalhes na seção E04):
 - escrita auditada na mesma transação, sem entrada após rollback;
+- a suíte inteira roda com a aplicação no papel restrito e o Flyway no papel dono; nenhuma senha de papel no repositório;
 - UPDATE e DELETE na tabela de auditoria falham com o usuário da aplicação;
 - senha, PIN e tokens nunca aparecem em antes/depois;
 - consulta filtrada exige audit.read; todos os casos de uso de escrita de iam auditados; build, testes e lint passam.
@@ -507,7 +535,10 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 - [ ] Uma escrita auditada grava uma entrada com usuário, sessão de dispositivo, instante UTC, ação, tipo e ID da entidade, antes e depois.
 - [ ] Se a transação do caso de uso faz rollback, nenhuma entrada fica gravada.
+- [ ] Os testes de integração e o compose rodam com a aplicação no papel restrito e o Flyway no papel dono (teste que confere o `current_user` de cada um e que o papel da aplicação não executa DDL).
 - [ ] `UPDATE` e `DELETE` na tabela de auditoria falham quando executados com o usuário da aplicação (teste de integração).
+- [ ] O `MigrationConventionTest` aceita `GRANT … ON FUNCTION f(numeric(14,2))` e `ALTER DEFAULT PRIVILEGES IN SCHEMA` do próprio módulo e continua recusando os de outro schema.
+- [ ] `CLAUDE.md`, `README.md`, `docker/compose.yaml` e `docker/.env.example` descrevem os dois papéis, sem senha real.
 - [ ] Senha, PIN, refresh token e campos cifrados não aparecem nos valores antes/depois.
 - [ ] `GET /api/v1/audit-entries` filtra por usuário, entidade e período; sem `audit.read` → `403`.
 - [ ] Todos os casos de uso de escrita de `iam` têm `@Audited` (teste ou regra ArchUnit que confere).
@@ -517,15 +548,16 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 - Comandos oficiais de build, teste e lint → sucesso.
 - Verificação do contrato → sucesso.
-- `docker compose -f docker/compose.yaml up -d` com os dois papéis do banco → readiness `UP`; `down` em seguida.
+- `docker compose -f docker/compose.yaml up -d --build` num volume novo, com os dois papéis do banco → readiness `UP`; `down -v` em seguida.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
-- Dois papéis no banco complicam o compose e o Testcontainers: se inviável, usar o *trigger* alternativo de H4 e registrar a decisão.
+- Dois papéis no banco complicam o compose e o Testcontainers: o usuário decidiu por eles (H4); diante de impedimento técnico real, parar e relatar em vez de trocar pelo *trigger*.
+- O script de inicialização do `postgres` só roda em volume vazio: documentar a recriação do banco de desenvolvimento e o passo equivalente na implantação.
 
-**Rollback / migração:** a migração cria papéis e concede privilégios; documentar no handoff como recriar o banco de desenvolvimento.
+**Rollback / migração:** o papel da aplicação é criado fora das migrações e as migrações concedem privilégios; documentar no handoff como recriar o banco de desenvolvimento e como criar o papel num banco já existente.
 
 **Evidências e handoff:**
 
@@ -550,7 +582,7 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 - `POST /api/v1/auth/approvals` com ação, referência do recurso, login e PIN do aprovador e motivo; devolve o token de aprovação.
 - Persistência de `Approval` (SPEC §8.2.1) e referência na entrada de auditoria (E04).
-- Em `shared`: porta usada pela autorização para, em ação sensível sem permissão ou acima do limite, lançar `APPROVAL_REQUIRED` com `action` e `resourceRef` no corpo RFC 9457, e para consumir o `X-Approval-Token` validando o vínculo.
+- Em `shared`: porta usada pela autorização para, em ação sensível sem permissão ou acima do limite, lançar `APPROVAL_REQUIRED` com `action` e `resourceRef` no corpo RFC 9457, e para consumir o `X-Approval-Token` validando o vínculo. Hoje o `ApiExceptionHandler` só acrescenta `code` e `errors[]` ao problema: a etapa estende `DomainException` (ou cria uma subclasse) com propriedades extras e documenta o cabeçalho e as propriedades no contrato.
 - Bloqueio progressivo por PIN errado, separado do bloqueio de login.
 - Regras: o aprovador precisa ter a permissão com limite suficiente; o aprovador não pode ser o próprio solicitante; token expirado, reutilizado ou de outra ação/recurso/solicitante é rejeitado.
 - Aplicação nos casos de uso sensíveis existentes de `iam` ("gerenciar usuários e roles", RF-ACS-08) e um teste com uma ação de exemplo com limite.
@@ -640,7 +672,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 - Módulo `hotel` (a criar) com schema próprio; `Hotel` singleton (razão social, nome fantasia, CNPJ, inscrição municipal, Cadastur, `Address` com IBGE, fuso, regime tributário, referência ao logotipo — H8), `HotelPolicy` (horários de check-in/out, janela de arrumação, preços e regras de early/late, idade limite e faixas etárias de criança, textos de política), `TaxSettings` (taxa de serviço padrão, ISS, taxa de turismo por pessoa/noite desligada por padrão — Q-03), parâmetros operacionais (horário do fechamento, expiração de pré-reserva, guarda de achados, limiares de alerta) — SPEC §5.2 e §8.2.2.
 - Endpoints: `GET/PUT /api/v1/hotel`, `GET/PUT /api/v1/hotel/policies`, `GET/PUT /api/v1/hotel/tax-settings`, `GET/PUT /api/v1/hotel/operational-settings` e `GET /api/v1/hotel/business-date` (qualquer usuário autenticado — RF-CFG-05). Edições com `If-Match`, permissão própria e `@Audited`.
-- Validações: CNPJ válido, horários coerentes, janela de arrumação de até 3h dentro da diária de 24h e textos obrigatórios da Portaria MTur 28/2025 (RN-11).
+- Validações: CNPJ válido, horários coerentes, janela de arrumação de até 3h dentro da diária de 24h e textos obrigatórios da Portaria MTur 28/2025 (RN-11). CNPJ, endereço, dinheiro e percentual usam os tipos de `shared` (`Cnpj`, `Address` com IBGE, `Money`, `Percent`), nunca tipos próprios.
 - Data operacional: inicializada na configuração inicial; API pública do módulo `advanceBusinessDate(expectedCurrent)` que avança exatamente um dia, rejeita data esperada diferente da atual e publica `BusinessDateAdvanced(previous, current)` pelo outbox. Sem endpoint: quem chama é o `endofday` (M6).
 - API pública de leitura para outros módulos: fuso, políticas, taxas e data operacional.
 
@@ -821,7 +853,10 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 - Porta de armazenamento com adaptador S3 (D14) configurado por variáveis de ambiente; chaves de objeto organizadas por módulo e entidade (ARCHITECTURE §14).
 - Catálogo de finalidades em código (ex.: logotipo do hotel, foto de checklist, documento de hóspede) com limite de tamanho, tipos aceitos e se é sensível; módulos futuros acrescentam finalidades.
 - Endpoints: `POST /api/v1/files` (multipart, com finalidade) e `GET /api/v1/files/{id}/download-url` (URL assinada curta).
-- Anexo sensível cifrado antes de ir ao armazenamento (cifragem de M0 E03) e servido por download que decifra; todo acesso a sensível auditado pela porta de E04.
+- Anexo sensível cifrado antes de ir ao armazenamento e servido por download que decifra; todo acesso a sensível auditado pela porta de E04. O `FieldCipher` de M0 E03 só cifra `String`: a etapa acrescenta em `shared` a cifragem de bytes/streams reaproveitando o `EncryptionKeyRing` (mesmas chaves e mesmo `kid` para rotação).
+- `POST /api/v1/files` é multipart, e o `IdempotencyFilter` recusa multipart com `415`: o upload não leva `@Idempotent` (a repetição gera outro arquivo, que fica órfão sem dono).
+- Compose: o `api` passa a receber `ZENY_STORAGE_*` (endpoint `http://storage:9000`, credenciais e bucket), e o `storage-init` cria um usuário de serviço do MinIO com política só do bucket, usado pelo `api` no lugar do root. Variáveis novas no `docker/.env.example` sem segredo real e documentadas no `CLAUDE.md` e no `README.md`.
+- Testes com o módulo MinIO do Testcontainers usando a imagem `pgsty/minio` na mesma tag do compose (a padrão, `minio/minio`, deixou de ser publicada); dependências novas (cliente S3, Testcontainers MinIO) no `gradle/libs.versions.toml`.
 - API pública para outros módulos: confirmar que um arquivo existe e pertence a uma finalidade.
 - Logotipo do hotel (H8): `hotel` passa a usar essa API para validar o ID do logotipo ao salvar os dados do hotel (aresta `hotel` → `files`, já na ARCHITECTURE §3.1).
 
@@ -837,9 +872,9 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Estratégia de execução:** `padrão` · Revisão humana: não
 
-- Investigação (`Explore`): "o que ARCHITECTURE §8.3, §14 e D14 e RNF-09 exigem do armazenamento de arquivos?"; "como o MinIO foi configurado no compose de M0 E06?".
+- Investigação (`Explore`): "o que ARCHITECTURE §8.3, §14 e D14 e RNF-09 exigem do armazenamento de arquivos?"; "como o `docker/compose.yaml` configura `storage` e `storage-init` e como o `FieldCipher`/`EncryptionKeyRing` cifram hoje?".
 - Partes paralelas: nenhuma.
-- Foco do verificador: anexo sensível legível em claro no bucket; URL assinada longa ou sem expiração; acesso a sensível sem auditoria; tipo de arquivo validado só pela extensão.
+- Foco do verificador: anexo sensível legível em claro no bucket; URL assinada longa ou sem expiração; acesso a sensível sem auditoria; tipo de arquivo validado só pela extensão; `api` do compose usando o usuário root do MinIO; credencial do MinIO no repositório.
 
 **Prompt para uma sessão limpa:**
 
@@ -848,12 +883,12 @@ Execute a etapa E08 — "Armazenamento de anexos" do roadmap docs/roadmaps/roadm
 
 Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo "Restrições e invariantes" e o "Protocolo de execução" —, a seção E08 inteira, o "Evidências e handoff" de E02, E04 e E06 e o handoff de E06 de docs/roadmaps/roadmap-m0-fundacao-tecnica.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E04 e E06 estão #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
 
-Objetivo: criar o módulo files com metadados em schema próprio, porta de armazenamento com adaptador S3 (MinIO), catálogo de finalidades com limite de tamanho, tipos aceitos e flag de sensível, POST /api/v1/files e GET /api/v1/files/{id}/download-url com URL assinada curta, cifragem dos anexos sensíveis com a cifragem de shared e auditoria de cada acesso a eles. files depende só de shared. Ligue também a validação do logotipo em hotel (aresta hotel → files, já na ARCHITECTURE §3.1). Não implemente regras de outros módulos consumidores nem espelhamento externo.
+Objetivo: criar o módulo files com metadados em schema próprio, porta de armazenamento com adaptador S3 (MinIO), catálogo de finalidades com limite de tamanho, tipos aceitos e flag de sensível, POST /api/v1/files (multipart, sem @Idempotent) e GET /api/v1/files/{id}/download-url com URL assinada curta, cifragem de bytes em shared sobre o EncryptionKeyRing para os anexos sensíveis e auditoria de cada acesso a eles. No compose, passe ZENY_STORAGE_* ao api com um usuário de serviço do MinIO restrito ao bucket. files depende só de shared. Ligue também a validação do logotipo em hotel (aresta hotel → files, já na ARCHITECTURE §3.1). Não implemente regras de outros módulos consumidores nem espelhamento externo.
 
 Siga o Protocolo de execução com a estratégia padrão:
 - tire o snapshot inicial e troque a tag de E08 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume docs/ARCHITECTURE.md §8.3, §14 e D14, RNF-09 e a configuração do MinIO no compose de M0;
-- escreva os testes de integração com MinIO via Testcontainers primeiro, implemente, documente no CLAUDE.md, regenere api/openapi.yaml e rode os comandos oficiais de build, teste e lint;
+- investigação: um subagente Explore resume docs/ARCHITECTURE.md §8.3, §14 e D14, RNF-09, a configuração de storage e storage-init no docker/compose.yaml e a cifragem atual do FieldCipher;
+- escreva os testes de integração com MinIO via Testcontainers (imagem pgsty/minio na tag do compose) primeiro, implemente, documente no CLAUDE.md e no README.md, regenere api/openapi.yaml, rode os comandos oficiais de build, teste e lint e faça upload e download pelo compose;
 - verificação independente com o Prompt do verificador, com foco em sensível em claro no bucket, URL sem expiração curta, acesso sem auditoria e tipo validado só pela extensão.
 
 Critérios de aceite (detalhes na seção E08):
@@ -861,6 +896,7 @@ Critérios de aceite (detalhes na seção E08):
 - URL assinada funciona e expira no prazo configurado;
 - o objeto de um anexo sensível no bucket não contém o conteúdo original e cada acesso gera auditoria;
 - logotipo do hotel com ID inexistente ou de outra finalidade → 422;
+- o api do compose usa um usuário de serviço do MinIO, não o root;
 - contrato regenerado; build, testes e lint passam.
 
 Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
@@ -876,12 +912,14 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 - [ ] Cada geração de URL ou download de anexo sensível gera uma entrada de auditoria.
 - [ ] Sem permissão da finalidade → `403`.
 - [ ] Salvar os dados do hotel com logotipo inexistente ou de outra finalidade → `422` com `code` estável.
+- [ ] No compose, o `api` recebe `ZENY_STORAGE_*` e acessa o bucket com um usuário de serviço restrito a ele; upload e download funcionam pelo proxy; variáveis novas no `docker/.env.example` sem segredo real.
 - [ ] `ApplicationModules.verify()` mostra `files` dependendo só de `shared`; contrato regenerado; build, testes e lint passam.
 
 **Validação obrigatória:**
 
 - Comandos oficiais de build, teste e lint → sucesso.
 - Verificação do contrato → sucesso.
+- `docker compose -f docker/compose.yaml up -d --build` → readiness `UP`, upload e download de um anexo pelo proxy; `down` em seguida.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -972,7 +1010,7 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 
 **Riscos e mitigação:**
 
-- Variáveis de ambiente obrigatórias novas (chave JWT, admin inicial) ausentes do `.env.example`: o gate falha e a etapa de origem corrige.
+- Variáveis de ambiente obrigatórias novas (chaves JWT e administrador inicial da E01, `ZENY_DB_MIGRATION_*` da E04, `ZENY_STORAGE_*` do `api` na E08) ausentes do `docker/.env.example` ou da documentação: o gate falha e a etapa de origem corrige.
 
 **Evidências e handoff:**
 
@@ -989,3 +1027,4 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicada a regra por camadas da ARCHITECTURE §3.1 (decisão do usuário): `hotel` → `files` para o logotipo (H8; E08 passa a depender de E06 e valida o logotipo); portas de autorização e auditoria em `shared` mantidas por desenho (evitam o ciclo `iam` ↔ `audit`), com a justificativa atualizada nas restrições.
+- 2026-10-14 — sincronizado com o código depois do gate do M0 (commit `5dd29f5`): "Contexto confirmado" passa a citar caminhos, comandos e o estado real de segurança, banco, idempotência, compose e CI, além das pendências herdadas do M0 com a etapa que trata cada uma. Decisões do usuário: H1 confirmada, H2 (admin por variáveis no primeiro boot), H3 (JWT RS256 com `kid`), H4 (dois papéis no banco, sem *trigger*) e a nova H9 (`Idempotency-Key` pelo id do usuário). E01 ganha MDC, apoio de teste com usuário autenticado, variáveis no compose e validação no compose; E03 ganha o `409` por unicidade e o teste do `412` por lock otimista; E04 passa a separar os papéis do banco, corrigir o `MigrationConventions` e pedir revisão humana; E05 estende o problema RFC 9457 com propriedades extras; E08 ganha cifragem de bytes em `shared`, upload sem `@Idempotent`, usuário de serviço do MinIO no compose e Testcontainers com `pgsty/minio`. Limite de tentativas do outbox adiado para o M2. Nenhuma etapa foi criada, removida ou renumerada.
