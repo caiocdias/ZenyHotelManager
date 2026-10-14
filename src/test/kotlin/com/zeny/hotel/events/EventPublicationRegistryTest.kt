@@ -6,6 +6,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.PostgresInitializer
 import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
 import com.zeny.hotel.testsupport.TEST_MIGRATIONS
+import com.zeny.hotel.testsupport.TestEncryptionKeysInitializer
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
@@ -115,7 +116,7 @@ class EventPublicationRegistryTest(
             ZenyHotelApplication::class.java,
             ProbeListenerConfiguration::class.java,
         ).profiles("local")
-            .initializers(PostgresInitializer())
+            .initializers(PostgresInitializer(), TestEncryptionKeysInitializer())
             // Como argumentos de linha de comando: `properties()` teria prioridade abaixo do application.yaml.
             .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED")
             .use { _ ->

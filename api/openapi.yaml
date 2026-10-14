@@ -1,0 +1,123 @@
+openapi: 3.0.1
+info:
+  description: "API do servidor do Zeny Hotel Manager. Erros em RFC 9457 (application/problem+json)\
+    \ com `code` estável; paginação por cursor (`cursor`/`limit`); concorrência otimista\
+    \ com `ETag`/`If-Match`; instantes em UTC (ISO-8601 com `Z`), datas `YYYY-MM-DD`\
+    \ e dinheiro como string decimal em BRL."
+  title: Zeny Hotel Manager API
+  version: v1
+servers:
+- description: Este servidor
+  url: /
+tags:
+- description: Informações sobre o servidor e a API.
+  name: meta
+paths:
+  /api/v1/meta/version:
+    get:
+      description: "Público, sem autenticação. A versão da API muda só com mudanç\
+        a incompatível (/api/v2)."
+      operationId: getServerVersion
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerVersionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Versão do servidor e da API
+      tags:
+      - meta
+components:
+  schemas:
+    FieldViolation:
+      type: object
+      description: Erro de um campo da requisição.
+      properties:
+        code:
+          type: string
+          description: "Código estável: REQUIRED, INVALID_FORMAT, INVALID_VALUE ou\
+            \ o nome da restrição em UPPER_SNAKE_CASE (NOT_BLANK, SIZE, MIN, MAX,\
+            \ PATTERN etc.)."
+          example: NOT_BLANK
+        field:
+          type: string
+          description: Caminho do campo no JSON ou nome do parâmetro.
+          example: price
+        message:
+          type: string
+          description: Mensagem em pt-BR.
+          example: não deve estar em branco
+      required:
+      - code
+      - field
+      - message
+    Problem:
+      type: object
+      description: Problema RFC 9457 (application/problem+json).
+      properties:
+        code:
+          type: string
+          description: "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED,\
+            \ MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, NOT_FOUND,\
+            \ METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE,\
+            \ UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED,\
+            \ REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE. Cada módulo acrescenta\
+            \ os seus."
+          example: VALIDATION_FAILED
+          pattern: "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
+        detail:
+          type: string
+          description: "Explicação em pt-BR, para o usuário."
+        errors:
+          type: array
+          description: Erros por campo; presente nos erros de validação.
+          items:
+            $ref: "#/components/schemas/FieldViolation"
+        instance:
+          type: string
+          format: uri
+          description: Caminho da requisição.
+        status:
+          type: integer
+          format: int32
+          description: Status HTTP.
+          example: 400
+        title:
+          type: string
+          description: "Frase do status HTTP, em pt-BR."
+          example: Requisição inválida
+        type:
+          type: string
+          format: uri
+          description: Tipo do problema; ausente equivale a about:blank.
+          example: about:blank
+      required:
+      - code
+      - status
+      - title
+    ServerVersionResponse:
+      type: object
+      properties:
+        apiVersion:
+          type: string
+          description: "Versão da API, igual ao prefixo das rotas."
+          example: v1
+        application:
+          type: string
+          description: Nome da aplicação.
+          example: zeny-hotel-manager
+        version:
+          type: string
+          description: Versão do servidor (build).
+          example: 1.4.0
+      required:
+      - apiVersion
+      - application
+      - version

@@ -4,6 +4,26 @@ spring:
   application:
     name: zeny-hotel-manager
 
+  # Segurança mínima até o M1 (shared/web/SecurityConfiguration): sem o usuário em memória com
+  # senha gerada que o Boot criaria; ninguém autentica até chegar o JWT.
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+
+  # API (ARCHITECTURE §7): datas em ISO-8601, instantes em UTC com `Z` (use `Instant` nos DTOs)
+  # e datas de negócio `YYYY-MM-DD` (`LocalDate`). Money/Percent saem como string pelos tipos.
+  jackson:
+    time-zone: UTC
+    datatype:
+      datetime:
+        write-dates-as-timestamps: false
+
+  # Mensagens em pt-BR (RNF-13), inclusive as de validação, qualquer que seja o Accept-Language;
+  # os clientes traduzem pelo `code` dos erros.
+  web:
+    locale: pt_BR
+    locale-resolver: fixed
+
   # Banco (ARCHITECTURE §11). Sem valor padrão: em `prod` a aplicação não sobe sem as variáveis.
   datasource:
     url: ${ZENY_DB_URL}
@@ -45,12 +65,31 @@ spring:
         processing: PT10M
         resubmitted: PT10M
 
+# Contrato OpenAPI (ARCHITECTURE §7, D6): gerado do código pela tarefa `generateOpenApi` e
+# versionado em api/openapi.yaml. Ordenado e indentado para o diff ser estável e legível.
+springdoc:
+  # Ligados fora de `prod` (o profile `prod` os desliga abaixo).
+  api-docs:
+    enabled: true
+    version: openapi_3_0
+  swagger-ui:
+    enabled: true
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+  default-produces-media-type: application/json
+
 zeny:
   events:
     resubmission:
       # Reprocessamento das publicações com falha (ARCHITECTURE §13: a cada minuto).
       interval: PT1M
       initial-delay: PT1M
+  # Cifragem de campo (ARCHITECTURE §8.3). Sem valor padrão em nenhum profile: sem as
+  # variáveis a aplicação não sobe. ZENY_ENCRYPTION_KEYS = "id:base64,id:base64" (32 bytes
+  # cada, AES-256); ZENY_ENCRYPTION_ACTIVE_KEY_ID = id da chave que cifra os valores novos.
+  encryption:
+    keys: ${ZENY_ENCRYPTION_KEYS}
+    active-key-id: ${ZENY_ENCRYPTION_ACTIVE_KEY_ID}
 
 ---
 spring:
@@ -74,6 +113,14 @@ spring:
       on-profile: prod
   main:
     banner-mode: off
+
+# Sem Swagger UI nem /v3/api-docs em produção (ARCHITECTURE §7): o contrato publicado é o
+# api/openapi.yaml do repositório.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 logging:
   level:

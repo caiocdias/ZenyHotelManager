@@ -60,7 +60,19 @@ dependencies {
     implementation(libs.shedlock.provider.jdbc.template)
     runtimeOnly(libs.postgresql)
 
+    // API REST (ARCHITECTURE §7): Spring MVC, validação de DTOs, segurança mínima até o M1
+    // e o springdoc, que gera o contrato api/openapi.yaml e serve o Swagger UI fora de prod.
+    implementation(libs.spring.boot.starter.webmvc)
+    implementation(libs.spring.boot.starter.validation)
+    implementation(libs.spring.boot.starter.security)
+    implementation(libs.springdoc.openapi.starter.webmvc.ui)
+    // O springdoc (swagger-core) ainda usa Jackson 2; com o módulo Kotlin dele, o contrato marca
+    // como `required` as propriedades não nulas dos DTOs e como `nullable` as anuláveis.
+    runtimeOnly(libs.jackson2.module.kotlin)
+
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.starter.webmvc.test)
+    testImplementation(libs.spring.boot.starter.security.test)
     testImplementation(libs.spring.modulith.starter.test)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.spring.modulith.docs)
@@ -77,6 +89,14 @@ configurations.configureEach {
     exclude(group = "org.springframework.modulith", module = "spring-modulith-moments")
 }
 
+// Gera META-INF/build-info.properties (versão do servidor em GET /api/v1/meta/version). Sem o
+// horário do build, para a tarefa não ficar desatualizada a cada execução.
+springBoot {
+    buildInfo {
+        excludes.add("time")
+    }
+}
+
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // MockK/ByteBuddy carregam agente dinamicamente; o JDK 25 avisa sem esta flag.
@@ -84,6 +104,71 @@ tasks.withType<Test>().configureEach {
     // Os testes rodam de propósito num fuso diferente de UTC: assim pegam qualquer código que
     // dependa do fuso da JVM em vez de gravar instantes em UTC (RN-01, ARCHITECTURE §11).
     systemProperty("user.timezone", "America/Sao_Paulo")
+}
+
+// Contrato OpenAPI (ARCHITECTURE §7, D6). O teste com a tag `openapi-contract` sobe a aplicação
+// (profile `local`, PostgreSQL do Testcontainers) e grava o YAML do springdoc; ele não roda no
+// `test`, só aqui. `checkOpenApi` entra no `check` (logo no `build`) e falha se o api/openapi.yaml
+// versionado difere do gerado; `updateOpenApi` regrava o arquivo versionado.
+val openApiContractTag = "openapi-contract"
+val generatedOpenApi = layout.buildDirectory.file("openapi/openapi.yaml")
+val committedOpenApi = layout.projectDirectory.file("api/openapi.yaml")
+
+tasks.named<Test>("test") {
+    useJUnitPlatform { excludeTags(openApiContractTag) }
+}
+
+val generateOpenApi =
+    tasks.register<Test>("generateOpenApi") {
+        group = "documentation"
+        description = "Gera o contrato OpenAPI em build/openapi/openapi.yaml a partir da aplicação."
+        testClassesDirs =
+            sourceSets.test
+                .get()
+                .output.classesDirs
+        classpath = sourceSets.test.get().runtimeClasspath
+        useJUnitPlatform { includeTags(openApiContractTag) }
+        val output = generatedOpenApi.get().asFile
+        systemProperty("zeny.openapi.output", output.absolutePath)
+        outputs.file(output)
+        doFirst { output.delete() }
+    }
+
+val checkOpenApi =
+    tasks.register("checkOpenApi") {
+        group = "verification"
+        description = "Falha se api/openapi.yaml difere do contrato gerado pela aplicação."
+        dependsOn(generateOpenApi)
+        val generated = generatedOpenApi.get().asFile
+        val committed = committedOpenApi.asFile
+        inputs.file(generated)
+        inputs.files(committed)
+        doLast {
+            if (!generated.isFile) throw GradleException("O contrato não foi gerado em $generated.")
+            val expected = generated.readText()
+            val actual = if (committed.isFile) committed.readText().replace("\r\n", "\n") else null
+            if (actual != expected) {
+                val firstDifference =
+                    actual
+                        ?.lines()
+                        ?.zip(expected.lines())
+                        ?.indexOfFirst { (a, b) -> a != b }
+                        ?.takeIf { it >= 0 }
+                        ?: minOf(actual?.lines()?.size ?: 0, expected.lines().size)
+                throw GradleException(
+                    "api/openapi.yaml está desatualizado (primeira diferença na linha ${firstDifference + 1}). " +
+                        "Rode ./gradlew updateOpenApi e versione o arquivo junto com a mudança da API.",
+                )
+            }
+        }
+    }
+
+tasks.register<Copy>("updateOpenApi") {
+    group = "documentation"
+    description = "Regrava api/openapi.yaml com o contrato gerado pela aplicação."
+    dependsOn(generateOpenApi)
+    from(generatedOpenApi)
+    into(layout.projectDirectory.dir("api"))
 }
 
 detekt {
@@ -100,7 +185,7 @@ ktlint {
 val detektWithTypeResolution = listOf("detektMain", "detektTest")
 
 tasks.named("check") {
-    dependsOn(detektWithTypeResolution)
+    dependsOn(detektWithTypeResolution, checkOpenApi)
 }
 
 tasks.register("lint") {
