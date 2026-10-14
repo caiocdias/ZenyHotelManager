@@ -8,14 +8,16 @@ import org.springframework.test.context.ContextConfiguration
 
 /**
  * Base dos testes de integração: contexto completo com o profile `local`, ligado ao
- * PostgreSQL 18 do Testcontainers e a uma chave de cifragem sorteada por JVM. As classes com
+ * PostgreSQL 18 do Testcontainers, a uma chave de cifragem e a chaves JWT sorteadas por JVM e
+ * ao administrador inicial dos testes ([TestAdmin]). As classes com
  * esta anotação e sem configuração extra compartilham o mesmo contexto (cache do Spring);
  * todas compartilham o mesmo container. O contexto é web (servlet simulado) e expõe um
  * `MockMvc` com a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas
  * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
- * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
- * o job de reprocessamento do outbox, para que os testes o disparem quando quiserem.
+ * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`), adiam
+ * o job de reprocessamento do outbox, para que os testes o disparem quando quiserem. Para autenticar uma requisição do
+ * `MockMvc` com um usuário de id conhecido, use [asUser].
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
@@ -23,7 +25,9 @@ import org.springframework.test.context.ContextConfiguration
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
 @AutoConfigureMetrics
-@ContextConfiguration(initializers = [PostgresInitializer::class, TestEncryptionKeysInitializer::class])
+@ContextConfiguration(
+    initializers = [PostgresInitializer::class, TestEncryptionKeysInitializer::class, TestAuthInitializer::class],
+)
 annotation class IntegrationTest
 
 /** Migrações de produção mais as tabelas de apoio usadas só pelos testes. */

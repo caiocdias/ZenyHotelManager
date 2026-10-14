@@ -36,8 +36,8 @@ import java.util.UUID
 /**
  * Convenções da API (ARCHITECTURE §7) exercitadas pelo controller de exemplo, só de teste:
  * erros RFC 9457 com `code` estável, paginação por cursor, `ETag`/`If-Match` e serialização
- * de datas e dinheiro. As requisições são autenticadas (`@WithMockUser`): até o M1, `/api/...`
- * só aceita requisição autenticada, e não há como autenticar de verdade.
+ * de datas e dinheiro. As requisições são autenticadas com `@WithMockUser`, que basta para a
+ * cadeia de segurança; nenhum destes endpoints precisa do id do usuário (`asUser`).
  */
 @IntegrationTest
 @Import(ExampleApiConfiguration::class)

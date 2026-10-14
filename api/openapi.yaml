@@ -4,16 +4,197 @@ info:
     \ com `code` estável; paginação por cursor (`cursor`/`limit`); concorrência otimista\
     \ com `ETag`/`If-Match`; `Idempotency-Key` obrigatório nas operações com efeito\
     \ financeiro ou externo (resposta guardada por 24h); instantes em UTC (ISO-8601\
-    \ com `Z`), datas `YYYY-MM-DD` e dinheiro como string decimal em BRL."
+    \ com `Z`), datas `YYYY-MM-DD` e dinheiro como string decimal em BRL. Autenticaç\
+    ão: `POST /api/v1/auth/login` devolve um access token JWT de 15 min, enviado como\
+    \ `Authorization: Bearer …`, e um refresh token rotativo da sessão do dispositivo,\
+    \ trocado em `POST /api/v1/auth/refresh`. Um `401` com `code` `UNAUTHENTICATED`\
+    \ pede um refresh; os demais códigos de `401` (credenciais, bloqueio, refresh)\
+    \ pedem um novo login."
   title: Zeny Hotel Manager API
   version: v1
 servers:
 - description: Este servidor
   url: /
+security:
+- bearerAuth: []
 tags:
+- description: "Autenticação, sessões por dispositivo e usuários."
+  name: iam
 - description: Informações sobre o servidor e a API.
   name: meta
 paths:
+  /api/v1/auth/login:
+    post:
+      description: "Público. Abre uma sessão no dispositivo (um novo login no mesmo\
+        \ dispositivo encerra a sessão anterior dele) e devolve um access token JWT\
+        \ de 15 min e um refresh token. O login não diferencia maiúsculas. Recusas\
+        \ com 401: `INVALID_CREDENTIALS` (login ou senha), `ACCOUNT_LOCKED` (falhas\
+        \ seguidas; o bloqueio cresce a cada nova falha e vale mesmo com a senha certa)\
+        \ e `ACCOUNT_DISABLED`. Com `passwordChangeRequired`, só a troca de senha\
+        \ e o logout respondem até a senha ser trocada."
+      operationId: login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: Sessão aberta.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security: []
+      summary: Entrar com login e senha
+      tags:
+      - iam
+  /api/v1/auth/logout:
+    post:
+      description: "Encerra a sessão do access token: o refresh token dela deixa de\
+        \ valer. O access token vence sozinho em até 15 min."
+      operationId: logout
+      responses:
+        "204":
+          description: Sessão encerrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Sair
+      tags:
+      - iam
+  /api/v1/auth/password:
+    post:
+      description: "Confere a senha atual (401 `INVALID_CREDENTIALS` ou `ACCOUNT_LOCKED`,\
+        \ contando para o bloqueio como o login) e grava a nova, de 12 a 128 caracteres\
+        \ e diferente da atual (422 `PASSWORD_UNCHANGED`). Encerra a troca obrigató\
+        ria e as outras sessões do usuário; a sessão corrente continua, e o próximo\
+        \ refresh traz um access token sem a pendência."
+      operationId: changePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+        required: true
+      responses:
+        "204":
+          description: Senha trocada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Trocar a própria senha
+      tags:
+      - iam
+  /api/v1/auth/refresh:
+    post:
+      description: "Público (o cabeçalho Authorization é ignorado). Troca o refresh\
+        \ token por um par novo: o refresh token usado deixa de valer, e a validade\
+        \ da sessão volta a 30 dias. Recusas com 401: `REFRESH_TOKEN_INVALID` (desconhecido,\
+        \ vencido, sessão revogada ou usuário desativado) e `REFRESH_TOKEN_REUSED`\
+        \ (o token já tinha sido trocado: a sessão inteira é revogada, inclusive o\
+        \ refresh token mais novo). Nos dois casos, o cliente pede um novo login."
+      operationId: refreshTokens
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security: []
+      summary: Renovar os tokens da sessão
+      tags:
+      - iam
+  /api/v1/auth/sessions:
+    get:
+      description: "Sessões não revogadas e não vencidas do usuário, da mais nova\
+        \ para a mais antiga."
+      operationId: listMySessions
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageSessionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as próprias sessões ativas
+      tags:
+      - iam
+  /api/v1/auth/sessions/{id}/revoke:
+    post:
+      description: "O refresh token da sessão deixa de valer (o access token vence\
+        \ em até 15 min). Revogar de novo não muda nada. Sessão de outro usuário ou\
+        \ inexistente: 404 `SESSION_NOT_FOUND`."
+      operationId: revokeMySession
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Sessão revogada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Revogar uma sessão própria
+      tags:
+      - iam
   /api/v1/meta/version:
     get:
       description: "Público, sem autenticação. A versão da API muda só com mudanç\
@@ -32,6 +213,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
+      security: []
       summary: Versão do servidor e da API
       tags:
       - meta
@@ -62,6 +244,58 @@ components:
         minLength: 1
         pattern: "^[\\x21-\\x7E]+$"
   schemas:
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          description: Senha atual.
+          maxLength: 128
+          minLength: 0
+        newPassword:
+          type: string
+          format: password
+          description: "Senha nova, de 12 a 128 caracteres."
+          maxLength: 128
+          minLength: 12
+      required:
+      - currentPassword
+      - newPassword
+    CursorPageSessionResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SessionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    DeviceRequest:
+      type: object
+      description: Dispositivo de onde se entra.
+      properties:
+        id:
+          type: string
+          description: "Identificador estável do dispositivo, gerado pelo cliente\
+            \ na instalação (um UUID)."
+          example: 0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d
+          maxLength: 100
+          minLength: 0
+        name:
+          type: string
+          description: Nome do dispositivo para a lista de sessões.
+          example: Celular da recepção
+          maxLength: 100
+          minLength: 0
+      required:
+      - id
+      - name
     FieldViolation:
       type: object
       description: Erro de um campo da requisição.
@@ -84,6 +318,27 @@ components:
       - code
       - field
       - message
+    LoginRequest:
+      type: object
+      properties:
+        device:
+          $ref: "#/components/schemas/DeviceRequest"
+        login:
+          type: string
+          description: Login ou e-mail; não diferencia maiúsculas.
+          example: maria.silva
+          maxLength: 100
+          minLength: 0
+        password:
+          type: string
+          format: password
+          description: Senha.
+          maxLength: 128
+          minLength: 0
+      required:
+      - device
+      - login
+      - password
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
@@ -91,9 +346,9 @@ components:
         code:
           type: string
           description: "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED,\
-            \ MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, NOT_FOUND,\
-            \ METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE,\
-            \ UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED,\
+            \ MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, PASSWORD_CHANGE_REQUIRED,\
+            \ NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED,\
+            \ PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED,\
             \ IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE,\
             \ IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE.\
             \ Cada módulo acrescenta os seus."
@@ -129,6 +384,16 @@ components:
       - code
       - status
       - title
+    RefreshRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+          description: "Refresh token da sessão, recebido no login ou no último refresh."
+          maxLength: 200
+          minLength: 0
+      required:
+      - refreshToken
     ServerVersionResponse:
       type: object
       properties:
@@ -148,3 +413,84 @@ components:
       - apiVersion
       - application
       - version
+    SessionResponse:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: Se é a sessão do access token desta requisição.
+        deviceId:
+          type: string
+        deviceName:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+          description: Até quando a sessão renova sem uso.
+        id:
+          type: string
+          format: uuid
+        lastSeenAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - current
+      - deviceId
+      - deviceName
+      - expiresAt
+      - id
+      - lastSeenAt
+    TokenResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          description: "Access token JWT (RS256), válido até accessTokenExpiresAt\
+            \ (15 min)."
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        passwordChangeRequired:
+          type: boolean
+          description: Se o usuário precisa trocar a senha antes de usar a API.
+        refreshToken:
+          type: string
+          description: "Refresh token opaco da sessão. Vale uma vez: use o novo de\
+            \ cada resposta. Guarde-o só no armazenamento seguro do dispositivo."
+        refreshTokenExpiresAt:
+          type: string
+          format: date-time
+          description: Até quando a sessão renova sem uso (30 dias depois do último
+            refresh).
+        sessionId:
+          type: string
+          format: uuid
+        tokenType:
+          type: string
+          description: "Tipo do access token, para o cabeçalho Authorization."
+          example: Bearer
+        userId:
+          type: string
+          format: uuid
+      required:
+      - accessToken
+      - accessTokenExpiresAt
+      - passwordChangeRequired
+      - refreshToken
+      - refreshTokenExpiresAt
+      - sessionId
+      - tokenType
+      - userId
+  securitySchemes:
+    bearerAuth:
+      bearerFormat: JWT
+      description: "Access token JWT (RS256) de `POST /api/v1/auth/login` ou `POST\
+        \ /api/v1/auth/refresh`, válido por 15 min. Enquanto a troca de senha estiver\
+        \ pendente, só `POST /api/v1/auth/password` e `POST /api/v1/auth/logout` respondem;\
+        \ o resto devolve 403 `PASSWORD_CHANGE_REQUIRED`."
+      scheme: bearer
+      type: http

@@ -351,11 +351,12 @@ sequenceDiagram
 ### 8.1 Autenticação
 
 - O login (`POST /auth/login`) recebe login, senha e dados do dispositivo. Devolve:
-  - um **access token JWT** de 15 min, assinado pelo servidor (Spring Security Resource Server com chave própria);
-  - um **refresh token** opaco, com 30 dias de validade deslizante e **rotação a cada uso**. Ele fica armazenado como hash e vinculado a uma `DeviceSession`.
-- Detecção de reuso: um refresh token usado duas vezes revoga a sessão inteira.
+  - um **access token JWT** de 15 min, assinado pelo próprio servidor em **RS256** com `kid` e validado pelo Spring Security Resource Server. O par de chaves RSA vem de variável de ambiente (`ZENY_JWT_KEYS`/`ZENY_JWT_ACTIVE_KEY_ID`), sem valor padrão; todas as chaves configuradas valem na validação, pelo `kid`, e só a ativa assina, o que permite a rotação. A validação aceita só RS256 e `kid` conhecido. O token leva só `sub` (id do usuário), `sid` (id da sessão), as datas e, quando for o caso, a troca de senha pendente;
+  - um **refresh token** opaco, com 30 dias de validade deslizante e **rotação a cada uso**. Ele fica armazenado como hash (SHA-256) e vinculado a uma `DeviceSession`; um novo login no mesmo dispositivo encerra a sessão anterior dele.
+- Detecção de reuso: um refresh token usado duas vezes revoga a sessão inteira, inclusive o refresh mais novo.
 - Revogar uma sessão ou desativar o usuário bloqueia o próximo refresh. O access token expira em no máximo 15 min.
-- Senha e PIN são guardados com **Argon2id**. Login e PIN têm limite de tentativas com bloqueio progressivo.
+- Senha e PIN são guardados com **Argon2id**. Login e PIN têm limite de tentativas com bloqueio progressivo. O login é comparado sem diferenciar maiúsculas.
+- O ator corrente (usuário e sessão de dispositivo) chega aos módulos pela porta `CurrentActor` do `shared`, implementada por `iam`, e vai para o MDC dos logs.
 - O agente de impressão e integrações de entrada usam **credenciais de serviço** próprias, com permissões mínimas.
 
 ### 8.2 Autorização

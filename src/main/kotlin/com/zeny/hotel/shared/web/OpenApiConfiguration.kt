@@ -8,6 +8,7 @@ import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
+import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.headers.Header
 import io.swagger.v3.oas.models.info.Info
@@ -20,6 +21,8 @@ import io.swagger.v3.oas.models.media.StringSchema
 import io.swagger.v3.oas.models.parameters.HeaderParameter
 import io.swagger.v3.oas.models.parameters.Parameter
 import io.swagger.v3.oas.models.responses.ApiResponse
+import io.swagger.v3.oas.models.security.SecurityRequirement
+import io.swagger.v3.oas.models.security.SecurityScheme
 import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.customizers.OperationCustomizer
@@ -33,8 +36,10 @@ import io.swagger.v3.oas.models.media.MediaType as OpenApiMediaType
 /**
  * Contrato OpenAPI gerado pelo springdoc (ARCHITECTURE §7, D6), versionado em
  * `api/openapi.yaml`: informações da API, os tipos de valor do kernel como `string` (como saem
- * no JSON), o problema RFC 9457 como resposta `default` de toda operação e o cabeçalho
- * `Idempotency-Key` nas operações marcadas com [Idempotent].
+ * no JSON), o problema RFC 9457 como resposta `default` de toda operação, o cabeçalho
+ * `Idempotency-Key` nas operações marcadas com [Idempotent] e o access token JWT
+ * (`Authorization: Bearer`) exigido por toda operação que não declare
+ * `@SecurityRequirements` vazio (as públicas: login, refresh e versão).
  */
 @Configuration(proxyBeanMethods = false)
 class OpenApiConfiguration {
@@ -50,9 +55,27 @@ class OpenApiConfiguration {
                             "`code` estável; paginação por cursor (`cursor`/`limit`); concorrência otimista com " +
                             "`ETag`/`If-Match`; `Idempotency-Key` obrigatório nas operações com efeito financeiro ou " +
                             "externo (resposta guardada por 24h); instantes em UTC (ISO-8601 com `Z`), datas " +
-                            "`YYYY-MM-DD` e dinheiro como string decimal em BRL.",
+                            "`YYYY-MM-DD` e dinheiro como string decimal em BRL. Autenticação: " +
+                            "`POST /api/v1/auth/login` devolve um access token JWT de 15 min, enviado como " +
+                            "`Authorization: Bearer …`, e um refresh token rotativo da sessão do dispositivo, " +
+                            "trocado em `POST /api/v1/auth/refresh`. Um `401` com `code` `UNAUTHENTICATED` pede um " +
+                            "refresh; " +
+                            "os demais códigos de `401` (credenciais, bloqueio, refresh) pedem um novo login.",
                     ),
             ).servers(listOf(Server().url("/").description("Este servidor")))
+            .components(Components().addSecuritySchemes(BEARER_AUTH, bearerScheme()))
+            .addSecurityItem(SecurityRequirement().addList(BEARER_AUTH))
+
+    private fun bearerScheme(): SecurityScheme =
+        SecurityScheme()
+            .type(SecurityScheme.Type.HTTP)
+            .scheme("bearer")
+            .bearerFormat("JWT")
+            .description(
+                "Access token JWT (RS256) de `POST /api/v1/auth/login` ou `POST /api/v1/auth/refresh`, válido por 15 " +
+                    "min. Enquanto a troca de senha estiver pendente, só `POST /api/v1/auth/password` e " +
+                    "`POST /api/v1/auth/logout` respondem; o resto devolve 403 `PASSWORD_CHANGE_REQUIRED`.",
+            )
 
     @Bean
     fun problemResponsesCustomizer(): OpenApiCustomizer =
@@ -155,7 +178,8 @@ class OpenApiConfiguration {
                     .pattern("^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$")
                     .description(
                         "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED, " +
-                            "MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, NOT_FOUND, " +
+                            "MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, " +
+                            "PASSWORD_CHANGE_REQUIRED, NOT_FOUND, " +
                             "METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE, " +
                             "UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED, " +
                             "IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE, " +
@@ -189,6 +213,7 @@ class OpenApiConfiguration {
 
     private companion object {
         const val PROBLEM = "Problem"
+        const val BEARER_AUTH = "bearerAuth"
         const val FIELD_VIOLATION = "FieldViolation"
         const val IDEMPOTENCY_KEY = "IdempotencyKey"
         const val IDEMPOTENT_REPLAYED = "IdempotentReplayed"

@@ -7,6 +7,7 @@ import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.infrastructure.idempotency.IdempotencyKeyPurgeJob
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.asUser
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -28,7 +29,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.security.access.AccessDeniedException
-import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -52,7 +53,8 @@ import java.util.concurrent.TimeUnit
  *
  * O efeito é contado em [ExampleItemStore.paymentAttempts] (execuções do handler) e
  * [ExampleItemStore.payments] (pagamentos gravados). Cada requisição se autentica com
- * `user(...)`, que vale também nas threads dos testes concorrentes.
+ * `asUser(...)` (um access token com o id do usuário e da sessão), que vale também nas threads
+ * dos testes concorrentes. O escopo da chave é o id do usuário (`user:<id>`, H9).
  */
 @IntegrationTest
 @Import(ExampleApiConfiguration::class)
@@ -115,7 +117,7 @@ class IdempotencyTest(
     fun `endpoints that are not marked do not require the key`() {
         mockMvc
             .post("/api/v1/examples") {
-                with(user(ALICE))
+                with(asUser(ALICE))
                 contentType = MediaType.APPLICATION_JSON
                 content = """{"name": "sem chave", "price": "1.00", "dueDate": "2026-03-10"}"""
             }.andExpect { status { isCreated() } }
@@ -195,7 +197,7 @@ class IdempotencyTest(
         val response =
             mockMvc
                 .post(paymentsPath()) {
-                    with(user(ALICE))
+                    with(asUser(ALICE))
                     contentType = MediaType.APPLICATION_JSON
                     content = """{"amount": "10.00", "padding": "$padding"}"""
                     header(IDEMPOTENCY_KEY, KEY)
@@ -213,7 +215,7 @@ class IdempotencyTest(
             val response =
                 mockMvc
                     .post(paymentsPath()) {
-                        with(user(ALICE))
+                        with(asUser(ALICE))
                         contentType = type
                         content = "amount=10.00"
                         header(IDEMPOTENCY_KEY, KEY)
@@ -377,6 +379,36 @@ class IdempotencyTest(
             listOf("user:$ALICE", "user:$BOB", "user:$ALICE", "user:$BOB")
     }
 
+    @Test
+    fun `the key belongs to the user id, not to the device session`() {
+        val first = pay(key = KEY, principal = ALICE, session = UUID.fromString("0199d6b8-0000-7000-8000-0000000000a1"))
+        val other = pay(key = KEY, principal = ALICE, session = UUID.fromString("0199d6b8-0000-7000-8000-0000000000a2"))
+
+        first.status shouldBe 201
+        other.status shouldBe 201
+        other.getHeader(IDEMPOTENT_REPLAYED) shouldBe "true"
+        json(other)["id"] shouldBe json(first)["id"]
+        store.paymentAttempts.get() shouldBe 1
+        storedKeys() shouldBe listOf("user:$ALICE" to KEY)
+    }
+
+    @Test
+    fun `an authentication without a user id has no scope and is refused`() {
+        mockMvc
+            .post(paymentsPath()) {
+                // Autenticação sem access token (como o antigo escopo pelo login): não há id de usuário.
+                with(SecurityMockMvcRequestPostProcessors.user("alice"))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"amount": "10.00"}"""
+                header(IDEMPOTENCY_KEY, KEY)
+            }.andReturn()
+            .response
+            .problem(401, "UNAUTHENTICATED")
+
+        store.paymentAttempts.get() shouldBe 0
+        storedKeys().shouldBeEmpty()
+    }
+
     // --- Validade de 24h e expurgo ------------------------------------------------------------
 
     @Test
@@ -479,11 +511,12 @@ class IdempotencyTest(
         key: String?,
         amount: String = "10.00",
         item: UUID = itemId,
-        principal: String = ALICE,
+        principal: UUID = ALICE,
+        session: UUID = UUID.fromString("0199d6b8-0000-7000-8000-0000000000a0"),
     ): MockHttpServletResponse =
         mockMvc
             .post(paymentsPath(item)) {
-                with(user(principal))
+                with(asUser(principal, session))
                 contentType = MediaType.APPLICATION_JSON
                 content = """{"amount": "$amount"}"""
                 if (key != null) header(IDEMPOTENCY_KEY, key)
@@ -534,8 +567,8 @@ class IdempotencyTest(
         const val IDEMPOTENCY_KEY = "Idempotency-Key"
         const val IDEMPOTENT_REPLAYED = "Idempotent-Replayed"
         const val KEY = "0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d"
-        const val ALICE = "alice"
-        const val BOB = "bob"
+        val ALICE: UUID = UUID.fromString("0199d6b8-0000-7000-8000-00000000a11c")
+        val BOB: UUID = UUID.fromString("0199d6b8-0000-7000-8000-000000000b0b")
         const val WAIT_SECONDS = 20L
         const val HOLD_MILLIS = 300L
         const val ONE_MEGABYTE = 1024 * 1024

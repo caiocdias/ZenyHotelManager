@@ -18,6 +18,7 @@ import org.springframework.context.ApplicationContext
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
+import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
@@ -28,10 +29,11 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Segurança mínima até o M1 e roteamento, no contexto de produção (sem o controller de
- * exemplo): `/api/...` nega quem não está autenticado, exceto `GET /api/v1/meta/version`; o
- * resto da aplicação é negado; a documentação fica aberta fora de `prod`; ninguém consegue
- * autenticar (não há usuário, senha nem HTTP Basic).
+ * Segurança e roteamento, no contexto de produção (sem o controller de exemplo): `/api/...`
+ * exige access token, exceto login, refresh e `GET /api/v1/meta/version`; o resto da aplicação
+ * é negado; a documentação fica aberta fora de `prod`; não há usuário em memória, HTTP Basic nem
+ * login por formulário. A validação do token em si (assinatura, `kid`, `alg`, validade) fica em
+ * `iam.AccessTokenValidationTest`.
  */
 @IntegrationTest
 class ApiSecurityTest(
@@ -75,14 +77,40 @@ class ApiSecurityTest(
     }
 
     @Test
-    fun `there is no way to authenticate until M1`() {
+    fun `only a bearer access token authenticates`() {
         context.getBeanNamesForType(UserDetailsService::class.java).toList().shouldBeEmpty()
 
         // Sem HTTP Basic nem login por formulário: credenciais são ignoradas e a resposta é 401.
-        expectUnauthenticated(HttpMethod.GET, "/api/v1/does-not-exist") {
+        expectUnauthenticated(HttpMethod.GET, "/api/v1/auth/sessions") {
             header(HttpHeaders.AUTHORIZATION, "Basic dXNlcjpwYXNzd29yZA==")
         }
         expectUnauthenticated(HttpMethod.POST, "/login")
+        // Token que não é um JWT válido: 401, com o desafio Bearer e sem detalhe do motivo.
+        val response =
+            expectUnauthenticated(HttpMethod.GET, "/api/v1/auth/sessions") {
+                header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
+            }
+        response.getHeader(HttpHeaders.WWW_AUTHENTICATE) shouldBe "Bearer"
+        // Token só na query ou no formulário não vale: só o cabeçalho Authorization.
+        expectUnauthenticated(HttpMethod.GET, "/api/v1/auth/sessions?access_token=x")
+    }
+
+    @Test
+    fun `public endpoints ignore a stale authorization header`() {
+        // Um token inválido mandado por hábito não vira 401 UNAUTHENTICATED no login nem no refresh.
+        mockMvc
+            .request(HttpMethod.POST, "/api/v1/auth/refresh") {
+                header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt")
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"refreshToken": "unknown"}"""
+            }.andExpect {
+                status { isUnauthorized() }
+                jsonPath("$.code") { value("REFRESH_TOKEN_INVALID") }
+            }
+        mockMvc
+            .get("/api/v1/meta/version") { header(HttpHeaders.AUTHORIZATION, "Bearer not-a-jwt") }
+            .andExpect { status { isOk() } }
+        SecurityConfiguration.PUBLIC_API_ENDPOINTS.toSet() shouldBe PUBLIC_API_ENDPOINTS
     }
 
     @Test
@@ -161,6 +189,20 @@ class ApiSecurityTest(
         // O cabeçalho Idempotency-Key fica documentado mesmo antes de haver operação de produção marcada.
         doc["components"]["parameters"]["IdempotencyKey"]["name"].asString() shouldBe "Idempotency-Key"
         doc["servers"].values().map { it["url"].asString() } shouldBe listOf("/")
+        // Toda operação exige o access token, menos as públicas, que declaram `security: []`.
+        doc["components"]["securitySchemes"]["bearerAuth"]["scheme"].asString() shouldBe "bearer"
+        doc["security"].values().map { it.propertyNames().toList() } shouldBe listOf(listOf("bearerAuth"))
+        val publicOperations =
+            doc["paths"].properties().flatMap { (path, item) ->
+                item
+                    .properties()
+                    .filter { (_, operation) ->
+                        operation["security"]?.isEmpty == true
+                    }.map { (method, _) ->
+                        HttpMethod.valueOf(method.uppercase()) to path
+                    }
+            }
+        publicOperations.toSet() shouldBe PUBLIC_API_ENDPOINTS
         // Propriedades Kotlin não nulas são obrigatórias no contrato (SDKs dos clientes).
         doc["components"]["schemas"]["ServerVersionResponse"]["required"]
             .values()
@@ -174,7 +216,7 @@ class ApiSecurityTest(
         method: HttpMethod,
         path: String,
         customize: org.springframework.test.web.servlet.MockHttpServletRequestDsl.() -> Unit = {},
-    ) {
+    ): MockHttpServletResponse {
         val response =
             mockMvc
                 .request(method, path) {
@@ -189,6 +231,7 @@ class ApiSecurityTest(
         val problem = jsonMapper.readTree(response.getContentAsString(Charsets.UTF_8))
         problem["code"].asString() shouldBe "UNAUTHENTICATED"
         problem["status"].asInt() shouldBe 401
+        return response
     }
 
     /** Mapeamentos dos controllers da aplicação (pacote base), sem os do springdoc e do Spring. */
@@ -209,7 +252,12 @@ class ApiSecurityTest(
     }
 
     private companion object {
-        /** Os únicos endpoints de `/api/...` abertos sem autenticação até o M1. */
-        val PUBLIC_API_ENDPOINTS = setOf(HttpMethod.GET to "/api/v1/meta/version")
+        /** Os únicos endpoints de `/api/...` abertos sem access token (M1 E01). */
+        val PUBLIC_API_ENDPOINTS =
+            setOf(
+                HttpMethod.POST to "/api/v1/auth/login",
+                HttpMethod.POST to "/api/v1/auth/refresh",
+                HttpMethod.GET to "/api/v1/meta/version",
+            )
     }
 }

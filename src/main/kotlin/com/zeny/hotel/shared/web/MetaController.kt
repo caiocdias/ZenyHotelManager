@@ -3,6 +3,7 @@ package com.zeny.hotel.shared.web
 import com.zeny.hotel.shared.ApiV1Controller
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.security.SecurityRequirements
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
@@ -21,6 +22,7 @@ class MetaController(
     private val version: String = buildProperties.ifAvailable?.version ?: "dev"
 
     @GetMapping("/version")
+    @SecurityRequirements
     @Operation(
         operationId = "getServerVersion",
         summary = "Versão do servidor e da API",

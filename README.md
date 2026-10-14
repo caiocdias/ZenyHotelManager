@@ -28,7 +28,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Conferir se `api/openapi.yaml` está atualizado (já roda no build) | `./gradlew checkOpenApi` |
 | Regenerar `api/openapi.yaml` depois de mudar a API | `./gradlew updateOpenApi` |
 | Procurar breaking change na API v1 contra a `main` (precisa de git e Docker) | `.github/scripts/check-api-breaking.sh` |
-| Subir a aplicação localmente (precisa do banco e das chaves de cifragem, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
+| Subir a aplicação localmente (precisa do banco, das chaves de cifragem e JWT e, no primeiro boot, do administrador inicial, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
 Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
@@ -48,15 +48,33 @@ Dados sensíveis são cifrados com AES-256-GCM (ARCHITECTURE §8.3). As chaves v
 export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACTIVE_KEY_ID=dev
 ```
 
+## Autenticação: chaves JWT e administrador inicial
+
+O login (`POST /api/v1/auth/login`) devolve um access token JWT de 15 min, assinado em RS256, e um refresh token rotativo da sessão do dispositivo (ARCHITECTURE §8.1). As chaves de assinatura vêm de `ZENY_JWT_KEYS` (`kid:base64[,kid:base64…]`, cada uma uma chave privada RSA de 2048 bits ou mais em PKCS#8 DER, em base64) e `ZENY_JWT_ACTIVE_KEY_ID` (o `kid` que assina), obrigatórias em todos os profiles e sem valor padrão: sem elas a aplicação não sobe. Para desenvolvimento:
+
+```bash
+export ZENY_JWT_KEYS="dev:$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 | tr -d '\n')" ZENY_JWT_ACTIVE_KEY_ID=dev
+```
+
+Todas as chaves da lista valem na validação, pelo `kid`; para rotacionar, acrescente a nova, aponte a ativa para ela e retire a antiga depois de 15 min.
+
+No primeiro boot, com o banco sem nenhum usuário, o servidor cria o administrador inicial a partir de `ZENY_ADMIN_LOGIN` e `ZENY_ADMIN_PASSWORD` (12 a 128 caracteres), que precisa trocar a senha no primeiro login (`POST /api/v1/auth/password`). Sem usuários e sem essas variáveis, a aplicação não sobe; depois do primeiro boot elas são ignoradas e podem ser apagadas:
+
+```bash
+export ZENY_ADMIN_LOGIN=admin ZENY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
+```
+
 ## Ambiente completo em Docker
 
 O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket criado pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local). Backup e TLS público ficam para o M8.
 
-1. Crie o `docker/.env` a partir do modelo e gere a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela):
+1. Crie o `docker/.env` a partir do modelo e gere a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
 
    ```bash
    cp docker/.env.example docker/.env
    sed -i "s|^ZENY_ENCRYPTION_KEYS=.*|ZENY_ENCRYPTION_KEYS=dev:$(openssl rand -base64 32)|" docker/.env
+   sed -i "s|^ZENY_JWT_KEYS=.*|ZENY_JWT_KEYS=dev:$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 | tr -d '\n')|" docker/.env
+   sed -i "s|^ZENY_ADMIN_PASSWORD=.*|ZENY_ADMIN_PASSWORD=$(openssl rand -base64 18)|" docker/.env
    ```
 
    O `docker/.env` é ignorado pelo Git. Os valores do modelo são só de desenvolvimento; num ambiente real, troque todos.
@@ -67,7 +85,11 @@ O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produçã
    docker compose -f docker/compose.yaml up -d --build
    curl http://localhost/actuator/health/readiness    # {"status":"UP"}
    curl http://localhost/api/v1/meta/version
+   curl -X POST http://localhost/api/v1/auth/login -H 'Content-Type: application/json' \
+     -d '{"login": "admin", "password": "<ZENY_ADMIN_PASSWORD>", "device": {"id": "meu-pc", "name": "Meu PC"}}'
    ```
+
+   O primeiro login do administrador volta com `passwordChangeRequired: true`: troque a senha em `POST /api/v1/auth/password` (com o `accessToken` em `Authorization: Bearer …`) e renove os tokens em `POST /api/v1/auth/refresh`.
 
    A porta e o endereço do proxy vêm de `ZENY_HTTP_PORT` (80) e `ZENY_HTTP_ADDRESS` (`127.0.0.1`; use `0.0.0.0` para abrir à rede local). O profile padrão é `prod` (logs em JSON, sem Swagger UI); com `ZENY_PROFILE=local` no `docker/.env`, o Swagger UI fica em `/swagger-ui.html`.
 
@@ -86,11 +108,11 @@ Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-ma
 
 - Health: `GET /actuator/health/liveness` (processo vivo) e `GET /actuator/health/readiness` (pronto para tráfego; `DOWN` com o banco fora). São os únicos caminhos do actuator abertos, junto com o `/actuator/prometheus`; os demais endpoints não existem.
 - Métricas: `GET /actuator/prometheus`, só na rede interna do compose (`http://api:8080/actuator/prometheus`; o proxy responde 404). Além das técnicas (JVM, HTTP, pool do banco), `zeny_outbox_publications{state="pending|failed"}` e `zeny_outbox_publications_oldest_age_seconds` medem o outbox de eventos; regras de alerta em [`docker/prometheus/alerts.yaml`](docker/prometheus/alerts.yaml).
-- Logs: no profile `prod`, uma linha JSON por evento (formato ECS), com `traceId` e `spanId` nas requisições; o servidor aceita e propaga o cabeçalho `traceparent` (W3C). No `local`, texto legível.
+- Logs: no profile `prod`, uma linha JSON por evento (formato ECS), com `traceId` e `spanId` nas requisições e, nas autenticadas, `userId` e `deviceSessionId` (nunca login, senha ou token); o servidor aceita e propaga o cabeçalho `traceparent` (W3C). No `local`, texto legível.
 
 ## API
 
-REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Até o M1 (autenticação JWT), só `GET /api/v1/meta/version` responde sem autenticação; o resto da API recusa com `401`. Como escrever um controller, lançar erro de domínio, paginar e marcar um endpoint idempotente: [`CLAUDE.md`](CLAUDE.md).
+REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Todo `/api/v1` exige o access token (`Authorization: Bearer …`), exceto o login, o refresh e `GET /api/v1/meta/version`; sem token, a resposta é `401 UNAUTHENTICATED`. Como escrever um controller, lançar erro de domínio, paginar e marcar um endpoint idempotente: [`CLAUDE.md`](CLAUDE.md).
 
 ## Integração contínua
 

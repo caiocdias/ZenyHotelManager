@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared.web
 
+import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
@@ -21,9 +22,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.security.access.AccessDeniedException
-import org.springframework.security.authentication.AnonymousAuthenticationToken
 import org.springframework.security.core.AuthenticationException
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.filter.OncePerRequestFilter
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.util.ContentCachingResponseWrapper
@@ -44,7 +43,8 @@ import java.util.HexFormat
  *
  * Fluxo de uma requisição a um endpoint marcado:
  * 1. confere a chave (`400 IDEMPOTENCY_KEY_REQUIRED`/`IDEMPOTENCY_KEY_INVALID`) e o usuário
- *    autenticado, que é o escopo da chave: usuários diferentes nunca compartilham resposta;
+ *    autenticado ([CurrentActor]), cujo id estável é o escopo da chave (`user:<id>`): usuários
+ *    diferentes nunca compartilham resposta, e trocar o login não muda o escopo;
  * 2. lê o corpo (até `zeny.idempotency.max-request-body-size`; acima, `413`) e calcula o hash
  *    de método, caminho, query, `If-Match` e corpo. Corpo de formulário
  *    (`application/x-www-form-urlencoded`) ou multipart é recusado com `415`: lido aqui, ele
@@ -61,6 +61,7 @@ import java.util.HexFormat
  */
 internal class IdempotencyFilter(
     private val idempotency: IdempotencyService,
+    private val currentActor: CurrentActor,
     /** O handler que atenderia a requisição (no Spring MVC, o do `RequestMappingHandlerMapping`). */
     private val handlerOf: (HttpServletRequest) -> Any?,
     private val problems: ProblemWriter,
@@ -232,23 +233,8 @@ internal class IdempotencyFilter(
         return (handler as? HandlerMethod)?.hasMethodAnnotation(Idempotent::class.java) == true
     }
 
-    /** `user:<nome>` do usuário autenticado; nomes longos viram hash para caber na coluna. */
-    private fun scopeOfCurrentUser(): String? {
-        val authentication = SecurityContextHolder.getContext().authentication
-        if (authentication == null || !authentication.isAuthenticated ||
-            authentication is AnonymousAuthenticationToken
-        ) {
-            return null
-        }
-        val scope = "user:${authentication.name}"
-        return if (scope.length <=
-            MAX_SCOPE_LENGTH
-        ) {
-            scope
-        } else {
-            "user-sha256:${RequestHashes.sha256(authentication.name)}"
-        }
-    }
+    /** `user:<id do usuário>`; sem usuário autenticado por token, não há escopo. */
+    private fun scopeOfCurrentUser(): String? = currentActor.currentOrNull()?.let { "user:${it.userId}" }
 
     /** O corpo inteiro, ou `null` se passar do limite. */
     private fun readBody(request: HttpServletRequest): ByteArray? {
@@ -260,8 +246,6 @@ internal class IdempotencyFilter(
     private companion object {
         /** 1 a 255 caracteres ASCII visíveis (sem espaço nem controle); um UUID é o recomendado. */
         val VALID_KEY = Regex("[\\x21-\\x7E]{1,255}")
-
-        const val MAX_SCOPE_LENGTH = 255
     }
 }
 
@@ -323,9 +307,6 @@ private object RequestHashes {
         digest.update(body)
         return HexFormat.of().formatHex(digest.digest())
     }
-
-    fun sha256(value: String): String =
-        HexFormat.of().formatHex(MessageDigest.getInstance(SHA_256).digest(value.toByteArray(Charsets.UTF_8)))
 
     private const val SHA_256 = "SHA-256"
 }

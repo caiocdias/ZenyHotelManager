@@ -21,6 +21,7 @@ class DomainErrorsTest {
         val code = ErrorCode("SOMETHING")
 
         InvalidInputException(code, "m").kind shouldBe ErrorKind.INVALID_INPUT
+        UnauthenticatedException(code, "m").kind shouldBe ErrorKind.UNAUTHENTICATED
         NotFoundException(code, "m").kind shouldBe ErrorKind.NOT_FOUND
         ConflictException(code, "m").kind shouldBe ErrorKind.CONFLICT
         BusinessRuleException(code, "m").kind shouldBe ErrorKind.RULE_VIOLATION

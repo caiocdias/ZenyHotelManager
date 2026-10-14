@@ -4,8 +4,8 @@ spring:
   application:
     name: zeny-hotel-manager
 
-  # Segurança mínima até o M1 (shared/web/SecurityConfiguration): sem o usuário em memória com
-  # senha gerada que o Boot criaria; ninguém autentica até chegar o JWT.
+  # Autenticação só por access token JWT (shared/web/SecurityConfiguration, módulo iam): sem o
+  # usuário em memória com senha gerada que o Boot criaria.
   autoconfigure:
     exclude:
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
@@ -121,6 +121,11 @@ management:
       type: w3c
 
 logging:
+  # Correlação nas linhas de log em texto (profile `local`): traceId, spanId e quem age (id do
+  # usuário e da sessão de dispositivo, nunca login ou token). No `prod` os mesmos campos saem no
+  # JSON (ECS) a partir do MDC.
+  pattern:
+    correlation: "[%X{traceId:-},%X{spanId:-},%X{userId:-},%X{deviceSessionId:-}] "
   level:
     # O monitor de staleness do Modulith escreve três linhas INFO por minuto ("No stale
     # publications…"); publicações paradas aparecem na métrica do outbox (OutboxMetrics).
@@ -146,6 +151,40 @@ zeny:
     purge:
       interval: PT1H
       initial-delay: PT5M
+  # Autenticação (ARCHITECTURE §8.1, módulo iam).
+  iam:
+    # Access token JWT assinado em RS256 com `kid` (H3).
+    access-token:
+      ttl: PT15M
+      issuer: zeny-hotel-manager
+    # Refresh token opaco, rotativo, com validade deslizante; os já trocados (detecção de reuso)
+    # são expurgados depois da validade.
+    refresh-token:
+      ttl: P30D
+      purge:
+        interval: PT6H
+        initial-delay: PT10M
+    # Bloqueio progressivo: a partir da 5ª falha seguida, 1 min, dobrando a cada nova falha, até 1h.
+    login:
+      max-failures: 5
+      lockout-base: PT1M
+      lockout-max: PT1H
+    # Argon2id para senha e PIN (OWASP: m=19 MiB, t=2, p=1).
+    password-hashing:
+      memory-kib: 19456
+      iterations: 2
+      parallelism: 1
+    # Administrador inicial (H2), criado no primeiro boot só se não houver usuário, com troca de
+    # senha obrigatória. Vazias, não criam nada; sem usuário e sem elas, a aplicação não sobe.
+    initial-admin:
+      login: ${ZENY_ADMIN_LOGIN:}
+      password: ${ZENY_ADMIN_PASSWORD:}
+    # Chaves RSA de assinatura, sem valor padrão em nenhum profile: sem as variáveis a aplicação
+    # não sobe. ZENY_JWT_KEYS = "kid:base64,kid:base64" (chave privada RSA PKCS#8 DER em base64,
+    # 2048 bits ou mais); ZENY_JWT_ACTIVE_KEY_ID = kid da chave que assina os tokens novos.
+    jwt:
+      keys: ${ZENY_JWT_KEYS}
+      active-key-id: ${ZENY_JWT_ACTIVE_KEY_ID}
   # Cifragem de campo (ARCHITECTURE §8.3). Sem valor padrão em nenhum profile: sem as
   # variáveis a aplicação não sobe. ZENY_ENCRYPTION_KEYS = "id:base64,id:base64" (32 bytes
   # cada, AES-256); ZENY_ENCRYPTION_ACTIVE_KEY_ID = id da chave que cifra os valores novos.

@@ -40,6 +40,12 @@ object ErrorCodes {
     /** 403: autenticado, mas sem permissão. */
     val ACCESS_DENIED = ErrorCode("ACCESS_DENIED")
 
+    /**
+     * 403: o usuário precisa trocar a senha (administrador inicial, senha provisória) antes de
+     * usar qualquer endpoint além da troca de senha e do logout.
+     */
+    val PASSWORD_CHANGE_REQUIRED = ErrorCode("PASSWORD_CHANGE_REQUIRED")
+
     /** 404: rota ou recurso inexistente. */
     val NOT_FOUND = ErrorCode("NOT_FOUND")
 
@@ -116,6 +122,9 @@ enum class ErrorKind {
     /** 400 */
     INVALID_INPUT,
 
+    /** 401 */
+    UNAUTHENTICATED,
+
     /** 404 */
     NOT_FOUND,
 
@@ -162,6 +171,15 @@ open class InvalidInputException(
     violations: List<FieldViolation> = emptyList(),
     cause: Throwable? = null,
 ) : DomainException(ErrorKind.INVALID_INPUT, code, message, violations, cause)
+
+/**
+ * Autenticação recusada (401): credenciais erradas, conta bloqueada, refresh token inválido.
+ * O `code` diz o motivo; só `UNAUTHENTICATED` significa token de acesso ausente ou inválido.
+ */
+open class UnauthenticatedException(
+    code: ErrorCode,
+    message: String,
+) : DomainException(ErrorKind.UNAUTHENTICATED, code, message)
 
 /** Recurso inexistente ou fora do escopo de quem pede (404). */
 open class NotFoundException(

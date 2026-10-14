@@ -1,6 +1,10 @@
 package com.zeny.hotel.shared.web
 
+import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.CurrentActor
+import com.zeny.hotel.shared.DeviceSessionId
 import com.zeny.hotel.shared.Idempotent
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.application.idempotency.IdempotencyDecision
 import com.zeny.hotel.shared.application.idempotency.IdempotencyReservation
 import com.zeny.hotel.shared.application.idempotency.IdempotencyService
@@ -17,15 +21,12 @@ import io.mockk.slot
 import io.mockk.verify
 import jakarta.servlet.FilterChain
 import jakarta.servlet.ServletException
-import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockHttpServletRequest
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.access.AccessDeniedException
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.method.HandlerMethod
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
@@ -39,21 +40,24 @@ class IdempotencyFilterTest {
     private val idempotency = mockk<IdempotencyService>()
     private val reservation = IdempotencyReservation(UUID.fromString("0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d"))
     private val handler = HandlerMethod(MarkedController(), MarkedController::class.java.getMethod("pay"))
-    private val filter = IdempotencyFilter(idempotency, { handler }, ProblemWriter(JsonMapper.builder().build()), 1024)
+    private val actor =
+        Actor(
+            UserId(UUID.fromString("0199d6b8-0000-7000-8000-00000000a11c")),
+            DeviceSessionId(UUID.fromString("0199d6b8-0000-7000-8000-0000000000a0")),
+        )
+    private val currentActor =
+        object : CurrentActor {
+            override fun currentOrNull(): Actor = actor
+        }
+    private val filter =
+        IdempotencyFilter(idempotency, currentActor, { handler }, ProblemWriter(JsonMapper.builder().build()), 1024)
     private val stored = slot<StoredResponse>()
 
     @BeforeEach
     fun setUp() {
-        SecurityContextHolder.getContext().authentication =
-            UsernamePasswordAuthenticationToken.authenticated("alice", null, emptyList())
         every { idempotency.begin(any()) } returns IdempotencyDecision.Proceed(reservation)
         every { idempotency.complete(any(), capture(stored)) } returns true
         every { idempotency.release(any()) } just runs
-    }
-
-    @AfterEach
-    fun tearDown() {
-        SecurityContextHolder.clearContext()
     }
 
     @Test

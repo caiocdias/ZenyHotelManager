@@ -52,6 +52,7 @@ internal object Problems {
     fun statusOf(kind: ErrorKind): HttpStatus =
         when (kind) {
             ErrorKind.INVALID_INPUT -> HttpStatus.BAD_REQUEST
+            ErrorKind.UNAUTHENTICATED -> HttpStatus.UNAUTHORIZED
             ErrorKind.NOT_FOUND -> HttpStatus.NOT_FOUND
             ErrorKind.CONFLICT -> HttpStatus.CONFLICT
             ErrorKind.RULE_VIOLATION -> HttpStatus.UNPROCESSABLE_CONTENT
@@ -122,6 +123,7 @@ internal object Problems {
             ErrorCodes.INVALID_CURSOR to "Cursor de paginação inválido. Recomece da primeira página.",
             ErrorCodes.UNAUTHENTICATED to "Autentique-se para acessar este recurso.",
             ErrorCodes.ACCESS_DENIED to "Você não tem permissão para esta ação.",
+            ErrorCodes.PASSWORD_CHANGE_REQUIRED to "Troque a sua senha antes de continuar.",
             ErrorCodes.NOT_FOUND to "Recurso não encontrado.",
             ErrorCodes.METHOD_NOT_ALLOWED to "Método HTTP não suportado neste recurso.",
             ErrorCodes.NOT_ACCEPTABLE to "Não há representação disponível no formato pedido.",

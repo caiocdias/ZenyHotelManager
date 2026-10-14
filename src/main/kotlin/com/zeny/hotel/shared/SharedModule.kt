@@ -9,13 +9,14 @@ import org.springframework.modulith.PackageInfo
  * módulo e é declarado módulo compartilhado em `@Modulithic` na aplicação.
  *
  * A raiz do pacote é a API pública: `Money`, `Percent`, `TypedId`/`UuidV7`, `DocumentNumber`,
- * `Cpf`, `Cnpj`, `Address`, `FieldCipher` e os conversores JPA desses tipos, além das convenções
- * de API: `ApiV1Controller`, a hierarquia de `DomainException` com `ErrorCode`, a paginação por
- * cursor (`PageParams`, `CursorPage`, `PageCursor`), `ETags` e `@Idempotent`. As regras da
- * idempotência ficam em `application`; as implementações (cifragem AES-GCM, gerador de números
- * por sequence, relógio, outbox, chaves de idempotência, jobs) em `infrastructure`; as da API
- * (erros RFC 9457, segurança mínima, filtro de idempotência, OpenAPI, `GET /api/v1/meta/version`)
- * em `web`.
+ * `Cpf`, `Cnpj`, `Address`, `FieldCipher` e os conversores JPA desses tipos; as convenções de
+ * API: `ApiV1Controller`, a hierarquia de `DomainException` com `ErrorCode`, a paginação por
+ * cursor (`PageParams`, `CursorPage`, `PageCursor`), `ETags` e `@Idempotent`; e o contexto de
+ * segurança: `UserId`, `DeviceSessionId`, `Actor` e a porta `CurrentActor`, implementada por
+ * `iam`. As regras da idempotência ficam em `application`; as implementações (cifragem AES-GCM,
+ * gerador de números por sequence, relógio, outbox, chaves de idempotência, jobs) em
+ * `infrastructure`; as da API (erros RFC 9457, segurança com access token JWT, ator no MDC dos
+ * logs, filtro de idempotência, OpenAPI, `GET /api/v1/meta/version`) em `web`.
  */
 @PackageInfo
 @ApplicationModule(displayName = "Shared kernel", allowedDependencies = [])

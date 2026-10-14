@@ -31,6 +31,18 @@ class ModularityTest {
     }
 
     @Test
+    fun `iam depends only on shared`() {
+        val iam = modules.getModuleByName("iam").orElseThrow()
+
+        iam
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldBe
+            listOf("shared")
+    }
+
+    @Test
     fun `writes module documentation`() {
         Documenter(modules).writeDocumentation()
 

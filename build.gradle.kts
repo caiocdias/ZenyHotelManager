@@ -60,12 +60,16 @@ dependencies {
     implementation(libs.shedlock.provider.jdbc.template)
     runtimeOnly(libs.postgresql)
 
-    // API REST (ARCHITECTURE §7): Spring MVC, validação de DTOs, segurança mínima até o M1
-    // e o springdoc, que gera o contrato api/openapi.yaml e serve o Swagger UI fora de prod.
+    // API REST (ARCHITECTURE §7): Spring MVC, validação de DTOs, Spring Security e o springdoc, que gera o contrato api/openapi.yaml e serve o Swagger UI fora de prod.
     implementation(libs.spring.boot.starter.webmvc)
     implementation(libs.spring.boot.starter.validation)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.springdoc.openapi.starter.webmvc.ui)
+    // Autenticação (ARCHITECTURE §8.1, módulo `iam`): access token JWT (RS256) validado pelo
+    // Resource Server e emitido pelo próprio servidor (Nimbus, que vem com ele); senha e PIN em
+    // Argon2id pelo Argon2PasswordEncoder, que usa a implementação do Bouncy Castle.
+    implementation(libs.spring.boot.starter.security.oauth2.resource.server)
+    implementation(libs.bouncycastle.bcprov)
     // O springdoc (swagger-core) ainda usa Jackson 2; com o módulo Kotlin dele, o contrato marca
     // como `required` as propriedades não nulas dos DTOs e como `nullable` as anuláveis.
     runtimeOnly(libs.jackson2.module.kotlin)

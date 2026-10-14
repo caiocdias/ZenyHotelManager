@@ -1,6 +1,6 @@
 # Ambiente completo do servidor Zeny em docker compose (RNF-01, ARCHITECTURE §15.1).
 #
-#   cp docker/.env.example docker/.env      # e gere a chave de cifragem (README.md)
+#   cp docker/.env.example docker/.env      # e gere as chaves e a senha do admin (README.md)
 #   docker compose -f docker/compose.yaml up -d --build
 #   curl http://localhost/actuator/health/readiness
 #   docker compose -f docker/compose.yaml down
@@ -26,6 +26,13 @@ services:
       ZENY_DB_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
       ZENY_ENCRYPTION_KEYS: ${ZENY_ENCRYPTION_KEYS:?defina ZENY_ENCRYPTION_KEYS no docker/.env (README.md)}
       ZENY_ENCRYPTION_ACTIVE_KEY_ID: ${ZENY_ENCRYPTION_ACTIVE_KEY_ID:?defina ZENY_ENCRYPTION_ACTIVE_KEY_ID no docker/.env}
+      # Chaves RSA de assinatura do access token JWT (ARCHITECTURE §8.1).
+      ZENY_JWT_KEYS: ${ZENY_JWT_KEYS:?defina ZENY_JWT_KEYS no docker/.env (README.md)}
+      ZENY_JWT_ACTIVE_KEY_ID: ${ZENY_JWT_ACTIVE_KEY_ID:?defina ZENY_JWT_ACTIVE_KEY_ID no docker/.env}
+      # Administrador inicial: usado só no primeiro boot, com o banco sem usuários (a aplicação não
+      # sobe sem ele nesse caso). Depois, pode ficar vazio.
+      ZENY_ADMIN_LOGIN: ${ZENY_ADMIN_LOGIN:-}
+      ZENY_ADMIN_PASSWORD: ${ZENY_ADMIN_PASSWORD:-}
     # Sem porta publicada: o acesso de fora passa pelo proxy. Na rede do compose, a API fica em
     # http://api:8080 (o Prometheus raspa http://api:8080/actuator/prometheus).
     expose:
