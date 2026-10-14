@@ -158,6 +158,8 @@ class ApiSecurityTest(
         operationIds.toSet().size shouldBe operationIds.size
         operationIds.filter { Regex("_\\d+$").containsMatchIn(it) }.shouldBeEmpty()
         doc["components"]["schemas"].propertyNames().toList() shouldContain "Problem"
+        // O cabeçalho Idempotency-Key fica documentado mesmo antes de haver operação de produção marcada.
+        doc["components"]["parameters"]["IdempotencyKey"]["name"].asString() shouldBe "Idempotency-Key"
         doc["servers"].values().map { it["url"].asString() } shouldBe listOf("/")
         // Propriedades Kotlin não nulas são obrigatórias no contrato (SDKs dos clientes).
         doc["components"]["schemas"]["ServerVersionResponse"]["required"]

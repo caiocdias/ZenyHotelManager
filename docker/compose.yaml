@@ -1,0 +1,112 @@
+# Ambiente completo do servidor Zeny em docker compose (RNF-01, ARCHITECTURE §15.1).
+#
+#   cp docker/.env.example docker/.env      # e gere a chave de cifragem (README.md)
+#   docker compose -f docker/compose.yaml up -d --build
+#   curl http://localhost/actuator/health/readiness
+#   docker compose -f docker/compose.yaml down
+#
+# Serviços: api (servidor), db (PostgreSQL 18), storage (MinIO, com o bucket criado pelo
+# storage-init) e proxy (Caddy, só HTTP local). Nenhuma credencial fica neste arquivo: todas vêm
+# do docker/.env, que o Git ignora; sem elas o compose para com a mensagem da variável que falta.
+# TLS público, backup e a escolha nuvem × local ficam para o M8.
+
+name: zeny
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: zeny-hotel-manager:dev
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${ZENY_PROFILE:-prod}
+      ZENY_DB_URL: jdbc:postgresql://db:5432/${ZENY_DB_NAME:-zeny}
+      ZENY_DB_USERNAME: ${ZENY_DB_USERNAME:?defina ZENY_DB_USERNAME no docker/.env}
+      ZENY_DB_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
+      ZENY_ENCRYPTION_KEYS: ${ZENY_ENCRYPTION_KEYS:?defina ZENY_ENCRYPTION_KEYS no docker/.env (README.md)}
+      ZENY_ENCRYPTION_ACTIVE_KEY_ID: ${ZENY_ENCRYPTION_ACTIVE_KEY_ID:?defina ZENY_ENCRYPTION_ACTIVE_KEY_ID no docker/.env}
+    # Sem porta publicada: o acesso de fora passa pelo proxy. Na rede do compose, a API fica em
+    # http://api:8080 (o Prometheus raspa http://api:8080/actuator/prometheus).
+    expose:
+      - "8080"
+    # O HEALTHCHECK (readiness) vem da imagem.
+    depends_on:
+      db:
+        condition: service_healthy
+    stop_grace_period: 40s
+
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${ZENY_DB_NAME:-zeny}
+      POSTGRES_USER: ${ZENY_DB_USERNAME:?defina ZENY_DB_USERNAME no docker/.env}
+      POSTGRES_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
+    volumes:
+      # O postgres:18 guarda os dados em /var/lib/postgresql/18/docker; o volume fica um nível acima.
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # MinIO (D14). As imagens oficiais minio/minio deixaram de ser publicadas e o repositório foi
+  # arquivado; esta é a distribuição comunitária mantida pelo Pigsty, compatível com a original.
+  storage:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
+      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # Cria o bucket inicial e termina (idempotente: não falha se o bucket já existe).
+  storage-init:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set zeny http://storage:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        && mc mb --ignore-existing "zeny/$$ZENY_STORAGE_BUCKET"
+    environment:
+      MINIO_ROOT_USER: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
+      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+      ZENY_STORAGE_BUCKET: ${ZENY_STORAGE_BUCKET:-zeny-files}
+    depends_on:
+      storage:
+        condition: service_healthy
+    restart: "no"
+
+  proxy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    ports:
+      # Só na máquina local por padrão; ZENY_HTTP_ADDRESS=0.0.0.0 abre para a rede (ex.: celular de teste).
+      - "${ZENY_HTTP_ADDRESS:-127.0.0.1}:${ZENY_HTTP_PORT:-80}:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      - api
+
+  # backup (pgBackRest ou WAL-G, ARCHITECTURE §15.3): entra no M8, junto com o TLS público.
+  # backup:
+  #   image: ...
+  #   depends_on: [db]
+
+volumes:
+  db-data:
+  storage-data:
+  proxy-data:
+  proxy-config:

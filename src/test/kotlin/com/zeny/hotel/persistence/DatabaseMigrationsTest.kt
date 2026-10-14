@@ -24,8 +24,8 @@ import kotlin.io.path.name
 
 /**
  * Aplica todas as migrações do zero num PostgreSQL 18 real (Testcontainers) e confere o que
- * a fundação precisa: `btree_gist`, a tabela do Event Publication Registry e a do ShedLock,
- * todas no schema `shared`, e um schema por pasta de módulo.
+ * a fundação precisa: `btree_gist`, a tabela do Event Publication Registry, a do ShedLock e a
+ * das chaves de idempotência, todas no schema `shared`, e um schema por pasta de módulo.
  */
 @IntegrationTest
 class DatabaseMigrationsTest(
@@ -138,6 +138,24 @@ class DatabaseMigrationsTest(
                 "lock_until" to "timestamp without time zone",
                 "locked_at" to "timestamp without time zone",
                 "locked_by" to "character varying",
+            )
+    }
+
+    @Test
+    fun `creates the idempotency key table in shared`() {
+        columnsOf("shared", "idempotency_key") shouldContainExactly
+            mapOf(
+                "id" to "uuid",
+                "scope" to "character varying",
+                "idempotency_key" to "character varying",
+                "request_hash" to "character",
+                "status" to "character varying",
+                "response_status" to "integer",
+                "response_headers" to "text",
+                "response_body" to "text",
+                "created_at" to "timestamp with time zone",
+                "completed_at" to "timestamp with time zone",
+                "expires_at" to "timestamp with time zone",
             )
     }
 

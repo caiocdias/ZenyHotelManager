@@ -3,9 +3,13 @@ package com.zeny.hotel.shared.web
 import com.zeny.hotel.shared.Cnpj
 import com.zeny.hotel.shared.Cpf
 import com.zeny.hotel.shared.DocumentNumber
+import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
+import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
+import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import io.swagger.v3.oas.models.OpenAPI
+import io.swagger.v3.oas.models.headers.Header
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.media.ArraySchema
 import io.swagger.v3.oas.models.media.Content
@@ -13,9 +17,12 @@ import io.swagger.v3.oas.models.media.IntegerSchema
 import io.swagger.v3.oas.models.media.ObjectSchema
 import io.swagger.v3.oas.models.media.Schema
 import io.swagger.v3.oas.models.media.StringSchema
+import io.swagger.v3.oas.models.parameters.HeaderParameter
+import io.swagger.v3.oas.models.parameters.Parameter
 import io.swagger.v3.oas.models.responses.ApiResponse
 import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springdoc.core.customizers.OperationCustomizer
 import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -26,7 +33,8 @@ import io.swagger.v3.oas.models.media.MediaType as OpenApiMediaType
 /**
  * Contrato OpenAPI gerado pelo springdoc (ARCHITECTURE §7, D6), versionado em
  * `api/openapi.yaml`: informações da API, os tipos de valor do kernel como `string` (como saem
- * no JSON) e o problema RFC 9457 como resposta `default` de toda operação.
+ * no JSON), o problema RFC 9457 como resposta `default` de toda operação e o cabeçalho
+ * `Idempotency-Key` nas operações marcadas com [Idempotent].
  */
 @Configuration(proxyBeanMethods = false)
 class OpenApiConfiguration {
@@ -40,8 +48,9 @@ class OpenApiConfiguration {
                     .description(
                         "API do servidor do Zeny Hotel Manager. Erros em RFC 9457 (application/problem+json) com " +
                             "`code` estável; paginação por cursor (`cursor`/`limit`); concorrência otimista com " +
-                            "`ETag`/`If-Match`; instantes em UTC (ISO-8601 com `Z`), datas `YYYY-MM-DD` e dinheiro " +
-                            "como string decimal em BRL.",
+                            "`ETag`/`If-Match`; `Idempotency-Key` obrigatório nas operações com efeito financeiro ou " +
+                            "externo (resposta guardada por 24h); instantes em UTC (ISO-8601 com `Z`), datas " +
+                            "`YYYY-MM-DD` e dinheiro como string decimal em BRL.",
                     ),
             ).servers(listOf(Server().url("/").description("Este servidor")))
 
@@ -51,19 +60,79 @@ class OpenApiConfiguration {
             openApi.components
                 .addSchemas(FIELD_VIOLATION, fieldViolationSchema())
                 .addSchemas(PROBLEM, problemSchema())
-            val problemResponse =
-                ApiResponse()
-                    .description("Erro no formato RFC 9457, com `code` estável.")
-                    .content(
-                        Content().addMediaType(
-                            MediaType.APPLICATION_PROBLEM_JSON_VALUE,
-                            OpenApiMediaType().schema(Schema<Any>().`$ref`(ref(PROBLEM))),
-                        ),
-                    )
+                .addParameters(IDEMPOTENCY_KEY, idempotencyKeyParameter())
+                .addHeaders(IDEMPOTENT_REPLAYED, idempotentReplayedHeader())
+            val problemResponse = problemResponse("Erro no formato RFC 9457, com `code` estável.")
             openApi.paths.orEmpty().values.flatMap { it.readOperations() }.forEach { operation ->
                 operation.responses.addApiResponse("default", problemResponse)
             }
         }
+
+    /**
+     * Operações marcadas com [Idempotent]: o cabeçalho `Idempotency-Key` obrigatório, o
+     * `Idempotent-Replayed` nas respostas de sucesso e as respostas 409 e 422 da idempotência
+     * (sem trocar uma 409/422 que a operação já documente).
+     */
+    @Bean
+    fun idempotentOperationCustomizer(): OperationCustomizer =
+        OperationCustomizer { operation, handlerMethod ->
+            if (handlerMethod.hasMethodAnnotation(Idempotent::class.java)) {
+                operation.addParametersItem(Parameter().`$ref`(ref("parameters", IDEMPOTENCY_KEY)))
+                operation.responses
+                    .orEmpty()
+                    .filterKeys { it.startsWith("2") }
+                    .values
+                    .forEach {
+                        it.addHeaderObject(
+                            IDEMPOTENT_REPLAYED_HEADER,
+                            Header().`$ref`(ref("headers", IDEMPOTENT_REPLAYED)),
+                        )
+                    }
+                operation.responses.putIfAbsent(
+                    "409",
+                    problemResponse("`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda está em andamento."),
+                )
+                operation.responses.putIfAbsent(
+                    "422",
+                    problemResponse("`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisição."),
+                )
+            }
+            operation
+        }
+
+    private fun problemResponse(description: String): ApiResponse =
+        ApiResponse()
+            .description(description)
+            .content(
+                Content().addMediaType(
+                    MediaType.APPLICATION_PROBLEM_JSON_VALUE,
+                    OpenApiMediaType().schema(Schema<Any>().`$ref`(ref(PROBLEM))),
+                ),
+            )
+
+    private fun idempotencyKeyParameter(): Parameter =
+        HeaderParameter()
+            .name(IDEMPOTENCY_KEY_HEADER)
+            .required(true)
+            .description(
+                "Identificador único da operação, gerado pelo cliente (um UUID). Repetir a mesma requisição com a " +
+                    "mesma chave em até 24h devolve a resposta guardada, sem executar de novo (com o cabeçalho " +
+                    "`Idempotent-Replayed: true`). Sem chave: 400 `IDEMPOTENCY_KEY_REQUIRED`; malformada: 400 " +
+                    "`IDEMPOTENCY_KEY_INVALID`; em andamento: 409 `IDEMPOTENCY_KEY_IN_USE`; usada com outra " +
+                    "requisição: 422 `IDEMPOTENCY_KEY_REUSED`. A chave vale por usuário.",
+            ).schema(
+                StringSchema()
+                    .minLength(1)
+                    .maxLength(MAX_IDEMPOTENCY_KEY_LENGTH)
+                    .pattern("^[\\x21-\\x7E]+$")
+                    .example("0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d"),
+            )
+
+    private fun idempotentReplayedHeader(): Header =
+        Header()
+            .description(
+                "`true` quando a resposta é a guardada de uma requisição anterior com a mesma `Idempotency-Key`.",
+            ).schema(StringSchema().addEnumItem("true"))
 
     private fun problemSchema(): Schema<Any> =
         ObjectSchema()
@@ -89,7 +158,9 @@ class OpenApiConfiguration {
                             "MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, NOT_FOUND, " +
                             "METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE, " +
                             "UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED, " +
-                            "REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE. Cada módulo acrescenta os seus.",
+                            "IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE, " +
+                            "IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE. Cada " +
+                            "módulo acrescenta os seus.",
                     ).example("VALIDATION_FAILED"),
             ).addProperty(
                 "errors",
@@ -119,8 +190,16 @@ class OpenApiConfiguration {
     private companion object {
         const val PROBLEM = "Problem"
         const val FIELD_VIOLATION = "FieldViolation"
+        const val IDEMPOTENCY_KEY = "IdempotencyKey"
+        const val IDEMPOTENT_REPLAYED = "IdempotentReplayed"
+        const val MAX_IDEMPOTENCY_KEY_LENGTH = 255
 
-        fun ref(schema: String) = "#/components/schemas/$schema"
+        fun ref(schema: String) = ref("schemas", schema)
+
+        fun ref(
+            section: String,
+            name: String,
+        ) = "#/components/$section/$name"
 
         init {
             // Os tipos de valor do kernel saem no JSON como texto (@JsonValue); o contrato tem de dizer o mesmo.

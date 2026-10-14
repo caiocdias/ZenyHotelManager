@@ -1,5 +1,7 @@
 # Zeny Hotel Manager — servidor
 
+[![CI](https://github.com/caiocdias/ZenyHotelManager/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/caiocdias/ZenyHotelManager/actions/workflows/ci.yml)
+
 Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 UHs, construído como monólito modular em Kotlin com Spring Boot e Spring Modulith. Os clientes (desktop, mobile, PDV, tela de produção e agente de impressão) ficam em outros repositórios.
 
 ## Documentação
@@ -12,7 +14,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 ## Pré-requisitos
 
 - JDK 25. O Gradle vem pelo wrapper (`./gradlew`); não use o `gradle` instalado pelo sistema.
-- Docker: os testes de integração sobem um `postgres:18` pelo Testcontainers (`./gradlew build` e `./gradlew test` precisam dele), e a etapa E06 do M0 traz o ambiente em `docker compose`.
+- Docker com o Compose v2: os testes de integração sobem um `postgres:18` pelo Testcontainers (`./gradlew build` e `./gradlew test` precisam dele), e o ambiente completo roda em `docker compose` (abaixo).
 
 ## Comandos
 
@@ -25,13 +27,14 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Relatório de cobertura (Kover) | `./gradlew koverHtmlReport` |
 | Conferir se `api/openapi.yaml` está atualizado (já roda no build) | `./gradlew checkOpenApi` |
 | Regenerar `api/openapi.yaml` depois de mudar a API | `./gradlew updateOpenApi` |
+| Procurar breaking change na API v1 contra a `main` (precisa de git e Docker) | `.github/scripts/check-api-breaking.sh` |
 | Subir a aplicação localmente (precisa do banco e das chaves de cifragem, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
 Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
 
 ## Banco de dados
 
-PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)). A conexão vem das variáveis `ZENY_DB_URL`, `ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`; no profile `local` o padrão é um banco `zeny` em `localhost:5432`, com usuário e senha `zeny`. Para subir esse banco antes do compose da E06:
+PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)). A conexão vem das variáveis `ZENY_DB_URL`, `ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`; no profile `local` o padrão é um banco `zeny` em `localhost:5432`, com usuário e senha `zeny`. Para rodar a aplicação fora do compose (`bootRun`), suba só esse banco:
 
 ```bash
 docker run -d --name zeny-db -e POSTGRES_DB=zeny -e POSTGRES_USER=zeny -e POSTGRES_PASSWORD=zeny -p 5432:5432 postgres:18
@@ -45,9 +48,59 @@ Dados sensíveis são cifrados com AES-256-GCM (ARCHITECTURE §8.3). As chaves v
 export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACTIVE_KEY_ID=dev
 ```
 
+## Ambiente completo em Docker
+
+O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket criado pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local). Backup e TLS público ficam para o M8.
+
+1. Crie o `docker/.env` a partir do modelo e gere a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela):
+
+   ```bash
+   cp docker/.env.example docker/.env
+   sed -i "s|^ZENY_ENCRYPTION_KEYS=.*|ZENY_ENCRYPTION_KEYS=dev:$(openssl rand -base64 32)|" docker/.env
+   ```
+
+   O `docker/.env` é ignorado pelo Git. Os valores do modelo são só de desenvolvimento; num ambiente real, troque todos.
+
+2. Suba (a primeira vez compila a imagem, o que leva alguns minutos) e confira a readiness pelo proxy:
+
+   ```bash
+   docker compose -f docker/compose.yaml up -d --build
+   curl http://localhost/actuator/health/readiness    # {"status":"UP"}
+   curl http://localhost/api/v1/meta/version
+   ```
+
+   A porta e o endereço do proxy vêm de `ZENY_HTTP_PORT` (80) e `ZENY_HTTP_ADDRESS` (`127.0.0.1`; use `0.0.0.0` para abrir à rede local). O profile padrão é `prod` (logs em JSON, sem Swagger UI); com `ZENY_PROFILE=local` no `docker/.env`, o Swagger UI fica em `/swagger-ui.html`.
+
+3. Acompanhe e derrube:
+
+   ```bash
+   docker compose -f docker/compose.yaml ps                # estado e health de cada serviço
+   docker compose -f docker/compose.yaml logs -f api
+   docker compose -f docker/compose.yaml down              # mantém os volumes (banco e arquivos)
+   docker compose -f docker/compose.yaml down -v           # apaga também os volumes
+   ```
+
+Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-manager .` (na raiz; ela roda como o usuário não-root `zeny` e não traz profile nem segredos, que vêm do ambiente).
+
+## Observabilidade
+
+- Health: `GET /actuator/health/liveness` (processo vivo) e `GET /actuator/health/readiness` (pronto para tráfego; `DOWN` com o banco fora). São os únicos caminhos do actuator abertos, junto com o `/actuator/prometheus`; os demais endpoints não existem.
+- Métricas: `GET /actuator/prometheus`, só na rede interna do compose (`http://api:8080/actuator/prometheus`; o proxy responde 404). Além das técnicas (JVM, HTTP, pool do banco), `zeny_outbox_publications{state="pending|failed"}` e `zeny_outbox_publications_oldest_age_seconds` medem o outbox de eventos; regras de alerta em [`docker/prometheus/alerts.yaml`](docker/prometheus/alerts.yaml).
+- Logs: no profile `prod`, uma linha JSON por evento (formato ECS), com `traceId` e `spanId` nas requisições; o servidor aceita e propaga o cabeçalho `traceparent` (W3C). No `local`, texto legível.
+
 ## API
 
-REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Até o M1 (autenticação JWT), só `GET /api/v1/meta/version` responde sem autenticação; o resto da API recusa com `401`. Como escrever um controller, lançar erro de domínio e paginar: [`CLAUDE.md`](CLAUDE.md).
+REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Até o M1 (autenticação JWT), só `GET /api/v1/meta/version` responde sem autenticação; o resto da API recusa com `401`. Como escrever um controller, lançar erro de domínio, paginar e marcar um endpoint idempotente: [`CLAUDE.md`](CLAUDE.md).
+
+## Integração contínua
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (GitHub Actions) roda em todo push na `main` e em todo pull request. São três jobs em paralelo, e qualquer falha reprova a execução:
+
+- **Build, testes e contrato:** com JDK 25 e cache do Gradle, roda `./gradlew build` (compilação, testes unitários e de integração com PostgreSQL pelo Testcontainers, verificação de módulos do Spring Modulith, ArchUnit, detekt, ktlint, cobertura e conferência do `api/openapi.yaml`) e `./gradlew checkOpenApi`. Publica como artefatos a documentação dos módulos (`spring-modulith-docs`) e o contrato (`openapi`); se falhar, também os relatórios dos testes.
+- **Compatibilidade da API:** o [oasdiff](https://github.com/oasdiff/oasdiff) compara o `api/openapi.yaml` com o da `main` (num PR, a ponta da branch de destino; num push, o commit anterior ao push ou, sem ele, o commit pai) e reprova *breaking changes* em `/api/v1`, como endpoint, parâmetro ou propriedade removidos, tipo trocado ou campo que passa a ser obrigatório. Mudança incompatível vai para `/api/v2`; remover um endpoint v1 só passa se ele já estava marcado como `deprecated`. O mesmo teste roda localmente com `.github/scripts/check-api-breaking.sh`.
+- **Imagem Docker:** constrói `docker/Dockerfile` sem publicar.
+
+A CI não publica imagem nem faz deploy (M8) e não usa segredos. As actions ficam fixadas por SHA de commit, e o Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) abre uma vez por mês um PR que as atualiza. Como o trabalho é direto na `main`, uma falha que entra por push só aparece depois, com a CI vermelha, sem ser bloqueada: rode `./gradlew build` e o `check-api-breaking.sh` antes de subir.
 
 ## Convenções de módulo
 

@@ -1,0 +1,15 @@
+# Atualização mensal das actions do .github/workflows/ (decidido pelo usuário em 2026-10-13).
+# As actions ficam fixadas por SHA de commit; o Dependabot troca o SHA e o comentário de versão
+# juntos, num único PR por mês. Dependências do Gradle e imagens Docker não entram aqui.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: ci

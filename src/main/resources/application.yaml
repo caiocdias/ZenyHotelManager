@@ -33,6 +33,9 @@ spring:
       # Toda sessão em UTC, independente do fuso da JVM ou do servidor (RN-01, D16): o driver
       # do PostgreSQL abre a sessão no fuso da JVM, e casts/`::date`/`to_char` dependem dele.
       connection-init-sql: SET TIME ZONE 'UTC'
+      # Espera máxima por uma conexão (padrão do Hikari: 30 s). Com o banco fora, a readiness
+      # (que pede uma conexão) responde DOWN em cerca de 5 s, dentro do timeout do HEALTHCHECK (10 s).
+      connection-timeout: 5000
 
   jpa:
     open-in-view: false
@@ -78,12 +81,71 @@ springdoc:
   writer-with-default-pretty-printer: true
   default-produces-media-type: application/json
 
+# Observabilidade (ARCHITECTURE §16). Do actuator, só três caminhos existem na web, todos sem
+# autenticação (shared/web/SecurityConfiguration): /actuator/health/liveness,
+# /actuator/health/readiness e /actuator/prometheus. Os demais endpoints nem são criados
+# (acesso padrão `none`), e o /actuator/health agregado é negado pela segurança.
+management:
+  endpoints:
+    access:
+      default: none
+    web:
+      exposure:
+        include: health, prometheus
+      # Sem a página /actuator que lista os endpoints.
+      discovery:
+        enabled: false
+  endpoint:
+    health:
+      access: read-only
+      # Grupos liveness e readiness também fora do Kubernetes (HEALTHCHECK da imagem, compose).
+      probes:
+        enabled: true
+      # Só o estado agregado: nada de componentes, versões ou mensagens de erro.
+      show-components: never
+      show-details: never
+      group:
+        # Pronta para receber tráfego só com o banco respondendo. A liveness fica só com o
+        # estado da aplicação: banco fora não é motivo para reiniciar o processo.
+        readiness:
+          include: readinessState, db
+    prometheus:
+      access: read-only
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  # traceId/spanId em toda requisição (MDC dos logs) e propagação W3C `traceparent`. Sem
+  # exportador de spans por enquanto (OpenTelemetry opcional, ARCHITECTURE §16).
+  tracing:
+    propagation:
+      type: w3c
+
+logging:
+  level:
+    # O monitor de staleness do Modulith escreve três linhas INFO por minuto ("No stale
+    # publications…"); publicações paradas aparecem na métrica do outbox (OutboxMetrics).
+    org.springframework.modulith.events.core.DefaultEventPublicationRegistry: WARN
+
 zeny:
   events:
     resubmission:
       # Reprocessamento das publicações com falha (ARCHITECTURE §13: a cada minuto).
       interval: PT1M
       initial-delay: PT1M
+    # Gauges do outbox (shared.event_publication) no Prometheus: o OutboxMetrics recalcula a
+    # contagem e a idade da mais antiga das publicações pendentes e com falha neste intervalo,
+    # para a raspagem não depender do banco.
+    metrics:
+      refresh-interval: PT30S
+  # Idempotency-Key nos endpoints @Idempotent (ARCHITECTURE §7): a resposta fica guardada por
+  # 24h em shared.idempotency_key; o corpo da requisição é lido inteiro para o hash, até o limite
+  # (acima, 413). O job de expurgo apaga as chaves vencidas, sob trava do ShedLock.
+  idempotency:
+    retention: PT24H
+    max-request-body-size: 1MB
+    purge:
+      interval: PT1H
+      initial-delay: PT5M
   # Cifragem de campo (ARCHITECTURE §8.3). Sem valor padrão em nenhum profile: sem as
   # variáveis a aplicação não sobe. ZENY_ENCRYPTION_KEYS = "id:base64,id:base64" (32 bytes
   # cada, AES-256); ZENY_ENCRYPTION_ACTIVE_KEY_ID = id da chave que cifra os valores novos.
@@ -122,6 +184,11 @@ springdoc:
   swagger-ui:
     enabled: false
 
+# Logs estruturados em JSON (ARCHITECTURE §16): uma linha por evento, no formato ECS (Elastic
+# Common Schema), com `traceId` e `spanId` do MDC nas requisições.
 logging:
+  structured:
+    format:
+      console: ecs
   level:
     root: INFO

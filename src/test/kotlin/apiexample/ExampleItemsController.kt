@@ -6,6 +6,7 @@ import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ErrorCode
+import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
@@ -37,10 +38,13 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.ConcurrentSkipListMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Controller de exemplo, só de teste, que exercita as convenções da API (ARCHITECTURE §7):
- * prefixo `/api/v1`, erros RFC 9457, paginação por cursor, `ETag`/`If-Match` e serialização.
+ * prefixo `/api/v1`, erros RFC 9457, paginação por cursor, `ETag`/`If-Match`, serialização e
+ * `Idempotency-Key` (o pagamento, `POST /examples/{id}/payments`).
  * Fica fora do pacote base de propósito: não entra no contrato de produção nem na varredura
  * de componentes; os testes o importam com [ExampleApiConfiguration].
  */
@@ -131,6 +135,32 @@ class ExampleItemsController(
         return current.copy(price = current.price - current.price * request.percent).toResponse()
     }
 
+    /**
+     * Efeito que não pode acontecer em dobro (como um pagamento real): exige `Idempotency-Key`.
+     * Cada execução conta em [ExampleItemStore.paymentAttempts]; o gancho
+     * [ExampleItemStore.paymentHook] deixa o teste segurar ou derrubar a execução no meio.
+     */
+    @PostMapping("/{id}/payments")
+    @Idempotent
+    @Operation(operationId = "payExampleItem")
+    fun pay(
+        @PathVariable id: UUID,
+        @RequestBody request: ExamplePaymentRequest,
+    ): ResponseEntity<ExamplePaymentResponse> {
+        store.paymentAttempts.incrementAndGet()
+        val item = store.find(id)
+        if (request.amount > item.price) {
+            throw BusinessRuleException(ErrorCode("LIMIT_EXCEEDED"), "O pagamento passa do valor do item.")
+        }
+        store.paymentHook()
+        val payment = ExamplePaymentResponse(UuidV7.generate(), id, request.amount)
+        store.payments += payment
+        return ResponseEntity
+            .created(URI.create("/api/v1/examples/$id/payments/${payment.id}"))
+            .eTag(ETags.of(0))
+            .body(payment)
+    }
+
     /** Restrição direto no parâmetro: o Spring valida pelo método (`HandlerMethodValidationException`). */
     @GetMapping("/search")
     @Operation(operationId = "searchExampleItems")
@@ -173,6 +203,16 @@ data class DiscountRequest(
     val percent: Percent,
 )
 
+data class ExamplePaymentRequest(
+    val amount: Money,
+)
+
+data class ExamplePaymentResponse(
+    val id: UUID,
+    val itemId: UUID,
+    val amount: Money,
+)
+
 data class ExampleItemResponse(
     val id: UUID,
     val name: String,
@@ -197,6 +237,18 @@ data class ExampleItem(
 /** Armazém em memória do exemplo, em ordem de id (UUIDv7, logo em ordem de criação). */
 class ExampleItemStore {
     val items = ConcurrentSkipListMap<UUID, ExampleItem>()
+    val payments = CopyOnWriteArrayList<ExamplePaymentResponse>()
+    val paymentAttempts = AtomicInteger()
+
+    @Volatile
+    var paymentHook: () -> Unit = {}
+
+    fun reset() {
+        items.clear()
+        payments.clear()
+        paymentAttempts.set(0)
+        paymentHook = {}
+    }
 
     fun find(id: UUID): ExampleItem =
         items[id] ?: throw NotFoundException(ErrorCode("EXAMPLE_NOT_FOUND"), "Item de exemplo não encontrado.")

@@ -1,0 +1,42 @@
+# Regras de alerta do Prometheus para o servidor Zeny (ARCHITECTURE §16). Ainda não há
+# Prometheus no compose: carregue este arquivo em `rule_files` do Prometheus que raspar
+# http://api:8080/actuator/prometheus. Conferir: promtool check rules docker/prometheus/alerts.yaml
+groups:
+  - name: zeny-outbox
+    rules:
+      # O reprocessamento não tem limite de tentativas (decisão da revisão humana da E02): uma
+      # publicação FAILED por muito tempo indica listener com defeito ou dependência fora.
+      - alert: ZenyOutboxFailedPublications
+        expr: zeny_outbox_publications{state="failed"} > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Há publicações com falha no outbox há mais de 15 minutos"
+          description: "{{ $value }} publicação(ões) FAILED em shared.event_publication; veja os logs do listener."
+      - alert: ZenyOutboxFailedPublicationTooOld
+        expr: zeny_outbox_publications_oldest_age_seconds{state="failed"} > 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "Publicação com falha no outbox há mais de 1 hora"
+          description: "A publicação FAILED mais antiga tem {{ $value | humanizeDuration }}."
+      # Pendentes envelhecendo: os listeners não estão dando conta ou pararam (aos 10 min o
+      # monitor de staleness as passa a FAILED).
+      - alert: ZenyOutboxPendingPublicationsStuck
+        expr: zeny_outbox_publications_oldest_age_seconds{state="pending"} > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Publicação pendente no outbox há mais de 5 minutos"
+          description: "A publicação pendente mais antiga tem {{ $value | humanizeDuration }}."
+      # NaN: o servidor não conseguiu ler o outbox (banco fora).
+      - alert: ZenyOutboxMetricsUnavailable
+        expr: zeny_outbox_publications != zeny_outbox_publications
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Métricas do outbox indisponíveis"
+          description: "O servidor não consegue ler shared.event_publication."

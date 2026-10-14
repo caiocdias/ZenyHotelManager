@@ -2,8 +2,9 @@ openapi: 3.0.1
 info:
   description: "API do servidor do Zeny Hotel Manager. Erros em RFC 9457 (application/problem+json)\
     \ com `code` estável; paginação por cursor (`cursor`/`limit`); concorrência otimista\
-    \ com `ETag`/`If-Match`; instantes em UTC (ISO-8601 com `Z`), datas `YYYY-MM-DD`\
-    \ e dinheiro como string decimal em BRL."
+    \ com `ETag`/`If-Match`; `Idempotency-Key` obrigatório nas operações com efeito\
+    \ financeiro ou externo (resposta guardada por 24h); instantes em UTC (ISO-8601\
+    \ com `Z`), datas `YYYY-MM-DD` e dinheiro como string decimal em BRL."
   title: Zeny Hotel Manager API
   version: v1
 servers:
@@ -35,6 +36,31 @@ paths:
       tags:
       - meta
 components:
+  headers:
+    IdempotentReplayed:
+      description: '`true` quando a resposta é a guardada de uma requisição anterior
+        com a mesma `Idempotency-Key`.'
+      schema:
+        type: string
+        enum:
+        - "true"
+  parameters:
+    IdempotencyKey:
+      description: "Identificador único da operação, gerado pelo cliente (um UUID).\
+        \ Repetir a mesma requisição com a mesma chave em até 24h devolve a resposta\
+        \ guardada, sem executar de novo (com o cabeçalho `Idempotent-Replayed: true`).\
+        \ Sem chave: 400 `IDEMPOTENCY_KEY_REQUIRED`; malformada: 400 `IDEMPOTENCY_KEY_INVALID`;\
+        \ em andamento: 409 `IDEMPOTENCY_KEY_IN_USE`; usada com outra requisição:\
+        \ 422 `IDEMPOTENCY_KEY_REUSED`. A chave vale por usuário."
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema:
+        type: string
+        example: 0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d
+        maxLength: 255
+        minLength: 1
+        pattern: "^[\\x21-\\x7E]+$"
   schemas:
     FieldViolation:
       type: object
@@ -68,8 +94,9 @@ components:
             \ MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, NOT_FOUND,\
             \ METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE,\
             \ UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED,\
-            \ REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE. Cada módulo acrescenta\
-            \ os seus."
+            \ IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE,\
+            \ IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE.\
+            \ Cada módulo acrescenta os seus."
           example: VALIDATION_FAILED
           pattern: "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
         detail:

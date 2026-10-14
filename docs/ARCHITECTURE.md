@@ -336,7 +336,7 @@ sequenceDiagram
 |---|---|
 | Base e versão | `/api/v1`. Mudança incompatível vai para `/api/v2`. Endpoints descontinuados recebem os headers `Deprecation`/`Sunset`. |
 | Recursos | Inglês, plural, kebab-case: `/reservations`, `/housekeeping-tasks`. Transições de estado como subrecurso de ação: `POST /reservations/{id}/check-in`. |
-| Contrato | Gerado com springdoc no build em `api/openapi.yaml` e versionado. A CI regenera e falha se houver diff não commitado. O `oasdiff` bloqueia *breaking changes* em `v1`. |
+| Contrato | Gerado com springdoc no build em `api/openapi.yaml` e versionado. A CI regenera e falha se houver diff não commitado. O `oasdiff` bloqueia *breaking changes* em `v1`. A exceção é remover um endpoint que já estava marcado como `deprecated` no contrato anterior (e, se ele tiver `x-sunset`, só depois dessa data): primeiro se deprecia, depois se remove. |
 | Erros | RFC 9457 (`application/problem+json`) com `code` estável (`ROOM_NOT_READY`, `APPROVAL_REQUIRED`, `LIMIT_EXCEEDED`), `detail` e `errors[]` por campo |
 | Idempotência | Header `Idempotency-Key` obrigatório em POSTs com efeito financeiro ou externo (pagamentos, lançamentos, emissão fiscal). A resposta fica guardada por 24h. |
 | Concorrência | `ETag` com a versão do agregado; `If-Match` nas alterações; `412` em conflito |
@@ -604,7 +604,7 @@ A decisão está em aberto (SPEC Q-06). O código é o mesmo nos dois casos; mud
 | Contrato | Geração do OpenAPI e `oasdiff` | Sem quebra silenciosa da API |
 | Estático | detekt, ktlint, Kover (cobertura) | Estilo e cobertura nos módulos críticos |
 
-A CI (provedor a definir) roda build, testes, verificação de módulos, diff do contrato e build da imagem. O Spring Modulith também gera a **documentação dos módulos** (diagramas e canvas) como artefato do build.
+A CI (GitHub Actions, `.github/workflows/ci.yml`) roda build, testes, verificação de módulos, diff do contrato e build da imagem. O Spring Modulith também gera a **documentação dos módulos** (diagramas e canvas) como artefato do build.
 
 ---
 

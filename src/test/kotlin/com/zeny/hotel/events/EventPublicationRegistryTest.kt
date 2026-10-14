@@ -118,7 +118,8 @@ class EventPublicationRegistryTest(
         ).profiles("local")
             .initializers(PostgresInitializer(), TestEncryptionKeysInitializer())
             // Como argumentos de linha de comando: `properties()` teria prioridade abaixo do application.yaml.
-            .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED")
+            // Porta aleatória: a 8080 pode estar ocupada (bootRun, proxy do compose).
+            .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED", "--server.port=0")
             .use { _ ->
                 awaitPublication(event) { it.status == "COMPLETED" && it.completedAt != null }
             }

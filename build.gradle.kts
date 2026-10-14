@@ -70,9 +70,20 @@ dependencies {
     // como `required` as propriedades não nulas dos DTOs e como `nullable` as anuláveis.
     runtimeOnly(libs.jackson2.module.kotlin)
 
+    // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
+    // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
+    // que põe `traceId`/`spanId` no MDC dos logs e propaga o `traceparent` (W3C). Nenhum
+    // exportador de spans está ligado: o OpenTelemetry fica opcional.
+    implementation(libs.spring.boot.starter.actuator)
+    runtimeOnly(libs.micrometer.registry.prometheus)
+    implementation(libs.spring.boot.micrometer.tracing.opentelemetry)
+    implementation(libs.micrometer.tracing.bridge.otel)
+
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.spring.boot.starter.webmvc.test)
     testImplementation(libs.spring.boot.starter.security.test)
+    testImplementation(libs.spring.boot.starter.actuator.test)
+    testImplementation(libs.spring.boot.micrometer.tracing.test)
     testImplementation(libs.spring.modulith.starter.test)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.spring.modulith.docs)

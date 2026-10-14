@@ -1,0 +1,8 @@
+# Contexto do build da imagem (docker/Dockerfile): só entra o necessário para o bootJar.
+# Lista de permissão, para nenhum segredo (.env), artefato local ou documento ir para a imagem.
+*
+!gradlew
+!gradle/
+!settings.gradle.kts
+!build.gradle.kts
+!src/main/

@@ -132,6 +132,14 @@ internal object Problems {
             ErrorCodes.UNSUPPORTED_MEDIA_TYPE to "Tipo de conteúdo não suportado. Envie application/json.",
             ErrorCodes.BUSINESS_RULE_VIOLATED to "A requisição viola uma regra de negócio.",
             ErrorCodes.PRECONDITION_REQUIRED to "Envie o cabeçalho If-Match com a ETag da última leitura do recurso.",
+            ErrorCodes.IDEMPOTENCY_KEY_REQUIRED to
+                "Envie o cabeçalho Idempotency-Key com um identificador único da operação.",
+            ErrorCodes.IDEMPOTENCY_KEY_INVALID to
+                "O cabeçalho Idempotency-Key deve ter de 1 a 255 caracteres ASCII visíveis, sem espaços.",
+            ErrorCodes.IDEMPOTENCY_KEY_IN_USE to
+                "Uma requisição com esta Idempotency-Key ainda está em andamento. Aguarde e tente de novo.",
+            ErrorCodes.IDEMPOTENCY_KEY_REUSED to
+                "Esta Idempotency-Key já foi usada com outra requisição. Gere uma chave nova para cada operação.",
             ErrorCodes.INTERNAL_ERROR to "Erro interno. Tente de novo; se persistir, avise o suporte.",
             ErrorCodes.SERVICE_UNAVAILABLE to "Serviço temporariamente indisponível. Tente de novo em instantes.",
             ErrorCodes.REQUEST_REJECTED to "A requisição foi recusada.",

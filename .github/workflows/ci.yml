@@ -1,0 +1,140 @@
+# CI do servidor (ARCHITECTURE §7 e §17, RNF-03). Três jobs independentes, em paralelo:
+#   - build: ./gradlew build (compilação, testes unitários e de integração com Testcontainers,
+#     verificação de módulos do Modulith, ArchUnit, detekt, ktlint, contrato e cobertura) e a
+#     verificação do contrato api/openapi.yaml; publica a documentação dos módulos e o contrato.
+#   - api-compatibility: oasdiff contra a branch principal; falha em breaking change de /api/v1.
+#   - image: build da imagem docker/Dockerfile, sem push.
+# Não publica imagem nem faz deploy (M8). Nenhum segredo é usado.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  # Num PR, um push novo cancela a execução anterior; na main, toda execução vai até o fim.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build, testes e contrato
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: JDK 25
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # Valida o gradle-wrapper.jar e guarda o cache do Gradle (gravado só pela main; PRs só leem).
+      - name: Gradle com cache
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # Os testes de integração sobem um postgres:18 pelo Testcontainers no Docker do runner.
+      - name: Build completo (compilação, testes, módulos, ArchUnit, lint, contrato e cobertura)
+        run: ./gradlew build
+
+      # Já roda dentro do build; o passo próprio deixa a falha do contrato visível no resumo.
+      - name: Verificação do contrato api/openapi.yaml
+        run: ./gradlew checkOpenApi
+
+      - name: Publicar a documentação dos módulos (Spring Modulith)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spring-modulith-docs
+          path: build/spring-modulith-docs/
+          if-no-files-found: error
+
+      - name: Publicar o contrato OpenAPI
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openapi
+          path: api/openapi.yaml
+          if-no-files-found: error
+
+      - name: Publicar os relatórios dos testes (só em falha)
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-reports
+          path: |
+            build/reports/
+            build/test-results/
+          if-no-files-found: ignore
+
+  api-compatibility:
+    name: Compatibilidade da API (oasdiff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (com histórico, para achar a base)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Base: num PR, a ponta da branch de destino (o checkout é o commit de merge, então a
+      # comparação é "destino × resultado do merge"); num push na main, o commit anterior ao push
+      # (github.event.before). Se ele faltar, for só zeros ou não existir (branch nova, push
+      # forçado), o pai do HEAD: nunca o próprio HEAD, que compararia o contrato consigo mesmo.
+      # O fetch-depth: 0 acima garante esses commits no checkout.
+      - name: Breaking change em /api/v1 contra a branch principal
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          OASDIFF_FORMAT: githubactions
+        run: |
+          is_commit() { [[ -n "${1}" ]] && git cat-file -e "${1}^{commit}" 2>/dev/null; }
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            base="${PR_BASE_SHA}"
+            is_commit "${base}" || base="origin/${PR_BASE_REF}"
+          else
+            base="${PUSH_BEFORE}"
+            if ! is_commit "${base}"; then
+              if ! base="$(git rev-parse --verify --quiet 'HEAD~1^{commit}')"; then
+                echo "O HEAD não tem commit pai: não há contrato anterior para comparar."
+                exit 0
+              fi
+            fi
+          fi
+          .github/scripts/check-api-breaking.sh "${base}"
+
+  image:
+    name: Imagem Docker (sem push)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Equivale a `docker build -f docker/Dockerfile .`; as camadas ficam no cache do Actions.
+      - name: Build da imagem docker/Dockerfile
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          tags: zeny-hotel-manager:ci
+          cache-from: type=gha,scope=image
+          cache-to: type=gha,scope=image,mode=max

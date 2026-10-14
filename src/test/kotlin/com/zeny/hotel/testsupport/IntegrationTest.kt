@@ -1,5 +1,6 @@
 package com.zeny.hotel.testsupport
 
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.test.context.ActiveProfiles
@@ -10,7 +11,8 @@ import org.springframework.test.context.ContextConfiguration
  * PostgreSQL 18 do Testcontainers e a uma chave de cifragem sorteada por JVM. As classes com
  * esta anotação e sem configuração extra compartilham o mesmo contexto (cache do Spring);
  * todas compartilham o mesmo container. O contexto é web (servlet simulado) e expõe um
- * `MockMvc` com a cadeia do Spring Security, para os testes de API.
+ * `MockMvc` com a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas
+ * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
  * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
  * o job de reprocessamento do outbox, para que os testes o disparem quando quiserem.
@@ -20,6 +22,7 @@ import org.springframework.test.context.ContextConfiguration
 @SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED])
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
+@AutoConfigureMetrics
 @ContextConfiguration(initializers = [PostgresInitializer::class, TestEncryptionKeysInitializer::class])
 annotation class IntegrationTest
 

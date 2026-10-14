@@ -1,0 +1,14 @@
+# Proxy do ambiente em compose (ARCHITECTURE §15.1): só HTTP local, na porta 80 do container.
+# O TLS público (Let's Encrypt) e o domínio entram no M8.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	# As métricas ficam na rede interna do compose (o Prometheus raspa http://api:8080).
+	@metrics path /actuator/prometheus /actuator/prometheus/*
+	respond @metrics 404
+
+	reverse_proxy api:8080
+}

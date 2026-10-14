@@ -67,6 +67,18 @@ object ErrorCodes {
     /** 428: alteração sem o `If-Match` obrigatório. */
     val PRECONDITION_REQUIRED = ErrorCode("PRECONDITION_REQUIRED")
 
+    /** 400: endpoint marcado com [Idempotent] chamado sem o cabeçalho `Idempotency-Key`. */
+    val IDEMPOTENCY_KEY_REQUIRED = ErrorCode("IDEMPOTENCY_KEY_REQUIRED")
+
+    /** 400: `Idempotency-Key` vazio, longo demais (mais de 255) ou com caractere fora do ASCII visível. */
+    val IDEMPOTENCY_KEY_INVALID = ErrorCode("IDEMPOTENCY_KEY_INVALID")
+
+    /** 409: a requisição com a mesma `Idempotency-Key` ainda está em andamento. */
+    val IDEMPOTENCY_KEY_IN_USE = ErrorCode("IDEMPOTENCY_KEY_IN_USE")
+
+    /** 422: a `Idempotency-Key` já foi usada, nas últimas 24h, com outra requisição. */
+    val IDEMPOTENCY_KEY_REUSED = ErrorCode("IDEMPOTENCY_KEY_REUSED")
+
     /** 4xx sem código mais específico (status raro, como 408 ou 410). */
     val REQUEST_REJECTED = ErrorCode("REQUEST_REJECTED")
 
