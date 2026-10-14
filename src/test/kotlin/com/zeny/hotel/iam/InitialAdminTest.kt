@@ -3,7 +3,10 @@ package com.zeny.hotel.iam
 import com.zeny.hotel.iam.application.IamProperties
 import com.zeny.hotel.iam.application.InitialAdminService
 import com.zeny.hotel.iam.application.PasswordHasher
+import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
+import com.zeny.hotel.iam.application.Roles
 import com.zeny.hotel.iam.application.Users
+import com.zeny.hotel.iam.infrastructure.IamStartupRunner
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.TestAdmin
 import io.kotest.assertions.throwables.shouldThrow
@@ -14,8 +17,10 @@ import io.kotest.matchers.string.shouldStartWith
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
 import java.time.Clock
@@ -45,6 +50,36 @@ class InitialAdminTest(
         // O que o boot faz de novo (outra instância, reinício): já há usuário, nada muda.
         initialAdmin.ensureInitialAdmin() shouldBe false
         adminRows() shouldBe 1
+    }
+
+    @Test
+    fun `the initial admin holds the administrator system role`() {
+        jdbc
+            .sql(
+                "SELECT r.template_key, r.system_role FROM iam.user_role ur JOIN iam.role r ON r.id = ur.role_id " +
+                    "JOIN iam.user_account u ON u.id = ur.user_id WHERE u.login = :login",
+            ).param("login", TestAdmin.LOGIN)
+            .query { rs, _ -> rs.getString(1) to rs.getBoolean(2) }
+            .list() shouldBe listOf("ADMINISTRATOR" to true)
+    }
+
+    @Test
+    fun `the boot synchronizes the permission catalog before creating the initial admin`() {
+        val catalog = mockk<PermissionCatalogSynchronizer>(relaxed = true)
+        val admin = mockk<InitialAdminService>(relaxed = true)
+
+        IamStartupRunner(catalog, admin).run(DefaultApplicationArguments())
+
+        verifyOrder {
+            catalog.synchronize()
+            admin.ensureInitialAdmin()
+        }
+        // E o boot deste contexto deixou as permissões do iam vigentes na tabela.
+        jdbc
+            .sql("SELECT code FROM iam.permission WHERE module = 'iam' AND obsolete_at IS NULL")
+            .query(String::class.java)
+            .list()
+            .toSet() shouldBe IamPermissions.permissions.map { it.code.value }.toSet()
     }
 
     @Test
@@ -106,6 +141,7 @@ class InitialAdminTest(
         val service =
             InitialAdminService(
                 users,
+                mockk<Roles>(),
                 mockk<PasswordHasher>(),
                 properties(login = "", password = ""),
                 Clock.systemUTC(),
@@ -121,7 +157,13 @@ class InitialAdminTest(
     fun `a weak initial password is refused without showing it`() {
         val users = mockk<Users> { every { anyExists() } returns false }
         val service =
-            InitialAdminService(users, mockk<PasswordHasher>(), properties("admin", "curta123"), Clock.systemUTC())
+            InitialAdminService(
+                users,
+                mockk<Roles>(),
+                mockk<PasswordHasher>(),
+                properties("admin", "curta123"),
+                Clock.systemUTC(),
+            )
 
         val error = shouldThrow<IllegalStateException> { service.ensureInitialAdmin() }
 

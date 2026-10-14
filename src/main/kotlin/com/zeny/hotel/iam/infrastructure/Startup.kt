@@ -2,6 +2,7 @@ package com.zeny.hotel.iam.infrastructure
 
 import com.zeny.hotel.iam.application.IamProperties
 import com.zeny.hotel.iam.application.InitialAdminService
+import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
 import com.zeny.hotel.iam.application.RotatedRefreshTokens
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
@@ -12,12 +13,17 @@ import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 
-/** Cria o administrador inicial no boot, se não houver usuário (H2). Falha impede a partida. */
+/**
+ * Boot do `iam`: sincroniza o catálogo de permissões e os modelos de role (ARCHITECTURE §8.2, H5)
+ * e depois cria o administrador inicial, se não houver usuário (H2). Falha impede a partida.
+ */
 @Component
-class InitialAdminRunner(
+class IamStartupRunner(
+    private val catalog: PermissionCatalogSynchronizer,
     private val initialAdmin: InitialAdminService,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
+        catalog.synchronize()
         initialAdmin.ensureInitialAdmin()
     }
 }

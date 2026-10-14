@@ -3,6 +3,7 @@ package com.zeny.hotel.iam.web
 import com.zeny.hotel.iam.application.AuthTokens
 import com.zeny.hotel.iam.application.AuthenticationService
 import com.zeny.hotel.iam.application.ChangePasswordCommand
+import com.zeny.hotel.iam.application.CurrentUserService
 import com.zeny.hotel.iam.application.LoginCommand
 import com.zeny.hotel.iam.application.PasswordRules
 import com.zeny.hotel.iam.application.SessionService
@@ -43,6 +44,7 @@ class AuthController(
     private val authentication: AuthenticationService,
     private val refreshes: TokenRefreshService,
     private val sessions: SessionService,
+    private val currentUsers: CurrentUserService,
     private val currentActor: CurrentActor,
 ) {
     @PostMapping("/login")
@@ -113,6 +115,28 @@ class AuthController(
         currentActor.current(),
         ChangePasswordCommand(request.currentPassword, request.newPassword),
     )
+
+    @GetMapping("/me")
+    @Operation(
+        operationId = "getMe",
+        summary = "O usuário corrente e as permissões efetivas",
+        description =
+            "Quem está logado, as roles ativas e as permissões efetivas agora: a união das roles ativas, com o " +
+                "escopo mais amplo e, por chave, o maior limite. As permissões não vão no access token: uma " +
+                "mudança de role vale já na requisição seguinte. Não exige permissão.",
+    )
+    fun me(): MeResponse {
+        val actor = currentActor.current()
+        val view = currentUsers.describe(actor)
+        return MeResponse(
+            userId = view.userId.value,
+            sessionId = actor.deviceSessionId.value,
+            name = view.name,
+            login = view.login,
+            roles = view.roles.map { MeRoleResponse(it.id.value, it.name) },
+            permissions = view.permissions.map(EffectivePermissionResponse::of),
+        )
+    }
 
     @GetMapping("/sessions")
     @Operation(
@@ -253,4 +277,24 @@ data class SessionResponse(
     val expiresAt: Instant,
     @field:Schema(description = "Se é a sessão do access token desta requisição.")
     val current: Boolean,
+)
+
+@Schema(description = "O usuário corrente, as roles ativas e as permissões efetivas.")
+data class MeResponse(
+    val userId: UUID,
+    @field:Schema(description = "Sessão de dispositivo do access token desta requisição.")
+    val sessionId: UUID,
+    val name: String,
+    @field:Schema(description = "Login normalizado (minúsculo).")
+    val login: String,
+    @field:Schema(description = "Roles ativas atribuídas ao usuário, em ordem de nome.")
+    val roles: List<MeRoleResponse>,
+    @field:Schema(description = "Permissões efetivas, em ordem de código.")
+    val permissions: List<EffectivePermissionResponse>,
+)
+
+@Schema(description = "Uma role ativa do usuário.")
+data class MeRoleResponse(
+    val id: UUID,
+    val name: String,
 )

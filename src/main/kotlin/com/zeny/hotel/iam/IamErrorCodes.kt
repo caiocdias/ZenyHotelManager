@@ -5,6 +5,8 @@ import com.zeny.hotel.shared.ErrorCode
 /**
  * Códigos de erro estáveis do módulo `iam` (ARCHITECTURE §7). Todos os de autenticação saem
  * com `401`; o cliente decide pelo código (só o `UNAUTHENTICATED` do `shared` pede um refresh).
+ * Os de autorização (`403`) saem da porta `Authorization` do `shared`, que o `iam` implementa,
+ * para qualquer módulo.
  */
 object IamErrorCodes {
     /** 401: login inexistente ou senha errada (não se diz qual dos dois). */
@@ -27,4 +29,10 @@ object IamErrorCodes {
 
     /** 404: sessão inexistente ou de outro usuário. */
     val SESSION_NOT_FOUND = ErrorCode("SESSION_NOT_FOUND")
+
+    /** 403: o usuário não tem a permissão do catálogo exigida pela ação (ou ela está obsoleta). */
+    val PERMISSION_DENIED = ErrorCode("PERMISSION_DENIED")
+
+    /** 403: a permissão do usuário tem escopo `OWN` e o registro é de outro usuário. */
+    val RESOURCE_OUT_OF_SCOPE = ErrorCode("RESOURCE_OUT_OF_SCOPE")
 }

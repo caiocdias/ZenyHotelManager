@@ -361,11 +361,12 @@ sequenceDiagram
 
 ### 8.2 Autorização
 
-- O **catálogo de permissões** é uma estrutura em código, por módulo, com código, escopos suportados, se é sensível e as chaves de limite. No boot, ele é sincronizado com a tabela de permissões, para o admin compor roles.
-- As **permissões efetivas** do usuário (união das roles) ficam em cache e são invalidadas por versão quando roles ou usuário mudam. Elas não vão dentro do JWT, para que a mudança valha na hora.
-- A checagem acontece na camada `application`, com `authz.require("housekeeping.task.complete", resource)`.
-- **Escopo `OWN`** é aplicado como filtro nas consultas (ex.: `assignee_id = :currentUser`) e como checagem de posse nos comandos.
-- **Limites** (ex.: `rates.discount.maxPercent`) são lidos do contexto de autorização e validados no domínio.
+- O **catálogo de permissões** é uma estrutura em código, por módulo, com código, escopos suportados, se é sensível e as chaves de limite: cada módulo publica um bean `ModulePermissions` (`shared`) com as suas `PermissionDefinition`. No boot, o `iam` o sincroniza com a tabela `iam.permission`, para o admin compor roles: as novas entram, as alteradas são regravadas e as que saíram do código ficam obsoletas e deixam de conceder acesso (a linha e as concessões continuam, e voltam a valer se a permissão voltar ao código).
+- Os **modelos de role** da SPEC §3.1 (`RoleTemplate`) são criados no mesmo boot. O Administrador é a role de sistema: recebe sozinho todas as permissões, no escopo mais amplo e sem teto, e não aceita edição. Os outros modelos recebem as concessões que cada permissão sugere (`PermissionDefinition.templates`) só enquanto o administrador não os editar (H5 do roadmap do M1).
+- As **permissões efetivas** do usuário (união das roles ativas: escopo mais amplo e, por chave, maior limite; usuário inativo não tem nenhuma) ficam em cache e são invalidadas por versão quando roles ou usuário mudam. A versão fica no banco (`iam.authorization_version`) e é trocada por triggers, na mesma transação, a cada mudança em permissão, role, concessão, limite, atribuição ou no estado ativo do usuário; cada checagem compara a versão do cache com a do banco, e uma versão nova nunca repete uma antiga (vem de uma sequence, que não volta em rollback). Elas não vão dentro do JWT, para que a mudança valha na hora.
+- A checagem acontece na camada `application`, com `authz.require("housekeeping.task.complete", resource)`, pela porta `Authorization` do `shared`, implementada por `iam`; nenhum módulo importa `iam` para isso. Sem a permissão, `403 PERMISSION_DENIED`.
+- **Escopo `OWN`** é aplicado como filtro nas consultas (ex.: `assignee_id = :currentUser`, por `authz.scopeFilter(...)`) e como checagem de posse nos comandos (`authz.require(permissão, recurso)`; recurso alheio, `403 RESOURCE_OUT_OF_SCOPE`).
+- **Limites** (ex.: `rates.discount.maxPercent`) são lidos do contexto de autorização (`authz.limit(...)`) e validados no domínio. Uma concessão sem valor para uma chave vale teto zero.
 - **Step-up**: ver §6.3. O `Approval` é persistido e referenciado pela entrada de auditoria.
 
 ### 8.3 Dados e privacidade

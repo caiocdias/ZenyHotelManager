@@ -2,6 +2,7 @@ package com.zeny.hotel.iam.application
 
 import com.zeny.hotel.iam.domain.Logins
 import com.zeny.hotel.iam.domain.User
+import com.zeny.hotel.shared.RoleTemplate
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,11 +14,13 @@ import java.time.Clock
  * login. Se já existe usuário, não faz nada (as variáveis podem ficar vazias). Sem usuário e
  * sem as variáveis, a aplicação não sobe: ninguém conseguiria entrar.
  *
- * As permissões de administrador chegam com o catálogo de permissões (M1 E02).
+ * O administrador inicial recebe a role de sistema Administrador, com todas as permissões do
+ * catálogo (M1 E02); por isso o catálogo é sincronizado antes ([PermissionCatalogSynchronizer]).
  */
 @Service
 class InitialAdminService(
     private val users: Users,
+    private val roles: Roles,
     private val hasher: PasswordHasher,
     private val properties: IamProperties,
     private val clock: Clock,
@@ -50,6 +53,9 @@ class InitialAdminService(
                 passwordChangeRequired = true,
                 now = clock.instant(),
             )
+        val administrator =
+            checkNotNull(roles.findByTemplate(RoleTemplate.ADMINISTRATOR)) { "Role Administrador não encontrada" }
+        user.assignRole(administrator.id, clock.instant())
         users.add(user)
         log.info("Administrador inicial criado (usuário {}); a senha deve ser trocada no primeiro login", user.id)
         return true

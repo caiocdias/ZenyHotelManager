@@ -1,9 +1,14 @@
 package com.zeny.hotel.iam.domain
 
 import com.zeny.hotel.shared.UserId
+import jakarta.persistence.CollectionTable
 import jakarta.persistence.Column
+import jakarta.persistence.Convert
+import jakarta.persistence.ElementCollection
 import jakarta.persistence.Entity
+import jakarta.persistence.FetchType
 import jakarta.persistence.Id
+import jakarta.persistence.JoinColumn
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import java.time.Instant
@@ -12,7 +17,8 @@ import java.time.Instant
  * Usuário do sistema (SPEC §8.2.1, RF-ACS-01). Guarda só os hashes da senha e do PIN
  * (Argon2id, calculados fora do domínio), nunca os valores. Nunca é apagado, só desativado
  * (RF-ACS-12). O controle de tentativas de login (bloqueio progressivo) fica aqui, com o
- * relógio e a política recebidos de fora.
+ * relógio e a política recebidos de fora. As roles atribuídas ([roleIds]) definem as permissões
+ * efetivas (RF-ACS-04), calculadas fora do agregado.
  */
 @Entity
 @Table(name = "user_account", schema = "iam")
@@ -63,6 +69,27 @@ class User private constructor(
     @Version
     var version: Long? = null
         protected set
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "user_role", schema = "iam", joinColumns = [JoinColumn(name = "user_id")])
+    @Column(name = "role_id", nullable = false)
+    @Convert(converter = RoleIdConverter::class)
+    private val roleIdSet: MutableSet<RoleId> = mutableSetOf()
+
+    /** As roles atribuídas ao usuário (RF-ACS-04). */
+    val roleIds: Set<RoleId> get() = roleIdSet
+
+    /** Atribui a role; devolve se ela ainda não estava atribuída. */
+    fun assignRole(
+        roleId: RoleId,
+        now: Instant,
+    ): Boolean = roleIdSet.add(roleId).also { if (it) updatedAt = now }
+
+    /** Retira a role; devolve se ela estava atribuída. */
+    fun unassignRole(
+        roleId: RoleId,
+        now: Instant,
+    ): Boolean = roleIdSet.remove(roleId).also { if (it) updatedAt = now }
 
     /** Se o login está bloqueado em [now] (recusado mesmo com a senha certa). */
     fun isLocked(now: Instant): Boolean = lockedUntil?.isAfter(now) == true

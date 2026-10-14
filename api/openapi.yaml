@@ -73,6 +73,29 @@ paths:
       summary: Sair
       tags:
       - iam
+  /api/v1/auth/me:
+    get:
+      description: "Quem está logado, as roles ativas e as permissões efetivas agora:\
+        \ a união das roles ativas, com o escopo mais amplo e, por chave, o maior\
+        \ limite. As permissões não vão no access token: uma mudança de role vale\
+        \ já na requisição seguinte. Não exige permissão."
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: O usuário corrente e as permissões efetivas
+      tags:
+      - iam
   /api/v1/auth/password:
     post:
       description: "Confere a senha atual (401 `INVALID_CREDENTIALS` ou `ACCOUNT_LOCKED`,\
@@ -217,6 +240,47 @@ paths:
       summary: Versão do servidor e da API
       tags:
       - meta
+  /api/v1/permissions:
+    get:
+      description: "Permissões vigentes do catálogo, definido pelo sistema e não editá\
+        vel, em ordem de código: escopos suportados, se é sensível (exige aprovaçã\
+        o de superior quando falta) e os limites que aceita. Exige `iam.permissions.read`\
+        \ (sem ela, 403 `PERMISSION_DENIED`)."
+      operationId: listPermissions
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePermissionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar o catálogo de permissões
+      tags:
+      - iam
 components:
   headers:
     IdempotentReplayed:
@@ -262,6 +326,20 @@ components:
       required:
       - currentPassword
       - newPassword
+    CursorPagePermissionResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageSessionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -296,6 +374,28 @@ components:
       required:
       - id
       - name
+    EffectivePermissionResponse:
+      type: object
+      description: Uma permissão efetiva do usuário corrente.
+      properties:
+        code:
+          type: string
+          example: iam.users.manage
+        limits:
+          type: array
+          description: "Por chave, o maior limite entre as roles do usuário."
+          items:
+            $ref: "#/components/schemas/LimitValueResponse"
+        scope:
+          type: string
+          description: O escopo mais amplo entre as roles do usuário.
+          enum:
+          - OWN
+          - ALL
+      required:
+      - code
+      - limits
+      - scope
     FieldViolation:
       type: object
       description: Erro de um campo da requisição.
@@ -318,6 +418,46 @@ components:
       - code
       - field
       - message
+    LimitDefinitionResponse:
+      type: object
+      description: Um parâmetro de limite que a permissão aceita.
+      properties:
+        description:
+          type: string
+        key:
+          type: string
+          description: Chave do limite na concessão.
+          example: maxPercent
+        unit:
+          type: string
+          description: "MONEY: reais, até 2 casas; PERCENT: pontos percentuais de\
+            \ 0 a 100, até 4 casas; QUANTITY: inteiro."
+          enum:
+          - MONEY
+          - PERCENT
+          - QUANTITY
+      required:
+      - description
+      - key
+      - unit
+    LimitValueResponse:
+      type: object
+      description: "O limite efetivo de uma chave: sem teto ou o teto."
+      properties:
+        key:
+          type: string
+          example: maxPercent
+        max:
+          type: string
+          description: "O teto, como decimal em string; nulo quando unlimited."
+          example: "10.5"
+          nullable: true
+        unlimited:
+          type: boolean
+          description: Sem teto.
+      required:
+      - key
+      - unlimited
     LoginRequest:
       type: object
       properties:
@@ -339,6 +479,93 @@ components:
       - device
       - login
       - password
+    MeResponse:
+      type: object
+      description: "O usuário corrente, as roles ativas e as permissões efetivas."
+      properties:
+        login:
+          type: string
+          description: Login normalizado (minúsculo).
+        name:
+          type: string
+        permissions:
+          type: array
+          description: "Permissões efetivas, em ordem de código."
+          items:
+            $ref: "#/components/schemas/EffectivePermissionResponse"
+        roles:
+          type: array
+          description: "Roles ativas atribuídas ao usuário, em ordem de nome."
+          items:
+            $ref: "#/components/schemas/MeRoleResponse"
+        sessionId:
+          type: string
+          format: uuid
+          description: Sessão de dispositivo do access token desta requisição.
+        userId:
+          type: string
+          format: uuid
+      required:
+      - login
+      - name
+      - permissions
+      - roles
+      - sessionId
+      - userId
+    MeRoleResponse:
+      type: object
+      description: Uma role ativa do usuário.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    PermissionResponse:
+      type: object
+      description: Uma permissão do catálogo.
+      properties:
+        code:
+          type: string
+          description: "Código estável da permissão: o módulo e a ação."
+          example: iam.users.manage
+        description:
+          type: string
+          description: Descrição para a tela de roles.
+        limits:
+          type: array
+          description: Parâmetros de limite que uma concessão aceita.
+          items:
+            $ref: "#/components/schemas/LimitDefinitionResponse"
+        module:
+          type: string
+          description: Módulo dono da permissão.
+          example: iam
+        scopes:
+          type: array
+          description: "Escopos que uma concessão pode ter: OWN (só os próprios registros)\
+            \ e ALL."
+          items:
+            type: string
+            description: "Escopos que uma concessão pode ter: OWN (só os próprios\
+              \ registros) e ALL."
+            enum:
+            - OWN
+            - ALL
+        sensitive:
+          type: boolean
+          description: "Ação sensível: sem a permissão, exige aprovação de superior\
+            \ (RF-ACS-08)."
+      required:
+      - code
+      - description
+      - limits
+      - module
+      - scopes
+      - sensitive
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).

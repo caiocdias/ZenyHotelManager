@@ -1,8 +1,15 @@
 package com.zeny.hotel.iam
 
 import com.zeny.hotel.iam.application.PasswordHasher
+import com.zeny.hotel.iam.application.Roles
 import com.zeny.hotel.iam.application.Users
+import com.zeny.hotel.iam.domain.Role
+import com.zeny.hotel.iam.domain.RoleId
 import com.zeny.hotel.iam.domain.User
+import com.zeny.hotel.shared.LimitValue
+import com.zeny.hotel.shared.PermissionCode
+import com.zeny.hotel.shared.PermissionDefinition
+import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import io.kotest.assertions.withClue
@@ -28,14 +35,22 @@ data class TestUser(
     val password: String,
 )
 
+/** Uma concessão para [IamTestSupport.createRole]. */
+data class TestGrant(
+    val definition: PermissionDefinition,
+    val scope: PermissionScope,
+    val limits: Map<String, LimitValue> = emptyMap(),
+)
+
 /**
- * Apoio dos testes do `iam`: cria usuários direto pelo repositório (a gestão de usuários chega
- * na E03) e chama a API de autenticação pelo `MockMvc`. Entra no contexto pelo
+ * Apoio dos testes do `iam`: cria usuários e roles direto pelos repositórios (a gestão de
+ * usuários e roles chega na E03) e chama a API de autenticação pelo `MockMvc`. Entra no contexto pelo
  * [IamTestConfiguration] (fora da varredura de componentes).
  */
 @Suppress("LongParameterList") // os beans de que o apoio precisa, injetados pela configuração de teste
 class IamTestSupport(
     private val users: Users,
+    private val roles: Roles,
     private val hasher: PasswordHasher,
     private val clock: Clock,
     private val transactions: TransactionTemplate,
@@ -60,6 +75,41 @@ class IamTestSupport(
             .param("id", user.id.value)
             .update() shouldBe 1
     }
+
+    /** Role nova, ativa, com as concessões dadas. */
+    fun createRole(vararg grants: TestGrant): RoleId {
+        val suffix = UuidV7.generate().toString().takeLast(SUFFIX_LENGTH)
+        val role = Role.create("Role $suffix", "Role de teste", clock.instant())
+        grants.forEach { role.grant(it.definition, it.scope, it.limits, clock.instant()) }
+        transactions.executeWithoutResult { roles.add(role) }
+        return role.id
+    }
+
+    fun assignRole(
+        user: TestUser,
+        roleId: RoleId,
+    ) = transactions.executeWithoutResult {
+        users.findByIdForUpdate(user.id)!!.assignRole(roleId, clock.instant()) shouldBe true
+    }
+
+    fun unassignRole(
+        user: TestUser,
+        roleId: RoleId,
+    ) = transactions.executeWithoutResult {
+        users.findByIdForUpdate(user.id)!!.unassignRole(roleId, clock.instant()) shouldBe true
+    }
+
+    /** Retira uma concessão da role. */
+    fun revokeGrant(
+        roleId: RoleId,
+        permission: PermissionCode,
+    ) = transactions.executeWithoutResult { roles.findById(roleId)!!.revoke(permission, clock.instant()) }
+
+    fun deactivateRole(roleId: RoleId) =
+        transactions.executeWithoutResult { roles.findById(roleId)!!.deactivate(clock.instant()) }
+
+    /** Usuário novo com uma role nova com as concessões dadas. */
+    fun createUserWith(vararg grants: TestGrant): TestUser = createUser().also { assignRole(it, createRole(*grants)) }
 
     fun login(
         login: String,
@@ -157,11 +207,12 @@ class IamTestConfiguration {
     @Suppress("LongParameterList")
     fun iamTestSupport(
         users: Users,
+        roles: Roles,
         hasher: PasswordHasher,
         clock: Clock,
         transactions: TransactionTemplate,
         jdbc: JdbcClient,
         mockMvc: MockMvc,
         jsonMapper: JsonMapper,
-    ) = IamTestSupport(users, hasher, clock, transactions, jdbc, mockMvc, jsonMapper)
+    ) = IamTestSupport(users, roles, hasher, clock, transactions, jdbc, mockMvc, jsonMapper)
 }

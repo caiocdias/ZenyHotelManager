@@ -43,6 +43,18 @@ class ModularityTest {
     }
 
     @Test
+    fun `no module other than staff depends on iam, only on the ports of shared`() {
+        val dependents =
+            modules
+                .filter { it.identifier.toString() != "iam" }
+                .filter { module ->
+                    module.getDirectDependencies(modules).uniqueModules().anyMatch { it.identifier.toString() == "iam" }
+                }.map { it.identifier.toString() }
+
+        (dependents - "staff") shouldBe emptyList()
+    }
+
+    @Test
     fun `writes module documentation`() {
         Documenter(modules).writeDocumentation()
 
