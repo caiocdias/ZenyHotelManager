@@ -32,6 +32,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -44,7 +45,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
-import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Instant
@@ -68,8 +68,8 @@ class AuthorizationTest(
     @Autowired private val modules: List<ModulePermissions>,
     @Autowired private val authorization: Authorization,
     @Autowired private val mockMvc: MockMvc,
-    @Autowired private val transactions: TransactionTemplate,
     @Autowired private val jsonMapper: JsonMapper,
+    @Autowired private val flyway: Flyway,
 ) {
     private val tasksRead = ExamplePermissions.permissions.single { it.code == ExamplePermissions.TASKS_READ }
     private val tasksComplete = ExamplePermissions.permissions.single { it.code == ExamplePermissions.TASKS_COMPLETE }
@@ -272,13 +272,16 @@ class AuthorizationTest(
         iam.assignRole(user, role)
         listPermissions(token).status shouldBe 200
 
-        // Tira a role sem os triggers: a versão não muda, e o cache segue valendo.
-        transactions.executeWithoutResult {
-            jdbc.sql("SET LOCAL session_replication_role = replica").update()
-            jdbc
-                .sql("DELETE FROM iam.user_role WHERE user_id = :userId")
-                .param("userId", user.id.value)
-                .update() shouldBe 1
+        // Tira a role sem os triggers: a versão não muda, e o cache segue valendo. Desligar os
+        // triggers exige o dono dos schemas (superusuário no container); o papel da aplicação não pode.
+        flyway.configuration.dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            connection.createStatement().use { it.execute("SET LOCAL session_replication_role = replica") }
+            connection.prepareStatement("DELETE FROM iam.user_role WHERE user_id = ?").use {
+                it.setObject(1, user.id.value)
+                it.executeUpdate() shouldBe 1
+            }
+            connection.commit()
         }
         listPermissions(token).status shouldBe 200
 

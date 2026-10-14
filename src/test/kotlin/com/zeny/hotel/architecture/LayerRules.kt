@@ -4,12 +4,19 @@ import com.tngtech.archunit.base.DescribedPredicate
 import com.tngtech.archunit.base.DescribedPredicate.not
 import com.tngtech.archunit.core.domain.JavaClass
 import com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage
+import com.tngtech.archunit.core.domain.JavaMethod
+import com.tngtech.archunit.core.domain.JavaModifier
+import com.tngtech.archunit.core.domain.properties.HasAnnotations
 import com.tngtech.archunit.lang.ArchCondition
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.ConditionEvents
 import com.tngtech.archunit.lang.SimpleConditionEvent
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
+import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
+import com.zeny.hotel.shared.Audited
+import org.springframework.transaction.annotation.Transactional
+import jakarta.transaction.Transactional as JakartaTransactional
 
 /**
  * Regras das camadas internas de um módulo (ARCHITECTURE §4), genéricas por convenção de
@@ -20,6 +27,9 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
  * - `web` só fala com `application`: não usa `domain` nem `infrastructure`.
  * - Um módulo não usa as camadas internas de outro; só a raiz do pacote (API pública).
  *   Outros subpacotes (named interfaces) ficam a cargo do `ApplicationModules.verify()`.
+ * - Todo caso de uso de escrita de `application` (método público `@Transactional` do Spring sem
+ *   `readOnly` ou `@jakarta.transaction.Transactional`, no método ou na classe) leva `@Audited`
+ *   (RNF-11, ARCHITECTURE §5).
  *
  * As regras recebem o pacote base para poderem ser exercitadas contra classes de exemplo
  * (ver `LayerRulesTest`). Enquanto não há módulos, as regras aceitam não encontrar classes.
@@ -81,6 +91,17 @@ class LayerRules(
             .allowEmptyShould(true)
             .because("outros módulos só usam o que está na raiz do pacote do módulo (ARCHITECTURE §4)")
 
+    val writeUseCasesAreAudited: ArchRule =
+        methods()
+            .that()
+            .areDeclaredInClassesThat()
+            .resideInAPackage(application)
+            .and(TRANSACTIONAL_WRITE)
+            .should()
+            .beAnnotatedWith(Audited::class.java)
+            .allowEmptyShould(true)
+            .because("toda escrita é auditada na mesma transação (RNF-11, ARCHITECTURE §5)")
+
     val all: List<ArchRule> =
         listOf(
             domainMustNotDependOnSpring,
@@ -88,6 +109,7 @@ class LayerRules(
             domainMustNotDependOnOuterLayers,
             webTalksOnlyToApplication,
             modulesUseOnlyPublicApiOfOtherModules,
+            writeUseCasesAreAudited,
         )
 
     private fun moduleOf(javaClass: JavaClass): String? =
@@ -125,5 +147,28 @@ class LayerRules(
 
         val ANNOTATION_OR_ENUM: DescribedPredicate<JavaClass> =
             DescribedPredicate.describe("annotation or enum") { it.isAnnotation || it.isEnum }
+
+        /**
+         * Método público que abre uma transação de escrita: `@Transactional` do Spring sem `readOnly`
+         * ou `@jakarta.transaction.Transactional` (que não tem modo só de leitura e o Spring também
+         * honra), no método ou, sem anotação no método, na classe. Métodos sintéticos (do compilador)
+         * ficam fora.
+         */
+        val TRANSACTIONAL_WRITE: DescribedPredicate<JavaMethod> =
+            DescribedPredicate.describe("are public write transactions (@Transactional without readOnly)") { method ->
+                JavaModifier.PUBLIC in method.modifiers &&
+                    JavaModifier.SYNTHETIC !in method.modifiers &&
+                    (opensWriteTransaction(method) ?: opensWriteTransaction(method.owner) ?: false)
+            }
+
+        /** Se o elemento abre uma transação de escrita; `null` sem anotação de transação nele. */
+        private fun opensWriteTransaction(element: HasAnnotations<*>): Boolean? {
+            val spring = element.tryGetAnnotationOfType(Transactional::class.java).orElse(null)
+            return when {
+                spring != null -> !spring.readOnly
+                element.isAnnotatedWith(JakartaTransactional::class.java) -> true
+                else -> null
+            }
+        }
     }
 }

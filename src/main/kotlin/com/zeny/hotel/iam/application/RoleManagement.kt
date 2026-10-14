@@ -9,6 +9,8 @@ import com.zeny.hotel.iam.domain.Role
 import com.zeny.hotel.iam.domain.RoleGrants
 import com.zeny.hotel.iam.domain.RoleId
 import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
@@ -70,10 +72,12 @@ class RoleManagementService(
     private val authorization: Authorization,
     private val currentActor: CurrentActor,
     private val lock: AuthorizationLock,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    @Audited("iam.role.create")
     @Transactional
     fun create(command: RoleCommand): RoleView {
         val actor = begin()
@@ -83,6 +87,7 @@ class RoleManagementService(
         val now = clock.instant()
         val role = Role.create(command.name, command.description, now)
         grants.forEach { role.grant(definitionOf(it, catalog), it.scope, it.limits, now) }
+        audit.created(IamAudit.ROLE, role.id) { role.auditState() }
         if (!roles.tryAdd(role)) throw nameInUse()
         log.info("Role {} criada pelo usuário {}", role.id, actor.userId)
         return view(role.id)
@@ -92,6 +97,7 @@ class RoleManagementService(
      * Troca nome, descrição e concessões (as de permissões obsoletas ficam como estão). Só as
      * concessões acrescentadas ou mudadas passam pela regra de delegação.
      */
+    @Audited("iam.role.update")
     @Transactional
     fun update(
         roleId: UUID,
@@ -100,7 +106,7 @@ class RoleManagementService(
     ): RoleView {
         val id = RoleId(roleId)
         val actor = begin()
-        val role = find(id)
+        val role = tracked(find(id))
         requireEditable(role)
         requireCurrentVersion(expectedVersion, checkNotNull(role.version))
         val catalog = rules.catalog()
@@ -121,6 +127,7 @@ class RoleManagementService(
     }
 
     /** Cria uma role nova com as concessões vigentes de outra (inclusive da role Administrador). */
+    @Audited("iam.role.duplicate")
     @Transactional
     fun duplicate(
         roleId: UUID,
@@ -142,17 +149,19 @@ class RoleManagementService(
         val now = clock.instant()
         val copy = Role.create(name, description ?: source.description, now)
         grants.forEach { copy.grant(definitionOf(it, catalog), it.scope, it.limits, now) }
+        audit.created(IamAudit.ROLE, copy.id) { copy.auditState() }
         if (!roles.tryAdd(copy)) throw nameInUse()
         log.info("Role {} duplicada como {} pelo usuário {}", id, copy.id, actor.userId)
         return view(copy.id)
     }
 
     /** A role deixa de conceder permissão a quem a tem. Desativar de novo não muda nada. */
+    @Audited("iam.role.deactivate")
     @Transactional
     fun deactivate(roleId: UUID): RoleView {
         val id = RoleId(roleId)
         val actor = begin()
-        val role = find(id)
+        val role = tracked(find(id))
         requireEditable(role)
         role.deactivate(clock.instant())
         roles.tryFlush()
@@ -161,11 +170,12 @@ class RoleManagementService(
     }
 
     /** As concessões da role voltam a valer: o ator precisa cobri-las. */
+    @Audited("iam.role.reactivate")
     @Transactional
     fun reactivate(roleId: UUID): RoleView {
         val id = RoleId(roleId)
         val actor = begin()
-        val role = find(id)
+        val role = tracked(find(id))
         requireEditable(role)
         val catalog = rules.catalog()
         rules.requireHeld(actor, role.grantValues(), catalog)
@@ -262,6 +272,9 @@ class RoleManagementService(
     }
 
     private fun find(id: RoleId): Role = roles.findById(id) ?: throw roleNotFound()
+
+    /** Acompanha a role na trilha: o retrato de agora é o "antes"; o do fim do caso de uso, o "depois". */
+    private fun tracked(role: Role): Role = role.also { audit.track(IamAudit.ROLE, it.id) { it.auditState() } }
 
     private fun view(id: RoleId): RoleView = checkNotNull(directory.find(id))
 

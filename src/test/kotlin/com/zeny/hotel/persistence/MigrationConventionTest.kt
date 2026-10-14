@@ -142,6 +142,11 @@ class MigrationConventionTest {
             GRANT SELECT ON rooms.report_rooms TO reporting;
             GRANT SELECT (id, code) ON TABLE rooms.room, rooms.room_type TO reporting;
             GRANT EXECUTE ON FUNCTION rooms.touch(uuid, text) TO app;
+            GRANT EXECUTE ON FUNCTION rooms.price(numeric(14,2), numeric(7, 4)) TO app;
+            REVOKE EXECUTE ON FUNCTION rooms.price(numeric(14,2)), rooms.touch(uuid, text) FROM PUBLIC;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA rooms GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${'$'}{app_role}";
+            ALTER DEFAULT PRIVILEGES FOR ROLE owner IN SCHEMA rooms GRANT USAGE, SELECT ON SEQUENCES TO app;
+            ALTER DEFAULT PRIVILEGES IN SCHEMA "rooms" REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
             GRANT USAGE ON SCHEMA rooms TO reporting;
             REVOKE UPDATE, DELETE ON ALL TABLES IN SCHEMA rooms FROM app;
             DROP TABLE IF EXISTS rooms.old_room, rooms.old_room_type;
@@ -167,6 +172,12 @@ class MigrationConventionTest {
                 "REVOKE UPDATE ON ALL TABLES IN SCHEMA guests FROM app;",
                 "DROP TABLE rooms.old_room, guests.guest;",
                 "DROP TABLE IF EXISTS rooms.old_room, old_room_type CASCADE;",
+                "GRANT EXECUTE ON FUNCTION guests.price(numeric(14,2)) TO app;",
+                "GRANT EXECUTE ON FUNCTION rooms.price(numeric(14,2)), price(numeric(14,2)) TO app;",
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA guests GRANT SELECT ON TABLES TO app;",
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA rooms, guests GRANT SELECT ON TABLES TO app;",
+                "ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO app;",
+                "ALTER DEFAULT PRIVILEGES FOR ROLE owner GRANT USAGE ON SEQUENCES TO app;",
             )
 
         assertSoftly {

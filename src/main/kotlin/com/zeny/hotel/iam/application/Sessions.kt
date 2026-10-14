@@ -4,6 +4,8 @@ import com.zeny.hotel.iam.IamErrorCodes
 import com.zeny.hotel.iam.IamPermissions
 import com.zeny.hotel.iam.domain.SessionRevocationReason
 import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.CursorPage
@@ -39,14 +41,22 @@ data class SessionView(
 class SessionService(
     private val sessions: DeviceSessions,
     private val directory: SessionDirectory,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** Encerra a sessão corrente. Sessão já revogada não muda. */
+    @Audited("iam.session.logout")
     @Transactional
     fun logout(actor: Actor) {
-        sessions.findByIdForUpdate(actor.deviceSessionId)?.revoke(SessionRevocationReason.LOGOUT, clock.instant())
+        val session = sessions.findByIdForUpdate(actor.deviceSessionId)
+        if (session == null) {
+            audit.noChanges()
+            return
+        }
+        audit.track(IamAudit.SESSION, session.id) { session.auditState() }
+        session.revoke(SessionRevocationReason.LOGOUT, clock.instant())
         log.info("Logout")
     }
 
@@ -66,12 +76,14 @@ class SessionService(
     }
 
     /** Revoga uma sessão do próprio usuário; de outro usuário ou inexistente, `404`. */
+    @Audited("iam.session.revoke")
     @Transactional
     fun revoke(
         actor: Actor,
         sessionId: UUID,
     ) {
         val session = sessionOf(sessions, actor.userId, sessionId)
+        audit.track(IamAudit.SESSION, session.id) { session.auditState() }
         session.revoke(SessionRevocationReason.REVOKED_BY_USER, clock.instant())
         log.info("Sessão {} revogada pelo usuário", session.id)
     }
@@ -91,6 +103,7 @@ class UserSessionsService(
     private val rules: DelegationRules,
     private val authorization: Authorization,
     private val currentActor: CurrentActor,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -106,6 +119,7 @@ class UserSessionsService(
     }
 
     /** Revoga uma sessão do usuário; de outro usuário ou inexistente, `404`. Revogar de novo não muda nada. */
+    @Audited("iam.session.revoke-as-administrator")
     @Transactional
     fun revoke(
         userId: UserId,
@@ -113,6 +127,7 @@ class UserSessionsService(
     ) {
         val actor = authorize(userId)
         val session = sessionOf(sessions, userId, sessionId)
+        audit.track(IamAudit.SESSION, session.id) { session.auditState() }
         session.revoke(SessionRevocationReason.REVOKED_BY_ADMINISTRATOR, clock.instant())
         log.info("Sessão {} do usuário {} revogada pelo usuário {}", session.id, userId, actor.userId)
     }

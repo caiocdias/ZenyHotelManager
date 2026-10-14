@@ -24,7 +24,10 @@ spring:
     locale: pt_BR
     locale-resolver: fixed
 
-  # Banco (ARCHITECTURE §11). Sem valor padrão: em `prod` a aplicação não sobe sem as variáveis.
+  # Banco (ARCHITECTURE §11), com dois papéis (H4 do roadmap do M1): a aplicação conecta com o
+  # papel restrito (ZENY_DB_*: só DML, sem DDL e sem UPDATE/DELETE nas tabelas append-only) e o
+  # Flyway com o dono dos schemas (ZENY_DB_MIGRATION_*, abaixo). Sem valor padrão: em `prod` a
+  # aplicação não sobe sem as variáveis, e o DatabaseRoleGuard recusa a partida com o papel dono.
   datasource:
     url: ${ZENY_DB_URL}
     username: ${ZENY_DB_USERNAME}
@@ -51,6 +54,12 @@ spring:
   flyway:
     locations: classpath:db/migration
     default-schema: shared
+    # O Flyway usa o dono dos schemas, com conexão própria na mesma URL; as migrações concedem os
+    # privilégios ao papel da aplicação, cujo nome chega pelo placeholder ${app_role}.
+    user: ${ZENY_DB_MIGRATION_USERNAME}
+    password: ${ZENY_DB_MIGRATION_PASSWORD}
+    placeholders:
+      "[app_role]": ${spring.datasource.username}
 
   modulith:
     events:
@@ -197,11 +206,15 @@ spring:
   config:
     activate:
       on-profile: local
-  # Valores só de desenvolvimento (banco local em localhost:5432); não são segredos.
+  # Valores só de desenvolvimento (banco local em localhost:5432); não são segredos. O papel da
+  # aplicação (zeny_app) é criado pelo script docker/postgres/initdb/ (CLAUDE.md, README.md).
   datasource:
     url: ${ZENY_DB_URL:jdbc:postgresql://localhost:5432/zeny}
-    username: ${ZENY_DB_USERNAME:zeny}
-    password: ${ZENY_DB_PASSWORD:zeny}
+    username: ${ZENY_DB_USERNAME:zeny_app}
+    password: ${ZENY_DB_PASSWORD:zeny_app}
+  flyway:
+    user: ${ZENY_DB_MIGRATION_USERNAME:zeny}
+    password: ${ZENY_DB_MIGRATION_PASSWORD:zeny}
 
 logging:
   level:

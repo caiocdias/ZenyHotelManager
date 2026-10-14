@@ -2,6 +2,8 @@ package com.zeny.hotel.iam.application
 
 import com.zeny.hotel.iam.domain.Logins
 import com.zeny.hotel.iam.domain.User
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.RoleTemplate
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -23,15 +25,18 @@ class InitialAdminService(
     private val roles: Roles,
     private val hasher: PasswordHasher,
     private val properties: IamProperties,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** Devolve `true` se criou o administrador. */
+    @Audited("iam.user.create-initial-admin")
     @Transactional
     fun ensureInitialAdmin(): Boolean {
         val admin = properties.initialAdmin
         if (users.anyExists()) {
+            audit.noChanges()
             if (admin.password.isNotEmpty()) {
                 log.warn("Já existem usuários: ZENY_ADMIN_PASSWORD foi ignorada; remova-a do ambiente")
             }
@@ -57,6 +62,7 @@ class InitialAdminService(
             checkNotNull(roles.findByTemplate(RoleTemplate.ADMINISTRATOR)) { "Role Administrador não encontrada" }
         user.assignRole(administrator.id, clock.instant())
         users.add(user)
+        audit.created(IamAudit.USER, user.id) { user.auditState() }
         log.info("Administrador inicial criado (usuário {}); a senha deve ser trocada no primeiro login", user.id)
         return true
     }

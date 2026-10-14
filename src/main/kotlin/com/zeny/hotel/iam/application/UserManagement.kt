@@ -9,6 +9,8 @@ import com.zeny.hotel.iam.domain.RoleId
 import com.zeny.hotel.iam.domain.SessionRevocationReason
 import com.zeny.hotel.iam.domain.User
 import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CurrentActor
@@ -75,10 +77,12 @@ class UserManagementService(
     private val currentActor: CurrentActor,
     private val lock: AuthorizationLock,
     private val hasher: PasswordHasher,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    @Audited("iam.user.create")
     @Transactional
     fun create(command: CreateUserCommand): UserView {
         lock.acquire()
@@ -99,6 +103,7 @@ class UserManagementService(
             )
         command.pin?.let { user.resetPin(hasher.hash(it), now) }
         roleIds.forEach { user.assignRole(it, now) }
+        audit.created(IamAudit.USER, user.id) { user.auditState() }
         if (!users.tryAdd(user)) {
             throw ConflictException(IamErrorCodes.LOGIN_ALREADY_IN_USE, "Já existe um usuário com este login.")
         }
@@ -107,6 +112,7 @@ class UserManagementService(
     }
 
     /** Edita o nome (o login não muda: identifica o usuário na auditoria). */
+    @Audited("iam.user.rename")
     @Transactional
     fun rename(
         id: UserId,
@@ -114,7 +120,7 @@ class UserManagementService(
         name: String,
     ): UserView {
         val actor = actor()
-        val user = find(id)
+        val user = tracked(find(id))
         rules.requireCanManage(actor, id)
         requireCurrentVersion(expectedVersion, versionOf(user))
         user.rename(name, clock.instant())
@@ -123,6 +129,7 @@ class UserManagementService(
     }
 
     /** Troca o conjunto de roles do usuário. */
+    @Audited("iam.user.set-roles")
     @Transactional
     fun setRoles(
         id: UserId,
@@ -132,7 +139,7 @@ class UserManagementService(
         val roleIds = requestedRoleIds.map(::RoleId).toSet()
         lock.acquire()
         val actor = actor()
-        val user = find(id)
+        val user = tracked(find(id))
         rules.requireCanManage(actor, id)
         requireCurrentVersion(expectedVersion, versionOf(user))
         val removesAdministrator = checkRoleChanges(actor, userId = id, requested = roleIds)
@@ -146,11 +153,12 @@ class UserManagementService(
     }
 
     /** Desativa o usuário e revoga todas as sessões dele (RF-ACS-10). Desativar de novo não muda nada. */
+    @Audited("iam.user.deactivate")
     @Transactional
     fun deactivate(id: UserId): UserView {
         lock.acquire()
         val actor = actor()
-        val user = findForUpdate(id)
+        val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         if (user.active && rules.isAdministrator(id)) requireAnotherActiveAdministrator()
         val now = clock.instant()
@@ -162,11 +170,12 @@ class UserManagementService(
     }
 
     /** Reativa o usuário; as sessões revogadas não voltam (ele entra de novo). */
+    @Audited("iam.user.reactivate")
     @Transactional
     fun reactivate(id: UserId): UserView {
         lock.acquire()
         val actor = actor()
-        val user = findForUpdate(id)
+        val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         rules.requireHoldsWhatUserHas(actor, id)
         user.reactivate(clock.instant())
@@ -179,6 +188,7 @@ class UserManagementService(
      * Define uma senha provisória: o usuário a troca no próximo login, o bloqueio por tentativas
      * é zerado e todas as sessões dele caem.
      */
+    @Audited("iam.user.reset-password")
     @Transactional
     fun resetPassword(
         id: UserId,
@@ -187,7 +197,7 @@ class UserManagementService(
         lock.acquire()
         val actor = actor()
         requirePasswordRules(password, "newPassword")
-        val user = findForUpdate(id)
+        val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         rules.requireHoldsWhatUserHas(actor, id)
         user.resetPassword(hasher.hash(password), clock.instant())
@@ -196,6 +206,7 @@ class UserManagementService(
     }
 
     /** Define o PIN de aprovação do usuário (RF-ACS-01). */
+    @Audited("iam.user.reset-pin")
     @Transactional
     fun resetPin(
         id: UserId,
@@ -204,7 +215,7 @@ class UserManagementService(
         lock.acquire()
         val actor = actor()
         requirePinRules(pin, "newPin")
-        val user = findForUpdate(id)
+        val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         rules.requireHoldsWhatUserHas(actor, id)
         user.resetPin(hasher.hash(pin), clock.instant())
@@ -261,8 +272,14 @@ class UserManagementService(
         reason: SessionRevocationReason,
     ) {
         val now = clock.instant()
-        sessions.findNotRevokedOf(user.id).forEach { it.revoke(reason, now) }
+        sessions.findNotRevokedOf(user.id).forEach {
+            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
+            it.revoke(reason, now)
+        }
     }
+
+    /** Acompanha o usuário na trilha: o retrato de agora é o "antes"; o do fim do caso de uso, o "depois". */
+    private fun tracked(user: User): User = user.also { audit.track(IamAudit.USER, it.id) { it.auditState() } }
 
     private fun administratorRole(): Role =
         checkNotNull(roles.findByTemplate(RoleTemplate.ADMINISTRATOR)) { "Role Administrador não encontrada" }

@@ -22,8 +22,12 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${ZENY_PROFILE:-prod}
       ZENY_DB_URL: jdbc:postgresql://db:5432/${ZENY_DB_NAME:-zeny}
+      # Dois papéis (H4, ARCHITECTURE §11): a aplicação conecta com o papel restrito (só DML; sem
+      # UPDATE/DELETE na trilha de auditoria) e o Flyway com o dono dos schemas.
       ZENY_DB_USERNAME: ${ZENY_DB_USERNAME:?defina ZENY_DB_USERNAME no docker/.env}
       ZENY_DB_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
+      ZENY_DB_MIGRATION_USERNAME: ${ZENY_DB_MIGRATION_USERNAME:?defina ZENY_DB_MIGRATION_USERNAME no docker/.env}
+      ZENY_DB_MIGRATION_PASSWORD: ${ZENY_DB_MIGRATION_PASSWORD:?defina ZENY_DB_MIGRATION_PASSWORD no docker/.env}
       ZENY_ENCRYPTION_KEYS: ${ZENY_ENCRYPTION_KEYS:?defina ZENY_ENCRYPTION_KEYS no docker/.env (README.md)}
       ZENY_ENCRYPTION_ACTIVE_KEY_ID: ${ZENY_ENCRYPTION_ACTIVE_KEY_ID:?defina ZENY_ENCRYPTION_ACTIVE_KEY_ID no docker/.env}
       # Chaves RSA de assinatura do access token JWT (ARCHITECTURE §8.1).
@@ -43,16 +47,23 @@ services:
         condition: service_healthy
     stop_grace_period: 40s
 
+  # O POSTGRES_USER da imagem é o dono dos schemas, usado só pelo Flyway (ZENY_DB_MIGRATION_*). Na
+  # primeira inicialização (volume vazio), o script de docker/postgres/initdb/ cria o papel da
+  # aplicação (ZENY_DB_USERNAME/ZENY_DB_PASSWORD); num volume antigo, recrie-o (down -v) ou crie o
+  # papel à mão (README.md).
   db:
     image: postgres:18
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${ZENY_DB_NAME:-zeny}
-      POSTGRES_USER: ${ZENY_DB_USERNAME:?defina ZENY_DB_USERNAME no docker/.env}
-      POSTGRES_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
+      POSTGRES_USER: ${ZENY_DB_MIGRATION_USERNAME:?defina ZENY_DB_MIGRATION_USERNAME no docker/.env}
+      POSTGRES_PASSWORD: ${ZENY_DB_MIGRATION_PASSWORD:?defina ZENY_DB_MIGRATION_PASSWORD no docker/.env}
+      ZENY_DB_USERNAME: ${ZENY_DB_USERNAME:?defina ZENY_DB_USERNAME no docker/.env}
+      ZENY_DB_PASSWORD: ${ZENY_DB_PASSWORD:?defina ZENY_DB_PASSWORD no docker/.env}
     volumes:
       # O postgres:18 guarda os dados em /var/lib/postgresql/18/docker; o volume fica um nível acima.
       - db-data:/var/lib/postgresql
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s

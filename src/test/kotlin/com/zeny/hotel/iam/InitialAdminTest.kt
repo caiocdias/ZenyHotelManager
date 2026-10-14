@@ -7,6 +7,7 @@ import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
 import com.zeny.hotel.iam.application.Roles
 import com.zeny.hotel.iam.application.Users
 import com.zeny.hotel.iam.infrastructure.IamStartupRunner
+import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.TestAdmin
 import io.kotest.assertions.throwables.shouldThrow
@@ -144,6 +145,7 @@ class InitialAdminTest(
                 mockk<Roles>(),
                 mockk<PasswordHasher>(),
                 properties(login = "", password = ""),
+                mockk<AuditContext>(relaxed = true),
                 Clock.systemUTC(),
             )
 
@@ -162,6 +164,7 @@ class InitialAdminTest(
                 mockk<Roles>(),
                 mockk<PasswordHasher>(),
                 properties("admin", "curta123"),
+                mockk<AuditContext>(relaxed = true),
                 Clock.systemUTC(),
             )
 

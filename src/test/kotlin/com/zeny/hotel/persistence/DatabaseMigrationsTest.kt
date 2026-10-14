@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.dao.DataAccessException
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.jdbc.datasource.DataSourceTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import java.nio.file.Path
 import java.sql.SQLException
@@ -31,7 +32,6 @@ import kotlin.io.path.name
 class DatabaseMigrationsTest(
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val flyway: Flyway,
-    @Autowired private val transactionTemplate: TransactionTemplate,
 ) {
     private val moduleFolders =
         Path
@@ -63,8 +63,10 @@ class DatabaseMigrationsTest(
     fun `keeps the migration history in the shared schema`() {
         flyway.configuration.defaultSchema shouldBe "shared"
 
+        // O histórico é só do dono dos schemas (o Flyway); o papel da aplicação não o lê (DatabaseRolesTest).
         val failed =
-            jdbc
+            JdbcClient
+                .create(flyway.configuration.dataSource)
                 .sql("SELECT count(*) FROM shared.flyway_schema_history WHERE NOT success")
                 .query(Int::class.java)
                 .single()
@@ -89,11 +91,14 @@ class DatabaseMigrationsTest(
         val extensions = jdbc.sql("SELECT extname FROM pg_extension").query(String::class.java).list()
         extensions shouldContain "btree_gist"
 
-        // Sem btree_gist o PostgreSQL recusa `uuid WITH =` num índice GiST (ARCHITECTURE §11).
+        // Sem btree_gist o PostgreSQL recusa `uuid WITH =` num índice GiST (ARCHITECTURE §11). A tabela
+        // temporária é criada com o dono: o papel da aplicação não cria tabelas, nem temporárias.
+        val owner = JdbcClient.create(flyway.configuration.dataSource)
+        val ownerTransactions = TransactionTemplate(DataSourceTransactionManager(flyway.configuration.dataSource))
         val error =
             shouldThrow<DataAccessException> {
-                transactionTemplate.executeWithoutResult {
-                    jdbc
+                ownerTransactions.executeWithoutResult {
+                    owner
                         .sql(
                             """
                             CREATE TEMP TABLE allocation_probe (
@@ -104,11 +109,11 @@ class DatabaseMigrationsTest(
                             """.trimIndent(),
                         ).update()
                     val room = "'0199d5a0-0000-7000-8000-000000000001'::uuid"
-                    jdbc.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-10,2026-10-12)')").update()
+                    owner.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-10,2026-10-12)')").update()
                     // Diária encostada (saída no dia da entrada) não conflita.
-                    jdbc.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-12,2026-10-14)')").update()
+                    owner.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-12,2026-10-14)')").update()
                     // Sobreposição na mesma UH viola a restrição.
-                    jdbc.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-13,2026-10-15)')").update()
+                    owner.sql("INSERT INTO allocation_probe VALUES ($room, '[2026-10-13,2026-10-15)')").update()
                 }
             }
         (error.rootCause as SQLException).sqlState shouldBe EXCLUSION_VIOLATION

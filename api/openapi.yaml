@@ -22,7 +22,92 @@ tags:
   name: iam
 - description: Informações sobre o servidor e a API.
   name: meta
+- description: Trilha de auditoria das escritas.
+  name: audit
 paths:
+  /api/v1/audit-entries:
+    get:
+      description: "Entradas da trilha, das mais recentes para as mais antigas, filtradas\
+        \ por quem agiu (`userId`), pela entidade (`entityType` e, opcionalmente,\
+        \ `entityId`) e pelo período (`from` inclusive, `to` exclusive, instantes\
+        \ em UTC). Cada entrada traz quem, quando e de qual sessão de dispositivo,\
+        \ a ação e o resultado, a entidade, os valores antes e depois (com senha,\
+        \ PIN, tokens e campos cifrados mascarados como `***`) e a aprovação associada.\
+        \ Exige `audit.read` (sem ela, 403 `PERMISSION_DENIED`)."
+      operationId: listAuditEntries
+      parameters:
+      - description: Só as entradas deste usuário (quem agiu).
+        in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: "Tipo da entidade, como `iam.user` ou `iam.role`."
+        in: query
+        name: entityType
+        required: false
+        schema:
+          type: string
+          maxLength: 100
+          minLength: 0
+      - description: Id da entidade; exige `entityType`.
+        in: query
+        name: entityId
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          minLength: 0
+      - description: "Início do período (inclusive), em UTC."
+        example: 2026-10-01T00:00:00Z
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: "Fim do período (exclusive), em UTC."
+        example: 2026-11-01T00:00:00Z
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date-time
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageAuditEntryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar a trilha de auditoria
+      tags:
+      - audit
   /api/v1/auth/login:
     post:
       description: "Público. Abre uma sessão no dispositivo (um novo login no mesmo\
@@ -913,6 +998,72 @@ components:
         minLength: 1
         pattern: "^[\\x21-\\x7E]+$"
   schemas:
+    AuditEntryResponse:
+      type: object
+      description: Uma entrada da trilha de auditoria.
+      properties:
+        action:
+          type: string
+          description: Código estável da ação.
+          example: iam.user.deactivate
+        after:
+          type: object
+          additionalProperties: true
+          description: Valores depois da ação. Campos sensíveis saem como `***`.
+          nullable: true
+        approvalId:
+          type: string
+          format: uuid
+          description: "A aprovação de superior associada, se houver."
+          nullable: true
+        before:
+          type: object
+          additionalProperties: true
+          description: Valores antes da ação; nulo numa criação. Campos sensíveis
+            saem como `***`.
+          nullable: true
+        deviceSessionId:
+          type: string
+          format: uuid
+          description: "A sessão de dispositivo de onde agiu, se houver."
+          nullable: true
+        entityId:
+          type: string
+          nullable: true
+        entityType:
+          type: string
+          description: Tipo da entidade; nulo numa ação sem entidade.
+          example: iam.user
+          nullable: true
+        errorCode:
+          type: string
+          description: O `code` do erro de uma recusa.
+          example: INVALID_CREDENTIALS
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+          description: Quando a ação aconteceu (UTC).
+        outcome:
+          type: string
+          description: "SUCCEEDED, ou REJECTED para uma recusa registrada (como a\
+            \ falha de login)."
+          enum:
+          - SUCCEEDED
+          - REJECTED
+        userId:
+          type: string
+          format: uuid
+          description: "Quem agiu; nulo quando foi o sistema (boot, jobs)."
+          nullable: true
+      required:
+      - action
+      - id
+      - occurredAt
+      - outcome
     ChangePasswordRequest:
       type: object
       properties:
@@ -971,6 +1122,20 @@ components:
       - name
       - password
       - roleIds
+    CursorPageAuditEntryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditEntryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePermissionResponse:
       type: object
       description: Página de resultados paginada por cursor.

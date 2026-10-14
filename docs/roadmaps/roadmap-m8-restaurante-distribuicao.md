@@ -1067,8 +1067,10 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 - Arquivo de override de produção do compose (a criar em `docker/`) com o profile `prod`.
 - Nuvem: Caddy com Let's Encrypt, webhooks habilitados. Hotel: rede local, túnel opcional para acesso externo, integrações em pull/polling, nobreak e cópia externa obrigatória (ARCHITECTURE §15.2).
 - Segredos via Docker secrets ou variáveis do host (chave de cifragem, chave JWT, credenciais do banco, dos provedores e do backup).
+- Dívida do M1 E04 (decidida pelo usuário em 2026-10-14): as migrações saem do boot da `api` para um job ou container de uso único que conecta com o dono dos schemas (`ZENY_DB_MIGRATION_*`). A `api` deixa de receber essas credenciais e conecta só com o papel restrito; o dono deixa de ser o superusuário do container (`POSTGRES_USER`) onde o modelo de implantação permitir.
+- Pendência do M1 E04: decidir se o login com usuário inexistente vai para a trilha de auditoria ou para uma métrica (hoje não deixa registro, porque não escreve nada).
 - Destino real do backup e do espelhamento (E10) com credenciais do usuário.
-- `docs/operacao/implantacao.md` (a criar): instalação, atualização com Flyway no boot, rotação de chaves, verificação pós-implantação, rollback de versão.
+- `docs/operacao/implantacao.md` (a criar): instalação, atualização com o job de migração (Flyway) antes da `api`, rotação de chaves, verificação pós-implantação, rollback de versão.
 - Smoke test no ambiente final: readiness `UP` via TLS, login, um evento SSE.
 
 **Fora de escopo:** provisionamento do servidor ou contratação da VPS (ação do usuário).
@@ -1323,3 +1325,4 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicadas as decisões da entrevista SPEC × ARCHITECTURE (regra por camadas na ARCHITECTURE §3.1; `TabClosed` tratado por listener do próprio `pos`, agora registrado na ARCHITECTURE e na SPEC §8.3): restrições de grafo e alertas reescritas, H5 simplificada (`pos` → `rates` permitido), E01, E04 e E07 ajustados (critérios, escopo e prompt).
+- 2026-10-14 — E11 recebe duas pendências do M1 E04, decididas pelo usuário: migrações num job de uso único com o dono dos schemas (a `api` deixa de receber `ZENY_DB_MIGRATION_*`) e a decisão entre trilha de auditoria e métrica para o login com usuário inexistente. Nenhuma tag mudou.

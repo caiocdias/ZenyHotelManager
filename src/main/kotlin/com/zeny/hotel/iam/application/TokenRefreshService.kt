@@ -2,6 +2,8 @@ package com.zeny.hotel.iam.application
 
 import com.zeny.hotel.iam.IamErrorCodes
 import com.zeny.hotel.iam.domain.SessionRevocationReason
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.UnauthenticatedException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -24,21 +26,26 @@ import java.time.Instant
  * As recusas confirmam a transação: a revogação por reuso precisa ficar gravada.
  */
 @Service
+@Suppress("LongParameterList") // os colaboradores do caso de uso
 class TokenRefreshService(
     private val users: Users,
     private val sessions: DeviceSessions,
     private val rotated: RotatedRefreshTokens,
     private val tokens: AccessTokenIssuer,
     private val properties: IamProperties,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    @Audited("iam.session.refresh", recordRejections = true)
     @Transactional(noRollbackFor = [UnauthenticatedException::class])
     fun refresh(refreshToken: String): AuthTokens {
         val now = clock.instant()
         val tokenHash = RefreshTokens.hash(refreshToken)
         val session = sessions.findByRefreshTokenHashForUpdate(tokenHash) ?: refuseUnknown(tokenHash, now)
+        audit.attributeTo(session.userId, session.id)
+        audit.track(IamAudit.SESSION, session.id) { session.auditState() }
         if (!session.isActive(now)) refuse(IamErrorCodes.REFRESH_TOKEN_INVALID)
         val user = users.findById(session.userId)
         if (user == null || !user.active) {
@@ -58,7 +65,11 @@ class TokenRefreshService(
         now: Instant,
     ): Nothing {
         val sessionId = rotated.sessionOf(tokenHash) ?: refuse(IamErrorCodes.REFRESH_TOKEN_INVALID)
-        sessions.findByIdForUpdate(sessionId)?.revoke(SessionRevocationReason.REFRESH_TOKEN_REUSED, now)
+        sessions.findByIdForUpdate(sessionId)?.let {
+            audit.attributeTo(it.userId, it.id)
+            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
+            it.revoke(SessionRevocationReason.REFRESH_TOKEN_REUSED, now)
+        }
         log.warn("Reuso de refresh token detectado: sessão {} revogada", sessionId)
         refuse(IamErrorCodes.REFRESH_TOKEN_REUSED)
     }

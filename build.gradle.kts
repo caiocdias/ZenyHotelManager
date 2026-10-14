@@ -58,6 +58,8 @@ dependencies {
     // Jobs agendados com trava no banco (ARCHITECTURE §13).
     implementation(libs.shedlock.spring)
     implementation(libs.shedlock.provider.jdbc.template)
+    // Trilha de auditoria (ARCHITECTURE §5): o aspecto de `@Audited` (shared) roda dentro da transação.
+    implementation(libs.spring.boot.starter.aspectj)
     // Compilação também: o iam lê o nome da restrição violada no PSQLException (409 por unicidade).
     implementation(libs.postgresql)
 

@@ -34,11 +34,37 @@ Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins 
 
 ## Banco de dados
 
-PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)). A conexão vem das variáveis `ZENY_DB_URL`, `ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`; no profile `local` o padrão é um banco `zeny` em `localhost:5432`, com usuário e senha `zeny`. Para rodar a aplicação fora do compose (`bootRun`), suba só esse banco:
+PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)).
+
+O banco tem **dois papéis** (ARCHITECTURE §11):
+
+- o **dono dos schemas**, usado só pelo Flyway para migrar (`ZENY_DB_MIGRATION_USERNAME` e `ZENY_DB_MIGRATION_PASSWORD`);
+- o **papel da aplicação** (`ZENY_DB_USERNAME` e `ZENY_DB_PASSWORD`), com que o servidor conecta. Ele só lê e escreve linhas: não cria, altera nem remove tabelas (nem temporárias), e na trilha de auditoria só lê e insere.
+
+A URL vem de `ZENY_DB_URL` e vale para os dois. O papel da aplicação é criado fora das migrações, que só concedem privilégios a ele, e nenhuma senha de papel fica no repositório. Se o servidor conectar com o dono, ou com um papel que altere a trilha, ele não sobe.
+
+No profile `local`, o padrão é o banco `zeny` em `localhost:5432`, com o dono `zeny`/`zeny` e o papel da aplicação `zeny_app`/`zeny_app` (valores só de desenvolvimento). Para rodar a aplicação fora do compose (`bootRun`), suba só esse banco. O script [`docker/postgres/initdb/10-create-app-role.sh`](docker/postgres/initdb/10-create-app-role.sh) cria o papel da aplicação na primeira inicialização:
 
 ```bash
-docker run -d --name zeny-db -e POSTGRES_DB=zeny -e POSTGRES_USER=zeny -e POSTGRES_PASSWORD=zeny -p 5432:5432 postgres:18
+docker run -d --name zeny-db -e POSTGRES_DB=zeny -e POSTGRES_USER=zeny -e POSTGRES_PASSWORD=zeny \
+  -e ZENY_DB_USERNAME=zeny_app -e ZENY_DB_PASSWORD=zeny_app \
+  -v "$PWD/docker/postgres/initdb:/docker-entrypoint-initdb.d:ro" -p 5432:5432 postgres:18
 ```
+
+O script só roda com o volume de dados vazio. Num banco criado antes da separação dos papéis, há duas saídas:
+
+- recriá-lo: `docker rm -f zeny-db` e o comando acima, ou `docker compose -f docker/compose.yaml down -v` no compose;
+- criar o papel uma vez à mão, com a senha que estiver em `ZENY_DB_PASSWORD`, e reiniciar a aplicação, cujas migrações concedem os privilégios:
+
+  ```bash
+  docker exec -it zeny-db psql -U zeny -d zeny \
+    -c "CREATE ROLE zeny_app LOGIN PASSWORD '<senha>' NOSUPERUSER NOCREATEDB NOCREATEROLE" \
+    -c "REVOKE TEMPORARY ON DATABASE zeny FROM PUBLIC" -c "GRANT CONNECT ON DATABASE zeny TO zeny_app"
+  ```
+
+  No compose, troque `zeny-db` por `docker compose -f docker/compose.yaml exec db`.
+
+Uma implantação nova segue o mesmo passo: o administrador do banco cria o papel da aplicação, sem privilégios de criação, antes do primeiro boot.
 
 ## Cifragem de campo
 
@@ -68,7 +94,7 @@ export ZENY_ADMIN_LOGIN=admin ZENY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
 
 O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket criado pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local). Backup e TLS público ficam para o M8.
 
-1. Crie o `docker/.env` a partir do modelo e gere a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
+1. Crie o `docker/.env` a partir do modelo. Ele traz os dois papéis do banco: `ZENY_DB_MIGRATION_*`, o dono dos schemas e `POSTGRES_USER` do container, e `ZENY_DB_USERNAME`/`ZENY_DB_PASSWORD`, o papel da aplicação, criado na primeira inicialização do volume. Um `docker/.env` antigo precisa das duas variáveis novas e de um `ZENY_DB_USERNAME` diferente do dono; o volume antigo precisa ser recriado ou receber o papel à mão (seção "Banco de dados"). Gere também a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
 
    ```bash
    cp docker/.env.example docker/.env
@@ -112,7 +138,14 @@ Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-ma
 
 ## API
 
-REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Todo `/api/v1` exige o access token (`Authorization: Bearer …`), exceto o login, o refresh e `GET /api/v1/meta/version`; sem token, a resposta é `401 UNAUTHENTICATED`. O que cada usuário pode fazer vem das roles atribuídas a ele, compostas a partir do catálogo de permissões (`GET /api/v1/permissions`), com escopo `OWN`/`ALL` e limites; as permissões efetivas não vão no token e aparecem em `GET /api/v1/auth/me`, e a falta de uma permissão responde `403 PERMISSION_DENIED`. No boot, o servidor sincroniza o catálogo declarado no código e cria os modelos de role da SPEC §3.1. O administrador gere usuários (`/api/v1/users`: criar, editar, atribuir roles, desativar, reativar, redefinir senha e PIN, ver e revogar sessões) e roles (`/api/v1/roles`: criar, editar, duplicar, desativar e reativar); ninguém concede permissão, escopo ou limite acima dos seus, só um administrador gere administradores e nada é apagado, só desativado. Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente e declarar e checar permissões: [`CLAUDE.md`](CLAUDE.md).
+REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Todo `/api/v1` exige o access token (`Authorization: Bearer …`), exceto o login, o refresh e `GET /api/v1/meta/version`; sem token, a resposta é `401 UNAUTHENTICATED`. O que cada usuário pode fazer vem das roles atribuídas a ele, compostas a partir do catálogo de permissões (`GET /api/v1/permissions`), com escopo `OWN`/`ALL` e limites; as permissões efetivas não vão no token e aparecem em `GET /api/v1/auth/me`, e a falta de uma permissão responde `403 PERMISSION_DENIED`. No boot, o servidor sincroniza o catálogo declarado no código e cria os modelos de role da SPEC §3.1. O administrador gere usuários (`/api/v1/users`: criar, editar, atribuir roles, desativar, reativar, redefinir senha e PIN, ver e revogar sessões) e roles (`/api/v1/roles`: criar, editar, duplicar, desativar e reativar); ninguém concede permissão, escopo ou limite acima dos seus, só um administrador gere administradores e nada é apagado, só desativado. Toda escrita vai para a trilha de auditoria *append-only*, na mesma transação da escrita, e o papel do banco da aplicação não altera nem apaga a trilha. Cada entrada registra:
+
+- quem agiu, quando e de qual sessão de dispositivo;
+- a ação, o resultado (inclusive as falhas de login) e a entidade;
+- os valores antes e depois, com senha, PIN, tokens e campos cifrados mascarados;
+- a aprovação de superior associada, quando houver.
+
+A trilha é consultada em `GET /api/v1/audit-entries`, filtrada por usuário, entidade e período, e exige a permissão `audit.read`. Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: [`CLAUDE.md`](CLAUDE.md).
 
 ## Integração contínua
 
@@ -143,7 +176,7 @@ src/main/kotlin/com/zeny/hotel/
 Os limites são verificados em teste a cada build:
 
 - `ModularityTest`: `ApplicationModules.verify()` barra ciclos e acesso a pacotes internos de outro módulo, e gera a documentação dos módulos em `build/spring-modulith-docs/`.
-- `LayerArchitectureTest`: regras ArchUnit das camadas internas. `domain` não depende de Spring, da API JPA/Hibernate (só anotações) nem das outras camadas; `web` não usa `domain` nem `infrastructure`; um módulo não usa as camadas internas de outro.
+- `LayerArchitectureTest`: regras ArchUnit das camadas internas. `domain` não depende de Spring, da API JPA/Hibernate (só anotações) nem das outras camadas; `web` não usa `domain` nem `infrastructure`; um módulo não usa as camadas internas de outro; todo caso de uso de escrita de `application` leva `@Audited`.
 - `LayerRulesTest`: prova, com classes de exemplo em `src/test/kotlin/archfixtures/`, que cada regra falha diante de uma violação.
 
 ## Roadmaps

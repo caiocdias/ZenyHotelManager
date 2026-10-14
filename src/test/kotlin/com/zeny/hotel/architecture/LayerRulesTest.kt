@@ -62,6 +62,27 @@ class LayerRulesTest {
         assertViolates("archfixtures.crossmodule", "ChargeService") { it.modulesUseOnlyPublicApiOfOtherModules }
     }
 
+    @Test
+    fun `transactional write use case without Audited fails`() {
+        assertViolates("archfixtures.unaudited", "UnauditedBookingService.cancel") { it.writeUseCasesAreAudited }
+        assertViolates("archfixtures.unaudited", "UnauditedBookingService.reschedule") { it.writeUseCasesAreAudited }
+        assertViolates("archfixtures.unaudited", "ClassLevelTransactionService.confirm") { it.writeUseCasesAreAudited }
+        assertViolates("archfixtures.unaudited", "JakartaTransactionService.archive") { it.writeUseCasesAreAudited }
+        assertViolates("archfixtures.unaudited", "JakartaClassLevelService.close") { it.writeUseCasesAreAudited }
+    }
+
+    @Test
+    fun `read-only and audited use cases pass the audit rule`() {
+        val classes = ClassFileImporter().importPackages("archfixtures.unaudited")
+        val details =
+            LayerRules(
+                "archfixtures.unaudited",
+            ).writeUseCasesAreAudited.evaluate(classes).failureReport.details
+
+        details.filter { "find" in it || "book(" in it || "list" in it || "restore" in it } shouldBe emptyList()
+        details.size shouldBe 5
+    }
+
     private fun assertViolates(
         base: String,
         offendingClass: String,

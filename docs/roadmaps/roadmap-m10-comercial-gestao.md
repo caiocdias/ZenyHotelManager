@@ -1239,6 +1239,7 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 - Anonimização em `guests`: substitui nome, documento, contato, endereço, preferências e restrições por valores irreversíveis; remove anexos em `files`; mantém o ID para que contas e notas continuem referenciando; reutiliza a anonimização manual de M3, se existir.
 - Expurgo dos sensíveis da FNRH no módulo dono (H6), incluindo a chave de cifragem por registro, se houver.
 - Job semanal com ShedLock (ARCHITECTURE §13), idempotente e retomável; registro de auditoria por execução com contagens, sem dados pessoais.
+- Pendência do M1 E04 (decidida pelo usuário em 2026-10-14): decidir a retenção da própria trilha de auditoria (`audit.audit_entry`), que cresce sem limite (todo refresh de token gera uma entrada). O papel da aplicação não apaga a trilha (H4): um expurgo dela precisa rodar com o dono dos schemas.
 - Modo simulação (lista o que seria afetado) com permissão própria.
 
 **Fora de escopo:** exportação dos dados do titular (entregue em M3, se aplicável).
@@ -1409,3 +1410,4 @@ No fim, preencha "Evidências e handoff" de E14 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado (antes do código existir; sincronizar antes da primeira etapa).
 - 2026-10-13 — aplicadas as decisões da entrevista sobre SPEC × ARCHITECTURE: regra por camadas na §3.1 (contexto, restrições e gate); H2 decidida (`events` → `printing`; E05 e E07 geram os PDFs sem pedir aprovação); H8 sem a justificativa de proibição (BEO segue por checklists, sem push, porque a SPEC não pede); critérios "events não depende de housekeeping, maintenance, notifications, fiscal, inventory" trocados por verificações de desenho (nota só pelo fluxo de `billing`, baixa só pelas fichas técnicas de `pos`).
+- 2026-10-14 — E13 recebe a pendência do M1 E04 sobre a retenção da trilha de auditoria (expurgo só com o dono dos schemas). Nenhuma tag mudou.

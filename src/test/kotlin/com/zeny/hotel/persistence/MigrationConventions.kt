@@ -52,7 +52,15 @@ object MigrationConventions {
                 """(?:table|sequence|function|procedure|routine)\s+)?([^;]+?)\s+(?:to|from)\b""",
             RegexOption.IGNORE_CASE,
         )
-    private val SIGNATURE = Regex("""\([^)]*\)""")
+
+    /**
+     * `ALTER DEFAULT PRIVILEGES [FOR ROLE …] [IN SCHEMA …] GRANT|REVOKE … ON TABLES|SEQUENCES|…`:
+     * vale para os objetos criados depois, e só pode nomear o schema do próprio módulo. Sem
+     * `IN SCHEMA`, valeria para todo schema; por isso é recusado.
+     */
+    private val DEFAULT_PRIVILEGES = Regex("""\balter\s+default\s+privileges\b([^;]*)""", RegexOption.IGNORE_CASE)
+    private val GRANT_OR_REVOKE = Regex("""\b(?:grant|revoke)\b""", RegexOption.IGNORE_CASE)
+    private val IN_SCHEMA = Regex("""\bin\s+schema\s+($NAME(?:\s*,\s*$NAME)*)""", RegexOption.IGNORE_CASE)
 
     /** Índices: o nome não leva schema; o que importa é a tabela depois do `ON`. */
     private val INDEX_DDL =
@@ -105,7 +113,10 @@ object MigrationConventions {
         fileName: String,
         sql: String,
     ): List<String> {
-        val code = sql.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, " ")
+        val withDefaults = sql.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, " ")
+        val defaultPrivileges = DEFAULT_PRIVILEGES.findAll(withDefaults).map { it.groupValues[1] }.toList()
+        // O GRANT/REVOKE de dentro do ALTER DEFAULT PRIVILEGES é conferido à parte (ON TABLES não nomeia objeto).
+        val code = withDefaults.replace(DEFAULT_PRIVILEGES, " ")
         val objects =
             (OBJECT_DDL.findAll(code) + INDEX_DDL.findAll(code)).flatMap { it.groupValues[1].split(',') } +
                 TABLE_REFERENCES.asSequence().flatMap { rule -> rule.findAll(code).map { it.groupValues[1] } }
@@ -113,7 +124,7 @@ object MigrationConventions {
         val grantedObjects =
             privileges
                 .filter { it.groupValues[1].isEmpty() }
-                .flatMap { it.groupValues[2].replace(SIGNATURE, "").split(',') }
+                .flatMap { withoutParentheses(it.groupValues[2]).split(',') }
         val grantedSchemas = privileges.filter { it.groupValues[1].isNotEmpty() }.map { it.groupValues[2] }
         return buildList {
             (objects + grantedObjects)
@@ -124,8 +135,45 @@ object MigrationConventions {
                 .map { it.trim().replace("\"", "") }
                 .filterNot { it == schema }
                 .forEach { add("$fileName: permissão sobre o schema '$it'; só vale o schema '$schema'") }
+            defaultPrivileges.forEach { clause ->
+                val target = GRANT_OR_REVOKE.split(clause, limit = 2).first()
+                val schemas =
+                    IN_SCHEMA
+                        .find(target)
+                        ?.groupValues
+                        ?.get(1)
+                        ?.split(',')
+                        .orEmpty()
+                if (schemas.isEmpty()) {
+                    add(
+                        "$fileName: ALTER DEFAULT PRIVILEGES sem IN SCHEMA vale para todos os schemas; " +
+                            "use IN SCHEMA $schema",
+                    )
+                }
+                schemas
+                    .map { it.trim().replace("\"", "") }
+                    .filterNot { it == schema }
+                    .forEach { add("$fileName: privilégios padrão no schema '$it'; só vale o schema '$schema'") }
+            }
             if (CREATE_SCHEMA.containsMatchIn(code)) {
                 add("$fileName: não crie schema na migração; o Flyway cria o schema a partir da pasta")
+            }
+        }
+    }
+
+    /**
+     * O texto sem o que está entre parênteses, inclusive aninhados: a assinatura de uma função
+     * (`f(numeric(14,2), text)` → `f`), cujas vírgulas não separam objetos.
+     */
+    private fun withoutParentheses(text: String): String {
+        var depth = 0
+        return buildString {
+            text.forEach { char ->
+                when {
+                    char == '(' -> depth++
+                    char == ')' -> depth = maxOf(0, depth - 1)
+                    depth == 0 -> append(char)
+                }
             }
         }
     }

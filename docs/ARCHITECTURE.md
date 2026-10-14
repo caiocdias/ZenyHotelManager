@@ -243,7 +243,7 @@ Regras internas de cada módulo, verificadas com ArchUnit:
 3. **`domain`**: o agregado aplica as regras de negócio, incluindo limites (ex.: desconto ≤ limite) e transições de estado, e registra **eventos de domínio**.
 4. **Commit**: na mesma transação, os eventos são gravados no *Event Publication Registry*, a tabela de outbox do Modulith.
 5. **Pós-commit**: os listeners (`@ApplicationModuleListener`) rodam de forma assíncrona e em transação própria. O que falhar fica pendente e é reprocessado; o reprocessamento também acontece no restart.
-6. A **auditoria** é gravada na mesma transação do caso de uso, via aspecto `@Audited(action)` que captura antes e depois.
+6. A **auditoria** é gravada na mesma transação do caso de uso, via aspecto `@Audited(action)` que captura antes e depois: o caso de uso descreve as entidades que muda pela porta `AuditContext` (o retrato de antes é lido ao acompanhar a entidade e o de depois no fim do método), e o aspecto, que roda dentro da transação, entrega as entradas à porta `AuditTrail` do `shared`, implementada por `audit`. Rollback não deixa entrada, e uma falha ao gravar a entrada desfaz a escrita. Todo caso de uso de escrita leva a anotação (regra ArchUnit).
 7. O broadcaster **SSE** recebe os eventos relevantes depois do commit e notifica os clientes inscritos.
 
 Concorrência: os agregados têm `version` para lock otimista, que a API expõe como `ETag`/`If-Match`. Pontos de disputa usam lock pessimista curto, como os contadores de disponibilidade por tipo/data (§11).
@@ -382,7 +382,7 @@ sequenceDiagram
   - um job de retenção anonimiza perfis vencidos e expurga dados sensíveis da FNRH (RN-19, RN-20);
   - exportar os dados de um titular gera um pacote auditado.
 - **PCI-DSS**: o servidor nunca recebe número de cartão. A captura acontece no terminal (TEF/Smart POS) ou no componente do provedor, e o servidor guarda só token, bandeira e 4 últimos dígitos.
-- A **auditoria** fica numa tabela *append-only*: o usuário da aplicação não tem `UPDATE`/`DELETE` nela.
+- A **auditoria** fica numa tabela *append-only* (`audit.audit_entry`): o papel do banco da aplicação só tem `SELECT` e `INSERT` nela, e a partida recusa um papel que possa alterá-la (§11). Os valores antes e depois nunca levam senha, PIN, token, hash nem valor decifrado: os retratos de cada módulo os omitem e a trilha mascara o que escapar, pelo nome da propriedade, pela anotação `@AuditMasked` e pelo formato do valor (texto cifrado, hash, JWT).
 
 ---
 
@@ -445,12 +445,13 @@ sequenceDiagram
 - **Disponibilidade**: contadores `room_type_inventory(room_type_id, date, total, sold, blocked, out_of_order)`.
   - São atualizados na mesma transação da reserva, bloqueio ou OOO, com `SELECT … FOR UPDATE` nas datas envolvidas.
   - Isso evita overbooking em reservas simultâneas, inclusive as vindas do channel manager.
-- **Imutabilidade financeira** (RN-03): tabelas de lançamentos e pagamentos sem `UPDATE`/`DELETE` para o usuário da aplicação; estornos são novas linhas.
+- **Dois papéis no banco** (H4 do roadmap do M1): o **dono dos schemas** (`ZENY_DB_MIGRATION_*`) é usado só pelo Flyway; a aplicação conecta com um **papel restrito** (`ZENY_DB_*`), criado fora das migrações (script de inicialização do `db` no compose e nos testes, passo manual numa implantação), sem senha no repositório. As migrações só concedem privilégios a ele (DML por schema, com `ALTER DEFAULT PRIVILEGES` para as tabelas futuras), pelo placeholder `${app_role}`; ele não executa DDL, não cria tabelas temporárias (o `TEMPORARY` do banco sai de `PUBLIC`) nem é dono de nada. Tabelas *append-only* recebem só `SELECT, INSERT` e são declaradas pelo módulo (`AppendOnlyTables`); a partida (`DatabaseRoleGuard`) recusa o papel que for superusuário, puder criar objetos (inclusive schemas e tabelas temporárias), for dono de tabela de módulo ou puder alterar uma tabela *append-only* (inclusive por `UPDATE` de coluna).
+- **Imutabilidade financeira** (RN-03): tabelas de lançamentos e pagamentos sem `UPDATE`/`DELETE` para o usuário da aplicação, pela mesma regra dos dois papéis; estornos são novas linhas.
 - Exclusão física só para dados transitórios. Entidades de negócio usam status (inativo, cancelado).
 
 **Migrações**
 
-- Flyway, com uma pasta por módulo e versão por timestamp (`V2026_10_09_1200__…`), o que evita colisão entre módulos.
+- Flyway, com uma pasta por módulo e versão por timestamp (`V2026_10_09_1200__…`), o que evita colisão entre módulos. Roda com o dono dos schemas; cada pasta concede ao papel da aplicação os privilégios do seu schema.
 
 **Leitura para relatórios**
 
@@ -563,7 +564,8 @@ flowchart LR
 
 **Migrações**
 
-- Flyway roda no boot da `api`. Com uma única instância, não há corrida.
+- Flyway roda no boot da `api`, com uma conexão própria do dono dos schemas (`ZENY_DB_MIGRATION_*`); a aplicação usa o papel restrito (§11). Com uma única instância, não há corrida.
+- **Pendência (M8 E11, decidida em 2026-10-14):** as migrações passam a um job ou container de uso único com o dono dos schemas, e a `api` deixa de receber `ZENY_DB_MIGRATION_*`; até lá a `api` guarda as credenciais do dono, que no compose é o superusuário do container.
 
 ### 15.2 Nuvem vs. local
 

@@ -37,6 +37,11 @@ class LayerArchitectureTest {
         rules.modulesUseOnlyPublicApiOfOtherModules.check(classes)
     }
 
+    @Test
+    fun `write use cases are audited`() {
+        rules.writeUseCasesAreAudited.check(classes)
+    }
+
     private companion object {
         const val BASE_PACKAGE = "com.zeny.hotel"
     }

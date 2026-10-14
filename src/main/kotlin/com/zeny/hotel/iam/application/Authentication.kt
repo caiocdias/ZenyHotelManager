@@ -6,6 +6,8 @@ import com.zeny.hotel.iam.domain.Logins
 import com.zeny.hotel.iam.domain.SessionRevocationReason
 import com.zeny.hotel.iam.domain.User
 import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.DeviceSessionId
 import com.zeny.hotel.shared.ErrorCode
@@ -58,12 +60,14 @@ class AuthTokens(
  * precisam ficar gravados mesmo com a exceção.
  */
 @Service
+@Suppress("LongParameterList") // os colaboradores do caso de uso
 class AuthenticationService(
     private val users: Users,
     private val sessions: DeviceSessions,
     private val hasher: PasswordHasher,
     private val tokens: AccessTokenIssuer,
     private val properties: IamProperties,
+    private val audit: AuditContext,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -71,6 +75,7 @@ class AuthenticationService(
     /** Hash de uma senha qualquer, para que login inexistente leve o mesmo tempo que senha errada. */
     private val decoyHash: String by lazy { hasher.hash(RefreshTokens.generate()) }
 
+    @Audited("iam.session.login", recordRejections = true)
     @Transactional(noRollbackFor = [UnauthenticatedException::class])
     fun login(command: LoginCommand): AuthTokens {
         val now = clock.instant()
@@ -80,10 +85,14 @@ class AuthenticationService(
             log.info("Login recusado: credenciais inválidas")
             refuse(IamErrorCodes.INVALID_CREDENTIALS)
         }
+        // Login de usuário existente: a falha conta para o bloqueio e vai para a trilha como recusa.
+        audit.attributeTo(user.id, null)
+        audit.track(IamAudit.USER, user.id) { user.auditState() }
         verifyPassword(user, command.password, now)
         if (hasher.needsRehash(user.passwordHash)) user.rehashPassword(hasher.hash(command.password), now)
 
         sessions.findNotRevokedOnDeviceForUpdate(user.id, command.deviceId)?.let {
+            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
             it.revoke(SessionRevocationReason.REPLACED_BY_LOGIN, now)
             // A sessão nova ocupa o mesmo (usuário, dispositivo) no índice único das não revogadas.
             sessions.flush()
@@ -99,6 +108,8 @@ class AuthenticationService(
                 ttl = properties.refreshToken.ttl,
             )
         sessions.add(session)
+        audit.created(IamAudit.SESSION, session.id) { session.auditState() }
+        audit.attributeTo(user.id, session.id)
         log.info("Login do usuário {} na sessão {}", user.id, session.id)
         return issueTokens(user, session, refreshToken, tokens, now)
     }
@@ -108,6 +119,7 @@ class AuthenticationService(
      * (falha conta para o bloqueio). Encerra a troca obrigatória e revoga as outras sessões do
      * usuário; a sessão corrente continua, e o próximo refresh já traz um token sem a pendência.
      */
+    @Audited("iam.user.change-password", recordRejections = true)
     @Transactional(noRollbackFor = [UnauthenticatedException::class])
     fun changePassword(
         actor: Actor,
@@ -115,6 +127,7 @@ class AuthenticationService(
     ) {
         val now = clock.instant()
         val user = users.findByIdForUpdate(actor.userId) ?: refuse(ErrorCodes.UNAUTHENTICATED)
+        audit.track(IamAudit.USER, user.id) { user.auditState() }
         verifyPassword(user, command.currentPassword, now)
         if (command.newPassword == command.currentPassword) {
             throw BusinessRuleException(
@@ -124,6 +137,7 @@ class AuthenticationService(
         }
         user.changePassword(hasher.hash(command.newPassword), now)
         sessions.findNotRevokedOf(user.id, except = actor.deviceSessionId).forEach {
+            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
             it.revoke(SessionRevocationReason.PASSWORD_CHANGED, now)
         }
         log.info("Senha trocada pelo usuário {}", user.id)
