@@ -2101,6 +2101,106 @@ paths:
       summary: Cadastrar uma UH
       tags:
       - rooms
+  /api/v1/rooms/discrepancies:
+    get:
+      description: "As UHs ativas cuja última observação da governança, feita depois\
+        \ da última mudança da ocupação ou do número de hóspedes pela recepção, diverge\
+        \ dela (RF-UH-08): ocupada mas vazia, vaga mas ocupada, ou outro número de\
+        \ hóspedes. Em ordem de número. Exige `rooms.status.read`."
+      operationId: listRoomDiscrepancies
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomDiscrepancyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Discrepâncias entre recepção e governança
+      tags:
+      - rooms
+  /api/v1/rooms/status:
+    get:
+      description: "As UHs ativas em ordem de número, com ocupação, status de governanç\
+        a, inspeção pendente, sinalização do hóspede e se estão prontas para check-in\
+        \ (RN-05). Exige `rooms.status.read`."
+      operationId: listRoomStatuses
+      parameters:
+      - description: Só as UHs com esta ocupação.
+        in: query
+        name: occupancy
+        required: false
+        schema:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+      - description: Só as UHs com este status de governança.
+        in: query
+        name: housekeepingStatus
+        required: false
+        schema:
+          type: string
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomStatusResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel de status das UHs
+      tags:
+      - rooms
   /api/v1/rooms/{id}:
     get:
       description: "Exige `rooms.registry.read`. Inexistente: 404 `ROOM_NOT_FOUND`."
@@ -2197,6 +2297,86 @@ paths:
       summary: Desativar uma UH
       tags:
       - rooms
+  /api/v1/rooms/{id}/housekeeping-observations:
+    post:
+      description: "A ocupação encontrada e, se contou, o número de pessoas (só com\
+        \ a UH ocupada; vazia com número: 400 `GUEST_COUNT_INVALID`). Comparada com\
+        \ a recepção, mostra as discrepâncias (RF-UH-08). Exige `rooms.status.observe`;\
+        \ UH desativada: 422 `ROOM_INACTIVE`."
+      operationId: recordRoomHousekeepingObservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingObservationRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingObservationResponse"
+          description: Observação registrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar o que a governança encontrou na UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/housekeeping-status:
+    post:
+      description: "Só as transições da SPEC §8.4: Sujo → Limpo (`MARK_CLEAN`, com\
+        \ `requiresInspection` para deixar a inspeção pendente), Limpo → Inspecionado\
+        \ (`MARK_INSPECTED`), Limpo com inspeção pendente → Sujo (`REJECT_INSPECTION`)\
+        \ e Limpo ou Inspecionado → Sujo (`MARK_DIRTY`); as outras: 422 `HOUSEKEEPING_TRANSITION_NOT_ALLOWED`.\
+        \ Repetir o estado atual não muda nada. Exige `rooms.status.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Fica no histórico com a origem `MANUAL`\
+        \ (RN-08)."
+      operationId: changeRoomHousekeepingStatus
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingStatusRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomStatusResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Mudar à mão o status de governança
+      tags:
+      - rooms
   /api/v1/rooms/{id}/reactivate:
     post:
       description: Exige `rooms.registry.manage` e o tipo da UH ativo (422 `ROOM_TYPE_INACTIVE`).
@@ -2222,6 +2402,115 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Reativar uma UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/service-flag:
+    post:
+      description: "Não perturbe ou arrumar agora, só numa UH ocupada (422 `ROOM_NOT_OCCUPIED`);\
+        \ `NONE` retira a sinalização. Definir o valor atual não muda nada. Exige\
+        \ `rooms.status.flag`. A UH ficar vaga também retira a sinalização."
+      operationId: setRoomServiceFlag
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServiceFlagRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomStatusResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar a sinalização do hóspede
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/status:
+    get:
+      description: "Com o `ETag` da UH (o mesmo do cadastro), para a mudança manual.\
+        \ Exige `rooms.status.read`. Inexistente: 404 `ROOM_NOT_FOUND`."
+      operationId: getRoomStatus
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomStatusResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o status de uma UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/status-history:
+    get:
+      description: "Um registro por campo que mudou, das mudanças mais recentes à\
+        s mais antigas, com quem (`changedBy` nulo = o sistema), quando e a origem\
+        \ (RF-UH-06). Exige `rooms.status.read`."
+      operationId: listRoomStatusHistory
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomStatusChangeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Histórico de status de uma UH
       tags:
       - rooms
   /api/v1/schedule:
@@ -3717,6 +4006,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageRoomDiscrepancyResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomDiscrepancyResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageRoomFeatureResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -3739,6 +4042,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RoomResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomStatusChangeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomStatusChangeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomStatusResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomStatusResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -4294,6 +4625,72 @@ components:
       - id
       - timezone
       - updatedAt
+    HousekeepingObservationRequest:
+      type: object
+      description: O que a governança encontrou na UH.
+      properties:
+        guestCount:
+          type: integer
+          format: int32
+          description: "Quantas pessoas, se contou (só com a UH ocupada), de 1 a 40."
+          maximum: 40
+          minimum: 1
+          nullable: true
+        occupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+      required:
+      - occupancy
+    HousekeepingObservationResponse:
+      type: object
+      description: O que a governança encontrou numa UH.
+      properties:
+        guestCount:
+          type: integer
+          format: int32
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        observedAt:
+          type: string
+          format: date-time
+        observedBy:
+          type: string
+          format: uuid
+        occupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+        roomId:
+          type: string
+          format: uuid
+      required:
+      - id
+      - observedAt
+      - observedBy
+      - occupancy
+      - roomId
+    HousekeepingStatusRequest:
+      type: object
+      description: Uma mudança manual do status de governança.
+      properties:
+        requiresInspection:
+          type: boolean
+          description: "Só com `MARK_CLEAN`: deixa a inspeção pendente. Padrão: `false`."
+          nullable: true
+        transition:
+          type: string
+          enum:
+          - MARK_DIRTY
+          - MARK_CLEAN
+          - MARK_INSPECTED
+          - REJECT_INSPECTION
+      required:
+      - transition
     LimitDefinitionResponse:
       type: object
       description: Um parâmetro de limite que a permissão aceita.
@@ -4826,6 +5223,57 @@ components:
       - name
       - systemRole
       - updatedAt
+    RoomDiscrepancyResponse:
+      type: object
+      description: Uma discrepância vigente entre recepção e governança (RF-UH-08).
+      properties:
+        frontDeskGuestCount:
+          type: integer
+          format: int32
+          nullable: true
+        frontDeskOccupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+        kind:
+          type: string
+          enum:
+          - OCCUPIED_BUT_FOUND_VACANT
+          - VACANT_BUT_FOUND_OCCUPIED
+          - GUEST_COUNT_MISMATCH
+        number:
+          type: string
+        observationId:
+          type: string
+          format: uuid
+        observedAt:
+          type: string
+          format: date-time
+        observedBy:
+          type: string
+          format: uuid
+        observedGuestCount:
+          type: integer
+          format: int32
+          nullable: true
+        observedOccupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+        roomId:
+          type: string
+          format: uuid
+      required:
+      - frontDeskOccupancy
+      - kind
+      - number
+      - observationId
+      - observedAt
+      - observedBy
+      - observedOccupancy
+      - roomId
     RoomFeatureRequest:
       type: object
       description: Código e nome de uma característica.
@@ -4965,6 +5413,120 @@ components:
       - number
       - roomTypeId
       - updatedAt
+    RoomStatusChangeResponse:
+      type: object
+      description: "Um registro do histórico de status (RF-UH-06): um campo que mudou."
+      properties:
+        changedAt:
+          type: string
+          format: date-time
+        changedBy:
+          type: string
+          format: uuid
+          description: Usuário que fez a mudança; nulo = o sistema.
+          nullable: true
+        field:
+          type: string
+          enum:
+          - OCCUPANCY
+          - GUEST_COUNT
+          - HOUSEKEEPING_STATUS
+          - INSPECTION_PENDING
+          - SERVICE_FLAG
+        from:
+          type: string
+          description: "Valor anterior (nome do status, número ou `true`/`false`)."
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum:
+          - MANUAL
+          - TASK
+          - CHECK_IN
+          - CHECK_OUT
+          - END_OF_DAY
+        to:
+          type: string
+          description: Valor novo.
+          nullable: true
+        version:
+          type: integer
+          format: int64
+          description: Versão da UH depois da mudança.
+      required:
+      - changedAt
+      - field
+      - id
+      - source
+      - version
+    RoomStatusResponse:
+      type: object
+      description: O status de uma UH (RF-UH-04).
+      properties:
+        active:
+          type: boolean
+        changedAt:
+          type: string
+          format: date-time
+          description: Instante da última mudança de status.
+        floor:
+          type: string
+          nullable: true
+        guestCount:
+          type: integer
+          format: int32
+          description: Número de hóspedes informado pela recepção; só com a UH ocupada.
+          nullable: true
+        housekeepingStatus:
+          type: string
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+        inspectionPending:
+          type: boolean
+          description: "Limpa, aguardando inspeção."
+        number:
+          type: string
+        occupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+        readyForCheckIn:
+          type: boolean
+          description: "Vaga e Inspecionada, ou Limpa sem inspeção pendente (RN-05)."
+        roomId:
+          type: string
+          format: uuid
+        roomTypeId:
+          type: string
+          format: uuid
+        serviceFlag:
+          type: string
+          enum:
+          - NONE
+          - DO_NOT_DISTURB
+          - MAKE_UP_ROOM
+        version:
+          type: integer
+          format: int64
+          description: "Versão da UH, a mesma do `ETag`."
+      required:
+      - active
+      - changedAt
+      - housekeepingStatus
+      - inspectionPending
+      - number
+      - occupancy
+      - readyForCheckIn
+      - roomId
+      - roomTypeId
+      - serviceFlag
+      - version
     RoomTypeRequest:
       type: object
       description: Dados de um tipo de UH.
@@ -5288,6 +5850,18 @@ components:
       - apiVersion
       - application
       - version
+    ServiceFlagRequest:
+      type: object
+      description: A sinalização do hóspede.
+      properties:
+        flag:
+          type: string
+          enum:
+          - NONE
+          - DO_NOT_DISTURB
+          - MAKE_UP_ROOM
+      required:
+      - flag
     SessionResponse:
       type: object
       properties:

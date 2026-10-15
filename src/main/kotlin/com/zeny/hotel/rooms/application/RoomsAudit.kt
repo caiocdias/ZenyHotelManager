@@ -11,6 +11,8 @@ internal object RoomsAudit {
     const val ROOM_TYPE = "rooms.room-type"
     const val ROOM = "rooms.room"
     const val AREA = "rooms.area"
+    const val ROOM_STATUS = "rooms.room-status"
+    const val HOUSEKEEPING_OBSERVATION = "rooms.housekeeping-observation"
 
     const val CREATE_FEATURE = "rooms.room-feature.create"
     const val UPDATE_FEATURE = "rooms.room-feature.update"
@@ -28,6 +30,17 @@ internal object RoomsAudit {
     const val UPDATE_AREA = "rooms.area.update"
     const val DEACTIVATE_AREA = "rooms.area.deactivate"
     const val REACTIVATE_AREA = "rooms.area.reactivate"
+
+    // Status (M2 E02): a mudança manual e a sinalização pela API, e cada operação da API pública.
+    const val CHANGE_HOUSEKEEPING = "rooms.room-status.change-housekeeping"
+    const val SET_SERVICE_FLAG = "rooms.room-status.set-service-flag"
+    const val MARK_DIRTY = "rooms.room-status.mark-dirty"
+    const val MARK_CLEAN = "rooms.room-status.mark-clean"
+    const val MARK_INSPECTED = "rooms.room-status.mark-inspected"
+    const val REJECT_INSPECTION = "rooms.room-status.reject-inspection"
+    const val MARK_OCCUPIED = "rooms.room-status.mark-occupied"
+    const val MARK_VACANT = "rooms.room-status.mark-vacant"
+    const val RECORD_OBSERVATION = "rooms.housekeeping-observation.record"
 }
 
 internal fun RoomFeature.auditState(): Map<String, Any?> =
@@ -60,3 +73,16 @@ internal fun Room.auditState(): Map<String, Any?> =
 
 internal fun Area.auditState(): Map<String, Any?> =
     mapOf("name" to name, "kind" to kind.name, "description" to description, "active" to active)
+
+/** O status da UH na trilha: as dimensões, sem dado de hóspede (só o número de hóspedes). */
+internal fun Room.statusAuditState(): Map<String, Any?> =
+    mapOf(
+        "occupancy" to occupancy.name,
+        "guestCount" to guestCount,
+        "housekeepingStatus" to housekeepingStatus.name,
+        "inspectionPending" to inspectionPending,
+        "serviceFlag" to serviceFlag.name,
+    )
+
+internal fun HousekeepingObservationView.auditState(): Map<String, Any?> =
+    mapOf("roomId" to roomId.toString(), "occupancy" to occupancy.name, "guestCount" to guestCount)

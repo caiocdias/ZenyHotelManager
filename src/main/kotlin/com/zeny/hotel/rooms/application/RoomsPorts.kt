@@ -83,6 +83,12 @@ interface RoomsStore {
 
     fun room(id: RoomId): Room?
 
+    /**
+     * A UH travada para escrita (`SELECT … FOR UPDATE`) até o fim da transação, relida do banco: as
+     * mudanças de status passam por essa trava, então nunca se sobrescrevem.
+     */
+    fun roomForUpdate(id: RoomId): Room?
+
     /** `false` se o número já existe (sem diferenciar maiúsculas). */
     fun tryAdd(room: Room): Boolean
 

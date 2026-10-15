@@ -48,4 +48,19 @@ object RoomsErrorCodes {
 
     /** 400: código, número, nome ou texto em branco, grande demais ou fora do formato. */
     val ROOMS_DATA_INVALID = ErrorCode("ROOMS_DATA_INVALID")
+
+    /** 422: a mudança de status de governança não está entre as transições da SPEC §8.4. */
+    val HOUSEKEEPING_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_TRANSITION_NOT_ALLOWED")
+
+    /** 400: número de hóspedes fora de 1 a 40, ou informado com a UH vaga. */
+    val GUEST_COUNT_INVALID = ErrorCode("GUEST_COUNT_INVALID")
+
+    /** 422: a UH está desativada (não é ocupada nem observada). */
+    val ROOM_INACTIVE = ErrorCode("ROOM_INACTIVE")
+
+    /** 422: a sinalização do hóspede só vale numa UH ocupada. */
+    val ROOM_NOT_OCCUPIED = ErrorCode("ROOM_NOT_OCCUPIED")
+
+    /** 422: a UH está ocupada e não é desativada. */
+    val ROOM_OCCUPIED = ErrorCode("ROOM_OCCUPIED")
 }

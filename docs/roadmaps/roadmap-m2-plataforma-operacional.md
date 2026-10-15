@@ -187,7 +187,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E01 | Cadastro de tipos de UH, UHs e áreas | #concluida | — | Módulo `rooms` com tipos, UHs, características e áreas comuns |
-| E02 | Status de UH, histórico e discrepâncias | #pendente | E01 | Dimensões de status, transições da SPEC §8.4, histórico, RN-05, discrepâncias e `RoomStatusChanged` |
+| E02 | Status de UH, histórico e discrepâncias | #concluida | E01 | Dimensões de status, transições da SPEC §8.4, histórico, RN-05, discrepâncias e `RoomStatusChanged` |
 | E03 | OOO e OOS | #pendente | E02 | Períodos fora de ordem e fora de serviço com step-up, retorno e `OutOfOrderChanged` |
 
 **Tempo real, offline e outbox**
@@ -350,7 +350,7 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 ---
 
-## E02 — Status de UH, histórico e discrepâncias — #pendente
+## E02 — Status de UH, histórico e discrepâncias — #concluida
 
 **Objetivo:** implementar o status da UH em dimensões independentes (ocupação, governança com "inspeção pendente", sinalização do hóspede), as transições da máquina de estados da SPEC §8.4, o histórico de mudanças, a regra RN-05 de UH pronta para check-in, a detecção de discrepâncias entre recepção e governança e o evento `RoomStatusChanged`.
 
@@ -410,14 +410,14 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Testes de domínio cobrem cada transição permitida da máquina de status de governança da SPEC §8.4 e rejeitam as não previstas (ex.: DIRTY → INSPECTED) com `code` estável.
-- [ ] `markClean(requiresInspection = true)` deixa a UH em CLEAN com `inspectionPending`; `markInspected()` remove a pendência; `rejectInspection()` volta a DIRTY.
-- [ ] `isReadyForCheckIn` só devolve verdadeiro para UH vaga e Inspecionada, ou Limpa sem inspeção pendente (RN-05).
-- [ ] Toda mudança, manual ou pela API pública, grava `RoomStatusChange` com usuário, instante e origem; `GET /api/v1/rooms/{id}/status-history` a devolve.
-- [ ] Observação da governança divergente da ocupação ou do número de hóspedes aparece em `GET /api/v1/rooms/discrepancies`.
-- [ ] Duas mudanças simultâneas na mesma UH não se sobrescrevem silenciosamente (lock otimista ou trava, teste concorrente; `412` pela API com `If-Match` desatualizado).
-- [ ] `RoomStatusChanged` é publicado pelo outbox com ID, dimensões e versão, sem dados de hóspede.
-- [ ] Contrato regenerado; build e oasdiff passam.
+- [x] Testes de domínio cobrem cada transição permitida da máquina de status de governança da SPEC §8.4 e rejeitam as não previstas (ex.: DIRTY → INSPECTED) com `code` estável.
+- [x] `markClean(requiresInspection = true)` deixa a UH em CLEAN com `inspectionPending`; `markInspected()` remove a pendência; `rejectInspection()` volta a DIRTY.
+- [x] `isReadyForCheckIn` só devolve verdadeiro para UH vaga e Inspecionada, ou Limpa sem inspeção pendente (RN-05).
+- [x] Toda mudança, manual ou pela API pública, grava `RoomStatusChange` com usuário, instante e origem; `GET /api/v1/rooms/{id}/status-history` a devolve.
+- [x] Observação da governança divergente da ocupação ou do número de hóspedes aparece em `GET /api/v1/rooms/discrepancies`.
+- [x] Duas mudanças simultâneas na mesma UH não se sobrescrevem silenciosamente (lock otimista ou trava, teste concorrente; `412` pela API com `If-Match` desatualizado).
+- [x] `RoomStatusChanged` é publicado pelo outbox com ID, dimensões e versão, sem dados de hóspede.
+- [x] Contrato regenerado; build e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -432,12 +432,64 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `d949ae0974fe78358175562352f2d429b2b7cb29` (recebido do orquestrador; `HEAD` `91b1ad8`, árvore limpa). Snapshot ao fim da implementação, antes deste handoff: `cc86a468434595f068c725101f8ecc3fc8bf37a3`. Preparação: E01 `#concluida`; o código bate com o handoff dela (`Room` com `version` herdada de `RegistryRecord`, última migração `V2026_10_15_1958`, teste `no rooms endpoint deletes anything` com a lista exata de caminhos, `AuthorizationTest` com a lista exata do Gerente).
+- Investigação feita pela própria sessão (adendo do orquestrador): SPEC §8.4 (máquina "Status de governança da UH": Sujo → Limpo / Limpo-inspeção pendente; pendente → Inspecionado / Sujo; Limpo → Inspecionado; Limpo e Inspecionado → Sujo por check-out, fechamento ou uso), RF-UH-04 a 08, RN-05, RN-08, RN-09 e SPEC §8.2.3/§8.3.
+- Arquivos alterados:
+  - novos: `src/main/kotlin/com/zeny/hotel/rooms/RoomsEvents.kt` (`RoomStatusChanged`); `rooms/domain/RoomStatusChanges.kt` (`RoomStatusFieldChange`, `CheckInReadiness`); `rooms/application/RoomStatusPorts.kt` (`HousekeepingTransition`, `RoomDiscrepancyKind`, views e a porta `RoomStatusRecords`); `rooms/application/RoomStatusService.kt` (`RoomStatusChanger` e `RoomStatusService`); `rooms/infrastructure/JdbcRoomStatusRecords.kt` (histórico, observações, painel e discrepâncias pelo `JdbcClient`; bean `AppendOnlyTables` do `rooms`); `rooms/web/RoomStatusController.kt` (endpoints e DTOs); migração `src/main/resources/db/migration/rooms/V2026_10_15_2130__add_room_status.sql`; testes `src/test/kotlin/com/zeny/hotel/rooms/RoomStatusDomainTest.kt` (12) e `RoomStatusApiTest.kt` (11);
+  - alterados: `rooms/RoomsApi.kt` (enums `OccupancyStatus`, `HousekeepingStatus`, `GuestServiceFlag`, `RoomStatusSource`, `RoomStatusField`, o `RoomStatus` e os métodos de status), `RoomsErrorCodes.kt` (`HOUSEKEEPING_TRANSITION_NOT_ALLOWED`, `GUEST_COUNT_INVALID`, `ROOM_INACTIVE`, `ROOM_NOT_OCCUPIED`, `ROOM_OCCUPIED`), `RoomsPermissions.kt` (`rooms.status.read`, `.manage`, `.flag`, `.observe`), `domain/Room.kt` (dimensões e operações), `application/RoomsApiService.kt`, `RoomsAudit.kt`, `RoomsPorts.kt` (`roomForUpdate`), `RoomsRegistry.kt` (desativar UH ocupada: `422 ROOM_OCCUPIED`), `infrastructure/RoomsPersistence.kt` (`findForUpdate` + `refresh`); testes `rooms/RoomsApiTest.kt` (caminhos novos e permissões) e `iam/AuthorizationTest.kt` (Gerente com as quatro permissões de status); `api/openapi.yaml` regenerado (+574 linhas, só acréscimos: sete caminhos novos sob `/api/v1/rooms`); `CLAUDE.md` ("Estado atual" e a subseção "Status" de "UHs e áreas"); este roadmap.
+- Decisões (adotadas como a opção mais conservadora; as marcadas com ⚑ vão para a entrevista do orquestrador):
+  1. ⚑ "Limpo — inspeção pendente" é um Limpo com a marca de pendência (RF-UH-04 e o modelo `hkStatus` + `inspectionPending`), então `markDirty` (check-out, fechamento, uso) também o leva a Sujo, além da reprovação. Sem isso, o fechamento do dia (RN-09) não sujaria uma UH ocupada que estivesse aguardando inspeção.
+  2. ⚑ Repetir a operação do estado atual (sujar uma UH suja, inspecionar uma inspecionada, `markClean` com a mesma pendência, reprovar uma UH já suja) não muda nada e não grava histórico, entidade de auditoria nem evento, em vez de `422`: os listeners dos marcos seguintes são reentregues pelo outbox e precisam ser idempotentes. Toda transição fora da SPEC §8.4 continua `422 HOUSEKEEPING_TRANSITION_NOT_ALLOWED` (um código só, mensagem por caso).
+  3. ⚑ RN-09 no domínio: `markVacant(CHECK_OUT)` deixa a UH Vaga **e** Suja na mesma mudança (um evento), mesmo que ela já estivesse vaga; com outra origem, só a ocupação muda. Ficar vaga também retira o número de hóspedes e a sinalização do hóspede; a sinalização (não perturbe, arrumar agora) só vale numa UH ocupada (`422 ROOM_NOT_OCCUPIED`; `NONE` vale sempre). O "fechamento: ocupadas passam a Sujo" fica para o `endofday` (M6), chamando `markDirty(END_OF_DAY)`.
+  4. ⚑ Permissões novas, todas só `ALL` e não sensíveis: `rooms.status.read` (Gerente, Recepcionista, Governanta), `rooms.status.manage` (Gerente, Governanta), `rooms.status.flag` (Gerente, Recepcionista, Governanta) e `rooms.status.observe` (Gerente, Governanta). A Camareira não recebe `observe` de saída (o administrador pode conceder). O código de permissão não aceita hífen, por isso `flag`/`observe` e não `service-flag`.
+  5. ⚑ O status fica em colunas da própria `rooms.room`, com a mesma `version` do cadastro (como o roadmap previa): uma mudança de status muda o `ETag` da UH, e um `PUT /rooms/{id}` com o `ETag` de antes responde 412. Alternativa: tabela de status com versão própria.
+  6. ⚑ `POST /rooms/{id}/service-flag` não exige `If-Match` (define o valor, como as ações de desativação do E01); `POST /rooms/{id}/housekeeping-status` exige.
+  7. Discrepâncias calculadas na consulta, sem registro de resolução: vale só a **última** observação da UH, e só se feita depois da última mudança da ocupação ou do número de hóspedes (`occupancy_changed_at`); `GUEST_COUNT_MISMATCH` só quando a governança contou. A observação não tem texto livre (nada de dado de hóspede), aceita número só com a UH ocupada (`400 GUEST_COUNT_INVALID`) e é recusada em UH desativada (`422 ROOM_INACTIVE`).
+  8. `markOccupied` numa UH desativada: `422 ROOM_INACTIVE`; desativar uma UH ocupada: `422 ROOM_OCCUPIED` (uma ocupação simultânea muda a versão e a desativação responde 412). Mudanças de governança e sinalização em UH desativada são aceitas; o painel mostra só as ativas; RN-05 exige a UH ativa.
+  9. Número de hóspedes de 1 a 40 (o dobro do teto de adultos de um tipo), `400 GUEST_COUNT_INVALID`; não é conferido contra a ocupação máxima do tipo.
+  10. `RoomStatusSource` tem `CHECK_IN` além das quatro origens da RF-UH-06 (manual, tarefa, check-out, fechamento), para a ocupação vinda da recepção.
+  11. Histórico com um registro por campo que mudou (`OCCUPANCY`, `GUEST_COUNT`, `HOUSEKEEPING_STATUS`, `INSPECTION_PENDING`, `SERVICE_FLAG`) e a versão da UH depois da mudança; `rooms.room_status_change` e `rooms.housekeeping_observation` são *append-only* para o papel da aplicação (`SELECT, INSERT`, bean `AppendOnlyTables`). O autor é o `CurrentActor` (nulo = sistema, como nas chamadas da API pública fora de requisição).
+  12. Evento mínimo: `roomId` como `UUID` (evita depender da serialização de *value class* no outbox), `occupancy`, `housekeepingStatus`, `inspectionPending`, `serviceFlag`, `version` e `changedAt`. Sem número de hóspedes, autor nem `readyForCheckIn` (o OOO da E03 entra na prontidão).
+  13. Cada operação da API pública é um caso de uso `@Audited` próprio (`rooms.room-status.<mark-dirty|mark-clean|mark-inspected|reject-inspection|mark-occupied|mark-vacant|set-service-flag>`), entidade `rooms.room-status`; a mudança manual é `rooms.room-status.change-housekeeping`; a observação, `rooms.housekeeping-observation.record` (entidade = a observação).
+  14. Concorrência: toda mudança trava a linha (`SELECT … FOR UPDATE` e `refresh`, para não usar um estado lido antes da trava na mesma transação); a mudança manual ainda confere o `If-Match` depois da trava (412).
+  15. A migração mantém os padrões no banco (`VACANT`, `DIRTY`, `false`, `NONE`, `now()`): o teste de corrida do E01 insere UHs por SQL sem as colunas novas, e a UH nasce Vaga e Suja pela SPEC §8.4.
+- Validações executadas (OpenJDK 25.0.4.1, Docker 29.1.3):
+  - Testes escritos antes da implementação (não compilavam); a primeira execução de `./gradlew test --tests 'com.zeny.hotel.rooms.*'` travou no teste de corrida do E01 (`two rooms with the same number…`): o `INSERT` por SQL falhava com as colunas novas sem padrão, a thread morria e o `CountDownLatch` nunca abria (a execução foi encerrada à mão). Corrigido mantendo os padrões no banco (decisão 15).
+  - `./gradlew test --tests 'com.zeny.hotel.rooms.*'` → `RoomsApiTest` 11/11, `RoomStatusApiTest` 11/11, `RoomStatusDomainTest` 12/12.
+  - Prova de que os testes pegam a regressão (mutação temporária, revertida): sem a trava (`findById` no lugar de `findForUpdate`) e aceitando Sujo → Inspecionado, 4 testes falharam (`every transition outside SPEC 8_4 is refused…`, `a manual housekeeping change…`, `every change through the public API…` e `a change through the public API waits for a concurrent one…`).
+  - `./gradlew ktlintFormat`, depois `ktlintCheck detekt detektMain detektTest` → ajustes (dois nomes de teste longos, `ThrowsCount` resolvido movendo a validação da observação para o domínio, `LongParameterList` suprimido com justificativa, `UnnecessaryFilter`) → sem problemas.
+  - `./gradlew updateOpenApi` → `api/openapi.yaml` +574/−0 (só acréscimos).
+  - `./gradlew build` → `BUILD SUCCESSFUL in 2m 9s`: 448 testes, 0 falhas, 0 ignorados; `checkOpenApi`, `detekt*`, `ktlint*Check` e `koverVerify` passaram.
+  - `.github/scripts/check-api-breaking.sh` → "No breaking changes to report… Nenhuma mudança incompatível (nível ERR) em /api/v1." contra a base `346af178969a` (merge-base com `origin/main`) e também contra `HEAD` (`91b1ad8`).
+- Critérios de aceite (evidência para o verificador): transições permitidas e proibidas — `RoomStatusDomainTest` (tabela estado × operação com os 20 casos, conferida contra as 7 arestas do diagrama); `markClean(true)`/`markInspected`/`rejectInspection` — `markClean with inspection leaves it pending…` e o teste da API pública; RN-05 — `a room is ready for check-in only when…` (todas as combinações de estado, ocupação e ativa); histórico com usuário, instante e origem — `a manual housekeeping change…` (autor = o usuário) e `every change through the public API…` (autor nulo = sistema, origem de cada chamada); discrepâncias — `housekeeping observations that differ…`; corrida — `two manual changes with the same If-Match…` (200 + 412) e `a change through the public API waits…`; evento — `RoomStatusChanged carries the room…` (Scenario e as chaves exatas do JSON gravado no outbox) e `the event and the history are written in the changing transaction…`.
+- Entrevista com o usuário (2026-10-15, orquestrador). O usuário confirmou as seis decisões que o implementador deixou em aberto, todas como já estavam implementadas, sem mudança de código:
+  1. UH limpa aguardando inspeção pode voltar a suja também por `markDirty` (check-out, fechamento, uso), não só pela inspeção reprovada.
+  2. Pedir o status que a UH já tem não faz nada: sem histórico, sem evento e sem erro.
+  3. RN-09 fica no domínio: `markVacant(CHECK_OUT)` deixa a UH vaga e suja e limpa o número de hóspedes e a sinalização; a sinalização só vale com a UH ocupada.
+  4. Modelos de permissão como implementados: `rooms.status.observe` vai só para Gerente e Governanta, não para a Camareira.
+  5. O status compartilha a versão (o `ETag`) do cadastro da UH.
+  6. `POST /rooms/{id}/service-flag` não exige `If-Match`; a mudança de governança exige.
+- Parecer do verificador (2026-10-15, verificador independente, snapshot `cca2e3ddb72d4d281d1fd910f071dfd2f5587124`): **APROVADO**, com os oito critérios atendidos:
+  - transições: `RoomStatusDomainTest` (tabela de 20 casos, com as 7 arestas exatas da SPEC §8.4) e `RoomStatusApiTest`;
+  - RN-05: `CheckInReadiness`;
+  - histórico com autor, instante e origem: todas as mutações passam por `RoomStatusChanger`;
+  - discrepâncias de ocupação e de número de hóspedes;
+  - corrida: `SELECT … FOR UPDATE`, com 200 + 412 e um único registro no histórico;
+  - `RoomStatusChanged` pelo outbox, sem número de hóspedes nem autor, desfeito no rollback;
+  - `./gradlew build` passou em 2m49s com 448 testes e 0 falhas, sem travar; `.github/scripts/check-api-breaking.sh` não acusou mudança incompatível nem contra `346af178969a` nem contra `91b1ad819013`.
+
+  O verificador aplicou mutações numa cópia descartável: gravar o histórico só da origem `MANUAL` derrubou 3 testes; tirar a trava pessimista e acrescentar `guestCount` ao evento derrubou 2. Nenhum problema crítico, alto ou médio. Ressalvas baixas:
+  1. o teste da corrida de números da E01 (`RoomsApiTest`) espera o latch sem prazo e não propaga a exceção da thread;
+  2. `roomForUpdate` faz `refresh`, que descarta alterações ainda sem flush na mesma `Room`; documentar para quem combinar edição de cadastro e status numa transação (M5/M6);
+  3. `recordObservation` não trava a UH, então uma mudança de ocupação simultânea pode afetar a lista de discrepâncias numa janela estreita;
+  4. "UH inativa ⇒ vaga" é garantido pela aplicação e pelo lock otimista, não pelo banco;
+  5. (informativo) o teste de corrida com o mesmo `If-Match` passaria só com o lock otimista; a trava pessimista é provada pelo outro teste de corrida.
+- Notas para a próxima etapa:
+  - E03: completar RN-05 com o OOO em `CheckInReadiness`/`Room.isReadyForCheckIn` (o painel calcula `readyForCheckIn` pela `RoomStatusView`, que também precisará do OOO) e recusar OOO em UH com `occupancy = OCCUPIED` (RN-07); o `RoomStatusSource` e o histórico podem ganhar campos/origens novos (o `CHECK` de `room_status_change` lista os valores: altere numa migração nova).
+  - E04: o tópico `rooms` escuta `RoomStatusChanged` (payload já sem dado de hóspede; `version` para descartar eventos velhos). Como o listener de teste mostra, o outbox só grava a publicação quando há listener.
+  - E05: a UH muda a `version` a cada mudança de status; a sincronização pode usar o painel (`RoomStatusView`) como formato.
+  - M5/M6: `frontdesk` confere `isReadyForCheckIn` antes do check-in e chama `markOccupied(guestCount, CHECK_IN)` e `markVacant(CHECK_OUT)`; a governança chama `markClean`/`markInspected`/`rejectInspection` com `TASK`; o `endofday`, `markDirty(END_OF_DAY)` nas ocupadas. Os listeners podem reentregar: as operações são idempotentes no estado de destino.
+  - Ressalva sem ação: o teste de corrida do E01 (`RoomsApiTest`) trava se o `INSERT` da thread falhar (a exceção da thread não é propagada e o latch não abre); um `await` com prazo o tornaria mais robusto.
 
 ---
 

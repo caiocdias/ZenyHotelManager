@@ -11,6 +11,7 @@ import com.zeny.hotel.rooms.domain.Area
 import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomFeature
 import com.zeny.hotel.rooms.domain.RoomType
+import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
 import org.postgresql.util.PSQLException
 import org.springframework.dao.DataIntegrityViolationException
@@ -31,6 +32,10 @@ interface RoomTypeJpaRepository : JpaRepository<RoomType, UUID> {
 }
 
 interface RoomJpaRepository : JpaRepository<Room, UUID> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM Room r WHERE r.id = :id")
+    fun findForUpdate(id: UUID): Room?
+
     @Query(
         "SELECT CASE WHEN count(r) > 0 THEN true ELSE false END FROM Room r " +
             "WHERE r.roomTypeId = :roomTypeId AND r.active = true",
@@ -44,6 +49,7 @@ interface AreaJpaRepository : JpaRepository<Area, UUID>
 @Component
 @Suppress("TooManyFunctions") // um repositório e os acessos de cada agregado
 class JpaRoomsStore(
+    private val entityManager: EntityManager,
     private val features: RoomFeatureJpaRepository,
     private val roomTypes: RoomTypeJpaRepository,
     private val rooms: RoomJpaRepository,
@@ -69,6 +75,13 @@ class JpaRoomsStore(
     override fun hasActiveRooms(roomTypeId: RoomTypeId): Boolean = rooms.existsActiveOfType(roomTypeId.value)
 
     override fun room(id: RoomId): Room? = rooms.findById(id.value).orElse(null)
+
+    override fun roomForUpdate(id: RoomId): Room? =
+        rooms.findForUpdate(id.value)?.also {
+            // Já carregada nesta transação (por uma leitura anterior), a entidade traria o estado lido
+            // antes da trava: relê, agora com a linha travada.
+            entityManager.refresh(it)
+        }
 
     override fun tryAdd(room: Room): Boolean = unlessViolated(RoomsConstraints.ROOM_NUMBER) { rooms.saveAndFlush(room) }
 

@@ -494,10 +494,15 @@ class RoomsApiTest(
     fun `the role templates of SPEC 3_1 get the rooms permissions`() {
         val read = definition(RoomsPermissions.REGISTRY_READ)
         val manage = definition(RoomsPermissions.REGISTRY_MANAGE)
+        val frontAndHousekeeping = listOf(RoleTemplate.MANAGER, RoleTemplate.RECEPTIONIST, RoleTemplate.HOUSEKEEPER)
+        val housekeeping = listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER)
         assertSoftly {
-            read.templates.keys shouldContainExactlyInAnyOrder
-                listOf(RoleTemplate.MANAGER, RoleTemplate.RECEPTIONIST, RoleTemplate.HOUSEKEEPER)
+            read.templates.keys shouldContainExactlyInAnyOrder frontAndHousekeeping
             manage.templates.keys shouldContainExactly listOf(RoleTemplate.MANAGER)
+            definition(RoomsPermissions.STATUS_READ).templates.keys shouldContainExactlyInAnyOrder frontAndHousekeeping
+            definition(RoomsPermissions.STATUS_MANAGE).templates.keys shouldContainExactlyInAnyOrder housekeeping
+            definition(RoomsPermissions.STATUS_FLAG).templates.keys shouldContainExactlyInAnyOrder frontAndHousekeeping
+            definition(RoomsPermissions.STATUS_OBSERVE).templates.keys shouldContainExactlyInAnyOrder housekeeping
             RoomsPermissions.permissions.none { it.sensitive } shouldBe true
         }
         val catalog =
@@ -505,7 +510,15 @@ class RoomsApiTest(
                 .sql("SELECT code FROM iam.permission WHERE code LIKE 'rooms.%' AND obsolete_at IS NULL")
                 .query(String::class.java)
                 .list()
-        catalog shouldContainExactlyInAnyOrder listOf("rooms.registry.read", "rooms.registry.manage")
+        catalog shouldContainExactlyInAnyOrder
+            listOf(
+                "rooms.registry.read",
+                "rooms.registry.manage",
+                "rooms.status.read",
+                "rooms.status.manage",
+                "rooms.status.flag",
+                "rooms.status.observe",
+            )
     }
 
     @Test
@@ -521,7 +534,16 @@ class RoomsApiTest(
         roomsMappings.keys.flatMap { it.patternValues }.toSet() shouldContainExactlyInAnyOrder
             listOf("/api/v1/room-types", "/api/v1/room-features", "/api/v1/rooms", "/api/v1/areas").flatMap {
                 listOf(it, "$it/{id}", "$it/{id}/deactivate", "$it/{id}/reactivate")
-            }
+            } +
+            listOf(
+                "/api/v1/rooms/status",
+                "/api/v1/rooms/discrepancies",
+                "/api/v1/rooms/{id}/status",
+                "/api/v1/rooms/{id}/status-history",
+                "/api/v1/rooms/{id}/housekeeping-status",
+                "/api/v1/rooms/{id}/service-flag",
+                "/api/v1/rooms/{id}/housekeeping-observations",
+            )
     }
 
     // --- Apoio ---------------------------------------------------------------------------------------

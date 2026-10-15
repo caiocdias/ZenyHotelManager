@@ -2,6 +2,7 @@ package com.zeny.hotel.rooms.application
 
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.AreaKind
+import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.rooms.RoomFeatureId
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
@@ -256,6 +257,10 @@ class RoomsRegistryService(
         authorization.require(RoomsPermissions.REGISTRY_MANAGE)
         val room = findRoom(id)
         audit.track(RoomsAudit.ROOM, id.value) { room.auditState() }
+        if (room.active && room.occupancy == OccupancyStatus.OCCUPIED) {
+            // Uma mudança de ocupação simultânea muda a versão: a gravação abaixo responde 412.
+            throw BusinessRuleException(RoomsErrorCodes.ROOM_OCCUPIED, "A UH está ocupada e não pode ser desativada.")
+        }
         if (room.deactivate(clock.instant())) {
             store.flush()
             log.info("UH {} desativada", id)
