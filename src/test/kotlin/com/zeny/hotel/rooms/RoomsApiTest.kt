@@ -503,7 +503,15 @@ class RoomsApiTest(
             definition(RoomsPermissions.STATUS_MANAGE).templates.keys shouldContainExactlyInAnyOrder housekeeping
             definition(RoomsPermissions.STATUS_FLAG).templates.keys shouldContainExactlyInAnyOrder frontAndHousekeeping
             definition(RoomsPermissions.STATUS_OBSERVE).templates.keys shouldContainExactlyInAnyOrder housekeeping
-            RoomsPermissions.permissions.none { it.sensitive } shouldBe true
+            definition(RoomsPermissions.OUT_OF_ORDER_READ).templates.keys shouldContainExactlyInAnyOrder
+                frontAndHousekeeping + RoleTemplate.MAINTENANCE
+            definition(RoomsPermissions.OUT_OF_ORDER_MANAGE).templates.keys shouldContainExactly
+                listOf(RoleTemplate.MANAGER)
+            definition(RoomsPermissions.OUT_OF_SERVICE_MANAGE).templates.keys shouldContainExactlyInAnyOrder
+                listOf(RoleTemplate.MANAGER, RoleTemplate.MAINTENANCE)
+            // Só colocar UH em OOO é sensível (RF-ACS-08).
+            RoomsPermissions.permissions.filter { it.sensitive }.map { it.code } shouldContainExactly
+                listOf(RoomsPermissions.OUT_OF_ORDER_MANAGE)
         }
         val catalog =
             jdbc
@@ -518,6 +526,9 @@ class RoomsApiTest(
                 "rooms.status.manage",
                 "rooms.status.flag",
                 "rooms.status.observe",
+                "rooms.outoforder.read",
+                "rooms.outoforder.manage",
+                "rooms.outofservice.manage",
             )
     }
 
@@ -543,6 +554,10 @@ class RoomsApiTest(
                 "/api/v1/rooms/{id}/housekeeping-status",
                 "/api/v1/rooms/{id}/service-flag",
                 "/api/v1/rooms/{id}/housekeeping-observations",
+                "/api/v1/out-of-order",
+                "/api/v1/rooms/{id}/out-of-order",
+                "/api/v1/rooms/{id}/out-of-order/{periodId}",
+                "/api/v1/rooms/{id}/out-of-order/{periodId}/release",
             )
     }
 

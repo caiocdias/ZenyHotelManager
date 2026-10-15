@@ -196,6 +196,9 @@ class AuthorizationTest(
                 "rooms.status.manage:ALL",
                 "rooms.status.flag:ALL",
                 "rooms.status.observe:ALL",
+                "rooms.outoforder.read:ALL",
+                "rooms.outoforder.manage:ALL",
+                "rooms.outofservice.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldBe listOf("staff.schedule.read:OWN")
 

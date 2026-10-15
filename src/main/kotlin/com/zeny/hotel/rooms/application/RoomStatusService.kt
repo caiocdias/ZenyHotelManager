@@ -38,12 +38,14 @@ import java.time.Instant
  * publica nada.
  */
 @Component
+@Suppress("LongParameterList") // as portas de uma mudança de status, injetadas pelo Spring
 class RoomStatusChanger(
     private val store: RoomsStore,
     private val records: RoomStatusRecords,
     private val events: ApplicationEventPublisher,
     private val audit: AuditContext,
     private val currentActor: CurrentActor,
+    private val overlays: OutOfOrderOverlays,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -59,9 +61,9 @@ class RoomStatusChanger(
         audit.track(RoomsAudit.ROOM_STATUS, id.value) { room.statusAuditState() }
         val now = clock.instant()
         val changes = operation(room, now)
-        if (changes.isEmpty()) return room.statusView()
+        if (changes.isEmpty()) return room.statusView(overlays.current(id))
         store.flush()
-        val view = room.statusView()
+        val view = room.statusView(overlays.current(id))
         records.appendChanges(id, changes, now, currentActor.currentOrNull()?.userId, source, view.version)
         events.publishEvent(
             RoomStatusChanged(
@@ -94,6 +96,7 @@ class RoomStatusService(
     private val changer: RoomStatusChanger,
     private val store: RoomsStore,
     private val records: RoomStatusRecords,
+    private val overlays: OutOfOrderOverlays,
     private val authorization: Authorization,
     private val audit: AuditContext,
     private val currentActor: CurrentActor,
@@ -107,14 +110,14 @@ class RoomStatusService(
     ): CursorPage<RoomStatusView> {
         authorization.require(RoomsPermissions.STATUS_READ)
         val after = page.decodedCursor()?.let { it.string(0) to it.uuid(1) }
-        val rows = records.board(occupancy, housekeepingStatus, after, page.limit + 1)
+        val rows = records.board(overlays.today(), occupancy, housekeepingStatus, after, page.limit + 1)
         return CursorPage.fromRows(rows, page.limit) { PageCursor.of(it.number.lowercase(), it.roomId.toString()) }
     }
 
     @Transactional(readOnly = true)
     fun status(id: RoomId): RoomStatusView {
         authorization.require(RoomsPermissions.STATUS_READ)
-        return (store.room(id) ?: throw roomNotFound()).statusView()
+        return (store.room(id) ?: throw roomNotFound()).statusView(overlays.current(id))
     }
 
     @Transactional(readOnly = true)

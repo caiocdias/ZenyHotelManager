@@ -3,6 +3,7 @@ package com.zeny.hotel.rooms.domain
 import com.zeny.hotel.rooms.GuestServiceFlag
 import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OccupancyStatus
+import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.RoomFeatureId
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatusField
@@ -35,7 +36,9 @@ data class RoomDetails(
 /**
  * UH (RF-UH-02, SPEC §8.2.3): número único (sem diferenciar maiúsculas; o banco garante), andar ou
  * ala, tipo, características (vista, acessível, conjugada…), observações e ativa/inativa. Nunca é
- * apagada (o banco recusa): desativada, sai das listas de UHs ativas. O OOO/OOS (E03) entra depois.
+ * apagada (o banco recusa): desativada, sai das listas de UHs ativas. Os períodos OOO/OOS são agregados
+ * próprios ([OutOfOrder]), que só referenciam a UH; a liberação devolve a UH ao status de retorno
+ * ([applyReturnStatus]).
  *
  * **Status** (RF-UH-04, M2 E02), em dimensões independentes: ocupação ([occupancy], com o número de
  * hóspedes informado pela recepção, H4), governança ([housekeepingStatus] com [inspectionPending]) e
@@ -123,9 +126,9 @@ class Room private constructor(
         apply(details)
     }
 
-    /** RN-05 (sem o OOO, que entra na E03). */
-    val isReadyForCheckIn: Boolean
-        get() = CheckInReadiness.isReady(active, occupancy, housekeepingStatus, inspectionPending)
+    /** RN-05, com a sobreposição OOO/OOS em vigor na data operacional ([outOfOrder], `null` sem nenhuma). */
+    fun isReadyForCheckIn(outOfOrder: OutOfOrderKind?): Boolean =
+        CheckInReadiness.isReady(active, occupancy, housekeepingStatus, inspectionPending, outOfOrder)
 
     // --- Status de governança (SPEC §8.4) ----------------------------------------------------------
 
@@ -167,6 +170,17 @@ class Room private constructor(
         if (!inspectionPending) throw transitionRefused("A UH não está aguardando inspeção.")
         return housekeeping(HousekeepingStatus.DIRTY, pending = false, now)
     }
+
+    /**
+     * A liberação de um período OOO/OOS em vigor (RF-UH-05): a UH vai direto ao status de retorno
+     * escolhido na abertura, sem inspeção pendente, seja qual for o status atual. É a única mudança de
+     * governança fora das transições da SPEC §8.4, porque o período retirou a UH da operação; fica no
+     * histórico como as outras.
+     */
+    fun applyReturnStatus(
+        status: HousekeepingStatus,
+        now: Instant,
+    ): List<RoomStatusFieldChange> = housekeeping(status, pending = false, now)
 
     // --- Ocupação e sinalização do hóspede -----------------------------------------------------------
 

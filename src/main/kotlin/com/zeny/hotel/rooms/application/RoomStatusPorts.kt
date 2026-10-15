@@ -13,6 +13,7 @@ import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomStatusFieldChange
 import com.zeny.hotel.shared.UserId
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /** As mudanças de governança que a mudança manual aceita (RN-08), uma por operação da SPEC §8.4. */
@@ -35,7 +36,10 @@ enum class RoomDiscrepancyKind {
     GUEST_COUNT_MISMATCH,
 }
 
-/** O status de uma UH com o que o painel mostra dela (RF-UH-07). */
+/**
+ * O status de uma UH com o que o painel mostra dela (RF-UH-07), inclusive a sobreposição OOO/OOS em
+ * vigor na data operacional ([outOfOrder]).
+ */
 data class RoomStatusView(
     val roomId: RoomId,
     val number: String,
@@ -49,10 +53,11 @@ data class RoomStatusView(
     val serviceFlag: GuestServiceFlag,
     val changedAt: Instant,
     val version: Long,
+    val outOfOrder: OutOfOrderOverlay?,
 ) {
-    /** RN-05 (sem o OOO, que entra na E03). */
+    /** RN-05, com o OOO. */
     val readyForCheckIn: Boolean
-        get() = CheckInReadiness.isReady(active, occupancy, housekeepingStatus, inspectionPending)
+        get() = CheckInReadiness.isReady(active, occupancy, housekeepingStatus, inspectionPending, outOfOrder?.kind)
 }
 
 /** Um registro do histórico de status (RF-UH-06): quem ([changedBy] nulo = o sistema), quando e a origem. */
@@ -106,8 +111,13 @@ interface RoomStatusRecords {
 
     fun appendObservation(observation: HousekeepingObservationView)
 
-    /** Uma página do painel: UHs ativas em ordem de número (sem diferenciar maiúsculas) e id, depois de [after]. */
+    /**
+     * Uma página do painel: UHs ativas em ordem de número (sem diferenciar maiúsculas) e id, depois de
+     * [after], com a sobreposição OOO/OOS em vigor na data [today].
+     */
+    @Suppress("LongParameterList") // os filtros, a data e a página
     fun board(
+        today: LocalDate,
         occupancy: OccupancyStatus?,
         housekeepingStatus: HousekeepingStatus?,
         after: Pair<String, UUID>?,
@@ -132,7 +142,7 @@ interface RoomStatusRecords {
     ): List<RoomDiscrepancyView>
 }
 
-internal fun Room.statusView() =
+internal fun Room.statusView(outOfOrder: OutOfOrderOverlay?) =
     RoomStatusView(
         id,
         number,
@@ -146,6 +156,7 @@ internal fun Room.statusView() =
         serviceFlag,
         statusChangedAt,
         checkNotNull(version),
+        outOfOrder,
     )
 
 internal fun RoomStatusView.status() =
@@ -157,6 +168,7 @@ internal fun RoomStatusView.status() =
         housekeepingStatus,
         inspectionPending,
         serviceFlag,
+        outOfOrder?.kind,
         readyForCheckIn,
         changedAt,
         version,

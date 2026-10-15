@@ -188,7 +188,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 |---|---|---|---|---|
 | E01 | Cadastro de tipos de UH, UHs e áreas | #concluida | — | Módulo `rooms` com tipos, UHs, características e áreas comuns |
 | E02 | Status de UH, histórico e discrepâncias | #concluida | E01 | Dimensões de status, transições da SPEC §8.4, histórico, RN-05, discrepâncias e `RoomStatusChanged` |
-| E03 | OOO e OOS | #pendente | E02 | Períodos fora de ordem e fora de serviço com step-up, retorno e `OutOfOrderChanged` |
+| E03 | OOO e OOS | #concluida | E02 | Períodos fora de ordem e fora de serviço com step-up, retorno e `OutOfOrderChanged` |
 
 **Tempo real, offline e outbox**
 
@@ -493,7 +493,7 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 ---
 
-## E03 — OOO e OOS — #pendente
+## E03 — OOO e OOS — #concluida
 
 **Objetivo:** implementar períodos fora de ordem (OOO) e fora de serviço (OOS) por UH (RF-UH-05, RN-07): período, motivo, responsável e status de retorno; OOO exige step-up e não se aplica a UH ocupada; liberação devolve a UH ao status de retorno; o evento `OutOfOrderChanged` avisa os módulos de inventário.
 
@@ -552,13 +552,13 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Abrir OOO sem a permissão devolve `403 APPROVAL_REQUIRED` (com `action`, `permission` e `resourceRef` sem dado pessoal); com `X-Approval-Token` válido é concluído e auditado com o `approval_id`.
-- [ ] OOO em UH ocupada → erro com `code` estável (RN-07); OOS em UH ocupada é aceito.
-- [ ] Período sobreposto ao de outro OOO/OOS da mesma UH → erro com `code` estável, também por SQL direto (constraint).
-- [ ] Liberar o período aplica o status de governança de retorno e grava o histórico.
-- [ ] `isReadyForCheckIn` devolve falso para UH em OOO.
-- [ ] `OutOfOrderChanged` é publicado ao abrir, alterar e liberar (teste de módulo).
-- [ ] Contrato regenerado; build e oasdiff passam.
+- [x] Abrir OOO sem a permissão devolve `403 APPROVAL_REQUIRED` (com `action`, `permission` e `resourceRef` sem dado pessoal); com `X-Approval-Token` válido é concluído e auditado com o `approval_id`.
+- [x] OOO em UH ocupada → erro com `code` estável (RN-07); OOS em UH ocupada é aceito.
+- [x] Período sobreposto ao de outro OOO/OOS da mesma UH → erro com `code` estável, também por SQL direto (constraint).
+- [x] Liberar o período aplica o status de governança de retorno e grava o histórico.
+- [x] `isReadyForCheckIn` devolve falso para UH em OOO.
+- [x] `OutOfOrderChanged` é publicado ao abrir, alterar e liberar (teste de módulo).
+- [x] Contrato regenerado; build e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -573,12 +573,69 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `044c6bbc930be99c4d49d94943d5a004502c8252` (recebido do orquestrador; `HEAD` `1bccb20`, árvore limpa). Snapshot ao fim da implementação, antes deste handoff: `367d720dccf1dce49067e7752e604678607369bd` (27 arquivos, +3021/−73). Preparação: E02 `#concluida`; o código bate com o handoff dela (`Room` com as dimensões e a versão do cadastro, `RoomStatusChanger` com `roomForUpdate` + `refresh`, `CheckInReadiness` sem o OOO, `RoomStatusView.readyForCheckIn`, `CHECK` de origens em `room_status_change`, última migração `V2026_10_15_2130`). Investigação feita pela própria sessão (sem subagentes): RF-UH-04/05, RN-05, RN-07, RF-ACS-08, RF-MAN-03, SPEC §3.1 (Manutenção "solicitar OOO/OOS"), §4 e §8.2.3, o handoff da E05 do M1 e o `ApprovalTest`.
+- Arquivos alterados:
+  - novos: `rooms/domain/OutOfOrder.kt` (`OutOfOrderDetails`, `OutOfOrderRelease`, entidade `OutOfOrder`); `rooms/application/OutOfOrderPorts.kt` (`OutOfOrderCommand`, `OutOfOrderOverlay`, portas `OutOfOrderStore`/`OutOfOrderRecords`); `rooms/application/OutOfOrderService.kt` (`OutOfOrderOverlays`, `OutOfOrderOperations` e o caso de uso `OutOfOrderService`); `rooms/infrastructure/OutOfOrderPersistence.kt` (JPA e `JdbcClient`); `rooms/web/OutOfOrderController.kt`; migração `db/migration/rooms/V2026_10_15_2236__create_out_of_order.sql`; testes `rooms/OutOfOrderDomainTest.kt` (9) e `rooms/OutOfOrderApiTest.kt` (10);
+  - alterados: `rooms/RoomsApi.kt` (`OutOfOrderKind`, `OutOfOrderId`, `OutOfOrderRequest`, `OutOfOrderPeriod`, `RoomStatus.outOfOrder` e os quatro métodos de OOO/OOS), `RoomsEvents.kt` (`OutOfOrderAction`, `OutOfOrderChanged`), `RoomsErrorCodes.kt` (seis códigos `OUT_OF_ORDER_*`), `RoomsPermissions.kt` (três permissões), `domain/Room.kt` (`isReadyForCheckIn(outOfOrder)`, `applyReturnStatus`), `domain/RoomStatusChanges.kt` (`CheckInReadiness` com o OOO), `application/RoomStatusPorts.kt` e `RoomStatusService.kt` (a sobreposição no status e no painel), `RoomsApiService.kt`, `RoomsAudit.kt`, `infrastructure/JdbcRoomStatusRecords.kt` (painel com `LEFT JOIN` do período em vigor), `infrastructure/RoomsPersistence.kt` (`unlessViolated` virou função do pacote e aceita `23P01` além de `23505`), `web/RoomStatusController.kt` (`outOfOrder` na resposta); testes `RoomsApiTest.kt` (caminhos e permissões), `RoomStatusDomainTest.kt` (`isReadyForCheckIn(null)`) e `iam/AuthorizationTest.kt` (Gerente com as três permissões novas); `api/openapi.yaml` regenerado (+468/−3; as 3 linhas retiradas são descrições do painel e do `readyForCheckIn`); `CLAUDE.md` ("Estado atual", cabeçalho de "UHs e áreas", RN-05, a subseção nova "OOO e OOS" e os testes); este roadmap.
+- Decisões (adotadas como a opção mais conservadora; as marcadas com ⚑ vão para a entrevista do orquestrador):
+  1. ⚑ **Liberação e dias bloqueados:** liberar grava a data operacional (`releasedOn`); o período bloqueia até a véspera dela (`blockedUntil`). O status de retorno só se aplica se o período está em vigor na data operacional (`RETURNED`); liberar um período que ainda não começou o cancela (`CANCELLED`, não bloqueia nada) e um que já terminou só o encerra (`ENDED`), sem mexer no status (a UH pode ter sido limpa ou ocupada depois). Liberar de novo não faz nada (sem trilha de entidade nem evento). Alternativa: aplicar o retorno sempre.
+  2. ⚑ **Sem liberação automática:** um período não liberado deixa de bloquear depois do `endsOn`, mas o status de retorno não é aplicado sozinho (não há listener de `BusinessDateAdvanced` no `rooms`). Alternativa: um listener que libere os vencidos (o roadmap não pede; ficaria para o M6, junto do fechamento).
+  3. ⚑ **RN-07 no "período atual":** OOO é recusado em UH ocupada só se o período inclui a data operacional (`422 OUT_OF_ORDER_ROOM_OCCUPIED`); um OOO que começa depois de hoje é aceito numa UH ocupada hoje (a reserva no período é do M4, que escuta `OutOfOrderChanged`). Uma edição que faz um OOO passar a incluir hoje numa UH ocupada também é recusada. `markOccupied` não recusa UH em OOO (quem faz o check-in confere `isReadyForCheckIn` antes, como no E02).
+  4. ⚑ **Datas:** o período não começa antes da data operacional (sem OOO retroativo, `422 OUT_OF_ORDER_PERIOD_IN_PAST`), tem até 365 dias (`400 OUT_OF_ORDER_PERIOD_INVALID`, repetido em `CHECK`), e a edição não leva um início ou fim **alterado** para antes de hoje (encurtar um período em vigor para antes de hoje é liberar). Alternativas: aceitar início retroativo; sem teto de duração.
+  5. ⚑ **Responsável como texto** (até 120 caracteres: pessoa ou empresa terceirizada), além de quem abriu e quem liberou (`UserId`, do `CurrentActor`). Alternativas: `UserId` (o `rooms` não pode validar sem depender do `iam`) ou id de colaborador (`staff`) opaco e não validado.
+  6. ⚑ **Permissões:** `rooms.outoforder.read` (Gerente, Recepcionista, Governanta, Manutenção), `rooms.outoforder.manage` (**sensível**, Gerente) e `rooms.outofservice.manage` (Gerente, Manutenção; não sensível). Abrir, alterar **e liberar** um OOO usam a mesma permissão sensível, com `requireOrApproval` (ações `rooms.out-of-order.open` com recurso `rooms.room:<id da UH>`, `.update` e `.release` com `rooms.out-of-order:<id>`). Alternativas: liberar OOO sem step-up (outra permissão, não sensível); a Governanta abrindo OOS.
+  7. ⚑ **Tipo imutável na edição:** para trocar OOS ↔ OOO, libera-se e abre-se outro (evita uma edição de OOS que vira OOO sem passar pelo step-up da abertura).
+  8. **Status de retorno:** `returnStatus` é `DIRTY` (padrão, RF-MAN-03), `CLEAN` ou `INSPECTED`, aplicado direto e sem inspeção pendente (`Room.applyReturnStatus`), a única mudança de governança fora da SPEC §8.4, com histórico (origem `MANUAL` pela API; a `RoomStatusSource` informada pela API pública) e `RoomStatusChanged`. Abrir um período não mexe no status de governança.
+  9. **Sobreposição:** vale entre OOO e OOS da mesma UH (qualquer tipo), pelos dias bloqueados de fato. A aplicação confere depois de travar a UH; o banco repete com a coluna gerada `blocked_period` e `EXCLUDE USING gist (room_id WITH =, blocked_period WITH &&)`, e a violação (`23P01`, reconhecida pelo nome da restrição) vira o mesmo `409 OUT_OF_ORDER_OVERLAP`, nunca `500`.
+  10. **Travas:** toda escrita trava a UH (`roomForUpdate`) e depois o período (`findForUpdate` com `refresh`), sempre nessa ordem; abrir, alterar e liberar se enfileiram com as mudanças de ocupação da mesma UH. O período tem versão própria (`ETag` do período, `If-Match` no `PUT`; a liberação, como as ações do E01, não exige `If-Match`). Abrir um período não muda a versão da UH.
+  11. **Ordem das recusas:** formato e período (`400`) → UH ou período inexistente (`404`) → autorização (`403`, inclusive `APPROVAL_REQUIRED`) → versão (`412`) → sobreposição (`409`) → regras do período (`422`). Uma aprovação concedida para uma ação que depois cai numa regra não é consumida (a transação desfaz), e vale até vencer.
+  12. **A aprovação vincula ação e registro, não as datas** (decisão 4 da E05 do M1): a aprovação de "abrir OOO na UH X" serve, por 2 min e uma vez, para qualquer período nessa UH.
+  13. **Consulta:** `GET /api/v1/out-of-order` e `RoomsApi.outOfOrderPeriods` listam os períodos pelos dias que **bloqueiam**; um período cancelado (liberado antes de começar) não aparece nas listas, só por id e na trilha. Alternativa: um filtro para incluir liberados.
+  14. **Evento** mínimo (RN-13): ids em UUID, tipo, ação, período planejado, `releasedOn`, `blockedUntil`, o período anterior numa alteração, versão e instante; sem motivo, responsável nem autor. Só publicado quando algo mudou.
+  15. Pela API pública não há edição (o roadmap pede abrir e liberar); a manutenção do M6 que precisar alterar um período pede uma operação nova.
+- Validações executadas (OpenJDK 25, Docker sem sudo; todos os comandos longos com `timeout`):
+  - Testes escritos antes da implementação; como dependem dos tipos novos da API pública, não compilavam sem ela, então não houve uma rodada "falhando" de verdade (como na E05 do M1). A primeira execução, já com a implementação, passou: `./gradlew test --tests 'com.zeny.hotel.rooms.*'` → `OutOfOrderApiTest` 9/9, `OutOfOrderDomainTest` 9/9, `RoomStatusApiTest` 11/11, `RoomStatusDomainTest` 12/12, `RoomsApiTest` 11/11. Depois entrou o teste de corrida (10/10 no `OutOfOrderApiTest`).
+  - Mutações temporárias (cada uma revertida em seguida; `OutOfOrder*` rodados a cada uma), todas pegas: OOO com `require` no lugar de `requireOrApproval` → 2 falhas; OOO aceito em UH ocupada → 2; sem `OutOfOrderChanged` na liberação → 1; liberação sem status de retorno → 1; RN-05 ignorando o OOO → 2; sobreposição conferida só pelo banco → 2 falhas no domínio e nenhuma na API (o banco recusa e a aplicação devolve o mesmo `409`, o que prova a conversão da restrição).
+  - `./gradlew ktlintFormat` e detekt: ajustes (`ThrowsCount` com `flushOrRefuseOverlap`, `ComplexCondition` com `movesIntoPast`, `LongMethod` suprimido num teste, linhas longas).
+  - `./gradlew updateOpenApi` → `api/openapi.yaml` +468/−3 (quatro caminhos novos: `/api/v1/out-of-order`, `/rooms/{id}/out-of-order`, `/rooms/{id}/out-of-order/{periodId}` e `/release`; `outOfOrder` no status; 3 linhas de descrição trocadas).
+  - `./gradlew build` → `BUILD SUCCESSFUL in 3m 40s`: 467 testes em 60 classes, 0 falhas, 0 ignorados; `detekt*`, `ktlint*Check`, `checkOpenApi` e `koverVerify` passaram.
+  - `.github/scripts/check-api-breaking.sh` → "No breaking changes to report… Nenhuma mudança incompatível (nível ERR) em /api/v1." contra a base `346af178969a` (merge-base com `origin/main`) e contra `HEAD` (`1bccb20886f4`).
+- Critérios de aceite (evidência para o verificador):
+  - step-up: `OutOfOrderApiTest` › `an OOO without the permission asks for approval, and the approved request is audited with the approver` (`403 APPROVAL_REQUIRED` com `action` `rooms.out-of-order.open`, `permission` `rooms.outoforder.manage`, `resourceRef` `rooms.room:<uuid>`, sem período gravado; aprovação com PIN; 201 com o token; token reutilizado `APPROVAL_TOKEN_USED`; entradas `rooms.out-of-order.open` com `approval_id`, autor e sessão do solicitante, e a entrada `iam.approval` com `approverId`); `whoever holds the permission opens an OOO without approval, and OOS has its own permission`; a edição de OOO também pede aprovação (`a period is edited with If-Match…`);
+  - RN-07: `an OOO is refused in an occupied room in the current period, an OOS is accepted` (API e API pública, `422 OUT_OF_ORDER_ROOM_OCCUPIED`; OOS 201; OOO futuro 201) e o teste de domínio equivalente;
+  - sobreposição: `overlapping periods of the same room are refused, also by the database` (API, edição, API pública, `INSERT` direto como o papel da aplicação recusado por `out_of_order_overlap_ex`; período liberado deixa de bloquear) e `two overlapping periods opened at the same time - one is opened, the other gets 409`;
+  - liberação: `releasing a period in effect applies the return status, records it and makes the room ready again` (CLEAN → INSPECTED no histórico, origem `MANUAL`, autor = quem liberou; segunda liberação sem efeito) e `an OOS keeps the room ready, and releasing a period not yet started leaves the status alone`;
+  - RN-05: o mesmo teste da liberação (`isReadyForCheckIn` falso em OOO, `RoomStatus.outOfOrder`, painel com `outOfOrder`) e `a room in OOO is never ready for check-in, a room in OOS may be (RN-05)`;
+  - evento: `OutOfOrderChanged is published on open, update and release with the whole period` (`Scenario` na abertura; `UPDATED` com o período anterior e `RELEASED` com `releasedOn` e `blockedUntil` pelo listener de teste; nenhum evento na segunda liberação; as chaves exatas do JSON no outbox, sem motivo nem responsável);
+  - contrato, build e oasdiff: acima.
+- Entrevista com o usuário (2026-10-15, orquestrador). O usuário confirmou as oito decisões, todas como já estavam implementadas, sem mudança de código:
+  1. A liberação só aplica o status de retorno com o período em vigor; antes do início cancela, depois do fim só encerra.
+  2. Não há liberação automática dos vencidos: o período deixa de bloquear depois do fim, e um listener de `BusinessDateAdvanced` fica para o M6.
+  3. RN-07: um OOO numa UH ocupada só é recusado quando cobre a data operacional; o conflito com reservas futuras fica com o M4.
+  4. Datas: sem início retroativo e com teto de 365 dias.
+  5. Responsável é texto livre de até 120 caracteres.
+  6. Liberar um OOO também é sensível. Modelos como implementados: a leitura vai para Gerente, Recepcionista, Governanta e Manutenção; OOO só para o Gerente; OOS para Gerente e Manutenção.
+  7. O tipo não muda na edição.
+  8. A listagem traz só os períodos que bloqueiam dias.
+- Parecer do verificador (2026-10-15, verificador independente, snapshot `701de33842fbb69cd8a614e02c0be4f4a685b7c4`): **APROVADO**. Os sete critérios foram atendidos:
+  - step-up: `requireOrApproval` para OOO, `403 APPROVAL_REQUIRED` só com ids e auditoria com `approval_id`, conferidos por `OutOfOrderApiTest`;
+  - RN-07: `422 OUT_OF_ORDER_ROOM_OCCUPIED`, com a UH travada antes de conferir;
+  - sobreposição: `409 OUT_OF_ORDER_OVERLAP`, também por SQL direto, que esbarra em `out_of_order_overlap_ex`, e numa corrida;
+  - liberação: aplica o status de retorno, com histórico;
+  - RN-05: UH em OOO não fica pronta para check-in;
+  - `OutOfOrderChanged` sai nas três ações pelo outbox, com 12 chaves e nenhum dado pessoal;
+  - `./gradlew build` passou com 467 testes e 0 falhas, e os dois oasdiff (contra `346af178969a` e contra `1bccb20886f4`) não acusaram mudança incompatível.
+
+  Uma mutação numa cópia descartável tirou as checagens de sobreposição da aplicação, e a API continuou devolvendo 409 pela restrição do banco, nunca 500. Nenhum problema grave nem médio. Ressalvas menores:
+  1. Sem mutação, nenhum teste passa pela conversão de `23P01` em 409, porque a checagem da aplicação sempre chega antes; vale um teste que provoque a recusa só pelo banco.
+  2. A recusa da RN-07 ao editar um OOO para cobrir hoje só tem teste de domínio.
+  3. O índice `out_of_order_period_idx (starts_on, id)` não atende o filtro por `blocked_period`; o impacto é desprezível com 30 UHs.
+- Notas para a próxima etapa:
+  - E04 (SSE): o tópico `rooms` deve escutar também `OutOfOrderChanged` (abrir e liberar sem mudar a governança não publicam `RoomStatusChanged`, mas mudam a sobreposição e o `readyForCheckIn` do painel). O payload já não tem dado pessoal.
+  - E05 (sync): a sobreposição vem da data operacional; o período tem versão própria, separada da UH.
+  - M4 (inventário): `RoomsApi.outOfOrderPeriods(from, to)` dá os dias bloqueados (só OOO tira do inventário; OOS fica vendável como última opção); o listener de `OutOfOrderChanged` recalcula a união do período anterior e do novo e alerta as reservas alocadas (RN-07). O evento carrega o período inteiro para o consumidor decidir (risco listado nesta etapa).
+  - M6 (manutenção e fechamento): a OS chama `openOutOfOrder`/`releaseOutOfOrder` depois do próprio step-up; não há edição pela API pública nem liberação automática dos períodos vencidos (decisão 2).
+  - Ressalva sem ação, herdada: o teste de corrida de números da E01 (`RoomsApiTest`) ainda espera o latch sem prazo; o teste de corrida novo desta etapa usa `await` com prazo e `Future.get` com prazo.
 
 ---
 

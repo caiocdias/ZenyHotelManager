@@ -63,4 +63,22 @@ object RoomsErrorCodes {
 
     /** 422: a UH está ocupada e não é desativada. */
     val ROOM_OCCUPIED = ErrorCode("ROOM_OCCUPIED")
+
+    /** 404: período OOO/OOS inexistente (ou de outra UH). */
+    val OUT_OF_ORDER_NOT_FOUND = ErrorCode("OUT_OF_ORDER_NOT_FOUND")
+
+    /** 400: período OOO/OOS com o fim antes do início, ou com mais de 365 dias. */
+    val OUT_OF_ORDER_PERIOD_INVALID = ErrorCode("OUT_OF_ORDER_PERIOD_INVALID")
+
+    /** 422: o período OOO/OOS começaria (ou terminaria, numa edição) antes da data operacional. */
+    val OUT_OF_ORDER_PERIOD_IN_PAST = ErrorCode("OUT_OF_ORDER_PERIOD_IN_PAST")
+
+    /** 422: OOO numa UH ocupada, com o período incluindo a data operacional (RN-07). */
+    val OUT_OF_ORDER_ROOM_OCCUPIED = ErrorCode("OUT_OF_ORDER_ROOM_OCCUPIED")
+
+    /** 409: o período se sobrepõe a outro período OOO/OOS da mesma UH. */
+    val OUT_OF_ORDER_OVERLAP = ErrorCode("OUT_OF_ORDER_OVERLAP")
+
+    /** 422: o período OOO/OOS já foi liberado e não é editado. */
+    val OUT_OF_ORDER_RELEASED = ErrorCode("OUT_OF_ORDER_RELEASED")
 }

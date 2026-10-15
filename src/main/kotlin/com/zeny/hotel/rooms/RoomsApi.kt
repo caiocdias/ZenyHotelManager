@@ -1,14 +1,16 @@
 package com.zeny.hotel.rooms
 
 import com.zeny.hotel.shared.TypedId
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 /**
  * API pública do módulo `rooms` para os outros módulos (ARCHITECTURE §3.1, RF-UH-01 a 08): leituras de
- * UH, tipo de UH e área comum, e o status da UH. Não checa permissão: quem chama é um caso de uso que
- * já se autorizou. O OOO/OOS (E03) entra aqui depois.
+ * UH, tipo de UH e área comum, o status da UH e os períodos OOO/OOS. Não checa permissão: quem chama é
+ * um caso de uso que já se autorizou (inclusive o step-up do OOO, que é dele).
  *
  * **Status** (RF-UH-04, SPEC §8.4, RN-05, RN-08, RN-09): as mudanças entram na transação de quem chama
  * (ou numa própria), travam a linha da UH (`SELECT … FOR UPDATE`, então duas mudanças simultâneas se
@@ -110,11 +112,114 @@ interface RoomsApi {
     ): RoomStatus
 
     /**
-     * RN-05: a UH está ativa, Vaga e Inspecionada, ou Limpa sem inspeção pendente. O OOO (E03) entra
-     * nesta conta depois. UH inexistente: `404 ROOM_NOT_FOUND`.
+     * RN-05: a UH está ativa, Vaga, fora de OOO na data operacional e Inspecionada, ou Limpa sem inspeção
+     * pendente (OOS não impede). UH inexistente: `404 ROOM_NOT_FOUND`.
      */
     fun isReadyForCheckIn(id: RoomId): Boolean
+
+    // --- OOO e OOS (M2 E03) ------------------------------------------------------------------------
+
+    /** O período OOO/OOS, liberado ou não, ou `null` se não existe. */
+    fun outOfOrder(id: OutOfOrderId): OutOfOrderPeriod?
+
+    /**
+     * Os períodos OOO e OOS que bloqueiam algum dia de [from] a [to] (inclusive), de todas as UHs ou só da
+     * [roomId], em ordem de início: o que o inventário (M4) desconta. Um período liberado só bloqueia até a
+     * véspera da liberação ([OutOfOrderPeriod.blockedUntil]); liberado antes de começar, não aparece.
+     */
+    fun outOfOrderPeriods(
+        from: LocalDate,
+        to: LocalDate,
+        roomId: RoomId? = null,
+    ): List<OutOfOrderPeriod>
+
+    /**
+     * Abre um período OOO ou OOS na UH (RF-UH-05), sem checar permissão (a manutenção do M6 faz o próprio
+     * step-up antes), mas com as regras: período de até 365 dias que não começa antes da data operacional
+     * (`422 OUT_OF_ORDER_PERIOD_IN_PAST`), UH ativa (`422 ROOM_INACTIVE`), OOO nunca numa UH ocupada se
+     * o período inclui a data operacional (RN-07, `422 OUT_OF_ORDER_ROOM_OCCUPIED`; OOS pode) e sem
+     * sobrepor outro período da UH (`409 OUT_OF_ORDER_OVERLAP`). Trava a UH, vai para a trilha e publica
+     * [OutOfOrderChanged] ([OutOfOrderAction.OPENED]). Não mexe no status de governança.
+     */
+    fun openOutOfOrder(
+        roomId: RoomId,
+        kind: OutOfOrderKind,
+        request: OutOfOrderRequest,
+    ): OutOfOrderPeriod
+
+    /**
+     * Libera o período na data operacional: a UH deixa de estar bloqueada a partir dela. Se o período
+     * estava em vigor, a UH volta ao [OutOfOrderPeriod.returnStatus], com o histórico na origem [source]
+     * (e [RoomStatusChanged]); liberar um período que ainda não começou o cancela, e um que já terminou só
+     * o encerra, sem mexer no status. Publica [OutOfOrderChanged] ([OutOfOrderAction.RELEASED]). Liberar
+     * de novo não muda nada. Inexistente: `404 OUT_OF_ORDER_NOT_FOUND`.
+     */
+    fun releaseOutOfOrder(
+        id: OutOfOrderId,
+        source: RoomStatusSource,
+    ): OutOfOrderPeriod
 }
+
+/**
+ * Tipo de período (RF-UH-05, SPEC §4): OOO retira a UH do inventário vendável (inclusive no channel
+ * manager) e a impede de ficar pronta para check-in (RN-05); OOS a mantém vendável, como última opção.
+ */
+enum class OutOfOrderKind {
+    /** Fora de ordem: obra, defeito grave. */
+    OUT_OF_ORDER,
+
+    /** Fora de serviço: problema menor. */
+    OUT_OF_SERVICE,
+}
+
+/** Id de um período OOO/OOS. */
+@JvmInline
+value class OutOfOrderId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): OutOfOrderId = OutOfOrderId(UuidV7.generate())
+    }
+}
+
+/**
+ * Os dados de um período OOO/OOS, para abrir (RF-UH-05): de [startsOn] a [endsOn] em datas de negócio,
+ * inclusive (até 365 dias), o motivo, o responsável (pessoa ou empresa, texto) e o status de governança
+ * a que a UH volta na liberação ([returnStatus]; normalmente Sujo, para limpeza, RF-MAN-03).
+ */
+data class OutOfOrderRequest(
+    val startsOn: LocalDate,
+    val endsOn: LocalDate,
+    val reason: String,
+    val responsible: String,
+    val returnStatus: HousekeepingStatus = HousekeepingStatus.DIRTY,
+)
+
+/**
+ * Um período OOO/OOS (RF-UH-05, SPEC §8.2.3). [openedBy] e [releasedBy] nulos = o sistema. Liberado,
+ * tem a data operacional da liberação ([releasedOn]); [blockedUntil] é o último dia que ele bloqueia (o
+ * fim, ou a véspera da liberação), `null` se não bloqueia nenhum (liberado antes de começar).
+ */
+data class OutOfOrderPeriod(
+    val id: OutOfOrderId,
+    val roomId: RoomId,
+    val kind: OutOfOrderKind,
+    val startsOn: LocalDate,
+    val endsOn: LocalDate,
+    val reason: String,
+    val responsible: String,
+    val returnStatus: HousekeepingStatus,
+    val openedAt: Instant,
+    val openedBy: UserId?,
+    val updatedAt: Instant,
+    val releasedOn: LocalDate?,
+    val releasedAt: Instant?,
+    val releasedBy: UserId?,
+    val blockedUntil: LocalDate?,
+    val version: Long,
+)
 
 /** Ocupação da UH (RF-UH-04), derivada da recepção. */
 enum class OccupancyStatus {
@@ -172,8 +277,9 @@ enum class RoomStatusField {
 
 /**
  * O status de uma UH (RF-UH-04): ocupação e número de hóspedes informados pela recepção, status de
- * governança com a inspeção pendente, sinalização do hóspede, se está pronta para check-in (RN-05),
- * o instante da última mudança e a versão (a mesma do `ETag`).
+ * governança com a inspeção pendente, sinalização do hóspede, a sobreposição OOO/OOS em vigor na data
+ * operacional ([outOfOrder], `null` sem nenhuma), se está pronta para check-in (RN-05), o instante da
+ * última mudança e a versão (a mesma do `ETag`).
  */
 data class RoomStatus(
     val roomId: RoomId,
@@ -183,6 +289,7 @@ data class RoomStatus(
     val housekeepingStatus: HousekeepingStatus,
     val inspectionPending: Boolean,
     val serviceFlag: GuestServiceFlag,
+    val outOfOrder: OutOfOrderKind?,
     val readyForCheckIn: Boolean,
     val changedAt: Instant,
     val version: Long,

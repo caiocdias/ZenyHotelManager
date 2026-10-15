@@ -92,28 +92,28 @@ class JpaRoomsStore(
     override fun flush() = rooms.flush()
 
     override fun tryFlush(constraint: String): Boolean = unlessViolated(constraint) { rooms.flush() }
-
-    private companion object {
-        const val UNIQUE_VIOLATION = "23505"
-
-        /**
-         * Violação da unicidade [constraint] (`23505`, reconhecida pelo campo `constraint` do erro do
-         * servidor na cadeia de causas, nunca pelo texto) vira `false`; qualquer outra segue.
-         */
-        fun unlessViolated(
-            constraint: String,
-            write: () -> Unit,
-        ): Boolean =
-            try {
-                write()
-                true
-            } catch (e: DataIntegrityViolationException) {
-                val violated =
-                    generateSequence<Throwable>(e) { it.cause }
-                        .filterIsInstance<PSQLException>()
-                        .any { it.sqlState == UNIQUE_VIOLATION && it.serverErrorMessage?.constraint == constraint }
-                if (!violated) throw e
-                false
-            }
-    }
 }
+
+/**
+ * Violação da restrição [constraint] — unicidade (`23505`) ou exclusão (`23P01`), reconhecida pelo campo
+ * `constraint` do erro do servidor na cadeia de causas, nunca pelo texto — vira `false`; qualquer outra
+ * segue.
+ */
+internal fun unlessViolated(
+    constraint: String,
+    write: () -> Unit,
+): Boolean =
+    try {
+        write()
+        true
+    } catch (e: DataIntegrityViolationException) {
+        val violated =
+            generateSequence<Throwable>(e) { it.cause }
+                .filterIsInstance<PSQLException>()
+                .any { it.sqlState in CONSTRAINT_VIOLATIONS && it.serverErrorMessage?.constraint == constraint }
+        if (!violated) throw e
+        false
+    }
+
+/** `unique_violation` e `exclusion_violation`. */
+private val CONSTRAINT_VIOLATIONS = setOf("23505", "23P01")

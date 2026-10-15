@@ -3,11 +3,13 @@ package com.zeny.hotel.rooms.web
 import com.zeny.hotel.rooms.GuestServiceFlag
 import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OccupancyStatus
+import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatusField
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.application.HousekeepingObservationView
 import com.zeny.hotel.rooms.application.HousekeepingTransition
+import com.zeny.hotel.rooms.application.OutOfOrderOverlay
 import com.zeny.hotel.rooms.application.RoomDiscrepancyKind
 import com.zeny.hotel.rooms.application.RoomDiscrepancyView
 import com.zeny.hotel.rooms.application.RoomStatusChangeView
@@ -37,6 +39,7 @@ import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 private const val MAX_GUEST_COUNT = 40L
@@ -58,7 +61,8 @@ class RoomStatusController(
         summary = "Painel de status das UHs",
         description =
             "As UHs ativas em ordem de número, com ocupação, status de governança, inspeção pendente, " +
-                "sinalização do hóspede e se estão prontas para check-in (RN-05). Exige `rooms.status.read`.",
+                "sinalização do hóspede, o período OOO/OOS em vigor na data operacional e se estão prontas " +
+                "para check-in (RN-05). Exige `rooms.status.read`.",
     )
     fun board(
         @Parameter(description = "Só as UHs com esta ocupação.")
@@ -211,7 +215,12 @@ data class RoomStatusResponse(
     @field:Schema(description = "Limpa, aguardando inspeção.")
     val inspectionPending: Boolean,
     val serviceFlag: GuestServiceFlag,
-    @field:Schema(description = "Vaga e Inspecionada, ou Limpa sem inspeção pendente (RN-05).")
+    @field:Schema(
+        description = "O período OOO/OOS em vigor na data operacional (a sobreposição); nulo sem nenhum.",
+        nullable = true,
+    )
+    val outOfOrder: OutOfOrderOverlayResponse?,
+    @field:Schema(description = "Vaga, fora de OOO e Inspecionada, ou Limpa sem inspeção pendente (RN-05).")
     val readyForCheckIn: Boolean,
     @field:Schema(description = "Instante da última mudança de status.")
     val changedAt: Instant,
@@ -231,10 +240,24 @@ data class RoomStatusResponse(
                 view.housekeepingStatus,
                 view.inspectionPending,
                 view.serviceFlag,
+                view.outOfOrder?.let(OutOfOrderOverlayResponse::of),
                 view.readyForCheckIn,
                 view.changedAt,
                 view.version,
             )
+    }
+}
+
+@Schema(description = "O período OOO/OOS em vigor numa UH (a sobreposição do painel).")
+data class OutOfOrderOverlayResponse(
+    val id: UUID,
+    val kind: OutOfOrderKind,
+    val startsOn: LocalDate,
+    val endsOn: LocalDate,
+) {
+    companion object {
+        fun of(overlay: OutOfOrderOverlay) =
+            OutOfOrderOverlayResponse(overlay.id.value, overlay.kind, overlay.startsOn, overlay.endsOn)
     }
 }
 

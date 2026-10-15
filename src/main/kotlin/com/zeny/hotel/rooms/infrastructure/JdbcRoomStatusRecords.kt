@@ -23,6 +23,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.sql.ResultSet
 import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -83,6 +84,7 @@ class JdbcRoomStatusRecords(
     }
 
     override fun board(
+        today: LocalDate,
         occupancy: OccupancyStatus?,
         housekeepingStatus: HousekeepingStatus?,
         after: Pair<String, UUID>?,
@@ -91,15 +93,20 @@ class JdbcRoomStatusRecords(
         jdbc
             .sql(
                 """
-                SELECT * FROM rooms.room
-                WHERE active
-                  AND (CAST(:occupancy AS text) IS NULL OR occupancy = CAST(:occupancy AS text))
-                  AND (CAST(:hk AS text) IS NULL OR housekeeping_status = CAST(:hk AS text))
+                SELECT r.*, o.id AS ooo_id, o.kind AS ooo_kind, o.starts_on AS ooo_starts_on,
+                       o.ends_on AS ooo_ends_on
+                FROM rooms.room r
+                LEFT JOIN rooms.out_of_order o
+                       ON o.room_id = r.id AND o.blocked_period @> CAST(:today AS date)
+                WHERE r.active
+                  AND (CAST(:occupancy AS text) IS NULL OR r.occupancy = CAST(:occupancy AS text))
+                  AND (CAST(:hk AS text) IS NULL OR r.housekeeping_status = CAST(:hk AS text))
                   AND (CAST(:afterNumber AS text) IS NULL
-                       OR (lower(number), id) > (CAST(:afterNumber AS text), CAST(:afterId AS uuid)))
-                ORDER BY lower(number), id LIMIT :limit
+                       OR (lower(r.number), r.id) > (CAST(:afterNumber AS text), CAST(:afterId AS uuid)))
+                ORDER BY lower(r.number), r.id LIMIT :limit
                 """.trimIndent(),
-            ).param("occupancy", occupancy?.name)
+            ).param("today", today)
+            .param("occupancy", occupancy?.name)
             .param("hk", housekeepingStatus?.name)
             .param("afterNumber", after?.first)
             .param("afterId", after?.second)
@@ -226,6 +233,7 @@ private fun ResultSet.statusView() =
         GuestServiceFlag.valueOf(getString("service_flag")),
         instant("status_changed_at"),
         getLong("version"),
+        overlay("ooo_"),
     )
 
 private fun ResultSet.intOrNull(column: String): Int? = getInt(column).takeUnless { wasNull() }

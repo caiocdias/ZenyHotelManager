@@ -3,6 +3,10 @@ package com.zeny.hotel.rooms.application
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.AreaSummary
 import com.zeny.hotel.rooms.GuestServiceFlag
+import com.zeny.hotel.rooms.OutOfOrderId
+import com.zeny.hotel.rooms.OutOfOrderKind
+import com.zeny.hotel.rooms.OutOfOrderPeriod
+import com.zeny.hotel.rooms.OutOfOrderRequest
 import com.zeny.hotel.rooms.RoomFeatureId
 import com.zeny.hotel.rooms.RoomFeatureKey
 import com.zeny.hotel.rooms.RoomFeatureSummary
@@ -17,18 +21,24 @@ import com.zeny.hotel.rooms.domain.RoomFeature
 import com.zeny.hotel.shared.Audited
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 
 /**
- * A API pública do `rooms` ([RoomsApi]) para os outros módulos, sem checar permissão: leituras e as
+ * A API pública do `rooms` ([RoomsApi]) para os outros módulos, sem checar permissão: leituras, as
  * mudanças de status, cada uma um caso de uso auditado que passa pelo [RoomStatusChanger] (trava,
- * máquina de estados, histórico e evento).
+ * máquina de estados, histórico e evento), e a abertura e a liberação de OOO/OOS, pelas
+ * [OutOfOrderOperations] (as mesmas regras e o mesmo evento da API, sem o step-up, que é de quem chama).
  */
 @Service
-@Suppress("TooManyFunctions") // leituras do cadastro e uma operação por mudança de status
+@Suppress("TooManyFunctions", "LongParameterList") // uma operação por mudança; as portas injetadas pelo Spring
 class RoomsApiService(
     private val store: RoomsStore,
     private val directory: RoomsDirectory,
     private val changer: RoomStatusChanger,
+    private val overlays: OutOfOrderOverlays,
+    private val outOfOrders: OutOfOrderOperations,
+    private val outOfOrderStore: OutOfOrderStore,
+    private val outOfOrderRecords: OutOfOrderRecords,
 ) : RoomsApi {
     @Transactional(readOnly = true)
     override fun room(id: RoomId): RoomSummary? = store.room(id)?.view()?.summary()
@@ -74,7 +84,7 @@ class RoomsApiService(
     // --- Status ------------------------------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    override fun status(id: RoomId): RoomStatus? = store.room(id)?.statusView()?.status()
+    override fun status(id: RoomId): RoomStatus? = store.room(id)?.statusView(overlays.current(id))?.status()
 
     @Audited(RoomsAudit.MARK_DIRTY)
     @Transactional
@@ -129,7 +139,55 @@ class RoomsApiService(
     ): RoomStatus = changer.change(id, source) { room, now -> room.setServiceFlag(flag, now) }.status()
 
     @Transactional(readOnly = true)
-    override fun isReadyForCheckIn(id: RoomId): Boolean = (store.room(id) ?: throw roomNotFound()).isReadyForCheckIn
+    override fun isReadyForCheckIn(id: RoomId): Boolean =
+        (store.room(id) ?: throw roomNotFound()).isReadyForCheckIn(overlays.current(id)?.kind)
+
+    // --- OOO e OOS ---------------------------------------------------------------------------------
+
+    @Transactional(readOnly = true)
+    override fun outOfOrder(id: OutOfOrderId): OutOfOrderPeriod? = outOfOrderStore.find(id)?.period()
+
+    @Transactional(readOnly = true)
+    override fun outOfOrderPeriods(
+        from: LocalDate,
+        to: LocalDate,
+        roomId: RoomId?,
+    ): List<OutOfOrderPeriod> {
+        require(!to.isBefore(from)) { "Intervalo de datas invertido: $from a $to" }
+        return generateSequence(outOfOrderRecords.periods(from, to, roomId, null, null, PAGE)) { page ->
+            if (page.size < PAGE) {
+                null
+            } else {
+                page.last().let { outOfOrderRecords.periods(from, to, roomId, null, it.startsOn to it.id.value, PAGE) }
+            }
+        }.flatten().toList()
+    }
+
+    @Audited(RoomsAudit.OPEN_OUT_OF_ORDER)
+    @Transactional
+    override fun openOutOfOrder(
+        roomId: RoomId,
+        kind: OutOfOrderKind,
+        request: OutOfOrderRequest,
+    ): OutOfOrderPeriod =
+        outOfOrders.open(
+            roomId,
+            kind,
+            OutOfOrderCommand(
+                request.startsOn,
+                request.endsOn,
+                request.reason,
+                request.responsible,
+                request.returnStatus,
+            ).details,
+        )
+
+    @Audited(RoomsAudit.RELEASE_OUT_OF_ORDER)
+    @Transactional
+    override fun releaseOutOfOrder(
+        id: OutOfOrderId,
+        source: RoomStatusSource,
+    ): OutOfOrderPeriod = outOfOrders.release(id, source)
 
     private fun RoomFeature.summary() = RoomFeatureSummary(id, key, code, name, active)
 

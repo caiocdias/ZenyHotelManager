@@ -2,6 +2,7 @@ package com.zeny.hotel.rooms.domain
 
 import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OccupancyStatus
+import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.RoomStatusField
 
 /**
@@ -16,8 +17,9 @@ data class RoomStatusFieldChange(
 )
 
 /**
- * RN-05, sem o OOO (E03): a UH está ativa, Vaga e Inspecionada, ou Limpa sem inspeção pendente. Usada
- * pela entidade e pelas leituras do painel, que não carregam a entidade.
+ * RN-05: a UH está ativa, Vaga, fora de OOO e Inspecionada, ou Limpa sem inspeção pendente; OOS não
+ * impede ([outOfOrder] é a sobreposição em vigor na data operacional). Usada pela entidade e pelas
+ * leituras do painel, que não carregam a entidade.
  */
 object CheckInReadiness {
     fun isReady(
@@ -25,9 +27,11 @@ object CheckInReadiness {
         occupancy: OccupancyStatus,
         housekeepingStatus: HousekeepingStatus,
         inspectionPending: Boolean,
+        outOfOrder: OutOfOrderKind?,
     ): Boolean =
         active &&
             occupancy == OccupancyStatus.VACANT &&
+            outOfOrder != OutOfOrderKind.OUT_OF_ORDER &&
             (
                 housekeepingStatus == HousekeepingStatus.INSPECTED ||
                     (housekeepingStatus == HousekeepingStatus.CLEAN && !inspectionPending)

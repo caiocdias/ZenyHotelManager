@@ -1,6 +1,7 @@
 package com.zeny.hotel.rooms.application
 
 import com.zeny.hotel.rooms.domain.Area
+import com.zeny.hotel.rooms.domain.OutOfOrder
 import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomFeature
 import com.zeny.hotel.rooms.domain.RoomType
@@ -13,6 +14,7 @@ internal object RoomsAudit {
     const val AREA = "rooms.area"
     const val ROOM_STATUS = "rooms.room-status"
     const val HOUSEKEEPING_OBSERVATION = "rooms.housekeeping-observation"
+    const val OUT_OF_ORDER = "rooms.out-of-order"
 
     const val CREATE_FEATURE = "rooms.room-feature.create"
     const val UPDATE_FEATURE = "rooms.room-feature.update"
@@ -41,6 +43,12 @@ internal object RoomsAudit {
     const val MARK_OCCUPIED = "rooms.room-status.mark-occupied"
     const val MARK_VACANT = "rooms.room-status.mark-vacant"
     const val RECORD_OBSERVATION = "rooms.housekeeping-observation.record"
+
+    // OOO/OOS (M2 E03): as mesmas ações pela API e pela API pública; a do OOO é também a ação sensível
+    // (SensitiveAction.action) que a aprovação de superior vincula.
+    const val OPEN_OUT_OF_ORDER = "rooms.out-of-order.open"
+    const val UPDATE_OUT_OF_ORDER = "rooms.out-of-order.update"
+    const val RELEASE_OUT_OF_ORDER = "rooms.out-of-order.release"
 }
 
 internal fun RoomFeature.auditState(): Map<String, Any?> =
@@ -86,3 +94,16 @@ internal fun Room.statusAuditState(): Map<String, Any?> =
 
 internal fun HousekeepingObservationView.auditState(): Map<String, Any?> =
     mapOf("roomId" to roomId.toString(), "occupancy" to occupancy.name, "guestCount" to guestCount)
+
+/** O período OOO/OOS na trilha: tipo, datas, motivo, responsável, retorno e liberação (sem dado de hóspede). */
+internal fun OutOfOrder.auditState(): Map<String, Any?> =
+    mapOf(
+        "roomId" to roomId.toString(),
+        "kind" to kind.name,
+        "startsOn" to startsOn.toString(),
+        "endsOn" to endsOn.toString(),
+        "reason" to reason,
+        "responsible" to responsible,
+        "returnStatus" to returnStatus.name,
+        "releasedOn" to releasedOn?.toString(),
+    )

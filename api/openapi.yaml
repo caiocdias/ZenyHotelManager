@@ -1300,6 +1300,78 @@ paths:
       summary: Versão do servidor e da API
       tags:
       - meta
+  /api/v1/out-of-order:
+    get:
+      description: "Os períodos que bloqueiam algum dia de `from` (padrão: a data\
+        \ operacional) a `to` (sem `to`, de `from` em diante), em ordem de início.\
+        \ Um período liberado só bloqueia até a véspera da liberação (`blockedUntil`);\
+        \ liberado antes de começar, não aparece. `to` antes de `from`: 400 `OUT_OF_ORDER_PERIOD_INVALID`.\
+        \ Exige `rooms.outoforder.read`."
+      operationId: listOutOfOrderPeriods
+      parameters:
+      - description: "Primeiro dia (data de negócio); padrão: a data operacional."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Último dia, inclusive; sem ele, sem limite."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Só os períodos desta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só os períodos deste tipo.
+        in: query
+        name: kind
+        required: false
+        schema:
+          type: string
+          enum:
+          - OUT_OF_ORDER
+          - OUT_OF_SERVICE
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageOutOfOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar períodos OOO e OOS
+      tags:
+      - rooms
   /api/v1/permissions:
     get:
       description: "Permissões vigentes do catálogo, definido pelo sistema e não editá\
@@ -2145,8 +2217,8 @@ paths:
   /api/v1/rooms/status:
     get:
       description: "As UHs ativas em ordem de número, com ocupação, status de governanç\
-        a, inspeção pendente, sinalização do hóspede e se estão prontas para check-in\
-        \ (RN-05). Exige `rooms.status.read`."
+        a, inspeção pendente, sinalização do hóspede, o período OOO/OOS em vigor na\
+        \ data operacional e se estão prontas para check-in (RN-05). Exige `rooms.status.read`."
       operationId: listRoomStatuses
       parameters:
       - description: Só as UHs com esta ocupação.
@@ -2375,6 +2447,204 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Mudar à mão o status de governança
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/out-of-order:
+    post:
+      description: "Abre um período de até 365 dias que não começa antes da data operacional\
+        \ (422 `OUT_OF_ORDER_PERIOD_IN_PAST`), numa UH ativa (422 `ROOM_INACTIVE`),\
+        \ sem sobrepor outro período da UH (409 `OUT_OF_ORDER_OVERLAP`). OOO não se\
+        \ aplica a UH ocupada se o período inclui a data operacional (RN-07, 422 `OUT_OF_ORDER_ROOM_OCCUPIED`);\
+        \ OOS sim. OOO exige `rooms.outoforder.manage` ou a aprovação de um superior\
+        \ (ação `rooms.out-of-order.open`, recurso `rooms.room:<id da UH>`); OOS,\
+        \ `rooms.outofservice.manage`. Não muda o status de governança. Publica `OutOfOrderChanged`."
+      operationId: openOutOfOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenOutOfOrderRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutOfOrderResponse"
+          description: Período aberto.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Colocar a UH em OOO ou OOS
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/out-of-order/{periodId}:
+    get:
+      description: "Com o `ETag`, para a edição. Exige `rooms.outoforder.read`. Inexistente\
+        \ ou de outra UH: 404 `OUT_OF_ORDER_NOT_FOUND`."
+      operationId: getOutOfOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: periodId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutOfOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um período OOO/OOS
+      tags:
+      - rooms
+    put:
+      description: "Troca o período, o motivo, o responsável e o status de retorno;\
+        \ o tipo não muda (libere e abra outro). Exige o `If-Match` (ausente: 428;\
+        \ versão diferente: 412). Um início ou fim alterado não fica antes da data\
+        \ operacional (422 `OUT_OF_ORDER_PERIOD_IN_PAST`); período liberado: 422 `OUT_OF_ORDER_RELEASED`;\
+        \ sobreposição: 409 `OUT_OF_ORDER_OVERLAP`; OOO que passa a incluir a data\
+        \ operacional numa UH ocupada: 422 `OUT_OF_ORDER_ROOM_OCCUPIED`. OOO exige\
+        \ `rooms.outoforder.manage` ou aprovação (ação `rooms.out-of-order.update`,\
+        \ recurso `rooms.out-of-order:<id>`). Publica `OutOfOrderChanged`."
+      operationId: updateOutOfOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: periodId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OutOfOrderRequestBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutOfOrderResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar um período OOO/OOS
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/out-of-order/{periodId}/release:
+    post:
+      description: "Libera na data operacional: a UH deixa de estar bloqueada a partir\
+        \ dela. Se o período estava em vigor, a UH volta ao status de governança de\
+        \ retorno, com o histórico (origem `MANUAL`); um período que ainda não começ\
+        ou é cancelado, e um que já terminou só é encerrado, sem mudar o status. Liberar\
+        \ de novo não muda nada. OOO exige `rooms.outoforder.manage` ou aprovação\
+        \ (ação `rooms.out-of-order.release`, recurso `rooms.out-of-order:<id>`);\
+        \ OOS, `rooms.outofservice.manage`. Publica `OutOfOrderChanged`."
+      operationId: releaseOutOfOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: periodId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OutOfOrderResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Liberar um período OOO/OOS
       tags:
       - rooms
   /api/v1/rooms/{id}/reactivate:
@@ -3978,6 +4248,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageOutOfOrderResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OutOfOrderResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePermissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -4819,6 +5103,48 @@ components:
       required:
       - id
       - name
+    OpenOutOfOrderRequest:
+      type: object
+      description: Um período OOO/OOS para abrir.
+      properties:
+        endsOn:
+          type: string
+          format: date
+          description: "Último dia, inclusive; até 365 dias no período."
+        kind:
+          type: string
+          enum:
+          - OUT_OF_ORDER
+          - OUT_OF_SERVICE
+        reason:
+          type: string
+          example: Vazamento no banheiro
+          maxLength: 500
+          minLength: 0
+        responsible:
+          type: string
+          description: Pessoa ou empresa responsável.
+          example: Equipe de manutenção
+          maxLength: 120
+          minLength: 0
+        returnStatus:
+          type: string
+          description: "Status de governança na liberação. Padrão: `DIRTY` (para limpeza)."
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+          description: "Primeiro dia (data de negócio), inclusive."
+      required:
+      - endsOn
+      - kind
+      - reason
+      - responsible
+      - startsOn
     OperationalSettingsDto:
       type: object
       description: Parâmetros operacionais do hotel (RF-CFG-04).
@@ -4846,6 +5172,140 @@ components:
       - lostAndFoundRetentionDays
       - preReservationAlertLeadHours
       - preReservationExpiryHours
+    OutOfOrderOverlayResponse:
+      type: object
+      description: O período OOO/OOS em vigor numa UH (a sobreposição do painel).
+      nullable: true
+      properties:
+        endsOn:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - OUT_OF_ORDER
+          - OUT_OF_SERVICE
+        startsOn:
+          type: string
+          format: date
+      required:
+      - endsOn
+      - id
+      - kind
+      - startsOn
+    OutOfOrderRequestBody:
+      type: object
+      description: Os dados de um período OOO/OOS para alterar (o tipo não muda).
+      properties:
+        endsOn:
+          type: string
+          format: date
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 0
+        responsible:
+          type: string
+          maxLength: 120
+          minLength: 0
+        returnStatus:
+          type: string
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+        startsOn:
+          type: string
+          format: date
+      required:
+      - endsOn
+      - reason
+      - responsible
+      - returnStatus
+      - startsOn
+    OutOfOrderResponse:
+      type: object
+      description: Um período fora de ordem (OOO) ou fora de serviço (OOS) de uma
+        UH (RF-UH-05).
+      properties:
+        blockedUntil:
+          type: string
+          format: date
+          description: "Último dia que o período bloqueia a UH (o fim, ou a véspera\
+            \ da liberação); nulo se não bloqueia nenhum (liberado antes de começ\
+            ar)."
+          nullable: true
+        endsOn:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - OUT_OF_ORDER
+          - OUT_OF_SERVICE
+        openedAt:
+          type: string
+          format: date-time
+        openedBy:
+          type: string
+          format: uuid
+          description: Quem abriu; nulo = o sistema.
+          nullable: true
+        reason:
+          type: string
+        releasedAt:
+          type: string
+          format: date-time
+          nullable: true
+        releasedBy:
+          type: string
+          format: uuid
+          description: Quem liberou; nulo = o sistema ou não liberado.
+          nullable: true
+        releasedOn:
+          type: string
+          format: date
+          description: Data operacional da liberação; nula enquanto não liberado.
+          nullable: true
+        responsible:
+          type: string
+        returnStatus:
+          type: string
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+        roomId:
+          type: string
+          format: uuid
+        startsOn:
+          type: string
+          format: date
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          description: "Versão, a mesma do `ETag`."
+      required:
+      - endsOn
+      - id
+      - kind
+      - openedAt
+      - reason
+      - responsible
+      - returnStatus
+      - roomId
+      - startsOn
+      - updatedAt
+      - version
     PermissionResponse:
       type: object
       description: Uma permissão do catálogo.
@@ -5496,9 +5956,14 @@ components:
           enum:
           - VACANT
           - OCCUPIED
+        outOfOrder:
+          allOf:
+          - $ref: "#/components/schemas/OutOfOrderOverlayResponse"
+          nullable: true
         readyForCheckIn:
           type: boolean
-          description: "Vaga e Inspecionada, ou Limpa sem inspeção pendente (RN-05)."
+          description: "Vaga, fora de OOO e Inspecionada, ou Limpa sem inspeção pendente\
+            \ (RN-05)."
         roomId:
           type: string
           format: uuid

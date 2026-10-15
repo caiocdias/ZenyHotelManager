@@ -129,7 +129,7 @@ class RoomStatusDomainTest {
             room.housekeepingStatus shouldBe DIRTY
             room.inspectionPending shouldBe false
             room.serviceFlag shouldBe NONE
-            room.isReadyForCheckIn shouldBe false
+            room.isReadyForCheckIn(outOfOrder = null) shouldBe false
             room.statusChangedAt shouldBe t0
             room.occupancyChangedAt shouldBe t0
         }
@@ -331,7 +331,7 @@ class RoomStatusDomainTest {
                     val expected =
                         active && !occupied && (state == State.INSPECTED_ || state == State.CLEAN_)
                     withClue("$state, ocupada=$occupied, ativa=$active") {
-                        room.isReadyForCheckIn shouldBe expected
+                        room.isReadyForCheckIn(outOfOrder = null) shouldBe expected
                     }
                 }
             }
