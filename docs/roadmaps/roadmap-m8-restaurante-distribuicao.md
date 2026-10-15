@@ -1,6 +1,6 @@
 # Roadmap — M8 Restaurante, distribuição e inauguração
 
-> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · criado em 2026-10-13 · última revisão 2026-10-15
 >
 > Marco 8 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · anterior: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md) · próximo: [M9 — Suprimentos](roadmap-m9-suprimentos.md)
 >
@@ -69,6 +69,11 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 | H8 | Teste de desempenho com k6 ou Gatling, rodando contra o compose local com dados sintéticos. | Ferramenta trocável; números de produção são confirmados no ambiente final (E11). | E12 |
 | D1 | Q-05: qual channel manager (HotelRunner, Omnibees ou outro) e se ele oferece pull. | Sem o fornecedor não há credenciais nem documentação para o adaptador real. | E09 (bloqueada) |
 | D2 | Q-06: servidor na nuvem (VPS) ou no hotel. | Define TLS (Let's Encrypt × LAN com túnel), modo das integrações (webhook × polling), destino do backup e procedimento de implantação. | E11 (bloqueada) |
+
+**Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
+
+- **Implantação com TLS:** o SSE (`GET /api/v1/stream`, M2 E04) passa pelo proxy público: conferir `flush_interval` sem buffer e o tempo limite de conexões longas no Caddy com TLS (e em qualquer balanceador da nuvem), com o heartbeat do M2.
+- **Segredos de implantação:** as `ZENY_FCM_*` (credencial da conta de serviço do FCM, M2 E09) entram com as demais credenciais da implantação, fora do repositório; vazias, o push fica desligado.
 
 ## Definição global de pronto
 
@@ -1326,3 +1331,4 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicadas as decisões da entrevista SPEC × ARCHITECTURE (regra por camadas na ARCHITECTURE §3.1; `TabClosed` tratado por listener do próprio `pos`, agora registrado na ARCHITECTURE e na SPEC §8.3): restrições de grafo e alertas reescritas, H5 simplificada (`pos` → `rates` permitido), E01, E04 e E07 ajustados (critérios, escopo e prompt).
 - 2026-10-14 — E11 recebe duas pendências do M1 E04, decididas pelo usuário: migrações num job de uso único com o dono dos schemas (a `api` deixa de receber `ZENY_DB_MIGRATION_*`) e a decisão entre trilha de auditoria e métrica para o login com usuário inexistente. Nenhuma tag mudou.
+- 2026-10-15 — notas herdadas do M2 acrescentadas em "Hipóteses e decisões em aberto" (SSE pelo proxy com TLS e `ZENY_FCM_*` como segredos de implantação). Nenhuma etapa reescrita; tags inalteradas.

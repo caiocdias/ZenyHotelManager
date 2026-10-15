@@ -1,6 +1,6 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · criado em 2026-10-13 · última revisão 2026-10-15
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
@@ -69,6 +69,11 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H7 | Exportação XLSX com biblioteca leve (ex.: fastexcel ou Apache POI) declarada no *version catalog*; os PDFs são renderizados por `printing` (M5): `reporting` monta os dados e chama `printing`, como todo módulo dono de documento. | Troca local ao `reporting`. | E09 |
 | H8 | Avisos de pendência do fechamento (RF-NOT-01) são enviados por `endofday` chamando `notifications` (push e painel) para quem tem permissão de acompanhar o fechamento, além do andamento no SSE e do endpoint de pendências. | Ajuste de destinatários é configuração. | E10 |
 | H9 | Q-14 (turndown) e Q-15 (cortesia e uso da casa) seguem os padrões da SPEC §10: turndown como tipo de limpeza desativado; cortesia conta na ocupação e não no ADR, uso da casa não conta em nenhum dos dois. | Ajuste de configuração e do cálculo de `DailyStatistics`. | E01, E09 |
+
+**Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
+
+- **E07, OOO pela manutenção (`blockRoom`):** a API pública de OOO de `rooms` (M2 E03) não confere permissão; o caso de uso da manutenção faz o próprio step-up (`authorization.requireOrApproval` com a permissão sensível de OOO de `rooms`) antes de chamá-la. O alerta de reserva alocada no período é de `reservations`, ao escutar `OutOfOrderChanged` (M4 E05/E10); `rooms` não conhece reservas.
+- **Rotinas de checklist:** o listener de `BusinessDateAdvanced` da M2 E07 gera uma execução por rotina e data, mas em produção as rotinas só passam a ser geradas quando o `endofday` deste marco avançar a data operacional; o gate deste marco confere isso ponta a ponta.
 
 ## Definição global de pronto
 
@@ -769,7 +774,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Riscos e mitigação:**
 
-- OOO com reserva alocada no período (RN-07): `rooms` alerta e exige realocação; a OS só registra o bloqueio após a confirmação de `rooms`.
+- OOO com reserva alocada no período (RN-07): `rooms` não conhece reservas; quem alerta e exige a realocação é `reservations`, ao escutar `OutOfOrderChanged` (M4). A OS registra o bloqueio quando `rooms` confirma a abertura do OOO, sem esperar a realocação.
 
 **Evidências e handoff:**
 
@@ -1222,3 +1227,4 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicadas as decisões da entrevista SPEC × ARCHITECTURE (regra por camadas na ARCHITECTURE §3.1; documentos montados pelo dono e renderizados por `printing`): H6 passa a guardar os PDFs do fechamento em `files`; H7 renderiza PDFs via `printing`; H8 envia pendências do fechamento por `notifications`; E05 notifica UH liberada; E09 acrescenta `reporting` → `printing`/`files` à §3.1; E10 e E11 chamam `notifications`; fora de escopo de E06 reescrito (SPEC não pede fotos).
+- 2026-10-15 — notas herdadas do M2 acrescentadas em "Hipóteses e decisões em aberto" (step-up da manutenção antes da API de OOO de `rooms`; rotinas de checklist geradas só com o `endofday`) e corrigida a contradição de camadas no risco da E07: quem alerta e exige a realocação é `reservations`, ao escutar `OutOfOrderChanged`. Tags inalteradas.

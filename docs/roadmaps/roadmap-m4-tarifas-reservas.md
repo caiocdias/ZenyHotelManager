@@ -1,6 +1,6 @@
 # Roadmap — M4 Tarifas, disponibilidade e reservas
 
-> Arquivo: `docs/roadmaps/roadmap-m4-tarifas-reservas.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m4-tarifas-reservas.md` · criado em 2026-10-13 · última revisão 2026-10-15
 >
 > Marco 4 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M3 — Hóspedes, contas e caixa](roadmap-m3-hospedes-contas.md) · próximo marco: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md)
 >
@@ -74,6 +74,10 @@ Entregar os módulos `rates` e `reservations`. Ao fim do marco, a API permite ma
 | H6 | A multa de cancelamento é lançada na conta da reserva com o código padrão de multa criado em M3; a devolução de depósito segue o reembolso manual de M3. | Se os códigos padrão de M3 tiverem outros nomes, ajustar na sincronização. | E08 |
 | H7 | A chave de limite de desconto é `rates.discount.maxPercent` (ARCHITECTURE §8.2), registrada no catálogo de permissões de `rates`. | Nome diferente só muda a configuração das roles. | E02, E07 |
 | H8 | Reservas guardam referências a hóspedes e escutam `GuestsMerged` (M3) para repontar o hóspede absorvido. | Sem isso, reservas antigas apontariam para perfis mesclados. | E07 |
+
+**Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
+
+- **E05, listener de `OutOfOrderChanged`:** é o primeiro listener de negócio entre módulos do sistema. Ele conta com o reenvio do outbox da M2 E12: backoff de 1 min dobrando até 1 h, abandono depois de 24 h com métrica `abandoned`, alerta e reenvio manual documentado no `CLAUDE.md`. O listener precisa ser idempotente, e a recontagem do inventário cobre uma publicação abandonada.
 
 ## Definição global de pronto
 
@@ -1312,3 +1316,4 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicada a regra por camadas da ARCHITECTURE §3.1 (decisão do usuário): `reservations` pode chamar módulos da Plataforma; confirmação em PDF de M5 segue o modelo dono + printing; o alerta de reservas sem garantia continua como lista porque a SPEC não pede push. Nenhuma etapa mudou de escopo.
+- 2026-10-15 — nota herdada do M2 acrescentada em "Hipóteses e decisões em aberto" (listener de `OutOfOrderChanged` da E05 com o backoff e o abandono do outbox da M2 E12). Nenhuma etapa reescrita; tags inalteradas.

@@ -1,6 +1,6 @@
 # Roadmap — M1 Acesso, auditoria e configuração
 
-> Arquivo: `docs/roadmaps/roadmap-m1-acesso-configuracao.md` · criado em 2026-10-13 · última revisão 2026-10-14
+> Arquivo: `docs/roadmaps/roadmap-m1-acesso-configuracao.md` · criado em 2026-10-13 · última revisão 2026-10-15
 >
 > Marco 1 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M0 — Fundação técnica](roadmap-m0-fundacao-tecnica.md) · próximo marco: [M2 — Plataforma operacional](roadmap-m2-plataforma-operacional.md)
 >
@@ -1613,6 +1613,7 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
     - uma linha fora de ordem no `.env.example`.
 - Notas para o marco M2:
   - **Antes do M2:** a revisão humana desta etapa foi feita (acima); faltam o commit da E08 e o da E09, separados, e uma execução verde da CI no GitHub (não rodou para a E08 e a E09, que não estão commitadas). Depois, sincronizar `docs/roadmaps/roadmap-m2-plataforma-operacional.md` com o código (skill `development-roadmap`).
+    - **Atendido em 2026-10-15:** a E08 e a E09 estão na `main` em commits separados (`fe4e91f` e `372701d`), e a CI no GitHub passou no run `38783591046` (build, oasdiff e imagem verdes, commit `372701d`). O roadmap do M2 foi sincronizado com o código na mesma data.
   - **Observações do gate**, sem defeito que bloqueie e sem mudança de código:
     - `GET /files/{id}` e `/download-url` de um id inexistente dão 404 mesmo a quem não tem nenhuma permissão, e o de um anexo existente dá 403. Isso revela a existência de um UUIDv7, porque a permissão vem da finalidade do anexo. É baixo; se incomodar, a correção é na E08.
     - Corpo malformado responde 400 antes do 403 de permissão, como em todo o projeto.
@@ -1653,3 +1654,4 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 - 2026-10-15 — E09 executada (em andamento até a verificação independente e a revisão humana): definição global de pronto conferida numa cópia limpa e ponta a ponta no `docker compose`; ajustes de documentação no `README.md` e no `CLAUDE.md`; conclusão do M1 registrada em `docs/roadmaps/README.md`.
 - 2026-10-15 — E09: correção pós-verificação do vazamento do DETAIL do PostgreSQL nos logs (ajuste da E03, decidido pelo usuário), com testes e conferência no compose; `ZENY_DB_NAME` no `README.md`.
 - 2026-10-15 — revisão humana da E09: correções D1 a D4 aplicadas antes do commit (proxy só com URLs pré-assinadas de objeto e senhas do MinIO vazias no `.env.example`, máscara do token `t1:`, limites do multipart conferidos no boot, documentação); decisões Q1, Q2 e Q4 e as notas para o M2 e o M8 registradas no handoff da E09. Tags inalteradas.
+- 2026-10-15 — handoff da E09: registrados os commits da E08 (`fe4e91f`) e da E09 (`372701d`) e a CI verde no GitHub (run `38783591046`), que estavam pendentes nas notas para o M2. Tags inalteradas.

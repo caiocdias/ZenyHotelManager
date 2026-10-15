@@ -1,6 +1,6 @@
 # Roadmap — M3 Hóspedes, contas e caixa
 
-> Arquivo: `docs/roadmaps/roadmap-m3-hospedes-contas.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m3-hospedes-contas.md` · criado em 2026-10-13 · última revisão 2026-10-15
 >
 > Marco 3 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M2 — Plataforma operacional](roadmap-m2-plataforma-operacional.md) · próximo marco: [M4 — Tarifas, disponibilidade e reservas](roadmap-m4-tarifas-reservas.md)
 >
@@ -75,6 +75,11 @@ Entregar os módulos `guests`, `payments` (só o registro manual) e `billing` (s
 | H4 | Faixas etárias, taxa de serviço por ponto de venda e por código e ISS vêm da configuração do `hotel` entregue em M1 (RF-CFG-02, RF-CFG-03). | Se M1 não expôs essas configurações na API pública do `hotel`, a etapa para e relata. | E06 |
 | H5 | SPEC Q-08 segue o padrão adotado: taxa de serviço só em A&B por configuração, retenção configurável; o motor em `billing` é genérico por código de lançamento. | Mudança de política é só configuração. | E06 |
 | H6 | Mesclagem de duplicados mantém o perfil sobrevivente, marca o absorvido como mesclado (sem excluir) e publica um evento `GuestsMerged`, que módulos acima de `guests` escutam para repontar referências. | Sem o evento, reservas antigas apontariam para o perfil absorvido; o evento evita reescrever outros schemas. | E02 |
+
+**Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
+
+- **E03, anexos de hóspede:** a porta opcional `FileAccessPolicy` por finalidade (Q1 da revisão humana do M1, adiada para cá pela H15 do M2) é avaliada aqui, para os documentos de hóspede. A exportação do titular ("gera pacote… guardado em `files`") precisa de uma `FilesApi` que grave conteúdo pelo servidor, o que ainda não existe (só `find`, `attach`, `detach` e `delete`); este é o primeiro consumidor, antes de `printing` (M5), `reporting` (M6) e `fiscal` (M7). A finalidade sensível de documento usa o `FilesApi.detach`/`delete` e o expurgo de órfãos da M2 E11 (24 h, auditado pelo ator sistema).
+- **Contexto confirmado:** citar o que o M2 entrega e os módulos deste marco usam: upload idempotente pela parte `clientFileId` (M2 E11, H10), reencode de imagens com `javax.imageio` só para JPEG e PNG, sem metadados (H11), o evento de kernel `DeviceSessionsRevoked` publicado pelo `iam` (M2 E04, H8) e o abandono das publicações do outbox depois de 24 h com backoff de 1 min a 1 h (M2 E12, H13).
 
 ## Definição global de pronto
 
@@ -1161,3 +1166,4 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado.
 - 2026-10-13 — aplicada a regra por camadas da ARCHITECTURE §3.1 (decisão do usuário): contexto e restrições citam a regra; `billing` → `printing` registrado para o extrato em PDF de M5 (dono + printing). Nenhuma etapa mudou de escopo.
+- 2026-10-15 — notas herdadas do M2 acrescentadas em "Hipóteses e decisões em aberto" (`FileAccessPolicy` e gravação de conteúdo pela `FilesApi` na E03; `clientFileId`, reencode, `DeviceSessionsRevoked` e abandono do outbox para o contexto). Nenhuma etapa reescrita; tags inalteradas.
