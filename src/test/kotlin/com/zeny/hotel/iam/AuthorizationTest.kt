@@ -190,6 +190,8 @@ class AuthorizationTest(
                 "staff.employees.manage:ALL",
                 "staff.schedule.read:ALL",
                 "staff.schedule.manage:ALL",
+                "rooms.registry.read:ALL",
+                "rooms.registry.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldBe listOf("staff.schedule.read:OWN")
 

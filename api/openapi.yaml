@@ -24,6 +24,8 @@ tags:
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
+- description: "Tipos de UH, características, UHs e áreas comuns."
+  name: rooms
 - description: Configuração do hotel e data operacional.
   name: hotel
 - description: Informações sobre o servidor e a API.
@@ -33,6 +35,211 @@ tags:
 - description: "Setores, colaboradores, turnos e escala."
   name: staff
 paths:
+  /api/v1/areas:
+    get:
+      description: "Em ordem de nome, opcionalmente de um tipo e só ativas ou inativas.\
+        \ Exige `rooms.registry.read`."
+      operationId: listAreas
+      parameters:
+      - description: Só as áreas deste tipo.
+        in: query
+        name: kind
+        required: false
+        schema:
+          type: string
+          enum:
+          - LOBBY
+          - POOL
+          - KITCHEN
+          - HALL
+          - CORRIDOR
+          - OTHER
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageAreaResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar áreas comuns
+      tags:
+      - rooms
+    post:
+      description: "Exige `rooms.registry.manage`. Nome já usado, sem diferenciar\
+        \ maiúsculas: 409 `AREA_NAME_ALREADY_IN_USE`."
+      operationId: createArea
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AreaRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AreaResponse"
+          description: Área cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma área comum
+      tags:
+      - rooms
+  /api/v1/areas/{id}:
+    get:
+      description: "Exige `rooms.registry.read`. Inexistente: 404 `AREA_NOT_FOUND`."
+      operationId: getArea
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AreaResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma área comum
+      tags:
+      - rooms
+    put:
+      description: "Troca nome, tipo e descrição. Exige `rooms.registry.manage` e\
+        \ o `If-Match` (ausente: 428; versão diferente: 412). Nome já usado: 409 `AREA_NAME_ALREADY_IN_USE`."
+      operationId: updateArea
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AreaRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AreaResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma área comum
+      tags:
+      - rooms
+  /api/v1/areas/{id}/deactivate:
+    post:
+      description: Exige `rooms.registry.manage`. Nada é apagado. Desativar de novo
+        não muda nada.
+      operationId: deactivateArea
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AreaResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma área comum
+      tags:
+      - rooms
+  /api/v1/areas/{id}/reactivate:
+    post:
+      description: Exige `rooms.registry.manage`.
+      operationId: reactivateArea
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AreaResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma área comum
+      tags:
+      - rooms
   /api/v1/audit-entries:
     get:
       description: "Entradas da trilha, das mais recentes para as mais antigas, filtradas\
@@ -1424,6 +1631,599 @@ paths:
       summary: Reativar uma role
       tags:
       - iam
+  /api/v1/room-features:
+    get:
+      description: Em ordem de código. Exige `rooms.registry.read`.
+      operationId: listRoomFeatures
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomFeatureResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar características
+      tags:
+      - rooms
+    post:
+      description: "Exige `rooms.registry.manage`. O código fica em maiúsculas; já\
+        \ usado: 409 `ROOM_FEATURE_CODE_ALREADY_IN_USE`."
+      operationId: createRoomFeature
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomFeatureRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomFeatureResponse"
+          description: Característica criada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar uma característica
+      tags:
+      - rooms
+  /api/v1/room-features/{id}:
+    get:
+      description: "Exige `rooms.registry.read`. Inexistente: 404 `ROOM_FEATURE_NOT_FOUND`."
+      operationId: getRoomFeature
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomFeatureResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma característica
+      tags:
+      - rooms
+    put:
+      description: "Troca código e nome. Exige `rooms.registry.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Código já usado: 409 `ROOM_FEATURE_CODE_ALREADY_IN_USE`."
+      operationId: updateRoomFeature
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomFeatureRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomFeatureResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma característica
+      tags:
+      - rooms
+  /api/v1/room-features/{id}/deactivate:
+    post:
+      description: "Exige `rooms.registry.manage`. Nada é apagado: os tipos e UHs\
+        \ que já a têm continuam com ela, mas ela não é atribuída de novo (422 `ROOM_FEATURE_INACTIVE`).\
+        \ Desativar de novo não muda nada."
+      operationId: deactivateRoomFeature
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomFeatureResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma característica
+      tags:
+      - rooms
+  /api/v1/room-features/{id}/reactivate:
+    post:
+      description: Exige `rooms.registry.manage`.
+      operationId: reactivateRoomFeature
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomFeatureResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma característica
+      tags:
+      - rooms
+  /api/v1/room-types:
+    get:
+      description: Em ordem de exibição. Exige `rooms.registry.read`.
+      operationId: listRoomTypes
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar tipos de UH
+      tags:
+      - rooms
+    post:
+      description: "Exige `rooms.registry.manage`. O código fica em maiúsculas; já\
+        \ usado: 409 `ROOM_TYPE_CODE_ALREADY_IN_USE`. Ocupação máxima menor que a\
+        \ padrão: 400 `ROOM_TYPE_OCCUPANCY_INVALID`. Característica inexistente: 400\
+        \ `UNKNOWN_ROOM_FEATURE`; desativada: 422 `ROOM_FEATURE_INACTIVE`."
+      operationId: createRoomType
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomTypeRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTypeResponse"
+          description: Tipo de UH criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um tipo de UH
+      tags:
+      - rooms
+  /api/v1/room-types/{id}:
+    get:
+      description: "Exige `rooms.registry.read`. Inexistente: 404 `ROOM_TYPE_NOT_FOUND`."
+      operationId: getRoomType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um tipo de UH
+      tags:
+      - rooms
+    put:
+      description: "Troca todos os dados, inclusive o conjunto de características.\
+        \ Exige `rooms.registry.manage` e o `If-Match` (ausente: 428; versão diferente:\
+        \ 412). As regras do cadastro valem; só uma característica nova no tipo precisa\
+        \ estar ativa."
+      operationId: updateRoomType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomTypeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um tipo de UH
+      tags:
+      - rooms
+  /api/v1/room-types/{id}/deactivate:
+    post:
+      description: "Exige `rooms.registry.manage`. Nada é apagado. Com UHs ativas:\
+        \ 422 `ROOM_TYPE_HAS_ACTIVE_ROOMS`. Desativado, o tipo não recebe UH ativa\
+        \ (422 `ROOM_TYPE_INACTIVE`)."
+      operationId: deactivateRoomType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um tipo de UH
+      tags:
+      - rooms
+  /api/v1/room-types/{id}/reactivate:
+    post:
+      description: Exige `rooms.registry.manage`.
+      operationId: reactivateRoomType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um tipo de UH
+      tags:
+      - rooms
+  /api/v1/rooms:
+    get:
+      description: "Em ordem de número, opcionalmente de um tipo e só ativas ou inativas.\
+        \ Exige `rooms.registry.read`."
+      operationId: listRooms
+      parameters:
+      - description: Só as UHs deste tipo.
+        in: query
+        name: roomTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar UHs
+      tags:
+      - rooms
+    post:
+      description: "Exige `rooms.registry.manage`. Número já usado, sem diferenciar\
+        \ maiúsculas (inclusive por UH desativada): 409 `ROOM_NUMBER_ALREADY_IN_USE`.\
+        \ Tipo inexistente: 400 `UNKNOWN_ROOM_TYPE`; desativado: 422 `ROOM_TYPE_INACTIVE`.\
+        \ Característica inexistente: 400 `UNKNOWN_ROOM_FEATURE`; desativada: 422\
+        \ `ROOM_FEATURE_INACTIVE`."
+      operationId: createRoom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+          description: UH cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}:
+    get:
+      description: "Exige `rooms.registry.read`. Inexistente: 404 `ROOM_NOT_FOUND`."
+      operationId: getRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma UH
+      tags:
+      - rooms
+    put:
+      description: "Troca todos os dados, inclusive o número, o tipo e o conjunto\
+        \ de características. Exige `rooms.registry.manage` e o `If-Match` (ausente:\
+        \ 428; versão diferente: 412). As regras do cadastro valem; só um tipo ou\
+        \ uma característica nova na UH precisa estar ativa."
+      operationId: updateRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/deactivate:
+    post:
+      description: "Exige `rooms.registry.manage`. Nada é apagado: o cadastro, o nú\
+        mero e o histórico ficam, e a UH sai das listas de UHs ativas. Desativar de\
+        \ novo não muda nada."
+      operationId: deactivateRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma UH
+      tags:
+      - rooms
+  /api/v1/rooms/{id}/reactivate:
+    post:
+      description: Exige `rooms.registry.manage` e o tipo da UH ativo (422 `ROOM_TYPE_INACTIVE`).
+      operationId: reactivateRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma UH
+      tags:
+      - rooms
   /api/v1/schedule:
     get:
       description: "As entradas de `from` a `to` (no máximo 92 dias; sem `from`, a\
@@ -2543,6 +3343,68 @@ components:
       - approvalToken
       - approverId
       - expiresAt
+    AreaRequest:
+      type: object
+      description: Dados de uma área comum.
+      properties:
+        description:
+          type: string
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        kind:
+          type: string
+          enum:
+          - LOBBY
+          - POOL
+          - KITCHEN
+          - HALL
+          - CORRIDOR
+          - OTHER
+        name:
+          type: string
+          example: Piscina
+          maxLength: 80
+          minLength: 0
+      required:
+      - kind
+      - name
+    AreaResponse:
+      type: object
+      description: Uma área comum.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - LOBBY
+          - POOL
+          - KITCHEN
+          - HALL
+          - CORRIDOR
+          - OTHER
+        name:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - id
+      - kind
+      - name
+      - updatedAt
     AuditEntryResponse:
       type: object
       description: Uma entrada da trilha de auditoria.
@@ -2771,6 +3633,20 @@ components:
       - name
       - password
       - roleIds
+    CursorPageAreaResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AreaResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageAuditEntryResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -2835,6 +3711,48 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RoleResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomFeatureResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomFeatureResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomTypeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomTypeResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -3907,6 +4825,280 @@ components:
       - id
       - name
       - systemRole
+      - updatedAt
+    RoomFeatureRequest:
+      type: object
+      description: Código e nome de uma característica.
+      properties:
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: SEA_VIEW
+          minLength: 1
+          pattern: "[A-Za-z0-9][A-Za-z0-9_-]{0,19}"
+        name:
+          type: string
+          example: Vista para o mar
+          maxLength: 80
+          minLength: 0
+      required:
+      - code
+      - name
+    RoomFeatureResponse:
+      type: object
+      description: Uma característica de tipo de UH ou de UH.
+      properties:
+        active:
+          type: boolean
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: "Chave estável das características pré-carregadas (vista, acessí\
+            vel, conjugada); nula nas criadas pela API. Não muda quando o código ou\
+            \ o nome mudam."
+          enum:
+          - VIEW
+          - ACCESSIBLE
+          - CONNECTING
+          nullable: true
+        name:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - id
+      - name
+      - updatedAt
+    RoomRequest:
+      type: object
+      description: Dados de uma UH.
+      properties:
+        featureIds:
+          type: array
+          description: "Características da UH (vista, acessível, conjugada…; o conjunto\
+            \ inteiro)."
+          items:
+            type: string
+            format: uuid
+            description: "Características da UH (vista, acessível, conjugada…; o conjunto\
+              \ inteiro)."
+          maxItems: 50
+          minItems: 0
+        floor:
+          type: string
+          description: Andar ou ala.
+          example: 1º andar
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        notes:
+          type: string
+          description: Observações.
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+        number:
+          type: string
+          description: "Número único, sem diferenciar maiúsculas: letras, dígitos\
+            \ e `-`, até 10."
+          example: "101"
+          minLength: 1
+          pattern: "[0-9A-Za-z][0-9A-Za-z-]{0,9}"
+        roomTypeId:
+          type: string
+          format: uuid
+          description: Tipo da UH.
+      required:
+      - featureIds
+      - number
+      - roomTypeId
+    RoomResponse:
+      type: object
+      description: Uma UH.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        featureIds:
+          type: array
+          description: "Características da UH, em ordem de id."
+          items:
+            type: string
+            format: uuid
+            description: "Características da UH, em ordem de id."
+        floor:
+          type: string
+          description: Andar ou ala.
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          nullable: true
+        number:
+          type: string
+        roomTypeId:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - featureIds
+      - id
+      - number
+      - roomTypeId
+      - updatedAt
+    RoomTypeRequest:
+      type: object
+      description: Dados de um tipo de UH.
+      properties:
+        bedSetup:
+          type: string
+          description: Configuração de camas.
+          example: 1 casal + 1 solteiro
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: STD
+          minLength: 1
+          pattern: "[A-Za-z0-9][A-Za-z0-9_-]{0,19}"
+        description:
+          type: string
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+        displayOrder:
+          type: integer
+          format: int32
+          description: Ordem de exibição (menor primeiro).
+          maximum: 9999
+          minimum: 0
+        featureIds:
+          type: array
+          description: Características do tipo (o conjunto inteiro).
+          items:
+            type: string
+            format: uuid
+            description: Características do tipo (o conjunto inteiro).
+          maxItems: 50
+          minItems: 0
+        maxAdults:
+          type: integer
+          format: int32
+          description: Máximo de adultos; nunca menor que a ocupação padrão.
+          maximum: 20
+          minimum: 1
+        maxChildren:
+          type: integer
+          format: int32
+          description: Máximo de crianças; nunca menor que a ocupação padrão.
+          maximum: 20
+          minimum: 0
+        name:
+          type: string
+          example: Standard casal
+          maxLength: 80
+          minLength: 0
+        standardAdults:
+          type: integer
+          format: int32
+          description: Adultos na ocupação padrão (ao menos 1).
+          maximum: 20
+          minimum: 1
+        standardChildren:
+          type: integer
+          format: int32
+          description: Crianças na ocupação padrão.
+          maximum: 20
+          minimum: 0
+      required:
+      - code
+      - displayOrder
+      - featureIds
+      - maxAdults
+      - maxChildren
+      - name
+      - standardAdults
+      - standardChildren
+    RoomTypeResponse:
+      type: object
+      description: Um tipo de UH.
+      properties:
+        active:
+          type: boolean
+        bedSetup:
+          type: string
+          nullable: true
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        displayOrder:
+          type: integer
+          format: int32
+        featureIds:
+          type: array
+          description: "Características do tipo, em ordem de id."
+          items:
+            type: string
+            format: uuid
+            description: "Características do tipo, em ordem de id."
+        id:
+          type: string
+          format: uuid
+        maxAdults:
+          type: integer
+          format: int32
+        maxChildren:
+          type: integer
+          format: int32
+        name:
+          type: string
+        standardAdults:
+          type: integer
+          format: int32
+        standardChildren:
+          type: integer
+          format: int32
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - displayOrder
+      - featureIds
+      - id
+      - maxAdults
+      - maxChildren
+      - name
+      - standardAdults
+      - standardChildren
       - updatedAt
     ScheduleEntriesResponse:
       type: object

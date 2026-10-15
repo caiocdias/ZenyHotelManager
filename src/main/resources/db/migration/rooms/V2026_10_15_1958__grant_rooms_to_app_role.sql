@@ -1,0 +1,11 @@
+-- Privilégios do papel da aplicação no schema rooms (H4 do roadmap do M1, ARCHITECTURE §11): DML
+-- em todas as tabelas, sem DDL. O placeholder app_role é o papel da aplicação (ZENY_DB_USERNAME).
+-- A exclusão física de característica, tipo, UH e área é recusada pelo trigger rooms.refuse_delete.
+GRANT USAGE ON SCHEMA rooms TO "${app_role}";
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA rooms TO "${app_role}";
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA rooms TO "${app_role}";
+
+-- Tabelas e sequences criadas daqui em diante pelo dono no schema rooms.
+ALTER DEFAULT PRIVILEGES IN SCHEMA rooms GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${app_role}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA rooms GRANT USAGE, SELECT ON SEQUENCES TO "${app_role}";

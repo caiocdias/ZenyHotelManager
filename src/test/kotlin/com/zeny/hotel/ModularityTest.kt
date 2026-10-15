@@ -97,6 +97,28 @@ class ModularityTest {
     }
 
     @Test
+    fun `rooms depends only on shared and hotel, and only on their public APIs`() {
+        val rooms = modules.getModuleByName("rooms").orElseThrow()
+        val dependencies =
+            rooms
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        dependencies shouldContain "shared"
+        (dependencies - setOf("shared", "hotel")) shouldBe emptyList()
+        // Só a raiz de hotel (a API pública); verify() barra os pacotes internos.
+        rooms
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.hotel.") }
+            .filter { it.substringBeforeLast('.') != "com.zeny.hotel.hotel" }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
     fun `no module other than staff depends on iam, only on the ports of shared`() {
         val dependents =
             modules

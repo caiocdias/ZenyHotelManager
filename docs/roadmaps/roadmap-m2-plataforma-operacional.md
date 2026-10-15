@@ -186,7 +186,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Cadastro de tipos de UH, UHs e áreas | #pendente | — | Módulo `rooms` com tipos, UHs, características e áreas comuns |
+| E01 | Cadastro de tipos de UH, UHs e áreas | #concluida | — | Módulo `rooms` com tipos, UHs, características e áreas comuns |
 | E02 | Status de UH, histórico e discrepâncias | #pendente | E01 | Dimensões de status, transições da SPEC §8.4, histórico, RN-05, discrepâncias e `RoomStatusChanged` |
 | E03 | OOO e OOS | #pendente | E02 | Períodos fora de ordem e fora de serviço com step-up, retorno e `OutOfOrderChanged` |
 
@@ -216,7 +216,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 ---
 
-## E01 — Cadastro de tipos de UH, UHs e áreas — #pendente
+## E01 — Cadastro de tipos de UH, UHs e áreas — #concluida
 
 **Objetivo:** criar o módulo `rooms` com o cadastro de tipos de UH, características, UHs e áreas comuns (RF-UH-01 a 03), com endpoints, permissões e auditoria.
 
@@ -277,19 +277,25 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Os quatro recursos têm lista paginada por cursor, detalhe com `ETag`, criação, edição com `If-Match` e desativação, cobertos por testes de integração.
-- [ ] Número de UH duplicado → `409` com `code` estável (nunca 500).
-- [ ] Ocupação máxima menor que a padrão → `400` com `code` estável.
-- [ ] Não existe exclusão física de UH: nenhum `DELETE` no contrato e o trigger recusa `DELETE` do papel da aplicação (teste); UH desativada some das listas de UHs ativas da API pública.
-- [ ] Sem permissão → `403`; escritas auditadas (`LayerArchitectureTest` e entradas na trilha).
-- [ ] `ModularityTest` mostra `rooms` dependendo só de `shared` (e `hotel`, se usado), pela API pública; `CLAUDE.md` atualizado; contrato regenerado; build passa.
+- [x] Os quatro recursos têm lista paginada por cursor, detalhe com `ETag`, criação, edição com `If-Match` e desativação, cobertos por testes de integração.
+- [x] Número de UH duplicado → `409` com `code` estável (nunca 500).
+- [x] Ocupação máxima menor que a padrão → `400` com `code` estável.
+- [x] Não existe exclusão física de UH: nenhum `DELETE` no contrato e o trigger recusa `DELETE` do papel da aplicação (teste); UH desativada some das listas de UHs ativas da API pública.
+- [x] Sem permissão → `403`; escritas auditadas (`LayerArchitectureTest` e entradas na trilha).
+- [x] `ModularityTest` mostra `rooms` dependendo só de `shared` (e `hotel`, se usado), pela API pública; `CLAUDE.md` atualizado; contrato regenerado; build passa.
 
 **Validação obrigatória:**
 
 - `./gradlew build` → sucesso (inclui testes, lint, `checkOpenApi` e Kover).
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
-**Bloqueios:** Nenhum bloqueio conhecido.
+**Bloqueios:**
+
+- **Resolvido em 2026-10-15:** o usuário instalou o OpenJDK 25.0.4.1 (no `PATH`) e o Docker 29.1.3 (sem `sudo`, com compose e buildx); a etapa voltou a `#em-andamento` na retomada, que rodou as validações pendentes (ver "Evidências e handoff"). O registro original do bloqueio fica abaixo.
+- **Causa:** o ambiente da execução de 2026-10-15 não tem Docker (nem `docker` no `PATH`, nem `/var/run/docker.sock`) nem JDK instalado. O Testcontainers dos testes de integração, o `./gradlew updateOpenApi` (o `OpenApiContractExport` sobe um PostgreSQL), o `./gradlew build` e o `.github/scripts/check-api-breaking.sh` (oasdiff em contêiner) exigem Docker.
+- **Evidência:** `./gradlew updateOpenApi` → `OpenApiContractExport > exports the openapi contract() FAILED … IllegalStateException at DockerClientProviderStrategy.java:274` (sem ambiente Docker); `which docker java` sem resultado. Para compilar, rodar o lint e os testes sem Docker, a sessão baixou um JDK Temurin 25.0.4.1 (SHA-256 conferido) para o diretório temporário da sessão; o Gradle wrapper baixou a distribuição 9.8.1 para `~/.gradle`.
+- **Impacto:** o código da etapa está implementado, compila e passa no lint e nos testes que não precisam de Docker, mas `RoomsApiTest` (os critérios de CRUD, 409, 403, trigger e auditoria), `DatabaseMigrationsTest`/`DatabaseRolesTest` com as migrações novas e o resto da suíte não rodaram; `api/openapi.yaml` **não foi regenerado** (está desatualizado: o `checkOpenApi` do `build` vai falhar até rodar o `updateOpenApi`); o oasdiff não rodou. Nenhum critério que dependa deles pode ser dado como atendido.
+- **Ação de desbloqueio:** o usuário decidiu (2026-10-15) instalar Docker e JDK 25 nesta máquina. Com eles instalados: implementar o pré-carregamento das três características decidido na entrevista (ver "Evidências e handoff"), rodar na raiz `./gradlew updateOpenApi`, depois `./gradlew build` e `.github/scripts/check-api-breaking.sh`; corrigir o que falhar; versionar o `api/openapi.yaml` regenerado; voltar a tag para `#em-andamento` e seguir para a verificação independente.
 
 **Riscos e mitigação:**
 
@@ -297,12 +303,50 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `44b15542af164d7b1468b3a8bc24f146ad4adf4d` (recebido do orquestrador; `HEAD` `346af17`, árvore limpa). Snapshot ao fim da primeira execução (bloqueada): `ee60ec4d75069c924622cc83186dcd5fd03b7245`. Snapshot ao fim da retomada, antes deste handoff: `011e73da0ed00e292af5ccf9676e02bd99a5f23f` (27 arquivos, +4847/−120 contra o inicial). Preparação: a E09 do M1 está `#concluida`, e o código bate com o "Contexto confirmado" (módulos `shared`, `iam`, `audit`, `hotel`, `staff` e `files`; última migração `V2026_10_15_1446`; `StaffPersistence` com `unlessViolated`; `staff.refuse_delete`; `RoleTemplate` com `MANAGER`, `RECEPTIONIST` e `HOUSEKEEPER`; ARCHITECTURE §3.1 já com `rooms` → `shared, hotel`).
+- Retomada (2026-10-15): bloqueio resolvido (JDK 25 e Docker instalados); a sessão do orquestrador caiu no meio da retomada e ela foi continuada: `git status` conferido, `./gradlew --stop`, nenhum container nem processo Gradle órfão (`docker ps` vazio).
+- Arquivos alterados:
+  - novos, módulo `rooms` (`src/main/kotlin/com/zeny/hotel/rooms/`): raiz `RoomsModule.kt` (`allowedDependencies = ["shared", "hotel"]`), `RoomsApi.kt` (porta, ids, `AreaKind`, `Occupancy`, `RoomFeatureKey` e resumos), `RoomsPermissions.kt`, `RoomsErrorCodes.kt`; `domain/` `RegistryRecord.kt` (`@MappedSuperclass` com ativo, `updated_at` e versão; `RoomFeatureIdConverter`), `RoomFeature.kt` (com a `key`, `updatable = false`), `RoomType.kt`, `Room.kt`, `Area.kt`, `RoomsRules.kt`; `application/` `RoomsRegistry.kt` (`RoomsRegistryService` e o bean das permissões), `RoomsPorts.kt` (comandos, `RoomsStore`, `RoomsDirectory`, views e `RoomsConstraints`), `RoomsAudit.kt`, `RoomsApiService.kt`; `infrastructure/` `RoomsPersistence.kt` (`JpaRoomsStore`, conversão da unicidade em `false` como no `StaffPersistence`, sem importar o `iam`), `JdbcRoomsDirectory.kt`; `web/` `RoomsRegistryController.kt` (quatro controllers) e `RoomsDtos.kt`;
+  - novas migrações `src/main/resources/db/migration/rooms/V2026_10_15_1957__create_rooms.sql` (tabelas, `CHECK`s, unicidades, a pré-carga das três características e o trigger `rooms.refuse_delete` em `room_feature`, `room_type`, `room` e `area`) e `V2026_10_15_1958__grant_rooms_to_app_role.sql`;
+  - testes: novos `src/test/kotlin/com/zeny/hotel/rooms/RoomsApiTest.kt` (11 testes) e `RoomsTestSupport.kt`; `ModularityTest.kt` com `rooms depends only on shared and hotel, and only on their public APIs`; `iam/AuthorizationTest.kt` (o Gerente passa a ter `rooms.registry.read` e `rooms.registry.manage` no teste dos modelos de role);
+  - `api/openapi.yaml` regenerado (só acréscimos: `/api/v1/room-features`, `/room-types`, `/rooms`, `/areas` e os schemas);
+  - `CLAUDE.md` ("Estado atual" e a seção "UHs e áreas"); este roadmap (tag, bloqueio e handoff).
+- Decisões:
+  1. Permissões `rooms.registry.read` (sugerida a Gerente, Recepcionista e Governanta) e `rooms.registry.manage` (só Gerente, além do Administrador automático), ambas só `ALL` e não sensíveis — **confirmado pelo usuário** na entrevista de 2026-10-15.
+  2. Desativar um tipo com UHs ativas é recusado (`422 ROOM_TYPE_HAS_ACTIVE_ROOMS`), e UH ativa nunca fica em tipo desativado (`422 ROOM_TYPE_INACTIVE` ao criar, mudar de tipo ou reativar), com a linha do tipo travada nas duas pontas — **confirmado pelo usuário**.
+  3. **Decidido pelo usuário (2026-10-15), implementado na retomada:** "vista", "acessível" e "conjugada" vêm pré-carregadas pela migração, como os setores do `staff`: coluna `system_key` (única, `CHECK` com `VIEW`, `ACCESSIBLE`, `CONNECTING`, `updatable = false` na entidade) e o enum público `RoomFeatureKey`. Linhas: `VIEW` "Vista", `ACCESSIBLE` "Acessível" e `CONNECTING` "Conjugada" (código inicial = a chave; ids UUIDv7 fixos `019b76da-b00{0,1,2}-…`). "Conjugada" é característica da UH, não vínculo entre UHs. O gestor troca código e nome, desativa e reativa as pré-carregadas (a chave não muda; o trigger recusa a exclusão); as criadas pela API têm `key` nula. A resposta de `/room-features` ganhou `key` (nulável) e a `RoomsApi` ganhou `feature(id)` e `feature(key)`; outros módulos acham "acessível" pela chave, nunca pelo código. **Migração:** a pré-carga entrou na migração de criação existente (`V2026_10_15_1957`), não numa nova, porque ela nunca foi aplicada em ambiente nenhum nem commitada (o mesmo arquivo do `staff` cria e popula `department`).
+  4. Nome de área único sem diferenciar maiúsculas (`409 AREA_NAME_ALREADY_IN_USE`) — **confirmado pelo usuário**.
+  5. Códigos de tipo e característica normalizados para maiúsculas (letras, dígitos, `_`, `-`, até 20) e editáveis; número de UH com até 10 letras, dígitos ou `-`, único sem diferenciar maiúsculas (índice em `lower(number)`), com a caixa preservada; o número de uma UH desativada continua reservado.
+  6. Ocupação: ao menos 1 adulto na padrão, máximas de 0 a 20 e nunca menores que a padrão (`400 ROOM_TYPE_OCCUPANCY_INVALID` no campo); camas e descrição opcionais; ordem de exibição de 0 a 9999 (padrão 0).
+  7. Característica desativada não é atribuída de novo (`422 ROOM_FEATURE_INACTIVE`), mas os vínculos existentes ficam e mantê-la numa edição não falha.
+  8. A desativação e a reativação não exigem `If-Match` (idempotentes, como no `staff`); os `PUT` exigem.
+  9. `hotel` fica permitido em `allowedDependencies`, mas o `rooms` ainda não o usa; o teste do `ModularityTest` aceita `shared` e, se usado, `hotel`.
+  10. Leituras de lista por `JdbcClient` com as características agregadas por `ARRAY(…)`; o cursor das UHs e áreas usa `lowercase()` do Kotlin, como o dos colaboradores do `staff` (mesma ressalva para letras fora do ASCII).
+- Validações executadas (retomada, 2026-10-15, OpenJDK 25.0.4.1 e Docker 29.1.3):
+  - `./gradlew test --tests 'com.zeny.hotel.rooms.*'` antes da pré-carga → `RoomsApiTest` 10/10; depois da pré-carga (teste novo `view, accessible and connecting come preloaded with stable keys, and new features have none`), com `--tests 'com.zeny.hotel.persistence.*' --tests 'com.zeny.hotel.ModularityTest'` → `RoomsApiTest` 11/11, `ModularityTest` 9/9, `DatabaseMigrationsTest` 8/8, `DatabaseRolesTest` 6/6, `MigrationConventionTest` 11/11.
+  - `./gradlew updateOpenApi` → `BUILD SUCCESSFUL`; `api/openapi.yaml` regenerado (+1302/−110 linhas de diff, a maior parte reordenação do diff textual; o oasdiff só vê acréscimos).
+  - `./gradlew build` (1ª) → falhou em `AuthorizationTest > the role templates of SPEC 3_1 exist…` (a lista exata do Gerente não tinha as duas permissões novas do `rooms`); teste ajustado.
+  - `./gradlew build` (2ª) → `BUILD SUCCESSFUL in 3m 3s`: 425 testes, 0 falhas, 0 ignorados; `detekt`, `detektMain`, `detektTest`, `ktlint*Check`, `checkOpenApi` e `koverVerify` passaram.
+  - `.github/scripts/check-api-breaking.sh` → "No breaking changes to report, but the specs are different. Nenhuma mudança incompatível (nível ERR) em /api/v1." (base `346af17`, merge-base com `origin/main`).
+- Decisão do usuário na retomada (2026-10-15, entrevista do orquestrador): o código inicial das três características pré-carregadas fica igual à chave, em inglês (`VIEW`, `ACCESSIBLE`, `CONNECTING`), com os nomes em pt-BR; o gestor pode trocá-lo pela API sem afetar a chave.
+- Parecer do verificador (2026-10-15, verificador independente, snapshot `9c7b6a03a3548fd785093e53cb7d7e1b65c84db7`): **APROVADO**. Os seis critérios e a pré-carga têm evidência:
+  - critérios 1 e 2: `RoomsApiTest` 11/11, inclusive a corrida de dois números iguais (409, nunca 500, via `JpaRoomsStore.unlessViolated`);
+  - critério 4: o contrato não tem nenhum `delete:`, e o trigger `rooms.refuse_delete` está nas quatro tabelas, testado com o papel da aplicação;
+  - critério 5: `LayerArchitectureTest` 6/6 e os testes de 403 e da trilha;
+  - critério 6: `ModularityTest` 9/9 (`rooms` só usa `shared`);
+  - `./gradlew build` passou com 425 testes e 0 falhas, e `.github/scripts/check-api-breaking.sh` não acusou mudança incompatível contra a base `346af178969a`.
+
+  Nenhum problema grave nem médio. Ressalvas baixas, sem ação nesta etapa:
+  1. quem não tem permissão e omite o `If-Match` recebe 428 antes do 403, como no `staff`;
+  2. o cursor de áreas usa o `lowercase()` do Kotlin e a ordem usa o `lower()` do PostgreSQL, o que pode divergir com nomes fora do ASCII, como no `staff`;
+  3. a corrida entre desativar um tipo e criar uma UH nele não tem teste (as duas pontas travam a linha do tipo, mas isso só foi conferido lendo o código);
+  4. mover uma UH inativa para um tipo inativo também é recusado.
+
+  Informativo: a pré-carga entrou na migração de criação, ainda não versionada nem aplicada, que precisa ir ao commit assim.
+- Notas para a próxima etapa:
+  - E02: o status entra numa migração nova de `rooms` (timestamp depois de `V2026_10_15_1958`) acrescentando colunas a `rooms.room`; a `Room` já tem `version` (lock otimista) e herda de `RegistryRecord`. `RoomsApi` ganha os métodos de status; o teste `no rooms endpoint deletes anything` do `RoomsApiTest` lista exatamente os caminhos dos controllers do pacote `rooms` e precisa ganhar os novos (`/api/v1/rooms/status`, `/rooms/{id}/status-history`…). Permissões novas de status entram em `RoomsPermissions` (o teste de templates do `RoomsApiTest` confere só as duas de cadastro pelo catálogo `rooms.%`, e o `AuthorizationTest` lista exatamente as do Gerente e da Camareira: os dois precisam ser ajustados).
+  - E03 e M4: `RoomsApi.activeRooms(roomTypeId)` e `activeRoomTypes()` já existem para o inventário; UH desativada sai delas. M4/M5 acham UHs acessíveis ou conjugadas por `RoomsApi.feature(RoomFeatureKey.ACCESSIBLE|CONNECTING).id` contra `RoomSummary.featureIds`.
+  - O banco de testes é compartilhado: um teste que edite uma característica pré-carregada devolve o código e o nome originais no fim (o `RoomsApiTest` faz isso com `ACCESSIBLE`).
 
 ---
 
