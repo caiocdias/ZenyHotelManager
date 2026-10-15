@@ -89,7 +89,7 @@ Os anexos (logotipo do hotel e, nos próximos marcos, fotos de checklist, docume
 No `prod`, as variáveis não têm valor padrão: sem elas, a aplicação não sobe. No `local`, o padrão é um MinIO em `localhost:9000` com o bucket `zeny-files` e o usuário de serviço `zeny-app`/`zeny-app-dev-only`. Para o `bootRun`, suba-o e prepare-o com o mesmo script do compose:
 
 ```bash
-docker run -d --name zeny-storage -e MINIO_ROOT_USER=zeny -e MINIO_ROOT_PASSWORD=zeny-dev-only   -p 9000:9000 pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+docker run -d --name zeny-storage -e MINIO_ROOT_USER=zeny -e MINIO_ROOT_PASSWORD=zeny-dev-only   -p 127.0.0.1:9000:9000 pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
 docker run --rm --network container:zeny-storage -v "$PWD/docker/storage:/zeny:ro"   -e ZENY_STORAGE_INIT_ENDPOINT=http://127.0.0.1:9000 -e MINIO_ROOT_USER=zeny -e MINIO_ROOT_PASSWORD=zeny-dev-only   -e ZENY_STORAGE_BUCKET=zeny-files -e ZENY_STORAGE_ACCESS_KEY=zeny-app -e ZENY_STORAGE_SECRET_KEY=zeny-app-dev-only   --entrypoint sh pgsty/minio:RELEASE.2026-08-04T00-00-00Z /zeny/init-storage.sh
 ```
 
@@ -113,20 +113,22 @@ export ZENY_ADMIN_LOGIN=admin ZENY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
 
 ## Ambiente completo em Docker
 
-O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket e o usuário de serviço da `api` criados pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local; repassa ao MinIO só o `GET` dos objetos do bucket, para as URLs assinadas dos anexos). Backup e TLS público ficam para o M8.
+O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket e o usuário de serviço da `api` criados pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local; repassa ao MinIO só o `GET`/`HEAD` de um objeto do bucket com a assinatura na URL e sem cabeçalho `Authorization`, as URLs pré-assinadas dos anexos; a listagem, a raiz do bucket e a assinatura por cabeçalho vão para a `api` e dão 401). Backup e TLS público ficam para o M8.
 
-1. Crie o `docker/.env` a partir do modelo. Ele traz os dois papéis do banco: `ZENY_DB_MIGRATION_*`, o dono dos schemas e `POSTGRES_USER` do container, e `ZENY_DB_USERNAME`/`ZENY_DB_PASSWORD`, o papel da aplicação, criado na primeira inicialização do volume. Um `docker/.env` antigo precisa das duas variáveis novas e de um `ZENY_DB_USERNAME` diferente do dono; o volume antigo precisa ser recriado ou receber o papel à mão (seção "Banco de dados"). Gere também a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
+1. Crie o `docker/.env` a partir do modelo. Ele traz o nome do banco (`ZENY_DB_NAME`, padrão `zeny`) e os dois papéis do banco: `ZENY_DB_MIGRATION_*`, o dono dos schemas e `POSTGRES_USER` do container, e `ZENY_DB_USERNAME`/`ZENY_DB_PASSWORD`, o papel da aplicação, criado na primeira inicialização do volume. Um `docker/.env` antigo precisa das duas variáveis novas e de um `ZENY_DB_USERNAME` diferente do dono; o volume antigo precisa ser recriado ou receber o papel à mão (seção "Banco de dados"). Gere também a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
 
    ```bash
    cp docker/.env.example docker/.env
    sed -i "s|^ZENY_ENCRYPTION_KEYS=.*|ZENY_ENCRYPTION_KEYS=dev:$(openssl rand -base64 32)|" docker/.env
    sed -i "s|^ZENY_JWT_KEYS=.*|ZENY_JWT_KEYS=dev:$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 | tr -d '\n')|" docker/.env
    sed -i "s|^ZENY_ADMIN_PASSWORD=.*|ZENY_ADMIN_PASSWORD=$(openssl rand -base64 18)|" docker/.env
+   sed -i "s|^ZENY_STORAGE_ROOT_PASSWORD=.*|ZENY_STORAGE_ROOT_PASSWORD=$(openssl rand -base64 24)|" docker/.env
+   sed -i "s|^ZENY_STORAGE_SECRET_KEY=.*|ZENY_STORAGE_SECRET_KEY=$(openssl rand -base64 24)|" docker/.env
    ```
 
-   O `docker/.env` é ignorado pelo Git. Os valores do modelo são só de desenvolvimento; num ambiente real, troque todos.
+   O `docker/.env` é ignorado pelo Git. Os segredos (chaves, senha do administrador e as duas senhas do MinIO) vêm vazios no modelo, e o compose não sobe sem eles; os demais valores são só de desenvolvimento. Num ambiente real, troque todos.
 
-   O MinIO tem dois usuários. `ZENY_STORAGE_ROOT_USER`/`ZENY_STORAGE_ROOT_PASSWORD` é o root, usado só pelo `storage` e pelo `storage-init`. `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` é o usuário de serviço que a `api` usa, criado pelo `storage-init` com política só do bucket. Num `docker/.env` de antes da E08 do M1, o `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` era o root. Mova esses valores para `ZENY_STORAGE_ROOT_*`, para o root continuar o mesmo, e defina um usuário de serviço diferente. Se o proxy não estiver na porta 80, ajuste também o `ZENY_STORAGE_PUBLIC_ENDPOINT` (ex.: `http://localhost:8000`).
+   O MinIO tem dois usuários. `ZENY_STORAGE_ROOT_USER`/`ZENY_STORAGE_ROOT_PASSWORD` é o root, usado só pelo `storage` e pelo `storage-init`. `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` é o usuário de serviço que a `api` usa, criado pelo `storage-init` com política só do bucket. Quem conhece a senha dele lê o bucket inteiro, então gere as duas senhas (comandos acima), sobretudo antes de abrir o proxy à rede com `ZENY_HTTP_ADDRESS=0.0.0.0`. O bucket (`ZENY_STORAGE_BUCKET`) não pode se chamar `api` nem `actuator`. Num `docker/.env` de antes da E08 do M1, o `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` era o root. Mova esses valores para `ZENY_STORAGE_ROOT_*`, para o root continuar o mesmo, e defina um usuário de serviço diferente. Se o proxy não estiver na porta 80, ajuste também o `ZENY_STORAGE_PUBLIC_ENDPOINT` (ex.: `http://localhost:8000`).
 
 2. Suba (a primeira vez compila a imagem, o que leva alguns minutos) e confira a readiness pelo proxy:
 
@@ -167,6 +169,7 @@ Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-ma
 - Health: `GET /actuator/health/liveness` (processo vivo) e `GET /actuator/health/readiness` (pronto para tráfego; `DOWN` com o banco fora). São os únicos caminhos do actuator abertos, junto com o `/actuator/prometheus`; os demais endpoints não existem.
 - Métricas: `GET /actuator/prometheus`, só na rede interna do compose (`http://api:8080/actuator/prometheus`; o proxy responde 404). Além das técnicas (JVM, HTTP, pool do banco), `zeny_outbox_publications{state="pending|failed"}` e `zeny_outbox_publications_oldest_age_seconds` medem o outbox de eventos; regras de alerta em [`docker/prometheus/alerts.yaml`](docker/prometheus/alerts.yaml).
 - Logs: no profile `prod`, uma linha JSON por evento (formato ECS), com `traceId` e `spanId` nas requisições e, nas autenticadas, `userId` e `deviceSessionId` (nunca login, senha ou token); o servidor aceita e propaga o cabeçalho `traceparent` (W3C). No `local`, texto legível.
+- Valores do banco não vão para o log: numa violação de restrição (login repetido, por exemplo), nem o servidor (`db` do compose com `log_error_verbosity=terse` e `log_min_error_statement=panic`) nem a aplicação (driver com `logServerErrorDetail=false`) registram o DETAIL do PostgreSQL, que traz os valores da linha.
 
 ## API
 
@@ -177,7 +180,11 @@ REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/
 - os valores antes e depois, com senha, PIN, tokens e campos cifrados mascarados;
 - a aprovação de superior associada, quando houver.
 
-A trilha é consultada em `GET /api/v1/audit-entries`, filtrada por usuário, entidade e período, e exige a permissão `audit.read`. Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: [`CLAUDE.md`](CLAUDE.md).
+A trilha é consultada em `GET /api/v1/audit-entries`, filtrada por usuário, entidade e período, e exige a permissão `audit.read`.
+
+Ações sensíveis (hoje, as escritas de usuários e roles) pedem **aprovação de superior** quando o usuário não tem a permissão ou o limite: a resposta é `403 APPROVAL_REQUIRED`, com `action`, `permission`, `resourceRef` e, se houver, `limit` no problema. Outro usuário, com a permissão e um PIN, aprova em `POST /api/v1/auth/approvals` (login e PIN do aprovador e o motivo), e o solicitante repete a requisição com o cabeçalho `X-Approval-Token`, de uso único, válido por 2 min e só na mesma sessão. A ação concluída fica na trilha com a aprovação.
+
+A configuração do hotel único fica em `/api/v1/hotel` (dados cadastrais e logotipo), `/policies`, `/tax-settings` e `/operational-settings`, com `If-Match` nas alterações (`hotel.settings.read` para consultar, `hotel.settings.manage` para editar), e a data operacional em `GET /api/v1/hotel/business-date`, que só avança no fechamento do dia (M6). Setores, colaboradores, turnos, padrões de escala (12x36, 6x1 e fixo), a geração da escala por período e as exceções lançadas à mão (folga, falta, férias, troca), que a geração nunca sobrescreve, ficam em `/api/v1/departments`, `/employees`, `/shifts`, `/schedule-patterns` e `/schedule` (`staff.employees.*` e `staff.schedule.*`; com escopo `OWN`, cada colaborador vê só a própria escala). Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: [`CLAUDE.md`](CLAUDE.md).
 
 ## Integração contínua
 
@@ -197,6 +204,7 @@ O pacote base é `com.zeny.hotel`. Cada pacote de primeiro nível abaixo dele é
 src/main/kotlin/com/zeny/hotel/
 ├── ZenyHotelApplication.kt
 ├── shared/                  # kernel compartilhado: Money, Percent, IDs, CPF/CNPJ, Address, cifragem
+├── iam/ audit/ hotel/ staff/ files/   # módulos de plataforma do M1 (ARCHITECTURE §3.1)
 └── <módulo>/
     ├── <Módulo>Api.kt       # raiz do pacote = API pública: interfaces, DTOs e eventos
     ├── domain/              # agregados e regras, sem Spring

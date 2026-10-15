@@ -64,6 +64,10 @@ services:
   db:
     image: postgres:18
     restart: unless-stopped
+    # O log do servidor não leva valores das linhas (ARCHITECTURE §16): sem DETAIL, HINT e CONTEXT
+    # nos erros (numa violação de unicidade, o DETAIL traz "Key (login)=(…)") e sem o STATEMENT
+    # que falhou, com os parâmetros. O erro continua no log, com a mensagem e a constraint.
+    command: ["postgres", "-c", "log_error_verbosity=terse", "-c", "log_min_error_statement=panic"]
     environment:
       POSTGRES_DB: ${ZENY_DB_NAME:-zeny}
       POSTGRES_USER: ${ZENY_DB_MIGRATION_USERNAME:?defina ZENY_DB_MIGRATION_USERNAME no docker/.env}

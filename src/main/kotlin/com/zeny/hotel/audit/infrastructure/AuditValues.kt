@@ -25,7 +25,8 @@ import tools.jackson.databind.ser.std.StdSerializer
  *    kebab-case: `pinHash`, `refresh_token`), com qualquer valor que não seja booleano (`hasPin` e
  *    `passwordChangeRequired` continuam).
  * 3. **Formato:** texto com cara de segredo, em qualquer propriedade: valor cifrado pelo
- *    `FieldCipher` (`v1:<chave>:<base64url>`), hash Argon2 ou bcrypt e JWT.
+ *    `FieldCipher` (`v1:<chave>:<base64url>`), token selado pelo `TokenSealer` (`t1:<chave>:<base64url>`),
+ *    hash Argon2 ou bcrypt e JWT.
  *
  * O resultado é sempre um objeto JSON: um retrato que não é objeto vira `{"value": …}`.
  */
@@ -110,6 +111,9 @@ class AuditValues(
             listOf(
                 // FieldCipher: v<versão>:<id da chave>:<base64url do nonce + texto cifrado>.
                 Regex("""^v\d+:[A-Za-z0-9._-]+:[A-Za-z0-9_-]{16,}={0,2}$"""),
+                // TokenSealer: t<versão>:<id da chave>:<base64url do nonce + texto selado + tag>, sem
+                // padding; nonce (12 bytes) e tag (16) já dão 38 caracteres, então texto curto não casa.
+                Regex("""^t\d+:[A-Za-z0-9._-]+:[A-Za-z0-9_-]{38,}$"""),
                 Regex("^\\${'$'}argon2(?:id|i|d)\\${'$'}.*"),
                 Regex("^\\${'$'}2[aby]?\\${'$'}\\d{2}\\${'$'}.*"),
                 // JWT (cabeçalho, corpo e assinatura em base64url; o cabeçalho JSON começa por "eyJ").

@@ -12,13 +12,25 @@
 		respond 404
 	}
 
-	# URLs assinadas dos anexos comuns (módulo files, D14): só GET e HEAD de objetos do bucket vão ao
-	# MinIO, com o Host original (a assinatura SigV4 o inclui; ZENY_STORAGE_PUBLIC_ENDPOINT precisa ser
-	# o endereço que o cliente usa). O bucket é privado: sem assinatura válida e no prazo, o MinIO
-	# recusa. Anexos sensíveis nunca saem por aqui: o servidor os decifra (/api/v1/files/{id}/content).
+	# URLs assinadas dos anexos comuns (módulo files, D14): vão ao MinIO só as que têm a cara de uma URL
+	# pré-assinada de objeto, com o Host original (a assinatura SigV4 o inclui; ZENY_STORAGE_PUBLIC_ENDPOINT
+	# precisa ser o endereço que o cliente usa). Todas as condições valem juntas:
+	# - GET ou HEAD;
+	# - caminho /<bucket>/<chave>, com a chave não vazia e sem começar por "/" (a raiz do bucket e a
+	#   listagem, /<bucket>/?list-type=2, ficam de fora);
+	# - parâmetro X-Amz-Signature na query (assinatura na URL);
+	# - sem o cabeçalho Authorization (a assinatura por cabeçalho, de quem tem a credencial, fica de fora).
+	# O resto do caminho do bucket cai na api, que responde 401. É defesa em profundidade: quem tem o
+	# segredo do usuário de serviço ainda pré-assina a leitura de um objeto, então o segredo nunca pode
+	# ser um valor conhecido (docker/.env.example). O bucket é privado: com a assinatura adulterada ou
+	# vencida, o MinIO recusa (403). Anexos sensíveis nunca saem por aqui: o servidor os decifra
+	# (/api/v1/files/{id}/content).
 	@storage {
-		path /{$ZENY_STORAGE_BUCKET}/*
 		method GET HEAD
+		path /{$ZENY_STORAGE_BUCKET}/*
+		path_regexp ^/[^/]+/[^/]
+		query X-Amz-Signature=*
+		not header Authorization *
 	}
 	handle @storage {
 		reverse_proxy storage:9000

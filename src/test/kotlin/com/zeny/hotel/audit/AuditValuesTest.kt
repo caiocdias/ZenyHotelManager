@@ -5,12 +5,15 @@ import com.zeny.hotel.shared.AuditMasked
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.shared.infrastructure.crypto.EncryptionKeyRing
+import com.zeny.hotel.shared.infrastructure.crypto.HkdfTokenSealer
 import io.kotest.assertions.withClue
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
+import java.security.SecureRandom
 import java.time.Instant
 
 /** As regras de máscara da trilha (sem banco): anotação, nome da propriedade e formato do valor. */
@@ -57,6 +60,27 @@ class AuditValuesTest {
 
         secrets.forEach { withClue(it) { AuditValues.looksSecret(it) shouldBe true } }
         plain.forEach { withClue(it) { AuditValues.looksSecret(it) shouldBe false } }
+    }
+
+    @Test
+    fun `tokens sealed by the token sealer are recognized, and ordinary text with the same prefix is not`() {
+        val key = ByteArray(EncryptionKeyRing.KEY_BYTES).also(SecureRandom()::nextBytes)
+        val sealer = HkdfTokenSealer(EncryptionKeyRing.of(mapOf("dev" to key), "dev"))
+        val tokens = listOf(sealer.seal("files.download-url", ""), sealer.seal("files.download-url", "x".repeat(200)))
+        val plain =
+            listOf(
+                "t1",
+                "t1:dev",
+                "t1:dev:curto",
+                "t1:dev:AbCdEfGhIjKlMnOpQrStUvWxYz0123456789A",
+                "t1: texto comum com espaços e mais de quarenta caracteres",
+                "turno:manha:sete-as-quinze-de-segunda-a-sexta-feira",
+                "tx:dev:AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCd",
+            )
+
+        tokens.forEach { withClue(it) { AuditValues.looksSecret(it) shouldBe true } }
+        plain.forEach { withClue(it) { AuditValues.looksSecret(it) shouldBe false } }
+        mapper.readTree(values.toJson(mapOf("url" to tokens.first())))["url"].stringValue() shouldBe "***"
     }
 
     @Test

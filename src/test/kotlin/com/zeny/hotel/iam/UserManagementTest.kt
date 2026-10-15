@@ -14,6 +14,7 @@ import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.TestAdmin
 import com.zeny.hotel.testsupport.asUser
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeSorted
@@ -30,11 +31,13 @@ import io.kotest.matchers.string.shouldStartWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.postgresql.util.PSQLException
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpMethod.GET
@@ -130,7 +133,10 @@ class UserManagementTest(
     }
 
     @Test
-    fun `a duplicate login is a 409 with a stable code, whatever the case`() {
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `a duplicate login is a 409 with a stable code, whatever the case, and the login is not logged`(
+        output: CapturedOutput,
+    ) {
         val login = "dup.${suffix()}"
         with(iam) { create(newUser(login)).expectStatus(201) }
 
@@ -142,6 +148,22 @@ class UserManagementTest(
             .param("login", login)
             .query(Int::class.java)
             .single() shouldBe 1
+
+        // A violação de unicidade não leva o valor ao log (o DETAIL do PostgreSQL traria
+        // "Key (login)=(…)"): nem pelo Hibernate nem pela mensagem da exceção do driver.
+        output.all shouldNotContain login
+        val other = with(iam) { create(newUser("dup.other.${suffix()}")).expectStatus(201) }!!
+        val violation =
+            shouldThrow<DataIntegrityViolationException> {
+                jdbc
+                    .sql("UPDATE iam.user_account SET login = :login WHERE id = :id")
+                    .param("login", login)
+                    .param("id", UUID.fromString(other["id"].asString()))
+                    .update()
+            }
+        val cause = generateSequence<Throwable>(violation) { it.cause }.filterIsInstance<PSQLException>().first()
+        cause.serverErrorMessage?.constraint shouldBe "user_account_login_uk"
+        generateSequence<Throwable>(violation) { it.cause }.forEach { it.message.orEmpty() shouldNotContain login }
     }
 
     @Test

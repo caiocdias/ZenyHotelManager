@@ -11,6 +11,7 @@ import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
@@ -19,10 +20,16 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
+import org.postgresql.util.PSQLException
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
@@ -91,7 +98,10 @@ class RoleManagementTest(
     }
 
     @Test
-    fun `a duplicate role name is a 409 with a stable code, whatever the case`() {
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `a duplicate role name is a 409 with a stable code, whatever the case, and the name is not logged`(
+        output: CapturedOutput,
+    ) {
         val name = "Duplicada ${suffix()}"
         with(iam) { createRole(name, emptyList()).expectStatus(201) }
 
@@ -106,6 +116,23 @@ class RoleManagementTest(
             .param("name", name)
             .query(Int::class.java)
             .single() shouldBe 1
+        // A violação de `role_name_uk` não leva o nome ao log (DETAIL do PostgreSQL): nem pelo
+        // Hibernate nem pela mensagem da exceção do driver.
+        output.all shouldNotContain name.uppercase()
+        output.all shouldNotContain name.lowercase()
+        val violation =
+            shouldThrow<DataIntegrityViolationException> {
+                jdbc
+                    .sql("UPDATE iam.role SET name = :name WHERE id = :id")
+                    .param("name", name.lowercase())
+                    .param("id", otherId)
+                    .update()
+            }
+        val cause = generateSequence<Throwable>(violation) { it.cause }.filterIsInstance<PSQLException>().first()
+        cause.serverErrorMessage?.constraint shouldBe "role_name_uk"
+        generateSequence<Throwable>(violation) { it.cause }.forEach {
+            it.message.orEmpty().lowercase() shouldNotContain name.lowercase()
+        }
     }
 
     @Test

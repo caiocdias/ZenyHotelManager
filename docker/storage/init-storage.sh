@@ -18,6 +18,15 @@ set -eu
 : "${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY}"
 : "${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY}"
 
+# O proxy (docker/caddy/Caddyfile) repassa ao MinIO o caminho /<bucket>/…: um bucket com o nome de um
+# caminho da aplicação (/api, /actuator) tomaria esse caminho.
+case "$ZENY_STORAGE_BUCKET" in
+  api | actuator)
+    echo "ZENY_STORAGE_BUCKET não pode ser '$ZENY_STORAGE_BUCKET': o proxy confundiria o bucket com um caminho da aplicação" >&2
+    exit 1
+    ;;
+esac
+
 if [ "$ZENY_STORAGE_ACCESS_KEY" = "$MINIO_ROOT_USER" ]; then
   echo "ZENY_STORAGE_ACCESS_KEY precisa ser diferente do usuário root do MinIO" >&2
   exit 1

@@ -18,9 +18,11 @@ spring:
       datetime:
         write-dates-as-timestamps: false
 
-  # Upload de anexos (multipart, módulo files): o limite acompanha o maior tamanho aceito por uma
-  # finalidade (zeny.files.max-upload-size); acima dele, 413 PAYLOAD_TOO_LARGE. O pedido inteiro
-  # tem uma folga para os outros campos do formulário.
+  # Upload de anexos (multipart, módulo files); acima destes limites, 413 PAYLOAD_TOO_LARGE. O
+  # arquivo vai até zeny.files.max-upload-size, e o pedido inteiro tem uma folga para a parte
+  # `purpose` e os delimitadores. O max-request-size é fixo e não acompanha sozinho: ao aumentar o
+  # zeny.files.max-upload-size, aumente-o também. O boot recusa (FilePurposeCatalog) max-file-size
+  # menor que o max-upload-size ou que a maior finalidade e max-request-size que não os supere.
   servlet:
     multipart:
       max-file-size: ${zeny.files.max-upload-size}
@@ -47,6 +49,11 @@ spring:
       # Espera máxima por uma conexão (padrão do Hikari: 30 s). Com o banco fora, a readiness
       # (que pede uma conexão) responde DOWN em cerca de 5 s, dentro do timeout do HEALTHCHECK (10 s).
       connection-timeout: 5000
+      # Sem o DETAIL do servidor (valores da linha, como "Key (login)=(…)") na mensagem das
+      # exceções do driver, que vão para o log num 500 (ARCHITECTURE §16). Os campos continuam no
+      # ServerErrorMessage, e a constraint violada segue legível (UniqueConstraints, no iam).
+      data-source-properties:
+        logServerErrorDetail: false
 
   jpa:
     open-in-view: false
@@ -152,6 +159,11 @@ logging:
     # O monitor de staleness do Modulith escreve três linhas INFO por minuto ("No stale
     # publications…"); publicações paradas aparecem na métrica do outbox (OutboxMetrics).
     org.springframework.modulith.events.core.DefaultEventPublicationRegistry: WARN
+    # O Hibernate registra em WARN cada SQLException com a mensagem do PostgreSQL, cujo DETAIL traz
+    # os valores (numa violação de unicidade, "Key (login)=(…) already exists"), e dado pessoal não
+    # vai para o log (ARCHITECTURE §16). A exceção segue para quem chama, que a trata ou a converte
+    # em 500 com a causa no log, já sem o DETAIL (logServerErrorDetail no datasource, acima).
+    org.hibernate.orm.jdbc.error: ERROR
 
 zeny:
   events:
@@ -214,7 +226,8 @@ zeny:
       keys: ${ZENY_JWT_KEYS}
       active-key-id: ${ZENY_JWT_ACTIVE_KEY_ID}
   # Anexos (ARCHITECTURE §8.3 e §14, módulo files). URLs de download assinadas de curta duração (de
-  # 1 s a 15 min); o maior anexo aceito por uma finalidade (o multipart acima acompanha).
+  # 1 s a 15 min); o maior anexo aceito por uma finalidade (os limites do multipart, acima, precisam
+  # acompanhar à mão: o boot recusa os menores).
   files:
     download-url-ttl: PT5M
     max-upload-size: 20MB

@@ -6,6 +6,7 @@ import com.zeny.hotel.files.ModuleFilePurposes
 import com.zeny.hotel.shared.ModulePermissions
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.boot.servlet.autoconfigure.MultipartProperties
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Component
 import org.springframework.util.unit.DataSize
@@ -16,8 +17,10 @@ import java.time.Duration
  *
  * - [downloadUrlTtl]: validade das URLs de download (padrão 5 min), de 1 s a 15 min: URL assinada
  *   de **curta** duração;
- * - [maxUploadSize]: maior tamanho aceito por qualquer finalidade (padrão 20 MB); o limite do
- *   multipart do servidor (`spring.servlet.multipart.*`) acompanha este valor.
+ * - [maxUploadSize]: maior tamanho aceito por qualquer finalidade (padrão 20 MB). Os limites do
+ *   multipart do servidor (`spring.servlet.multipart.max-file-size` e `max-request-size`) são
+ *   configurados à parte e não o acompanham sozinhos: o [FilePurposeCatalog] recusa o boot se
+ *   algum deles ficar abaixo deste valor.
  */
 @ConfigurationProperties("zeny.files")
 class FilesProperties(
@@ -44,13 +47,18 @@ class FilesConfiguration
 /**
  * O catálogo de finalidades (ARCHITECTURE §14): a união dos [ModuleFilePurposes] dos módulos,
  * conferida no boot. Recusa a partida com código fora do módulo declarado, finalidade ou módulo
- * repetidos, tamanho acima de `zeny.files.max-upload-size` ou permissão que nenhum módulo declara.
+ * repetidos, tamanho acima de `zeny.files.max-upload-size`, permissão que nenhum módulo declara
+ * ou limite do multipart (`spring.servlet.multipart.*`) que barraria com `413` um anexo aceito:
+ * `max-file-size` menor que `zeny.files.max-upload-size` e que a maior finalidade, ou
+ * `max-request-size` que não os supera (o pedido leva também a parte `purpose` e os delimitadores).
+ * Valor negativo no multipart é "sem limite" e passa.
  */
 @Component
 class FilePurposeCatalog(
     modules: List<ModuleFilePurposes>,
     permissions: List<ModulePermissions>,
     properties: FilesProperties,
+    multipart: MultipartProperties,
 ) {
     private val purposes: Map<FilePurposeCode, FilePurpose>
 
@@ -78,7 +86,29 @@ class FilePurposeCatalog(
                 }
             }
         }
+        requireMultipartFits(multipart, properties.maxUploadSize, all.maxOfOrNull { it.maxSizeBytes } ?: 0)
         purposes = all.associateBy { it.code }
+    }
+
+    private fun requireMultipartFits(
+        multipart: MultipartProperties,
+        maxUploadSize: DataSize,
+        largestPurposeBytes: Long,
+    ) {
+        val required = maxOf(maxUploadSize.toBytes(), largestPurposeBytes)
+        val fileLimit = multipart.maxFileSize
+        require(fileLimit.isNegative || fileLimit.toBytes() >= required) {
+            "spring.servlet.multipart.max-file-size ($fileLimit) é menor que zeny.files.max-upload-size " +
+                "($maxUploadSize) ou que a maior finalidade ($largestPurposeBytes bytes): um anexo aceito " +
+                "receberia 413. Aumente o max-file-size para ao menos $required bytes."
+        }
+        val requestLimit = multipart.maxRequestSize
+        require(requestLimit.isNegative || requestLimit.toBytes() > required) {
+            "spring.servlet.multipart.max-request-size ($requestLimit) não supera zeny.files.max-upload-size " +
+                "($maxUploadSize) e a maior finalidade ($largestPurposeBytes bytes): o pedido também leva a " +
+                "parte purpose e os delimitadores, e um anexo aceito receberia 413. Use um valor maior que " +
+                "$required bytes (ex.: 1 MB a mais)."
+        }
     }
 
     fun find(code: FilePurposeCode): FilePurpose? = purposes[code]

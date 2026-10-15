@@ -15,6 +15,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
+import org.springframework.boot.servlet.autoconfigure.MultipartProperties
 import org.springframework.util.unit.DataSize
 import java.time.Duration
 
@@ -95,7 +96,7 @@ class FileContentRulesTest {
         val properties = FilesProperties(Duration.ofMinutes(5), DataSize.ofBytes(1000))
 
         fun catalog(vararg purposes: FilePurpose) =
-            FilePurposeCatalog(listOf(purposesOf("examples", *purposes)), listOf(permissions), properties)
+            FilePurposeCatalog(listOf(purposesOf("examples", *purposes)), listOf(permissions), properties, multipart())
 
         catalog(images).find(images.code) shouldBe images
         shouldThrow<IllegalArgumentException> {
@@ -113,8 +114,51 @@ class FileContentRulesTest {
                 listOf(purposesOf("examples", images), purposesOf("examples")),
                 listOf(permissions),
                 properties,
+                multipart(),
             )
         }
+    }
+
+    @Test
+    fun `the boot refuses multipart limits below the largest accepted upload`() {
+        val permissions = permissionsOf(listOf(upload, read))
+        val properties = FilesProperties(Duration.ofMinutes(5), DataSize.ofBytes(1000))
+
+        fun catalog(
+            multipart: MultipartProperties,
+            purposes: List<FilePurpose> = listOf(images),
+        ) = FilePurposeCatalog(
+            listOf(purposesOf("examples", *purposes.toTypedArray())),
+            listOf(permissions),
+            properties,
+            multipart,
+        )
+
+        // O arquivo pode ir até o max-upload-size, e o pedido inteiro precisa de folga acima dele.
+        catalog(multipart(fileBytes = 1000, requestBytes = 1001)).find(images.code) shouldBe images
+        catalog(multipart(fileBytes = -1, requestBytes = -1)).find(images.code) shouldBe images
+        catalog(multipart(fileBytes = 1000, requestBytes = 2000), listOf(images.copy(maxSizeBytes = 1000)))
+            .find(images.code)!!
+            .maxSizeBytes shouldBe 1000
+
+        shouldThrow<IllegalArgumentException> { catalog(multipart(fileBytes = 999, requestBytes = 2000)) }
+            .message shouldContain
+            "spring.servlet.multipart.max-file-size (999B) é menor que zeny.files.max-upload-size"
+        shouldThrow<IllegalArgumentException> { catalog(multipart(fileBytes = 2000, requestBytes = 1000)) }
+            .message shouldContain
+            "spring.servlet.multipart.max-request-size (1000B) não supera zeny.files.max-upload-size"
+        // Sem nenhuma finalidade, o limite ainda é o max-upload-size.
+        shouldThrow<IllegalArgumentException> { catalog(multipart(fileBytes = 999, requestBytes = 2000), emptyList()) }
+            .message shouldContain "max-file-size"
+        // Os padrões do Boot (1 MB e 10 MB) não servem aos 20 MB da configuração da aplicação.
+        shouldThrow<IllegalArgumentException> {
+            FilePurposeCatalog(
+                listOf(purposesOf("examples", images)),
+                listOf(permissions),
+                FilesProperties(Duration.ofMinutes(5), DataSize.ofMegabytes(20)),
+                MultipartProperties(),
+            )
+        }.message shouldContain "max-file-size (1048576B)"
     }
 
     @Test
@@ -122,6 +166,14 @@ class FileContentRulesTest {
         shouldThrow<IllegalArgumentException> { FilesProperties(Duration.ofMinutes(16), DataSize.ofMegabytes(1)) }
         shouldThrow<IllegalArgumentException> { FilesProperties(Duration.ZERO, DataSize.ofMegabytes(1)) }
         FilesProperties(Duration.ofMinutes(15), DataSize.ofMegabytes(1)).downloadUrlTtl shouldBe Duration.ofMinutes(15)
+    }
+
+    private fun multipart(
+        fileBytes: Long = 1000,
+        requestBytes: Long = 1001,
+    ) = MultipartProperties().apply {
+        maxFileSize = DataSize.ofBytes(fileBytes)
+        maxRequestSize = DataSize.ofBytes(requestBytes)
     }
 
     private fun purposesOf(

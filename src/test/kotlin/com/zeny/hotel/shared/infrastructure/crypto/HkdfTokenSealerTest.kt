@@ -75,7 +75,8 @@ class HkdfTokenSealerTest {
 
         val last = token.last()
         shouldThrow<FieldDecryptionException> { sealer.open("p", token.dropLast(1) + if (last == 'A') 'B' else 'A') }
-        // Trocar o id da chave (mesmo material) falha: o cabeçalho é AAD e a chave derivada depende do id.
+        // Trocar o id da chave (mesmo material) falha pelo AAD: o cabeçalho `t1:<id>` entra nele. A chave
+        // derivada não depende do id, só do material e da finalidade, e é a mesma para k1 e k2 aqui.
         shouldThrow<FieldDecryptionException> { sealer.open("p", token.replaceFirst("t1:k1:", "t1:k2:")) }
         listOf("", "t1:k1", "t1::abc", "t1:k1:!!!", "t1:k1:AAAA", "v1:k1:${token.substringAfterLast(':')}").forEach {
             shouldThrow<FieldDecryptionException> { sealer.open("p", it) }

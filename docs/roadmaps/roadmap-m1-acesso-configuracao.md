@@ -84,15 +84,17 @@ Entregar os módulos de plataforma que todo o resto usa para saber **quem** est�
 
 ## Definição global de pronto
 
-- [ ] Nenhum endpoint de `/api/v1`, exceto login, refresh e os públicos de documentação e actuator, responde sem token válido.
-- [ ] Um usuário criado pelo administrador faz login, renova o token, é desativado e perde o acesso no próximo refresh.
-- [ ] Roles compostas a partir do catálogo controlam o acesso, com escopo `OWN`/`ALL` e limites, e a permissão efetiva é a união das roles.
-- [ ] Uma ação sensível sem permissão devolve `403 APPROVAL_REQUIRED` e é concluída com um `X-Approval-Token` válido de outro usuário.
-- [ ] Toda escrita dos módulos do marco gera entrada de auditoria; o usuário da aplicação não consegue alterar nem apagar a trilha.
-- [ ] Dados do hotel, políticas, taxas, parâmetros e a data operacional corrente são consultáveis e editáveis com permissão.
-- [ ] Colaboradores, turnos e escala com padrões e exceções funcionam, e a API pública devolve a escala de um dia.
-- [ ] Upload e download de anexos funcionam com URL assinada; anexos sensíveis são cifrados e cada acesso é auditado.
-- [ ] `ApplicationModules.verify()`, build, testes, lint e verificação do contrato passam.
+Conferida no gate E09 (2026-10-15) numa cópia limpa do snapshot `baa49db` (árvore de trabalho com a E08 não commitada), com `GRADLE_USER_HOME` novo e `--no-build-cache`, e num `docker compose` isolado (projeto `zeny-e09-gate`); detalhes no handoff da E09.
+
+- [x] Nenhum endpoint de `/api/v1`, exceto login, refresh e os públicos de documentação e actuator, responde sem token válido. Evidência: varredura sem token dos 64 métodos do contrato contra o compose → 60 com `401 UNAUTHENTICATED`; só `POST /auth/login` e `/auth/refresh` (400 de validação), `GET /meta/version` (200) e `GET /files/{id}/content` (400 sem `token`; 403 `DOWNLOAD_URL_INVALID` com token forjado) não pedem o access token. `ApiSecurityTest` (9/9) percorre todos os mapeamentos e confere `security: []` só nos públicos. No `prod`, `/v3/api-docs`, `/swagger-ui.html`, `/actuator/env` e `/actuator/health` → 401.
+- [x] Um usuário criado pelo administrador faz login, renova o token, é desativado e perde o acesso no próximo refresh. Evidência (compose): `alvo` criado pelo admin (201), primeiro login com troca obrigatória, login e `refresh` (200); desativado com step-up; o `refresh` seguinte → `401 REFRESH_TOKEN_INVALID` e o login → `401 ACCOUNT_DISABLED`; o access token ainda não vencido autentica, mas sem nenhuma permissão. Testes: `UserManagementTest` ("deactivating a user revokes every session - the next refresh fails…") e `AuthenticationFlowTest`.
+- [x] Roles compostas a partir do catálogo controlam o acesso, com escopo `OWN`/`ALL` e limites, e a permissão efetiva é a união das roles. Evidência (compose): o `operador` com as roles "Operador E09" e "Leitura do hotel E09" tem em `/auth/me` exatamente a união (`hotel.settings.read`, `iam.users.read`, `staff.employees.read`, `staff.schedule.read` com `OWN`); lê usuários (200), não lê roles nem a trilha (`403 PERMISSION_DENIED`) e, com `OWN`, só vê a própria escala; um usuário sem roles recebe 403 em todo `GET` com permissão (só `/auth/me`, `/auth/sessions`, `/hotel/business-date` e `/meta/version` dispensam). Limites (nenhuma permissão de produção do M1 declara limite): `EffectivePermissionsTest` (maior limite por chave, sem teto vence, teto zero), `AuthorizationTest` ("the limit read through the port is the largest among the roles", OWN/ALL) e `ApprovalTest` ("an action above the limit…"), com os módulos só de teste `authzexample` e `approvalexample`.
+- [x] Uma ação sensível sem permissão devolve `403 APPROVAL_REQUIRED` e é concluída com um `X-Approval-Token` válido de outro usuário. Evidência (compose): `POST /users/{alvo}/deactivate` pelo `operador` → 403 `APPROVAL_REQUIRED` (`action` `iam.user.deactivate`, `permission` `iam.users.manage`, `resourceRef` `iam.user:<id>`); PIN errado → `APPROVAL_CREDENTIALS_INVALID`; o próprio solicitante → `APPROVER_IS_REQUESTER`; o `supervisor` aprova (201); o token noutro registro → `APPROVAL_TOKEN_MISMATCH`; no registro certo → 200; reapresentado → `APPROVAL_TOKEN_USED`. `ApprovalTest` cobre o resto.
+- [x] Toda escrita dos módulos do marco gera entrada de auditoria; o usuário da aplicação não consegue alterar nem apagar a trilha. Evidência: `LayerArchitectureTest.write use cases are audited`, `IamAuditTest`, `AuditTrailTest`, `FilesApiTest`, `StaffApiTest`; no compose, a trilha tem cada escrita do roteiro (`iam.role.create`, `iam.user.create`, `iam.user.deactivate` com `approvalId`, autor = solicitante e antes/depois, `iam.approval.grant` aceita e recusada, `hotel.*.update`, `files.file.upload`/`attach`, `staff.*`), sem PIN nem token; como `zeny_app` no `psql`, `UPDATE`, `DELETE` e `TRUNCATE` em `audit.audit_entry`, `UPDATE iam.approval`, `DELETE iam.approval_use`, `CREATE TABLE audit.…`, `ALTER TABLE … DISABLE TRIGGER` e tabela temporária → `permission denied`/`must be owner`; o papel não é superusuário nem tem `CREATEROLE`, `CREATEDB` ou `BYPASSRLS`. `DatabaseRolesTest` (6/6).
+- [x] Dados do hotel, políticas, taxas, parâmetros e a data operacional corrente são consultáveis e editáveis com permissão. Evidência (compose): `GET /hotel/business-date` para qualquer autenticado; `GET /hotel` com `hotel.settings.read` (sem ela 403); `PUT /hotel` sem `If-Match` → 428, logotipo inexistente → 422 `LOGO_FILE_INVALID`, CNPJ inválido → 400, válido com o logotipo → 200 (`configured`, ETag `"0"`→`"1"`), ETag antigo → 412; `PUT` de políticas (check-in 15h; segundos → 400 `TIME_NOT_WHOLE_MINUTE`), taxas (10% e ISS 5%; ISS 6% → 400 `ISS_RATE_INVALID`) e parâmetros (200; sem `hotel.settings.manage` → 403). `HotelSettingsApiTest`, `BusinessDateTest`, `HotelLogoTest`.
+- [x] Colaboradores, turnos e escala com padrões e exceções funcionam, e a API pública devolve a escala de um dia. Evidência (compose): seis setores pré-carregados; colaboradores (um vinculado ao `operador`; vínculo repetido → 409 `USER_ALREADY_LINKED`, usuário inativo → 422 `USER_INACTIVE`), turnos (o noturno atravessa a meia-noite), padrões 6x1 e 12x36 (sobreposição → 409), geração no passado → 422, geração de 7 dias e folga `MANUAL` mantida pela regeneração (`keptManual: 1`); `GET /schedule?departmentId=…` dá a escala do dia da data operacional com os dois turnos. A API pública: `StaffApiTest` ("the public API returns who works on a date in a department, and their shifts"; `StaffApi.daySchedule` não tem endpoint).
+- [x] Upload e download de anexos funcionam com URL assinada; anexos sensíveis são cifrados e cada acesso é auditado. Evidência (compose): PNG `hotel.logo` → 201 (tipo detectado); texto `.png` → 400 `FILE_TYPE_NOT_ACCEPTED`, PNG `.jpg` → 400 `FILE_EXTENSION_MISMATCH`; sem permissão → 403; URL pelo proxy com `X-Amz-Expires=300` e o usuário de serviço `zeny-app`; download → 200 `image/png` idêntico (`cmp`); sem assinatura ou adulterada → 403; `PUT` no bucket → 401. Não há finalidade sensível em produção no M1: cifragem no bucket, download pelo servidor e auditoria de cada acesso em `FilesApiTest` ("a sensitive file is encrypted in the bucket and served decrypted by the server, each access audited"), `AesGcmContentCipherTest` e `HkdfTokenSealerTest`.
+- [x] `ApplicationModules.verify()`, build, testes, lint e verificação do contrato passam. Evidência: na cópia limpa, `./gradlew --no-build-cache clean build` → `BUILD SUCCESSFUL` (3 min 7 s, 27 tarefas, 411 testes em 55 classes, 0 falhas, 0 pulados); `clean test` → sucesso (411/0); `lint checkOpenApi` → sucesso; `ModularityTest` 8/8 (`module structure is valid` e as arestas de cada módulo); `check-api-breaking.sh` (contra `origin/main` e contra `5dd29f5`, o gate do M0) → nenhuma mudança `ERR` em `/api/v1`; actionlint e `caddy validate` sem erro.
 
 ## Protocolo de execução
 
@@ -174,7 +176,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | E06 | Configuração do hotel e data operacional | #concluida | E04 | Módulo `hotel` com dados, políticas, taxas, parâmetros, data operacional e `BusinessDateAdvanced` |
 | E07 | Colaboradores, turnos e escala | #concluida | E04 | Módulo `staff` com setores, colaboradores, turnos, padrões, exceções e "escala do dia" |
 | E08 | Armazenamento de anexos | #concluida | E04, E06 | Módulo `files` com S3/MinIO, URL assinada, limites por finalidade, cifragem de sensíveis e validação do logotipo do hotel |
-| E09 | Gate do marco M1 | #pendente | E05, E06, E07, E08 | Definição global de pronto verificada do zero |
+| E09 | Gate do marco M1 | #concluida | E05, E06, E07, E08 | Definição global de pronto verificada do zero |
 
 ---
 
@@ -633,6 +635,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
   - A `AuthorizationLock` vale para toda escrita futura em roles, concessões ou atribuições; quem escrever nessas tabelas fora dos casos de uso desta etapa deve chamá-la primeiro.
   - Decisões do usuário de 2026-10-14 já aplicadas (marcadas **(U)**): união final estrita, roles inativas no alvo, reconhecimento da restrição pelo `PSQLException` e as seis antes em aberto (sessões de administrador não listadas por não administrador; baixar limite que segue acima do próprio é recusado; reset e reativação exigem cobrir o alvo; senha do administrador sempre provisória, com o reset zerando o bloqueio e revogando as sessões; PIN de 4 a 8 dígitos e opcional; login imutável).
   - Toda escrita futura que atribua roles a usuários ou mude concessões deve passar por `DelegationRules.requireHeld` e `requireResultingUnionsHeld` (com o "antes" lido antes de mudar).
+- Ajuste posterior (gate E09, 2026-10-15, decidido pelo usuário; a etapa continua `#concluida`): o verificador do gate achou o login, e o nome da role, em claro nos logs numa violação de unicidade. O `org.hibernate.orm.jdbc.error` registrava em WARN o DETAIL do PostgreSQL (`Key (login)=(…) already exists`), e o `db` do compose registrava o DETAIL e o STATEMENT. Correção:
+  - `application.yaml`: `org.hibernate.orm.jdbc.error: ERROR` e `logServerErrorDetail: false` no datasource;
+  - `docker/compose.yaml`: `log_error_verbosity=terse` e `log_min_error_statement=panic` no `db`;
+  - testes: o de login repetido no `UserManagementTest` e o de nome de role repetido no `RoleManagementTest` passaram a conferir a saída e a mensagem da exceção.
+
+  Detalhes no handoff da E09.
 
 ---
 
@@ -1399,7 +1407,7 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 ---
 
-## E09 — Gate do marco M1 — #pendente
+## E09 — Gate do marco M1 — #concluida
 
 **Objetivo:** confirmar, numa cópia limpa do repositório, que toda a definição global de pronto do M1 é atendida e que a documentação reflete as convenções de autenticação, autorização, auditoria e anexos.
 
@@ -1457,10 +1465,10 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 
 **Critérios de aceite:**
 
-- [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
-- [ ] O roteiro ponta a ponta contra o compose está registrado no handoff com os comandos e as respostas relevantes.
-- [ ] `CLAUDE.md` e `README.md` estão coerentes com o código (autenticação, autorização, step-up, auditoria, anexos, variáveis de ambiente).
-- [ ] `docs/roadmaps/README.md` registra a conclusão do M1 no histórico de revisões.
+- [x] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
+- [x] O roteiro ponta a ponta contra o compose está registrado no handoff com os comandos e as respostas relevantes.
+- [x] `CLAUDE.md` e `README.md` estão coerentes com o código (autenticação, autorização, step-up, auditoria, anexos, variáveis de ambiente).
+- [x] `docs/roadmaps/README.md` registra a conclusão do M1 no histórico de revisões.
 
 **Validação obrigatória:**
 
@@ -1475,12 +1483,164 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para o marco M2: —
+- Snapshot inicial: `baa49db94be432b386f7da086308dfa6a0e50ee1` (recebido do orquestrador; `HEAD` `ec7ffaa` com a E08 aprovada e não commitada, preservada). Snapshot ao fim da etapa: `2578fd0373ef99a971ee760a30dbf46bb585984c` (4 arquivos de documentação, +83/−25, antes desta anotação). Preparação: E01 a E08 estão `#concluida`, com parecer APROVADO, e o código bate com os handoffs (módulos `iam`, `audit`, `hotel`, `staff` e `files`; `allowedDependencies` de cada um como na ARCHITECTURE §3.1; nenhum módulo além de `staff` importa `iam`). A cópia limpa (`git archive baa49db… | tar -x` no scratchpad) é idêntica à árvore de trabalho, exceto pela troca da tag desta etapa.
+- Arquivos alterados (na execução, só documentação; a correção pós-verificação, abaixo, mudou também configuração e testes):
+  - este roadmap: tag da E09 (`#em-andamento`), "Definição global de pronto" marcada com evidência, critérios da E09 e este handoff;
+  - `docs/roadmaps/README.md`: conclusão do M1 no histórico (com o aceite pendente da verificação e da revisão humana);
+  - `README.md`: parágrafos da aprovação de superior (step-up), da configuração do hotel e data operacional e de pessoas e escala na seção "API", que faltavam; os módulos do M1 na árvore de "Convenções de módulo";
+  - `CLAUDE.md`: a seção do `hotel` dizia "só `shared`" e "o logotipo é só o id … até a E08 validar", e agora diz que o `hotel` depende de `files` e valida o logotipo (`422 LOGO_FILE_INVALID`); o "Estado atual" registra o gate do M1.
+- Decisões:
+  1. **Cópia limpa:** `git archive` do snapshot, `GRADLE_USER_HOME` novo no scratchpad (o Gradle 9.8.1 e todas as dependências baixados do zero) e `--no-daemon --no-build-cache`. O `check-api-breaking.sh` rodou no repositório (só lê o git e o `api/openapi.yaml`, igual ao da cópia).
+  2. **Compose isolado:** projeto `-p zeny-e09-gate`, `--env-file` no scratchpad gerado do `docker/.env.example` (chaves, senhas do banco, do MinIO e do admin sorteadas; `ZENY_HTTP_PORT=18091` e `ZENY_STORAGE_PUBLIC_ENDPOINT=http://localhost:18091`), profile `prod`. O `docker/.env` e os volumes `zeny_*` do usuário não foram lidos nem tocados; `down -v` no fim removeu só os volumes do projeto isolado. O `up --build` regravou a tag local `zeny-hotel-manager:dev` com a imagem da cópia limpa (o mesmo código da árvore de trabalho).
+  3. **O que o compose não alcança:** limites (nenhuma permissão de produção do M1 declara limite) e anexo sensível (nenhuma finalidade sensível em produção; a primeira é o documento de hóspede, no M3) têm a evidência nos testes com os módulos só de teste, rodados na cópia limpa. `StaffApi.daySchedule` não tem endpoint: a escala do dia pela API REST é `GET /schedule?departmentId=…` (data operacional por padrão), e a API pública fica no `StaffApiTest`.
+- Validações executadas:
+  - Na cópia limpa:
+    - `./gradlew --no-daemon --no-build-cache clean build` → `BUILD SUCCESSFUL` em 3 min 7 s, 27 tarefas executadas (`detekt`, `detektMain`, `detektTest`, `ktlint*Check`, `test`, `generateOpenApi`, `checkOpenApi`, `koverVerify`), 411 testes em 55 classes, 0 falhas, 0 erros, 0 pulados; documentação dos módulos em `build/spring-modulith-docs/`;
+    - `./gradlew --no-daemon --no-build-cache clean test` → sucesso (411/0); `./gradlew --no-daemon --no-build-cache lint checkOpenApi` → sucesso;
+    - `ModularityTest` 8/8, `LayerArchitectureTest` 6/6 (inclui `write use cases are audited`), `ApiSecurityTest` 9/9, `DatabaseRolesTest` 6/6;
+    - actionlint 1.7.12 no `ci.yml` → 0 erros; `caddy validate` → "Valid configuration".
+  - `.github/scripts/check-api-breaking.sh` (base `ec7ffaa`) e `… 5dd29f5` (gate do M0) → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+  - `docker compose -p zeny-e09-gate --env-file <scratchpad>/e09.env -f docker/compose.yaml up -d --build` → `api`, `db` e `storage` `healthy`, `proxy` de pé, `storage-init` terminou com "Bucket zeny-files e usuário de serviço zeny-app prontos (política zeny-app-zeny-files)"; readiness `{"status":"UP"}` pelo proxy.
+  - Roteiro ponta a ponta com `curl` (scripts no scratchpad, `B=http://localhost:18091`; corpo e código conferidos com `jq` a cada passo; 0 falhas do sistema). As duas falhas do log no passo 10 eram do script, que esperava `outcome` `SUCCESS`; o valor da API é `SUCCEEDED`, e a reconferência passou.
+    1. Públicos: `GET /actuator/health/readiness` e `/liveness` → 200; `GET /api/v1/meta/version` → 200; `/actuator/prometheus` → 404 (proxy); `/actuator/health`, `/v3/api-docs`, `/swagger-ui.html`, `/actuator/env` e um caminho qualquer → 401.
+    2. Sem token, cada um dos 64 métodos do contrato (`{id}` trocado por um UUID, corpo `{}`) → 60 com `401 UNAUTHENTICATED`; `POST /auth/login` e `/auth/refresh` → 400 `VALIDATION_FAILED`, `GET /meta/version` → 200, `GET /files/{id}/content` → 400 sem `token` (403 `DOWNLOAD_URL_INVALID` com `token=t1:dev:forjado`).
+    3. Administrador inicial: `POST /auth/login` com senha errada → 401 `INVALID_CREDENTIALS`; com `"login":"ADMIN"` e a senha do env → 200 `passwordChangeRequired: true`; `GET /auth/me` com esse token → 403 `PASSWORD_CHANGE_REQUIRED`; `POST /auth/password` → 204; novo login → 200 sem pendência; `POST /auth/refresh` → 200, e o refresh já trocado → 401 `REFRESH_TOKEN_REUSED`; `GET /auth/me` com `audit.read`; `GET /permissions` com os 13 códigos do M1; `GET /roles` com a role de sistema Administrador e os 11 modelos da SPEC §3.1.
+    4. Roles: `POST /roles` "Operador E09" (`iam.users.read` ALL, `staff.employees.read` ALL, `staff.schedule.read` OWN) e "Leitura do hotel E09" (`hotel.settings.read` ALL) → 201; nome repetido → 409; permissão inexistente → 400.
+    5. Usuários: `POST /users` `supervisor` (role Administrador, PIN) → 201 `administrator: true, hasPin: true`; `operador` (as duas roles) → 201 com `Location`; `alvo` e `semacesso` sem roles → 201; login repetido sem diferenciar maiúsculas → 409. Cada um fez o primeiro login (troca obrigatória → 204) e o login definitivo (200).
+    6. União e escopo: `GET /auth/me` do `operador` → exatamente as quatro permissões, `staff.schedule.read` com `OWN`; `GET /users` → 200; `GET /roles` → 403 `PERMISSION_DENIED`; `GET /audit-entries` → 403; `POST /roles` com `audit.read` → 403 `APPROVAL_REQUIRED` (sensível).
+    7. `alvo`: `POST /auth/refresh` → 200; `GET /auth/me` → 200.
+    8. Step-up: `POST /users/{alvo}/deactivate` pelo `operador` → 403 `APPROVAL_REQUIRED` (`action` `iam.user.deactivate`, `permission` `iam.users.manage`, `resourceRef` `iam.user:<id>`). Em `POST /auth/approvals`: PIN errado → 403 `APPROVAL_CREDENTIALS_INVALID`; o próprio `operador` como aprovador → 403 `APPROVER_IS_REQUESTER`; `supervisor` e PIN certo → 201 (`approverId` = supervisor). `X-Approval-Token` em `POST /users/{semacesso}/deactivate` → 403 `APPROVAL_TOKEN_MISMATCH`; em `POST /users/{alvo}/deactivate` → 200 `active: false`; repetido → 403 `APPROVAL_TOKEN_USED`.
+    9. Desativado: `POST /auth/refresh` do `alvo` → 401 `REFRESH_TOKEN_INVALID`; login → 401 `ACCOUNT_DISABLED`; o access token ainda válido → `/auth/me` 200 com 0 permissões.
+    10. Auditoria (`GET /audit-entries` pelo admin): do `alvo` (`entityType=iam.user&entityId=…`) → `iam.user.create`, `iam.user.change-password`, `iam.user.deactivate` (`SUCCEEDED`, `approvalId` da aprovação, `userId` = operador, com a sessão dele, `before.active` true e `after.active` false) e `iam.session.login` `REJECTED`; da aprovação (`entityType=iam.approval`) → `iam.approval.grant` e o uso em `iam.user.deactivate`; do `operador` → `iam.approval.grant` `REJECTED` e `SUCCEEDED`, `iam.session.login`, `iam.user.change-password`, `iam.user.deactivate`; da role → `iam.role.create`. Nenhuma entrada tem o PIN ou o token.
+    11. Anexos: `POST /files` (multipart, `purpose=hotel.logo`, PNG 1×1) → 201 `image/png`, `sensitive: false`; texto chamado `.png` → 400 `FILE_TYPE_NOT_ACCEPTED`; PNG chamado `.jpg` → 400 `FILE_EXTENSION_MISMATCH`; `operador` e `semacesso` → 403. `GET /files/{id}/download-url` → `semacesso` 403, `operador` 200, admin 200 com `http://localhost:18091/zeny-files/hotel/logo/<id>?…X-Amz-Credential=zeny-app%2F…&X-Amz-Expires=300…`. `curl` da URL → 200 `image/png`, idêntico ao enviado (`cmp`); sem a assinatura → 403; assinatura adulterada → 403; `PUT` no caminho do bucket → 401.
+    12. Hotel: `GET /hotel/business-date` (`semacesso`) → 200 `2026-10-15`, `America/Sao_Paulo`; `GET /hotel` → `semacesso` 403, `operador` 200; `PUT /hotel` pelo `operador` → 403. Pelo admin: sem `If-Match` → 428; logotipo inexistente → 422 `LOGO_FILE_INVALID`; CNPJ com dígito errado → 400; CNPJ válido e o logotipo enviado → 200 (`configured: true`, ETag `"0"`→`"1"`); ETag antigo → 412; o anexo ficou com `ownerEntityId`. `PUT /hotel/policies` (check-in 15:00) → 200, e com segundos → 400 `TIME_NOT_WHOLE_MINUTE`. `PUT /hotel/tax-settings` (10%, ISS 5%, taxa de turismo 3.50) → 200, e ISS 6% → 400 `ISS_RATE_INVALID`. `PUT /hotel/operational-settings` → 200 pelo admin e 403 pelo `operador`. Trilha: `files.file.upload` e `files.file.attach` do logotipo, `hotel.hotel.update`, `hotel.policy.update`, `hotel.tax-settings.update` e `hotel.operational-settings.update`.
+    13. Pessoas: `GET /departments` → 6 setores; `POST /employees` pelo `operador` → 403; pelo admin, colaborador vinculado ao `operador` e outro sem usuário → 201; vínculo repetido → 409 `USER_ALREADY_LINKED`; vínculo ao `alvo` desativado → 422 `USER_INACTIVE`. `POST /shifts` "Manhã" 07:00–15:00 e "Noite" 19:00–07:00 → 201, `crossesMidnight: true`. `POST /schedule-patterns`: 6x1 do `operador` e 12x36 do colega → 201; um fixo sobreposto → 409 `SCHEDULE_PATTERN_OVERLAP`. `POST /schedule/generate`: desde ontem → 422 `SCHEDULE_PERIOD_IN_PAST`; de hoje a +6 dias → 200. `POST /schedule/entries` `DAY_OFF` amanhã → 200; nova geração → `keptManual: 1`, nada refeito.
+    14. Escala do dia: `GET /schedule?departmentId=…` (sem `from`: a data operacional) → "Operador E09 SHIFT PATTERN Manhã 07:00–15:00" e "Colega E09 SHIFT PATTERN Noite 19:00–07:00". Na semana, o `operador` tem 16/10 `DAY_OFF`/`MANUAL` e folga do 6x1 em 21/10; o colega trabalha 15, 17, 19 e 21/10. `GET /schedule` pelo `operador` (`OWN`) → só as entradas dele; pelo `semacesso` → 403. Trilha: `staff.employee.create`, `staff.shift.create`, `staff.schedule-pattern.create`, `staff.schedule.generate` e `staff.schedule-entry.record`.
+    15. Imutabilidade (`docker compose exec db psql -U zeny_app`): `SELECT count(*)` em `audit.audit_entry` → 87. `UPDATE`, `DELETE` e `TRUNCATE` nela, `UPDATE iam.approval` e `DELETE iam.approval_use` → `permission denied`; `CREATE TABLE audit.hack` → `permission denied for schema audit`; `ALTER TABLE … DISABLE TRIGGER ALL` → `must be owner`; `CREATE TEMP TABLE` → `permission denied to create temporary tables`. Atributos `super`, `createrole`, `createdb` e `bypassrls` todos `f`.
+    16. `semacesso` (sem roles) em cada `GET` do contrato → 403 `PERMISSION_DENIED` em todos, exceto `/auth/me`, `/auth/sessions`, `/hotel/business-date` e `/meta/version` (200), `/files/{id}` e `/files/{id}/download-url` (404 `FILE_NOT_FOUND` para id inexistente, 403 para o logotipo existente) e `/files/{id}/content` (400 sem token).
+    17. Escritas pelo `semacesso`: departamentos, colaboradores, turnos, padrões, geração, exceções, revogação de sessão alheia e `PUT /hotel/tax-settings` → 403 `PERMISSION_DENIED`; `POST /users`, `/roles`, `/users/{id}/deactivate` e `/reset-pin` → 403 `APPROVAL_REQUIRED`. Corpo inválido dá 400 antes da permissão (Bean Validation roda antes do caso de uso). A trilha do `semacesso` só tem o login e a troca de senha: nenhuma recusa executou efeito.
+    18. A `api` recebe `ZENY_STORAGE_ACCESS_KEY=zeny-app` e nenhuma `ZENY_STORAGE_ROOT_*`. Log do `prod`: 154 linhas, todas JSON ECS, 73 com `userId` do MDC; nenhuma senha, PIN, access token ou refresh token nele.
+  - `docker compose -p zeny-e09-gate … down -v` → contêineres, rede e os quatro volumes do projeto removidos; `zeny_db-data`, `zeny_proxy-*` e `zeny_storage-data` do usuário intactos.
+- Parecer do verificador: 1ª rodada **REPROVADO** (verificador independente do orquestrador, 2026-10-15), por um único problema médio com origem na E03, corrigido abaixo por decisão do usuário. Numa violação de unicidade no compose `prod`, o login aparecia em claro nos logs. Um `POST /users` com login repetido fazia o `org.hibernate.orm.jdbc.error` gravar em WARN `ERROR: duplicate key value violates unique constraint "user_account_login_uk" Detail: Key (login)=(operador) already exists.`, e o mesmo DETAIL, com o STATEMENT, saía no log do `db`. A role repetida vazava o nome (`role_name_uk`). Isso contradiz o `CLAUDE.md` ("nem o login vai para log") e a ARCHITECTURE §16. Achados baixos, registrados como notas e não corrigidos (salvo o último, de documentação):
+  - `GET /files/{id}` e `/download-url` dão 404 para um id inexistente e 403 para um existente, mesmo a quem não tem permissão nenhuma, o que revela que o anexo existe (origem: E08);
+  - um corpo inválido dá 400 antes do 403 de permissão (Bean Validation antes do caso de uso, em todo o projeto);
+  - o nome da role repetida vaza no log: resolvido junto com a correção;
+  - `ZENY_DB_NAME` estava ausente do `README.md`: corrigido (e citado no `CLAUDE.md`).
+- Correção pós-verificação (decidida pelo usuário em 2026-10-15, como ajuste da E03, que continua `#concluida`):
+  - Arquivos:
+    - `src/main/resources/application.yaml`, em todos os profiles. `logging.level.org.hibernate.orm.jdbc.error: ERROR`: o `SqlExceptionHelper.logExceptions` do Hibernate 7.4 só escreve nesse logger (`SQLExceptionLogging.ERROR_LOG`), em WARN, com o código e a mensagem, e em DEBUG, com a pilha. O `org.hibernate.orm.jdbc.warn` só leva os avisos SQL (`SQLWarning`), sem valores de linha. Além disso, `spring.datasource.hikari.data-source-properties.logServerErrorDetail: false`: o pgjdbc passa a montar a mensagem da `PSQLException` sem o DETAIL. A exceção que escapa e vira 500, com a causa no log, também fica sem os valores. O `serverErrorMessage.constraint` continua legível, e o `UniqueConstraints` do `iam` e o `StaffPersistence` seguem convertendo em 409.
+    - `docker/compose.yaml`: o `db` sobe com `command: ["postgres", "-c", "log_error_verbosity=terse", "-c", "log_min_error_statement=panic"]`, sem DETAIL, HINT e CONTEXT e sem o STATEMENT dos erros; a linha `ERROR: … constraint "…"` continua.
+    - Testes: `UserManagementTest` (`a duplicate login is a 409 with a stable code, whatever the case, and the login is not logged`) e `RoleManagementTest` (`a duplicate role name is a 409 with a stable code, whatever the case, and the name is not logged`), com `OutputCaptureExtension`. O primeiro também força a violação por SQL (`UPDATE … SET login`) e confere que nenhuma mensagem da cadeia de exceções tem o login e que a constraint continua `user_account_login_uk`.
+    - Documentação: `CLAUDE.md` (regra em "Observabilidade" e `ZENY_DB_NAME` em "Docker e compose"), `README.md` (`ZENY_DB_NAME` no passo 1 do compose e a regra em "Observabilidade") e a nota no handoff da E03.
+  - Validações:
+    - Sem a correção, os dois testes falharam, com o DETAIL `Key (login)=(dup.…)` e `Key (lower(name::text))=(duplicada …)` na saída. Só com o nível do logger, o do login ainda falhou pela mensagem da exceção (`Detail: Key (login)=(…)`). Com as duas mudanças, os dois passaram.
+    - `./gradlew --no-build-cache clean build` no repositório → `BUILD SUCCESSFUL` em 1 min 38 s, 411 testes em 55 classes, 0 falhas (inclui lint e `checkOpenApi`; o contrato não mudou).
+    - Compose isolado (`-p zeny-e09-fix`, cópia limpa do snapshot `b41e71f` com a correção, o mesmo env temporário e a porta 18091): readiness `UP`. `POST /users` e `POST /roles` repetidos deram 201 e depois 409 (`LOGIN_ALREADY_IN_USE`, `ROLE_NAME_ALREADY_IN_USE`). No log da `api` (73 linhas) e no do `db` (63), o login, o nome da role, `Detail:` e `STATEMENT` aparecem 0 vezes. O `db` só registrou `ERROR: duplicate key value violates unique constraint "user_account_login_uk"` e `… "role_name_uk"`, e `pg_settings` confirma `log_error_verbosity=terse` e `log_min_error_statement=panic`. Numa sessão de controle, o superusuário voltou o `log_min_error_statement` ao padrão, e o `STATEMENT` reapareceu no log. Depois, `down -v`; os volumes `zeny_*` do usuário ficaram intactos.
+  - Fora desta correção: o `PostgresContainer` dos testes não recebeu os parâmetros do `db`; o log dele não vai para a saída dos testes.
+- Parecer do verificador, 2ª rodada: **APROVADO** (verificador novo do orquestrador, 2026-10-15; snapshot `0885b64bc1a0170247836e9c2e89e6348b87402f`).
+  - Os 4 critérios passaram.
+  - Na cópia limpa (`git archive`, `GRADLE_USER_HOME` novo, `--no-build-cache clean build`): 411 testes, 0 falhas.
+  - `lint`, `checkOpenApi` e oasdiff passaram.
+  - Compose isolado (`zeny-e09-v2`, imagem própria): readiness `UP`. Roteiro próprio com 118 conferências e 0 falhas, cobrindo sem token, admin inicial, roles e usuários, step-up, auditoria, anexo, hotel, escala e imutabilidade da trilha.
+  - Varredura dos logs da `api`, do `db`, do `proxy` e do `storage`: 0 ocorrências de logins, nomes, CNPJ, PIN, senhas, tokens, `Key (`, `DETAIL` e `STATEMENT`.
+  - Mutações confirmam que os testes novos falham sem a correção, e a conversão em 409 pelo nome da constraint continua funcionando.
+  - Ressalvas baixas:
+    - o `docker run` do `bootRun` (`CLAUDE.md`/README) e o `PostgresContainer` dos testes não usam `log_error_verbosity=terse`/`log_min_error_statement=panic`;
+    - o `CLAUDE.md` diz que os dois testes conferem a mensagem da exceção, mas só o `UserManagementTest` confere;
+    - a mensagem principal de alguns erros do PostgreSQL ainda pode levar um valor (`invalid input syntax for type uuid: "…"`);
+    - continuam as já registradas: 404/403 em `files` revela se o anexo existe (E08) e 400 antes do 403.
+- Revisão humana (decisões do usuário em 2026-10-15). O usuário aceitou o gate e pediu quatro correções antes do commit, aplicadas como ajustes da E08 e da E09, que continuam `#concluida`:
+  - **D1 (médio): credenciais de desenvolvimento do MinIO alcançáveis pelo proxy.** O Caddy repassava ao MinIO todo `GET`/`HEAD` de `/<bucket>/*`, inclusive a listagem e a assinatura SigV4 por cabeçalho, e o `docker/.env.example` trazia senhas conhecidas (`zeny-dev-only` e `zeny-app-dev-only`). Quem copiasse o exemplo, sobretudo com `ZENY_HTTP_ADDRESS=0.0.0.0`, deixaria qualquer um que alcançasse o proxy listar e baixar o bucket.
+    - Correção:
+      - `docker/.env.example`: `ZENY_STORAGE_ROOT_PASSWORD` e `ZENY_STORAGE_SECRET_KEY` vazios, com os comandos `openssl rand -base64 24` no cabeçalho, como as chaves; o MinIO aceitou senhas em base64 (com `+`, `/` e `=`) no compose;
+      - `docker/caddy/Caddyfile`: o `@storage` só casa `GET`/`HEAD` com `path /<bucket>/*`, `path_regexp ^/[^/]+/[^/]` (chave não vazia e sem começar por `/`), `query X-Amz-Signature=*` e `not header Authorization *`; o resto cai na `api` (401). O bucket fica literal no `path`, e não na expressão, porque o nome pode ter `.`;
+      - `docker/storage/init-storage.sh`: recusa bucket chamado `api` ou `actuator`;
+      - `README.md` e `CLAUDE.md`: os comandos, as senhas vazias, as regras do proxy e o aviso de que quem conhece a senha do usuário de serviço lê o bucket inteiro. O `docker run` do MinIO do `bootRun` no README passou a publicar só em `127.0.0.1:9000`.
+    - Evidências:
+      - `docker compose … config` com cada senha vazia → `required variable ZENY_STORAGE_ROOT_PASSWORD is missing a value` (e o mesmo para `ZENY_STORAGE_SECRET_KEY`); com o `.env.example` sem alteração, também falha; com os comandos do cabeçalho aplicados numa cópia, passa;
+      - `caddy validate` → "Valid configuration", e `caddy fmt` não muda o arquivo; o `caddy adapt` mostra os cinco matchers juntos;
+      - o script recusa `api` e `actuator` com exit 1 e passa com `zeny-files`;
+      - compose isolado: projeto `-p zeny-d1-review`, env temporário no scratchpad (senhas sorteadas, MinIO em base64), porta 18095, override com a imagem `zeny-hotel-manager:d1-review` e o Caddyfile montado de um arquivo do scratchpad; readiness `UP`. O `docker/.env` e os volumes `zeny_*` do usuário não foram tocados.
+    - Prova no compose, com o usuário de serviço pelo proxy (`curl --aws-sigv4` e `mc ls` com `MC_HOST_*`), antes e depois:
+
+      | Requisição pelo proxy | Antes | Depois |
+      |---|---|---|
+      | listagem `GET /zeny-files/?list-type=2` (SigV4 por cabeçalho) | 200, com as chaves | 401 |
+      | objeto `GET /zeny-files/hotel/logo/<id>` (SigV4 por cabeçalho) | 200, idêntico ao enviado | 401 |
+      | raiz do bucket e `?location=` (SigV4 por cabeçalho) | 200 | 401 |
+      | `HEAD` do objeto (SigV4 por cabeçalho) | 200 | 401 |
+      | `mc ls --recursive` | lista o logotipo | `Unable to list folder` (401 da `api`) |
+      | URL pré-assinada emitida pela `api` | 200 `image/png`, idêntica (`cmp`) | 200 `image/png`, idêntica (`cmp`) |
+      | a mesma URL sem a query | 403 (MinIO) | 401 (`api`) |
+      | assinatura adulterada | 403 | 403 (MinIO) |
+      | URL pré-assinada vencida (`X-Amz-Expires=300`, pedida 5 min depois) | — | 403 `AccessDenied` "Request has expired" (MinIO) |
+      | URL pré-assinada mais cabeçalho `Authorization` | 400 | 401 |
+      | `PUT` no caminho do bucket | 401 | 401 |
+
+      A URL sem assinatura passou de 403 para 401: ela nem chega ao MinIO, como pede a correção. Recusa continua sendo recusa.
+  - **D2 (baixo): a máscara da trilha não reconhecia o token selado.** `audit/infrastructure/AuditValues.kt` ganhou o formato `^t\d+:<id da chave>:<base64url de 38 caracteres ou mais>$` (nonce de 12 bytes e tag de 16 já dão 38 caracteres, então texto curto com o mesmo prefixo não casa). `AuditValuesTest` ganhou `tokens sealed by the token sealer are recognized, and ordinary text with the same prefix is not`: dois tokens reais do `HkdfTokenSealer` (payload vazio e de 200 caracteres) são mascarados, também dentro de um retrato; `t1`, `t1:dev`, `t1:dev:curto`, um de 37 caracteres, texto com espaços e `turno:manha:…` não são. Sem a expressão nova, o teste falha (mutação revertida em seguida). O `CLAUDE.md` (Auditoria) lista o formato `t1:`.
+  - **D3 (baixo): `max-request-size` fixo, com KDoc que dizia o contrário.** O `FilePurposeCatalog` recebe o `MultipartProperties` do Boot e recusa o boot se `spring.servlet.multipart.max-file-size` for menor que `zeny.files.max-upload-size` ou que a maior finalidade, ou se `max-request-size` não os superar (o pedido leva também a parte `purpose` e os delimitadores). Valor negativo, "sem limite", passa. A mensagem nomeia a propriedade, os valores e o mínimo, por exemplo `spring.servlet.multipart.max-file-size (999B) é menor que zeny.files.max-upload-size (1000B) …`. O KDoc do `FilesProperties` e os comentários do `application.yaml` dizem agora que os limites do multipart não acompanham sozinhos. `FileContentRulesTest.the boot refuses multipart limits below the largest accepted upload` cobre: os limites exatos (1000/1001) e "sem limite" passam; `max-file-size` 999, `max-request-size` igual ao arquivo e os padrões do Boot (1 MB/10 MB) com 20 MB de `max-upload-size` são recusados; sem nenhuma finalidade, o limite ainda é o `max-upload-size`. Sem a conferência, o teste falha (mutação revertida em seguida); com os 20 MB e 21 MB do `application.yaml`, todos os contextos dos testes sobem.
+  - **D4 (documentação):**
+    - `HkdfTokenSealerTest`: o comentário diz agora que trocar o id da chave falha pelo AAD (o cabeçalho `t1:<id>` entra nele) e que a chave derivada não depende do id, só do material e da finalidade;
+    - `RoleManagementTest` passou a conferir também a mensagem da exceção: força a violação de `role_name_uk` por SQL (`UPDATE iam.role SET name`), confere a constraint pelo `ServerErrorMessage` e que nenhuma mensagem da cadeia tem o nome. Com `logServerErrorDetail: true`, ele falha (mutação revertida em seguida); o texto do `CLAUDE.md` (Observabilidade) foi ajustado aos dois testes;
+    - `CLAUDE.md`, "Estado atual": a lista de endpoints públicos cita `GET /api/v1/files/{id}/content`.
+  - **Q1, autorização do download:** mantém-se a permissão da finalidade (`OWN` = quem enviou). Uma porta opcional por finalidade (`FileAccessPolicy`, implementada pelo módulo dono e consultada depois da permissão) entra no M2/M3, quando houver consumidor.
+  - **Q2:** o expurgo de órfãos (anexo sem vínculo depois de 24 h) e `FilesApi.detach`/`delete` ficam para o M2, junto com as fotos de checklist, prontos antes da primeira finalidade sensível (M3).
+  - **Q4:** o logotipo continua baixado só com `hotel.settings.read`.
+  - **Commits:** a E08 e a E09 vão em commits separados, um por etapa.
+  - Validações depois das correções:
+    - `./gradlew build` → `BUILD SUCCESSFUL` em 1 min 37 s (detekt com e sem tipos, ktlint, `test`, `generateOpenApi`, `checkOpenApi`, `koverVerify`): 413 testes em 55 classes, 0 falhas, 0 pulados (eram 411; os 2 novos são o de D2 e o de D3). O contrato não mudou, e `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1";
+    - `caddy validate` e o compose isolado, acima; `down -v` no fim removeu só os volumes do projeto isolado, e a imagem `zeny-hotel-manager:d1-review` foi apagada (a `zeny-hotel-manager:dev` do usuário não foi regravada);
+    - este roadmap passou no `check_roadmap.py`.
+- Parecer do verificador das correções D1 a D4: **APROVADO** (verificador novo do orquestrador, 2026-10-15; snapshot `c12680adfc0f57a27df7aa47503fec1bd6ea7587`).
+  - Validações:
+    - `./gradlew build`: 413 testes, 0 falhas;
+    - `caddy validate`, `check-api-breaking.sh` e `check_roadmap.py` sem erro.
+  - **D1, compose isolado (`zeny-d1v`):**
+    - cerca de 90 requisições de ataque com SigV4 V4 e V2 válidas do usuário de serviço, sem nenhum `ListBucketResult`:
+      - listagem, raiz do bucket, `HEAD`/`GET` sem `X-Amz-Signature` e `Authorization` em qualquer caixa → 401 da `api`;
+      - `//`, `%2F`, `..` e `%2e` → 400 do firewall;
+      - outros métodos e prefixos de bucket → 401;
+    - a URL pré-assinada da `api` baixa o arquivo idêntico e vence no prazo;
+    - o `.env.example` vazio faz o compose recusar subir.
+  - **D2 e D3:** os testes falham sem a correção (mutações numa cópia), e o boot real recusa `max-request-size` de 20 MB.
+  - **D4:** a documentação confere.
+  - Nenhum problema grave ou médio. Ressalvas baixas:
+    - quem tem o segredo ainda lê objetos, inclusive por pré-assinatura V2 com um `X-Amz-Signature` falso (a documentação pode citar);
+    - a máscara do `t1:` só pega o valor isolado, não uma URL inteira num retrato;
+    - com `spring.servlet.multipart.enabled=false`, o boot falharia por falta do bean `MultipartProperties`;
+    - o `docker run` do MinIO no README ainda usa senhas conhecidas (só em `127.0.0.1`);
+    - uma linha fora de ordem no `.env.example`.
+- Notas para o marco M2:
+  - **Antes do M2:** a revisão humana desta etapa foi feita (acima); faltam o commit da E08 e o da E09, separados, e uma execução verde da CI no GitHub (não rodou para a E08 e a E09, que não estão commitadas). Depois, sincronizar `docs/roadmaps/roadmap-m2-plataforma-operacional.md` com o código (skill `development-roadmap`).
+  - **Observações do gate**, sem defeito que bloqueie e sem mudança de código:
+    - `GET /files/{id}` e `/download-url` de um id inexistente dão 404 mesmo a quem não tem nenhuma permissão, e o de um anexo existente dá 403. Isso revela a existência de um UUIDv7, porque a permissão vem da finalidade do anexo. É baixo; se incomodar, a correção é na E08.
+    - Corpo malformado responde 400 antes do 403 de permissão, como em todo o projeto.
+    - O access token de um usuário desativado autentica até vencer (15 min), sem nenhuma permissão. É o comportamento documentado.
+  - **Herdadas, ainda abertas:**
+    - limite de tentativas e arquivamento do outbox no primeiro listener real (M2);
+    - ressalvas baixas da E08: falta o teste do HKDF contra a chave mestra, o download pelo servidor não reconfere a permissão e trocar o logotipo deixa o anterior vinculado (a máscara do `t1:` e o `max-request-size` foram corrigidos na revisão humana, D2 e D3);
+    - os baixos da E05 (`APPROVER_LOCKED`/`APPROVER_IS_REQUESTER` revelam que um login existe) e da E06 (`DELETE`/`INSERT` em `hotel.business_day` contornável por SQL manual);
+    - o `server.forward-headers-strategy` junto com o TLS (M8).
+  - **Anexos no M2** (revisão humana):
+    - Q1: a porta opcional `FileAccessPolicy` por finalidade, consultada depois da permissão, quando houver consumidor (M2/M3);
+    - Q2: o expurgo de órfãos (sem vínculo depois de 24 h) e `FilesApi.detach`/`delete`, junto com as fotos de checklist e prontos antes da primeira finalidade sensível (M3);
+    - upload idempotente para o offline: o upload multipart não leva `Idempotency-Key`, e o app offline vai precisar de um id gerado pelo cliente ou de um `commandId` para não duplicar o anexo;
+    - reencodar as fotos de checklist no servidor: tira o EXIF/GPS e neutraliza arquivos poliglotas (um PNG ou JPEG válido que também é outro formato);
+    - o `FilesApiTest` usa TTL de 4 s e `Thread.sleep` para ver a URL vencer, o que pode falhar numa CI lenta; trocar por relógio controlado ou folga maior;
+    - a `FilesApi` não lê nem grava conteúdo pelo servidor, e o `printing` (M5), o `reporting` (M6) e o `fiscal` (M7, com um `FileType` XML) vão precisar disso. A nota da E08 para o M7 (`find`/`attach` depois de um upload HTTP) não serve a documento gerado pelo servidor.
+  - **Para o M8** (revisão humana):
+    - unificar a URL pública dos anexos: a do sensível sai do `Host` da requisição e a do comum de `ZENY_STORAGE_PUBLIC_ENDPOINT`; resolver com `server.forward-headers-strategy` junto com o TLS;
+    - `log_error_verbosity=terse` e `log_min_error_statement=panic` também no banco de produção (fora do compose);
+    - ferramenta de recifragem dos objetos sensíveis na rotação da chave (o `ContentCipher` grava o id da chave, mas nada re-cifra);
+    - métrica e alerta de falha do S3 (hoje a readiness não depende do armazenamento);
+    - ao trocar `ZENY_STORAGE_ACCESS_KEY`, o usuário de serviço antigo continua ativo no MinIO (o `init-storage.sh` só cria e atualiza);
+    - memória: um upload de 20 MB chega a ~3 cópias por requisição (multipart, bytes lidos e cifrados), a dimensionar com o heap.
+  - **Para o M2:** `rooms`, `checklists` e `notifications` seguem o que o M1 deixou:
+    - permissões por `ModulePermissions` com `templates`, `authorization.require`/`scopeFilter` e `@Audited` em toda escrita;
+    - fotos de checklist por uma `ModuleFilePurposes` própria, com `FilesApi.find`/`attach` na transação;
+    - a escala do dia por `StaffApi.daySchedule` e a data operacional por `HotelApi`;
+    - o primeiro listener `@ApplicationModuleListener` idempotente, com o limite de tentativas do outbox.
 
 ---
 
@@ -1490,3 +1650,6 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, verificações, resul
 - 2026-10-13 — aplicada a regra por camadas da ARCHITECTURE §3.1 (decisão do usuário): `hotel` → `files` para o logotipo (H8; E08 passa a depender de E06 e valida o logotipo); portas de autorização e auditoria em `shared` mantidas por desenho (evitam o ciclo `iam` ↔ `audit`), com a justificativa atualizada nas restrições.
 - 2026-10-14 — sincronizado com o código depois do gate do M0 (commit `5dd29f5`): "Contexto confirmado" passa a citar caminhos, comandos e o estado real de segurança, banco, idempotência, compose e CI, além das pendências herdadas do M0 com a etapa que trata cada uma. Decisões do usuário: H1 confirmada, H2 (admin por variáveis no primeiro boot), H3 (JWT RS256 com `kid`), H4 (dois papéis no banco, sem *trigger*) e a nova H9 (`Idempotency-Key` pelo id do usuário). E01 ganha MDC, apoio de teste com usuário autenticado, variáveis no compose e validação no compose; E03 ganha o `409` por unicidade e o teste do `412` por lock otimista; E04 passa a separar os papéis do banco, corrigir o `MigrationConventions` e pedir revisão humana; E05 estende o problema RFC 9457 com propriedades extras; E08 ganha cifragem de bytes em `shared`, upload sem `@Idempotent`, usuário de serviço do MinIO no compose e Testcontainers com `pgsty/minio`. Limite de tentativas do outbox adiado para o M2. Nenhuma etapa foi criada, removida ou renumerada.
 - 2026-10-14 — E01 executada (em andamento até a verificação independente): módulo `iam`, autenticação JWT RS256, sessões por dispositivo, administrador inicial e fim da segurança provisória do M0; ARCHITECTURE §8.1 registra o RS256 com `kid`.
+- 2026-10-15 — E09 executada (em andamento até a verificação independente e a revisão humana): definição global de pronto conferida numa cópia limpa e ponta a ponta no `docker compose`; ajustes de documentação no `README.md` e no `CLAUDE.md`; conclusão do M1 registrada em `docs/roadmaps/README.md`.
+- 2026-10-15 — E09: correção pós-verificação do vazamento do DETAIL do PostgreSQL nos logs (ajuste da E03, decidido pelo usuário), com testes e conferência no compose; `ZENY_DB_NAME` no `README.md`.
+- 2026-10-15 — revisão humana da E09: correções D1 a D4 aplicadas antes do commit (proxy só com URLs pré-assinadas de objeto e senhas do MinIO vazias no `.env.example`, máscara do token `t1:`, limites do multipart conferidos no boot, documentação); decisões Q1, Q2 e Q4 e as notas para o M2 e o M8 registradas no handoff da E09. Tags inalteradas.
