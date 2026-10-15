@@ -52,6 +52,9 @@ object HotelErrorCodes {
     /** 400: parâmetro operacional fora da faixa aceita. */
     val OPERATIONAL_SETTING_INVALID = ErrorCode("OPERATIONAL_SETTING_INVALID")
 
+    /** 422: o logotipo não é um anexo existente da finalidade `hotel.logo` (H8). */
+    val LOGO_FILE_INVALID = ErrorCode("LOGO_FILE_INVALID")
+
     /** 409: a data operacional corrente não é a esperada por quem pediu o avanço. */
     val BUSINESS_DATE_MISMATCH = ErrorCode("BUSINESS_DATE_MISMATCH")
 }

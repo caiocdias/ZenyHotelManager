@@ -5,8 +5,8 @@
 #   curl http://localhost/actuator/health/readiness
 #   docker compose -f docker/compose.yaml down
 #
-# Serviços: api (servidor), db (PostgreSQL 18), storage (MinIO, com o bucket criado pelo
-# storage-init) e proxy (Caddy, só HTTP local). Nenhuma credencial fica neste arquivo: todas vêm
+# Serviços: api (servidor), db (PostgreSQL 18), storage (MinIO, com o bucket e o usuário de serviço
+# da api criados pelo storage-init) e proxy (Caddy, só HTTP local). Nenhuma credencial fica neste arquivo: todas vêm
 # do docker/.env, que o Git ignora; sem elas o compose para com a mensagem da variável que falta.
 # TLS público, backup e a escolha nuvem × local ficam para o M8.
 
@@ -37,6 +37,14 @@ services:
       # sobe sem ele nesse caso). Depois, pode ficar vazio.
       ZENY_ADMIN_LOGIN: ${ZENY_ADMIN_LOGIN:-}
       ZENY_ADMIN_PASSWORD: ${ZENY_ADMIN_PASSWORD:-}
+      # Anexos (módulo files, D14): o MinIO na rede do compose, com o usuário de serviço criado pelo
+      # storage-init (política só do bucket), nunca o root. As URLs assinadas dos anexos comuns
+      # apontam para o endereço público, que o proxy repassa ao MinIO (docker/caddy/Caddyfile).
+      ZENY_STORAGE_ENDPOINT: http://storage:9000
+      ZENY_STORAGE_PUBLIC_ENDPOINT: ${ZENY_STORAGE_PUBLIC_ENDPOINT:-http://localhost}
+      ZENY_STORAGE_BUCKET: ${ZENY_STORAGE_BUCKET:-zeny-files}
+      ZENY_STORAGE_ACCESS_KEY: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
+      ZENY_STORAGE_SECRET_KEY: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
     # Sem porta publicada: o acesso de fora passa pelo proxy. Na rede do compose, a API fica em
     # http://api:8080 (o Prometheus raspa http://api:8080/actuator/prometheus).
     expose:
@@ -45,6 +53,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      storage-init:
+        condition: service_completed_successfully
     stop_grace_period: 40s
 
   # O POSTGRES_USER da imagem é o dono dos schemas, usado só pelo Flyway (ZENY_DB_MIGRATION_*). Na
@@ -73,13 +83,14 @@ services:
 
   # MinIO (D14). As imagens oficiais minio/minio deixaram de ser publicadas e o repositório foi
   # arquivado; esta é a distribuição comunitária mantida pelo Pigsty, compatível com a original.
+  # O root (ZENY_STORAGE_ROOT_*) fica só aqui e no storage-init; a api usa o usuário de serviço.
   storage:
     image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
-      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+      MINIO_ROOT_USER: ${ZENY_STORAGE_ROOT_USER:?defina ZENY_STORAGE_ROOT_USER no docker/.env}
+      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_ROOT_PASSWORD:?defina ZENY_STORAGE_ROOT_PASSWORD no docker/.env}
     volumes:
       - storage-data:/data
     healthcheck:
@@ -89,17 +100,21 @@ services:
       retries: 10
       start_period: 20s
 
-  # Cria o bucket inicial e termina (idempotente: não falha se o bucket já existe).
+  # Cria o bucket e o usuário de serviço da api, com política só do bucket, e termina
+  # (docker/storage/init-storage.sh, o mesmo dos testes; idempotente: a cada subida, mantém o bucket e
+  # os objetos e regrava a senha e a política do usuário de serviço).
   storage-init:
     image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - mc alias set zeny http://storage:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
-        && mc mb --ignore-existing "zeny/$$ZENY_STORAGE_BUCKET"
+    entrypoint: ["/bin/sh", "/zeny/init-storage.sh"]
     environment:
-      MINIO_ROOT_USER: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
-      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+      ZENY_STORAGE_INIT_ENDPOINT: http://storage:9000
+      MINIO_ROOT_USER: ${ZENY_STORAGE_ROOT_USER:?defina ZENY_STORAGE_ROOT_USER no docker/.env}
+      MINIO_ROOT_PASSWORD: ${ZENY_STORAGE_ROOT_PASSWORD:?defina ZENY_STORAGE_ROOT_PASSWORD no docker/.env}
       ZENY_STORAGE_BUCKET: ${ZENY_STORAGE_BUCKET:-zeny-files}
+      ZENY_STORAGE_ACCESS_KEY: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
+      ZENY_STORAGE_SECRET_KEY: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+    volumes:
+      - ./storage/init-storage.sh:/zeny/init-storage.sh:ro
     depends_on:
       storage:
         condition: service_healthy
@@ -111,12 +126,16 @@ services:
     ports:
       # Só na máquina local por padrão; ZENY_HTTP_ADDRESS=0.0.0.0 abre para a rede (ex.: celular de teste).
       - "${ZENY_HTTP_ADDRESS:-127.0.0.1}:${ZENY_HTTP_PORT:-80}:80"
+    environment:
+      # O Caddyfile repassa ao MinIO só o GET/HEAD deste bucket (URLs assinadas dos anexos comuns).
+      ZENY_STORAGE_BUCKET: ${ZENY_STORAGE_BUCKET:-zeny-files}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - proxy-data:/data
       - proxy-config:/config
     depends_on:
       - api
+      - storage
 
   # backup (pgBackRest ou WAL-G, ARCHITECTURE §15.3): entra no M8, junto com o TLS público.
   # backup:

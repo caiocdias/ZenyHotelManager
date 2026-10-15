@@ -34,7 +34,8 @@ import tools.jackson.databind.json.JsonMapper
  * - toda requisição a `/api/...` exige um access token JWT válido no cabeçalho
  *   `Authorization: Bearer …` (Resource Server do Spring Security, com o `JwtDecoder` e o
  *   conversor do módulo `iam`: RS256, `kid` conhecido, assinatura, emissor e validade);
- * - as exceções são [PUBLIC_API_ENDPOINTS]: login, refresh e `GET /api/v1/meta/version`. Neles
+ * - as exceções são [PUBLIC_API_ENDPOINTS]: login, refresh, `GET /api/v1/meta/version` e o download
+ *   de anexo sensível (`GET /api/v1/files/{id}/content`, autorizado pelo token da URL assinada). Neles
  *   o cabeçalho `Authorization` é ignorado, para que um access token vencido não impeça o
  *   refresh;
  * - token com troca de senha pendente ([PASSWORD_CHANGE_PENDING_AUTHORITY]) só alcança
@@ -161,6 +162,9 @@ class SecurityConfiguration {
                 HttpMethod.POST to "$API_V1/auth/login",
                 HttpMethod.POST to "$API_V1/auth/refresh",
                 HttpMethod.GET to "$API_V1/meta/version",
+                // Download de anexo sensível (módulo files): autorizado pelo token da URL assinada pelo
+                // servidor, de curta duração, e não pelo access token.
+                HttpMethod.GET to "$API_V1/files/{id}/content",
             )
 
         /** O que um token com troca de senha pendente ainda alcança. */

@@ -15,10 +15,13 @@ kover = "0.9.11"
 shedlock = "7.10.1"
 springdoc = "3.1.1"
 bouncycastle = "1.86"
+# Cliente S3 do módulo files (D14): o BOM do Spring Boot não gerencia o AWS SDK.
+aws-sdk = "2.56.0"
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "spring-modulith" }
+aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
 
 # Versões gerenciadas pelos BOMs acima (Spring Boot e Spring Modulith).
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
@@ -46,6 +49,7 @@ postgresql = { module = "org.postgresql:postgresql" }
 jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }
 jackson2-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin" }
 testcontainers-postgresql = { module = "org.testcontainers:testcontainers-postgresql" }
+testcontainers-minio = { module = "org.testcontainers:testcontainers-minio" }
 spring-modulith-starter-test = { module = "org.springframework.modulith:spring-modulith-starter-test" }
 spring-modulith-docs = { module = "org.springframework.modulith:spring-modulith-docs" }
 kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
@@ -59,6 +63,8 @@ shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-p
 springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 # Implementação do Argon2 exigida pelo Argon2PasswordEncoder do Spring Security (não gerenciada pelo BOM do Boot).
 bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+# Versão gerenciada pelo BOM do AWS SDK (aws-sdk-bom).
+aws-sdk-s3 = { module = "software.amazon.awssdk:s3" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

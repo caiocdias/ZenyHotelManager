@@ -41,6 +41,7 @@ dependencies {
     // BOMs como plataformas nativas do Gradle: todas as versões vêm do version catalog.
     implementation(platform(libs.spring.boot.dependencies))
     implementation(platform(libs.spring.modulith.bom))
+    implementation(platform(libs.aws.sdk.bom))
 
     implementation(libs.spring.boot.starter)
     implementation(libs.spring.modulith.starter.core)
@@ -76,6 +77,11 @@ dependencies {
     // O springdoc (swagger-core) ainda usa Jackson 2; com o módulo Kotlin dele, o contrato marca
     // como `required` as propriedades não nulas dos DTOs e como `nullable` as anuláveis.
     runtimeOnly(libs.jackson2.module.kotlin)
+    // Anexos (ARCHITECTURE §14, D14, módulo `files`): API S3 (MinIO no compose, S3/R2/B2 na nuvem)
+    // com o cliente HTTP síncrono padrão do SDK (Apache 5); o assíncrono (Netty) não é usado.
+    implementation(libs.aws.sdk.s3) {
+        exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
+    }
 
     // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
     // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
@@ -93,6 +99,7 @@ dependencies {
     testImplementation(libs.spring.boot.micrometer.tracing.test)
     testImplementation(libs.spring.modulith.starter.test)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.minio)
     testImplementation(libs.spring.modulith.docs)
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.kotest.assertions.core)
@@ -119,6 +126,9 @@ tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     // MockK/ByteBuddy carregam agente dinamicamente; o JDK 25 avisa sem esta flag.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
+    // O cache do Spring guarda um contexto por combinação de configuração de teste (cada um com o seu
+    // pool do Hikari e o seu cliente S3); com os do módulo files, os 512 MB padrão do Gradle acabavam.
+    maxHeapSize = "1g"
     // Os testes rodam de propósito num fuso diferente de UTC: assim pegam qualquer código que
     // dependa do fuso da JVM em vez de gravar instantes em UTC (RN-01, ARCHITECTURE §11).
     systemProperty("user.timezone", "America/Sao_Paulo")

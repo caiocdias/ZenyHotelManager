@@ -52,8 +52,8 @@ enum class TaxRegime {
 }
 
 /**
- * Dados cadastrais do hotel (RF-CFG-01). O logotipo é o id de um arquivo do módulo `files` (H8):
- * guardado como veio até a E08 validar que existe e tem a finalidade de logotipo.
+ * Dados cadastrais do hotel (RF-CFG-01). O logotipo é o id de um anexo do módulo `files` da
+ * finalidade [HotelFilePurposes.LOGO] (H8), conferido ao salvar.
  */
 data class HotelProfile(
     val legalName: String,

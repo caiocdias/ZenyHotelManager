@@ -5,6 +5,7 @@ import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
 import com.zeny.hotel.testsupport.TEST_MIGRATIONS
 import com.zeny.hotel.testsupport.TestAuthInitializer
 import com.zeny.hotel.testsupport.TestEncryptionKeysInitializer
+import com.zeny.hotel.testsupport.TestStorageInitializer
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
@@ -28,7 +29,12 @@ import org.springframework.test.web.servlet.get
 @ActiveProfiles("prod")
 @AutoConfigureMockMvc
 @ContextConfiguration(
-    initializers = [PostgresInitializer::class, TestEncryptionKeysInitializer::class, TestAuthInitializer::class],
+    initializers = [
+        PostgresInitializer::class,
+        TestEncryptionKeysInitializer::class,
+        TestAuthInitializer::class,
+        TestStorageInitializer::class,
+    ],
 )
 class ProductionProfileApiTest(
     @Autowired private val mockMvc: MockMvc,

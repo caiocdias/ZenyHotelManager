@@ -511,10 +511,10 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 
 **Arquivos**
 
-- O módulo `files` usa a API S3: MinIO no compose, ou S3/R2/B2 na nuvem.
-- Chaves organizadas por módulo e entidade.
-- Download só por URL assinada de curta duração.
-- Limites de tamanho e tipo por finalidade.
+- O módulo `files` usa a API S3: MinIO no compose, ou S3/R2/B2 na nuvem. A aplicação acessa o bucket com um usuário de serviço com política só dele, nunca com o root.
+- Chaves organizadas por módulo e finalidade (`<módulo>/<finalidade>/<id>`); o registro dono fica nos metadados (schema `files`).
+- Download só por URL assinada de curta duração (5 min por padrão, no máximo 15). Anexo comum: URL pré-assinada direto ao bucket (no compose, pelo proxy). Anexo sensível: cifrado antes de ir ao bucket (§8.3) e servido só pelo servidor, que decifra, por uma URL assinada pelo próprio servidor; a emissão e cada download vão para a trilha de auditoria.
+- Limites de tamanho e tipo por finalidade, declarados em código pelo módulo dono; o tipo é detectado pelo conteúdo, não pela extensão.
 - XMLs fiscais e de NF-e de entrada também são guardados aqui.
 
 **Impressão**

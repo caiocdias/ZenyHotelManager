@@ -44,10 +44,29 @@ class ModularityTest {
     }
 
     @Test
-    fun `hotel depends only on shared`() {
+    fun `hotel depends only on shared and files, and only on the public API of files`() {
         val hotel = modules.getModuleByName("hotel").orElseThrow()
 
         hotel
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared", "files")
+        hotel
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.files.") }
+            .filter { it.substringBeforeLast('.') != "com.zeny.hotel.files" }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `files depends only on shared`() {
+        val files = modules.getModuleByName("files").orElseThrow()
+
+        files
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }

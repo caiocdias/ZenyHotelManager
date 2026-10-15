@@ -8,8 +8,8 @@ import org.springframework.test.context.ContextConfiguration
 
 /**
  * Base dos testes de integração: contexto completo com o profile `local`, ligado ao
- * PostgreSQL 18 do Testcontainers, a uma chave de cifragem e a chaves JWT sorteadas por JVM e
- * ao administrador inicial dos testes ([TestAdmin]). As classes com
+ * PostgreSQL 18 e ao MinIO ([MinioContainer]) do Testcontainers, a uma chave de cifragem e a
+ * chaves JWT sorteadas por JVM e ao administrador inicial dos testes ([TestAdmin]). As classes com
  * esta anotação e sem configuração extra compartilham o mesmo contexto (cache do Spring);
  * todas compartilham o mesmo container. O contexto é web (servlet simulado) e expõe um
  * `MockMvc` com a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas
@@ -26,7 +26,12 @@ import org.springframework.test.context.ContextConfiguration
 @AutoConfigureMockMvc
 @AutoConfigureMetrics
 @ContextConfiguration(
-    initializers = [PostgresInitializer::class, TestEncryptionKeysInitializer::class, TestAuthInitializer::class],
+    initializers = [
+        PostgresInitializer::class,
+        TestEncryptionKeysInitializer::class,
+        TestAuthInitializer::class,
+        TestStorageInitializer::class,
+    ],
 )
 annotation class IntegrationTest
 

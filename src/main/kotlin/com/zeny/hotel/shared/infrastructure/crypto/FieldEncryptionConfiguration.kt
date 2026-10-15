@@ -1,6 +1,8 @@
 package com.zeny.hotel.shared.infrastructure.crypto
 
+import com.zeny.hotel.shared.ContentCipher
 import com.zeny.hotel.shared.FieldCipher
+import com.zeny.hotel.shared.TokenSealer
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -34,7 +36,17 @@ class FieldEncryptionProperties(
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(FieldEncryptionProperties::class)
 class FieldEncryptionConfiguration {
+    /** O anel de chaves, lido uma vez: a cifragem de campo e a de conteúdo usam as mesmas chaves. */
     @Bean
-    fun fieldCipher(properties: FieldEncryptionProperties): FieldCipher =
-        AesGcmFieldCipher(EncryptionKeyRing.parse(properties.keys, properties.activeKeyId))
+    fun encryptionKeyRing(properties: FieldEncryptionProperties): EncryptionKeyRing =
+        EncryptionKeyRing.parse(properties.keys, properties.activeKeyId)
+
+    @Bean
+    fun fieldCipher(keyRing: EncryptionKeyRing): FieldCipher = AesGcmFieldCipher(keyRing)
+
+    @Bean
+    fun contentCipher(keyRing: EncryptionKeyRing): ContentCipher = AesGcmContentCipher(keyRing)
+
+    @Bean
+    fun tokenSealer(keyRing: EncryptionKeyRing): TokenSealer = HkdfTokenSealer(keyRing)
 }

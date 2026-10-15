@@ -58,7 +58,8 @@ class ApiSecurityTest(
             applicationMappings()
                 .filter { (info, _) -> info.patterns().any { it.startsWith("/api/") } }
                 .flatMap { (info, _) -> info.endpoints() }
-                .filterNot { it in PUBLIC_API_ENDPOINTS }
+                .filterNot { (method, pattern, _) -> (method to pattern) in PUBLIC_API_ENDPOINTS }
+                .map { (method, _, path) -> method to path }
         // Rotas que não existem também não se revelam a quem não está autenticado.
         val probes = endpoints + listOf(HttpMethod.GET to "/api/v1/does-not-exist", HttpMethod.POST to "/api/v2/x")
 
@@ -242,22 +243,26 @@ class ApiSecurityTest(
 
     private fun RequestMappingInfo.patterns(): Set<String> = pathPatternsCondition?.patternValues.orEmpty()
 
-    /** Cada combinação de método e caminho, com as variáveis de caminho preenchidas. */
-    private fun RequestMappingInfo.endpoints(): List<Pair<HttpMethod, String>> {
+    /** Cada combinação de método e padrão de caminho, com o caminho de exemplo (variáveis preenchidas). */
+    private fun RequestMappingInfo.endpoints(): List<Triple<HttpMethod, String, String>> {
         val methods = methodsCondition.methods.map { HttpMethod.valueOf(it.name) }.ifEmpty { listOf(HttpMethod.GET) }
         return patterns().flatMap { pattern ->
             val path = pattern.replace(Regex("\\{[^}]+}"), "0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d")
-            methods.map { it to path }
+            methods.map { Triple(it, pattern, path) }
         }
     }
 
     private companion object {
-        /** Os únicos endpoints de `/api/...` abertos sem access token (M1 E01). */
+        /**
+         * Os únicos endpoints de `/api/...` abertos sem access token (M1 E01): login, refresh, versão e o
+         * download de anexo sensível, que exige o token da URL assinada pelo servidor (M1 E08).
+         */
         val PUBLIC_API_ENDPOINTS =
             setOf(
                 HttpMethod.POST to "/api/v1/auth/login",
                 HttpMethod.POST to "/api/v1/auth/refresh",
                 HttpMethod.GET to "/api/v1/meta/version",
+                HttpMethod.GET to "/api/v1/files/{id}/content",
             )
     }
 }

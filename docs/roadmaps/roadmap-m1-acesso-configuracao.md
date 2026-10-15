@@ -173,7 +173,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | E05 | Aprovação de superior (step-up) | #concluida | E04 | `POST /auth/approvals`, `X-Approval-Token` de uso único e `403 APPROVAL_REQUIRED` |
 | E06 | Configuração do hotel e data operacional | #concluida | E04 | Módulo `hotel` com dados, políticas, taxas, parâmetros, data operacional e `BusinessDateAdvanced` |
 | E07 | Colaboradores, turnos e escala | #concluida | E04 | Módulo `staff` com setores, colaboradores, turnos, padrões, exceções e "escala do dia" |
-| E08 | Armazenamento de anexos | #pendente | E04, E06 | Módulo `files` com S3/MinIO, URL assinada, limites por finalidade, cifragem de sensíveis e validação do logotipo do hotel |
+| E08 | Armazenamento de anexos | #concluida | E04, E06 | Módulo `files` com S3/MinIO, URL assinada, limites por finalidade, cifragem de sensíveis e validação do logotipo do hotel |
 | E09 | Gate do marco M1 | #pendente | E05, E06, E07, E08 | Definição global de pronto verificada do zero |
 
 ---
@@ -1186,7 +1186,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 ---
 
-## E08 — Armazenamento de anexos — #pendente
+## E08 — Armazenamento de anexos — #concluida
 
 **Objetivo:** criar o módulo `files` com armazenamento compatível com S3 atrás de uma interface (MinIO no compose e nos testes), upload com limites de tamanho e tipo por finalidade, download só por URL assinada de curta duração, cifragem dos anexos sensíveis e auditoria de cada acesso a eles.
 
@@ -1276,12 +1276,126 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `f33dcb3d4af5781233d48db84e86aea2f280c4f5` (recebido do orquestrador; `HEAD` `ec7ffaa`, árvore limpa). Snapshot ao fim da implementação: `01c1168fa1cfeb796577f8fb711bd52fac9491c4` (50 arquivos, +3327/−58, antes deste handoff). Preparação: E04 e E06 estão `#concluida`, e o código bate com os handoffs. Estão lá a `AuditContext` com `record`/`noChanges`, o `AppendOnlyTables`, os dois papéis do banco, o `HotelProfile.logoFileId` guardado sem validação e o `HotelModule` com `allowedDependencies = ["shared"]`. A investigação (ARCHITECTURE §8.3, §14, D14, RNF-09, compose, `FieldCipher`) foi feita direto, sem subagente (adendo do orquestrador).
+- Arquivos alterados:
+  - Build: `gradle/libs.versions.toml` (`aws-sdk-bom` 2.56.0, `aws-sdk-s3` e `testcontainers-minio`, gerenciado pelo BOM do Boot, 2.0.5) e `build.gradle.kts` (as dependências; o `netty-nio-client` assíncrono fica de fora; `maxHeapSize = "1g"` nos testes).
+  - `shared`: `FieldEncryption.kt` (porta `ContentCipher`), `infrastructure/crypto/AesGcmContentCipher.kt` (novo) e `FieldEncryptionConfiguration.kt` (bean `EncryptionKeyRing` único para os dois cifradores). Em `web/SecurityConfiguration.kt`, `GET /api/v1/files/{id}/content` entrou em `PUBLIC_API_ENDPOINTS`.
+  - Módulo `files` (novo):
+    - raiz: `FilesModule.kt` (`allowedDependencies = ["shared"]`), `FilePurposes.kt` (`FileId`, `FilePurposeCode`, `FileType`, `FilePurpose`, `ModuleFilePurposes`), `FilesApi.kt` (`FilesApi`, `FileSummary`) e `FilesErrorCodes.kt`;
+    - `domain/`: `StoredFile.kt` e `FileContentRules.kt`;
+    - `application/`: `FilePorts.kt` (`StoredFiles`, `FileStorage`), `FilesConfiguration.kt` (`FilesProperties`, `FilePurposeCatalog`), `DownloadTokens.kt`, `FilesService.kt`, `FilesApiService.kt` e `FilesAudit.kt`;
+    - `infrastructure/`: `FilesPersistence.kt` e `S3FileStorage.kt` (`StorageProperties`, clientes S3 e o adaptador); `web/FilesController.kt`.
+  - Banco: `db/migration/files/V2026_10_15_1445__create_stored_file.sql` (com `CHECK` de finalidade, módulo dono, SHA-256, sensível ⇔ chave e vínculo) e `V2026_10_15_1446__grant_files_to_app_role.sql`.
+  - `hotel`: `HotelFilePurposes.kt` (novo, `hotel.logo`), `HotelModule.kt` (`["shared", "files"]`), `HotelErrorCodes.kt` (`LOGO_FILE_INVALID`), `HotelApi.kt` (KDoc), `application/HotelSettingsService.kt` (validação e vínculo do logotipo, bean das finalidades) e `web/HotelController.kt` (descrições).
+  - Configuração: `application.yaml` (`spring.servlet.multipart.*`, `zeny.files.*` e `zeny.files.storage.*`, com padrões só no `local`).
+  - Docker:
+    - `docker/storage/init-storage.sh` (novo: bucket privado e usuário de serviço com política só do bucket; credenciais pela entrada padrão; idempotente);
+    - `docker/compose.yaml`: root do MinIO em `ZENY_STORAGE_ROOT_*`; o `storage-init` roda o script; a `api` recebe `ZENY_STORAGE_*` com o usuário de serviço e espera o `storage-init`; o `proxy` recebe o nome do bucket;
+    - `docker/caddy/Caddyfile` (`handle` para métricas, `GET`/`HEAD` de `/<bucket>/*` ao MinIO e o resto à `api`) e `docker/.env.example` (as variáveis novas, só com valores de desenvolvimento).
+  - Contrato: `api/openapi.yaml` (4 operações novas na tag `files`, `FileResponse`, `DownloadUrlResponse`, descrição do `PUT /hotel`).
+  - Testes:
+    - novos: `files/FilesApiTest.kt` (7), `files/FileContentRulesTest.kt` (6), `files/FilesTestSupport.kt`, `hotel/HotelLogoTest.kt` (3), `shared/infrastructure/crypto/AesGcmContentCipherTest.kt` (6), `testsupport/MinioContainer.kt` (`MinioContainer`, `TestStorageInitializer`) e o módulo só de teste `filesexample/FileExamples.kt`;
+    - alterados: `testsupport/IntegrationTest.kt` (inicializador do MinIO), `shared/web/ProductionProfileApiTest.kt` (idem), `shared/web/ApiSecurityTest.kt` (endpoint público por padrão de caminho) e `ModularityTest.kt` (`files` só `shared`; `hotel` `shared` e `files`, só a API pública).
+  - Documentação: `CLAUDE.md` (estado atual, conteúdo sensível, seção "Anexos", segurança, compose, testes), `README.md` (seção "Anexos (armazenamento S3)", compose, `curl` de upload e download, API, CI), `docs/ARCHITECTURE.md` (§14) e este roadmap.
+  - Correção pós-verificação (ponto médio do verificador, decidida pelo usuário em 2026-10-15):
+    - `shared/FieldEncryption.kt`: porta `TokenSealer`;
+    - `shared/infrastructure/crypto/HkdfTokenSealer.kt` (novo): AES-256-GCM com chave derivada por HKDF-SHA256 de cada chave do anel, por finalidade, no formato `t1:<kid>:…`;
+    - `FieldEncryptionConfiguration.kt`: bean `tokenSealer`;
+    - `files/application/DownloadTokens.kt`: sela com o `TokenSealer` (finalidade `files.download-url`), não mais com o `FieldCipher`, e recusa validade além de agora + `download-url-ttl`;
+    - testes: `HkdfTokenSealerTest.kt` (novo, 6) e um teste a mais em `FilesApiTest`; `CLAUDE.md` com o `TokenSealer` e o token de download. O contrato não mudou.
+- Decisões (todas implementadas). **Confirmadas pelo usuário em 2026-10-15**, depois da verificação:
+  - o download em dois caminhos (decisões 1 e 2): o anexo comum vai por URL pré-assinada direto ao MinIO, pelo Caddy; o sensível, só pelo servidor;
+  - a validade da URL (decisão 3): 5 min por padrão, de 1 s a 15 min, sem reconferir a permissão dentro dela;
+  - as chaves de objeto `<módulo>/<finalidade>/<id>` (decisão 6), com a ARCHITECTURE §14 reescrita;
+  - a correção do token de download (decisão 12).
+
+  Lista das decisões:
+  1. **Download em dois caminhos.** O anexo comum recebe uma URL pré-assinada SigV4 do S3, direto ao bucket, e não vai para a trilha. O anexo sensível é servido só pelo servidor, que decifra (risco previsto na etapa): `GET /api/v1/files/{id}/content?token=…` é público, e o token é o `DownloadGrant` (anexo, validade, usuário, sessão) cifrado e autenticado pelo `FieldCipher`, sem estado e válido até vencer. A emissão (`files.file.issue-download-url`) e cada download (`files.file.download`, em nome de quem pediu a URL) vão para a trilha; o download vencido também, como `REJECTED`. O download não reconfere a permissão do usuário, cuja janela é a validade da URL. Alternativa: servir todos os anexos pelo servidor, sem expor o MinIO pelo proxy.
+  2. **MinIO pelo proxy.** No compose, o Caddy repassa ao MinIO só `GET`/`HEAD` de `/<bucket>/*`, com o `Host` original. As URLs pré-assinadas usam `ZENY_STORAGE_PUBLIC_ENDPOINT` (padrão `http://localhost`), que precisa ser o endereço exato que o cliente usa (porta inclusa). Sem assinatura, ou com ela vencida, o MinIO responde 403. Um `PUT` no caminho do bucket vai para a `api` (401).
+  3. **Validade da URL.** `zeny.files.download-url-ttl` vale `PT5M` por padrão, e o boot recusa valores fora de 1 s a 15 min. A mesma validade vale para os dois caminhos.
+  4. **Tipos detectados pela assinatura do conteúdo**, num catálogo fechado: PNG, JPEG, WebP e PDF. SVG e HTML ficam de fora. A extensão do nome, se houver, precisa ser a do tipo detectado (`FILE_EXTENSION_MISMATCH`). O tipo gravado é o detectado, nunca o `Content-Type` do cliente. As recusas de tamanho e de tipo saem como `400` com o campo `file` em `errors[]` (o critério aceita 400 ou 415; não existe família 415 no `shared`). Acima do multipart (20 MB), `413 PAYLOAD_TOO_LARGE`.
+  5. **Catálogo de finalidades** em código, por módulo (`ModuleFilePurposes`, como o das permissões), com as permissões de upload e download de qualquer módulo. Em produção há só `hotel.logo` (upload `hotel.settings.manage`, download `hotel.settings.read`, PNG/JPEG/WebP até 2 MB). As finalidades sensíveis chegam com os módulos donos (documento de hóspede no M3); nos testes, `fileexamples.identity-document`. O `files` não tem permissões próprias.
+  6. **Metadados.** O nome original fica sempre cifrado (pode ter dado pessoal), e o SHA-256 é do conteúdo original (o download o confere). A chave do objeto é `<módulo>/<nome>/<id>`. O registro dono (`owner_entity_id`) é gravado por `FilesApi.attach`, chamado pelo módulo consumidor na mesma transação e auditado. O objeto é gravado depois dos metadados, e a transação desfeita apaga o objeto. Linhas de anexos não são apagadas (DML completo, como os outros schemas; sem retenção ainda).
+  7. **`ContentCipher` no `shared`** sobre o mesmo `EncryptionKeyRing`, com formato binário próprio (`ZNC1` ‖ id da chave ‖ nonce ‖ cifra ‖ tag) e o id do anexo como AAD. Trabalha em memória, com bytes e não streams, porque cada finalidade tem limite de tamanho.
+  8. **Compose: dois usuários no MinIO.** `ZENY_STORAGE_ROOT_*` só no `storage` e no `storage-init`; `ZENY_STORAGE_ACCESS_KEY`/`SECRET_KEY` passaram a ser o usuário de serviço, com política só do bucket (objetos e listagem; sem criar bucket, mudar política nem administrar). Os nomes mudaram de sentido: um `docker/.env` antigo para o `up` pedindo `ZENY_STORAGE_ROOT_USER` (README e `CLAUDE.md` explicam a migração). O `docker/.env` local do usuário **não foi alterado**.
+  9. **Hotel.** Só um logotipo novo é conferido (manter o atual não falha); inexistente ou de outra finalidade dá `422 LOGO_FILE_INVALID`, e o logotipo aceito é vinculado ao hotel.
+  10. **Infraestrutura de testes.** Um MinIO por JVM, em todo `@IntegrationTest`, preparado pelo mesmo script do compose e acessado com o usuário de serviço. A JVM dos testes passou a 1 GB de heap: com o contexto novo dos testes de anexos, o `ProductionProfileApiTest` falhou com `OutOfMemoryError` nos 512 MB padrão.
+  11. **Desvio de protocolo:** os testes foram escritos junto com a implementação, e não rodaram vermelhos antes dela. Em compensação, a sequência de mutações abaixo prova que eles pegam as falhas do foco do verificador.
+  12. **Token de download com domínio próprio (correção pós-verificação, decidida pelo usuário em 2026-10-15).** O token deixou de ser cifrado pelo `FieldCipher`, que também cifra colunas com texto escolhido pelo usuário, como o nome original. Quem lesse o banco e conseguisse gravar um texto com o formato do payload numa coluna cifrada teria um token válido. Agora o `TokenSealer` do `shared` sela com AES-256-GCM e uma chave **derivada** por HKDF-SHA256 de cada chave do anel, com `info` = finalidade (`files.download-url`). Um valor de coluna, ou um token de outra finalidade, não abre. O formato é `t1:<kid>:<base64url>`: a rotação e o `kid` seguem as do anel, e o token emitido com a chave antiga vale enquanto ela estiver configurada. Na leitura, validade acima de agora + `zeny.files.download-url-ttl` dá `403 DOWNLOAD_URL_INVALID`, e assim nenhum token vale mais que uma URL emitida agora. O HKDF é implementado com `HmacSHA256` (RFC 5869, conferido com o caso de teste 1).
+- Validações executadas:
+  - `./gradlew clean build` → `BUILD SUCCESSFUL` (1 min 37 s): detekt (com e sem tipos), ktlint, `test` (404 testes em 54 classes, 0 falhas, 0 pulados; eram 382), `generateOpenApi`, `checkOpenApi` e `koverVerify`. `./gradlew lint checkOpenApi` passou. `./gradlew updateOpenApi` regravou o contrato. `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+  - Critério 1 (tamanho e tipo): `FilesApiTest.size and type outside the purpose are rejected with stable codes, and nothing is stored` cobre:
+    - `FILE_TOO_LARGE` (1 KB + 1);
+    - `FILE_TYPE_NOT_ACCEPTED` para um PDF chamado `.png` e declarado `image/png`, para um texto `<svg …>` com nome e tipo de imagem e para um texto chamado `.pdf`;
+    - `FILE_EXTENSION_MISMATCH` (PNG chamado `.jpg`), `FILE_EMPTY` e `UNKNOWN_FILE_PURPOSE` (campo `purpose`);
+    - parte ausente → `400 VALIDATION_FAILED` no campo; nenhuma linha nem objeto gravados.
+
+    `FileContentRulesTest` cobre a detecção (PNG, JPEG, WebP, PDF; SVG e WAV recusados), a extensão, o nome sem diretórios e o catálogo.
+  - Critério 2 (URL assinada): `a valid upload stores the object and its metadata, and the signed url downloads it` confere a URL no bucket com `X-Amz-Expires=4` exato, o `expiresAt` dentro do prazo, o download sem credencial (200, mesmo conteúdo, `image/png`, nome) e o 403 sem a assinatura. `the signed url stops working after the configured expiry` espera o vencimento e recebe 403 do MinIO ("expired"). A URL do servidor vence em `a tampered or foreign server url is refused, and an expired one is refused and audited`.
+  - Critério 3 (sensível cifrado): `a sensitive file is encrypted in the bucket and served decrypted by the server, each access audited` lê o objeto direto do bucket. Ele começa por `ZNC1`, não tem o nome nem `%PDF` e tem exatamente o tamanho do original + 21 + id da chave. A linha tem `encryption_key_id`. A URL é do servidor, sem `X-Amz` nem o bucket. O download sem access token devolve o conteúdo original, `application/pdf`, `no-store`. Token de outro anexo, adulterado, ilegível ou vazio → `403 DOWNLOAD_URL_INVALID`. `AesGcmContentCipherTest` (6) cobre ida e volta, nonce único, AAD de outro anexo, rotação, adulteração e chave desconhecida.
+  - Critério 4 (auditoria de cada acesso): no mesmo teste, a trilha do anexo é exatamente `upload`, `issue-download-url`, `download`, `download`, todas com o usuário e a sessão de quem pediu e sem nome, conteúdo ou token. O download vencido fica `REJECTED` com `DOWNLOAD_URL_EXPIRED`. Anexo comum: só `upload`.
+  - Critério 5 (403 sem permissão): `without the permission of the purpose the upload and the download are refused with 403` cobre:
+    - upload sem permissão e com a permissão de outra finalidade → `PERMISSION_DENIED`;
+    - URL e metadados sem a permissão de download → `PERMISSION_DENIED`; `OWN` com anexo alheio → `RESOURCE_OUT_OF_SCOPE` e com o próprio → 200;
+    - inexistente → `404 FILE_NOT_FOUND`; sem token → 401.
+
+    `HotelLogoTest` mostra o leitor da configuração sem upload do logotipo (403), mas com download.
+  - Critério 6 (logotipo): `HotelLogoTest.saving the hotel with a missing logo or a file of another purpose is refused with 422` dá `422 LOGO_FILE_INVALID` para id inexistente e para foto de outra finalidade, sem mudar o `ETag` nem vincular. `a logo of the logo purpose is saved and attached to the hotel` grava `logoFileId`, `owner_entity_id` = id do hotel e uma única `files.file.attach`; salvar de novo com o mesmo logotipo funciona.
+  - Critério 7 (compose), num projeto isolado (`-p zeny-e08-verify`, `--env-file` temporário no scratchpad, porta 18082, senhas sorteadas; o `docker/.env` e os volumes `zeny_*` do usuário não foram tocados):
+    - `up -d --build` → o `storage-init` registrou "Bucket zeny-files e usuário de serviço zeny-app prontos (política zeny-app-zeny-files)" e terminou; readiness `{"status":"UP"}` pelo proxy;
+    - o `env` da `api` tem `ZENY_STORAGE_ACCESS_KEY=zeny-app` (o root é `zeny`) e nenhuma variável `ZENY_STORAGE_ROOT_*`;
+    - login, troca de senha e novo login funcionaram;
+    - `POST /api/v1/files` com um PNG → 201; `download-url` → URL `http://localhost:18082/zeny-files/hotel/logo/…` com `X-Amz-Credential=zeny-app/…` e `X-Amz-Expires=300`; `curl` dela pelo proxy → 200 `image/png`, conteúdo idêntico (`cmp`); sem a assinatura → 403; `PUT` no caminho do bucket → 401 (vai para a `api`);
+    - um texto chamado `.png` → 400 `FILE_TYPE_NOT_ACCEPTED`;
+    - `PUT /hotel` com logotipo inexistente → 422 `LOGO_FILE_INVALID`; com o logotipo enviado → 200; na trilha, `files.file.upload` e `files.file.attach`;
+    - `down -v` no fim (só os volumes do projeto isolado).
+
+    `caddy validate` aceitou o Caddyfile. O script rodou duas vezes seguidas sem erro (idempotente) num MinIO avulso. O usuário de serviço não cria bucket, não muda a política e não lê a administração (manual e em `the application talks to the bucket with a service user restricted to it, not the root`). O `.env.example` só tem valores de desenvolvimento.
+  - Critério 8: `ModularityTest.files depends only on shared` e `hotel depends only on shared and files, and only on the public API of files` passaram, com `module structure is valid`; `DatabaseRolesTest`, `MigrationConventionTest` e `LayerArchitectureTest` (três casos de uso de escrita auditados no `files`) também.
+  - Mutações (cada uma revertida em seguida, com `--tests 'com.zeny.hotel.files.*' --tests 'com.zeny.hotel.hotel.HotelLogoTest'`), todas pegas:
+    - sem cifragem do sensível → 2 falhas;
+    - tipo pela extensão do nome → 2;
+    - sem a entrada do download na trilha → 2;
+    - URL pré-assinada 10× mais longa que a informada → 2, depois de apertar a asserção do `X-Amz-Expires` para igualdade;
+    - sem a checagem de permissão na geração da URL → 1;
+    - sem a validação do logotipo → 1.
+  - Correção do token (decisão 12), validada depois da verificação:
+    - `HkdfTokenSealerTest` (6) cobre:
+      - ida e volta com o `kid`;
+      - um valor do `FieldCipher` com o formato do payload não abre como token, nem com o prefixo trocado para `t1`, e um token não decifra como coluna;
+      - finalidades separadas;
+      - rotação: o token antigo abre com a chave antiga configurada e deixa de abrir sem ela;
+      - adulteração e troca de `kid`;
+      - o vetor 1 da RFC 5869.
+    - `FilesApiTest.a field-cipher value with the token format or a token valid beyond the configured ttl is refused` cobre:
+      - um valor do `FieldCipher` com o payload de um token, com validade dentro do teto, dá `403 DOWNLOAD_URL_INVALID`; com o prefixo trocado e com validade de 10 anos também;
+      - um token legítimo com validade de 1 h (o TTL dos testes é 4 s) dá 403;
+      - um dentro do teto dá 200.
+    - Mutações, cada uma revertida: o `DownloadTokens` de volta ao `FieldCipher` → 1 falha (o teste acima); sem o teto de validade → 1 falha.
+    - `./gradlew clean build` → `BUILD SUCCESSFUL` (411 testes em 55 classes, 0 falhas; inclui lint e `checkOpenApi`, e o contrato não mudou). `check-api-breaking.sh` não encontrou mudança incompatível.
+- Parecer do verificador: **APROVADO** (verificador independente do orquestrador, 2026-10-15; snapshot `31eb4f44258ce39aae2c73e791a0c8b90349bc84`). Os 8 critérios passaram com evidência: `./gradlew clean build` com 404 testes e 0 falhas; `lint`, `checkOpenApi` e `check-api-breaking.sh` sem erro; compose num projeto isolado (`zeny-e08-v2`) com readiness `UP`, upload e download pelo proxy, `X-Amz-Expires=300`, assinatura ausente ou adulterada → 403, a `api` só com o usuário de serviço (que recebe Access Denied em `mb`, `admin info` e `anonymous set`), logotipo inválido → 422; `down -v` no fim. Nenhum problema grave. Ressalvas:
+  - Médio (latente, corrigir antes do M3): o token de download de sensível (`files/application/DownloadTokens.kt`) usa o mesmo `FieldCipher` sem AAD das colunas com texto do usuário e aceita qualquer `expiresAt` que venha dentro dele. Quem lê o banco e consegue gravar um texto livre cifrado poderia forjar um token perpétuo. Hoje não dá para explorar: o único texto livre cifrado é o nome do arquivo, e o `FILE_EXTENSION_MISMATCH` o barra por acaso. Recomendação: separar o domínio (chave derivada por HKDF ou HMAC próprio) e recusar `expiresAt > agora + TTL máximo`.
+  - Baixos: o download pelo servidor não reconfere a permissão dentro da validade da URL; a URL do sensível sai do `Host` (M8); chaves de objeto `<módulo>/<finalidade>/<id>` em vez de "por módulo e entidade" (a ARCHITECTURE §14 foi reescrita); trocar o logotipo deixa o anterior vinculado (M10); `spring.servlet.multipart.max-request-size` fixo em 21MB, sem acompanhar `zeny.files.max-upload-size`; a parte "só enxerga o próprio bucket" do teste do usuário de serviço é fraca (só há um bucket no MinIO de teste); os testes não rodaram vermelhos antes da implementação (compensado com mutações).
+  - Reverificação depois da correção do token, decidida pelo usuário em 2026-10-15: **APROVADO** (verificador novo, snapshot `d32bc3813000e3ba8884b8790889256ba53fcd83`).
+    - Os 8 critérios passaram de novo.
+    - `./gradlew clean build`: 411 testes, 0 falhas.
+    - `lint`, `checkOpenApi` e `check-api-breaking.sh` passaram.
+    - Compose isolado (`zeny-e08-v3`) passou, seguido de `down -v`.
+    - O `TokenSealer`/`HkdfTokenSealer` está correto:
+      - HKDF conforme a RFC 5869;
+      - AAD `t1:<kid>:<finalidade>`;
+      - teto de validade pelo `Clock`, não contornável;
+      - rotação pelo `kid`.
+    - Mutações pegas pelos testes: `FieldCipher` de volta, sem teto, teto frouxo e sem AAD.
+    - Nenhum problema grave ou médio. Ressalvas baixas:
+      - nenhum teste quebra se o HKDF for trocado pela chave mestra ou se a finalidade sair do `info`. O AAD já separa os domínios; falta um teste que tente abrir com a chave mestra e o mesmo AAD;
+      - o comentário de `HkdfTokenSealerTest` diz que a chave derivada depende do `kid`, o que não é verdade;
+      - a máscara da trilha (`audit/infrastructure/AuditValues.kt`) não reconhece o formato `t1:` (defesa em profundidade; hoje nenhum retrato leva o token).
+- Notas para a próxima etapa:
+  - E09 (gate): o roteiro ponta a ponta precisa do `docker/.env` com as variáveis novas (`ZENY_STORAGE_ROOT_*`, usuário de serviço diferente do root, `ZENY_STORAGE_PUBLIC_ENDPOINT` com a porta do proxy). Upload e download estão no README ("Ambiente completo em Docker", passo 2).
+  - M2 (fotos de checklist), M3 (documento de hóspede, sensível) e M7 (XMLs fiscais): cada módulo declara as suas finalidades (`ModuleFilePurposes` + bean), confere o id com `FilesApi.find` e vincula com `FilesApi.attach` na transação do caso de uso. Um tipo novo (XML, por exemplo) entra no `FileType`, com a regra de detecção pelo conteúdo. A finalidade sensível ganha cifragem, download pelo servidor e auditoria sem código no módulo.
+  - M8: com TLS e domínio, o `ZENY_STORAGE_PUBLIC_ENDPOINT` vira o domínio público. O servidor monta a URL dos sensíveis pelo `Host` da requisição: ligar `server.forward-headers-strategy` junto com o TLS, senão o esquema sai `http`. Espelhamento externo e backup do bucket também ficam para o M8. M10: retenção e expurgo de anexos (LGPD), inclusive dos órfãos (upload sem `attach`).
+  - Para o usuário: o `docker/.env` local, de antes da etapa, precisa ser atualizado. O root do MinIO vira `ZENY_STORAGE_ROOT_*`, e o `ZENY_STORAGE_ACCESS_KEY`/`SECRET_KEY` passa a ser o usuário de serviço.
 
 ---
 

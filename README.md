@@ -74,6 +74,27 @@ Dados sensíveis são cifrados com AES-256-GCM (ARCHITECTURE §8.3). As chaves v
 export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACTIVE_KEY_ID=dev
 ```
 
+## Anexos (armazenamento S3)
+
+Os anexos (logotipo do hotel e, nos próximos marcos, fotos de checklist, documentos de hóspede e XMLs fiscais) ficam num armazenamento compatível com S3: MinIO no compose, S3/R2/B2 na nuvem (ARCHITECTURE §14, D14). Os metadados ficam no schema `files`. O envio é `POST /api/v1/files` (multipart com `purpose` e `file`), e cada finalidade tem tamanho máximo, tipos aceitos (detectados pelo conteúdo, não pela extensão) e as permissões de envio e de download. O download é só por URL assinada de curta duração (`GET /api/v1/files/{id}/download-url`, 5 min por padrão). Anexo sensível é cifrado com AES-256-GCM, com as mesmas chaves de `ZENY_ENCRYPTION_KEYS`, antes de ir ao bucket; ele é baixado só pelo servidor, que o decifra, e cada URL gerada e cada download vão para a trilha de auditoria.
+
+| Variável | Para quê |
+|---|---|
+| `ZENY_STORAGE_ENDPOINT` | URL do S3 visto pelo servidor (no compose, `http://storage:9000`) |
+| `ZENY_STORAGE_PUBLIC_ENDPOINT` | URL que os clientes alcançam, usada nas URLs assinadas dos anexos comuns. Vazia, vale a anterior. No compose é o proxy, `http://localhost`, com a porta se não for a 80 |
+| `ZENY_STORAGE_BUCKET` | bucket dos anexos (`zeny-files`) |
+| `ZENY_STORAGE_ACCESS_KEY`, `ZENY_STORAGE_SECRET_KEY` | usuário de **serviço** com política só do bucket, nunca o root do MinIO |
+| `ZENY_STORAGE_REGION` | região (`us-east-1`, que o MinIO aceita) |
+
+No `prod`, as variáveis não têm valor padrão: sem elas, a aplicação não sobe. No `local`, o padrão é um MinIO em `localhost:9000` com o bucket `zeny-files` e o usuário de serviço `zeny-app`/`zeny-app-dev-only`. Para o `bootRun`, suba-o e prepare-o com o mesmo script do compose:
+
+```bash
+docker run -d --name zeny-storage -e MINIO_ROOT_USER=zeny -e MINIO_ROOT_PASSWORD=zeny-dev-only   -p 9000:9000 pgsty/minio:RELEASE.2026-08-04T00-00-00Z server /data
+docker run --rm --network container:zeny-storage -v "$PWD/docker/storage:/zeny:ro"   -e ZENY_STORAGE_INIT_ENDPOINT=http://127.0.0.1:9000 -e MINIO_ROOT_USER=zeny -e MINIO_ROOT_PASSWORD=zeny-dev-only   -e ZENY_STORAGE_BUCKET=zeny-files -e ZENY_STORAGE_ACCESS_KEY=zeny-app -e ZENY_STORAGE_SECRET_KEY=zeny-app-dev-only   --entrypoint sh pgsty/minio:RELEASE.2026-08-04T00-00-00Z /zeny/init-storage.sh
+```
+
+O script [`docker/storage/init-storage.sh`](docker/storage/init-storage.sh) cria o bucket privado e o usuário de serviço, com política só para ler, gravar, apagar e listar objetos desse bucket. Ele é idempotente e lê as credenciais da entrada padrão, sem passá-las pela linha de comando.
+
 ## Autenticação: chaves JWT e administrador inicial
 
 O login (`POST /api/v1/auth/login`) devolve um access token JWT de 15 min, assinado em RS256, e um refresh token rotativo da sessão do dispositivo (ARCHITECTURE §8.1). As chaves de assinatura vêm de `ZENY_JWT_KEYS` (`kid:base64[,kid:base64…]`, cada uma uma chave privada RSA de 2048 bits ou mais em PKCS#8 DER, em base64) e `ZENY_JWT_ACTIVE_KEY_ID` (o `kid` que assina), obrigatórias em todos os profiles e sem valor padrão: sem elas a aplicação não sobe. Para desenvolvimento:
@@ -92,7 +113,7 @@ export ZENY_ADMIN_LOGIN=admin ZENY_ADMIN_PASSWORD="$(openssl rand -base64 18)"
 
 ## Ambiente completo em Docker
 
-O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket criado pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local). Backup e TLS público ficam para o M8.
+O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produção (RNF-01): `api` (a imagem de [`docker/Dockerfile`](docker/Dockerfile)), `db` (PostgreSQL 18), `storage` (MinIO, com o bucket e o usuário de serviço da `api` criados pelo serviço `storage-init`) e `proxy` (Caddy, só HTTP local; repassa ao MinIO só o `GET` dos objetos do bucket, para as URLs assinadas dos anexos). Backup e TLS público ficam para o M8.
 
 1. Crie o `docker/.env` a partir do modelo. Ele traz os dois papéis do banco: `ZENY_DB_MIGRATION_*`, o dono dos schemas e `POSTGRES_USER` do container, e `ZENY_DB_USERNAME`/`ZENY_DB_PASSWORD`, o papel da aplicação, criado na primeira inicialização do volume. Um `docker/.env` antigo precisa das duas variáveis novas e de um `ZENY_DB_USERNAME` diferente do dono; o volume antigo precisa ser recriado ou receber o papel à mão (seção "Banco de dados"). Gere também a chave de cifragem (guarde-a enquanto usar o mesmo volume do banco: o que ela cifrou só se lê com ela), a chave JWT e a senha do administrador inicial:
 
@@ -105,6 +126,8 @@ O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produçã
 
    O `docker/.env` é ignorado pelo Git. Os valores do modelo são só de desenvolvimento; num ambiente real, troque todos.
 
+   O MinIO tem dois usuários. `ZENY_STORAGE_ROOT_USER`/`ZENY_STORAGE_ROOT_PASSWORD` é o root, usado só pelo `storage` e pelo `storage-init`. `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` é o usuário de serviço que a `api` usa, criado pelo `storage-init` com política só do bucket. Num `docker/.env` de antes da E08 do M1, o `ZENY_STORAGE_ACCESS_KEY`/`ZENY_STORAGE_SECRET_KEY` era o root. Mova esses valores para `ZENY_STORAGE_ROOT_*`, para o root continuar o mesmo, e defina um usuário de serviço diferente. Se o proxy não estiver na porta 80, ajuste também o `ZENY_STORAGE_PUBLIC_ENDPOINT` (ex.: `http://localhost:8000`).
+
 2. Suba (a primeira vez compila a imagem, o que leva alguns minutos) e confira a readiness pelo proxy:
 
    ```bash
@@ -116,6 +139,15 @@ O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produçã
    ```
 
    O primeiro login do administrador volta com `passwordChangeRequired: true`: troque a senha em `POST /api/v1/auth/password` (com o `accessToken` em `Authorization: Bearer …`) e renove os tokens em `POST /api/v1/auth/refresh`.
+
+   Para enviar e baixar um anexo (o logotipo, por exemplo), use o access token:
+
+   ```bash
+   curl -X POST http://localhost/api/v1/files -H "Authorization: Bearer $TOKEN" \
+     -F purpose=hotel.logo -F file=@logo.png              # {"id": "…", "contentType": "image/png", …}
+   curl http://localhost/api/v1/files/<id>/download-url -H "Authorization: Bearer $TOKEN"   # {"url": "…", "expiresAt": "…"}
+   curl -o logo-baixado.png "<url>"                       # sem token: a URL assinada vale por 5 min
+   ```
 
    A porta e o endereço do proxy vêm de `ZENY_HTTP_PORT` (80) e `ZENY_HTTP_ADDRESS` (`127.0.0.1`; use `0.0.0.0` para abrir à rede local). O profile padrão é `prod` (logs em JSON, sem Swagger UI); com `ZENY_PROFILE=local` no `docker/.env`, o Swagger UI fica em `/swagger-ui.html`.
 
@@ -138,7 +170,7 @@ Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-ma
 
 ## API
 
-REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Todo `/api/v1` exige o access token (`Authorization: Bearer …`), exceto o login, o refresh e `GET /api/v1/meta/version`; sem token, a resposta é `401 UNAUTHENTICATED`. O que cada usuário pode fazer vem das roles atribuídas a ele, compostas a partir do catálogo de permissões (`GET /api/v1/permissions`), com escopo `OWN`/`ALL` e limites; as permissões efetivas não vão no token e aparecem em `GET /api/v1/auth/me`, e a falta de uma permissão responde `403 PERMISSION_DENIED`. No boot, o servidor sincroniza o catálogo declarado no código e cria os modelos de role da SPEC §3.1. O administrador gere usuários (`/api/v1/users`: criar, editar, atribuir roles, desativar, reativar, redefinir senha e PIN, ver e revogar sessões) e roles (`/api/v1/roles`: criar, editar, duplicar, desativar e reativar); ninguém concede permissão, escopo ou limite acima dos seus, só um administrador gere administradores e nada é apagado, só desativado. Toda escrita vai para a trilha de auditoria *append-only*, na mesma transação da escrita, e o papel do banco da aplicação não altera nem apaga a trilha. Cada entrada registra:
+REST/JSON sob `/api/v1` (ARCHITECTURE §7). O contrato [`api/openapi.yaml`](api/openapi.yaml) é gerado do código no build e versionado; o build falha se ele estiver desatualizado, e nunca se edita à mão. Erros seguem a RFC 9457 (`application/problem+json`) com `code` estável e `errors[]` por campo; listas paginam por cursor (`?cursor=…&limit=…`); alterações usam `ETag`/`If-Match` (`412` em conflito, `428` sem `If-Match`); operações com efeito financeiro ou externo exigem o cabeçalho `Idempotency-Key`, e a resposta fica guardada por 24h para as repetições; instantes saem em UTC com `Z`, datas como `YYYY-MM-DD` e dinheiro como string decimal. Fora do profile `prod`, o Swagger UI fica em `/swagger-ui.html`. Todo `/api/v1` exige o access token (`Authorization: Bearer …`), exceto o login, o refresh, `GET /api/v1/meta/version` e o download de anexo sensível pela URL assinada pelo servidor (`GET /api/v1/files/{id}/content?token=…`, autorizado pelo token da URL); sem token, a resposta é `401 UNAUTHENTICATED`. O que cada usuário pode fazer vem das roles atribuídas a ele, compostas a partir do catálogo de permissões (`GET /api/v1/permissions`), com escopo `OWN`/`ALL` e limites; as permissões efetivas não vão no token e aparecem em `GET /api/v1/auth/me`, e a falta de uma permissão responde `403 PERMISSION_DENIED`. No boot, o servidor sincroniza o catálogo declarado no código e cria os modelos de role da SPEC §3.1. O administrador gere usuários (`/api/v1/users`: criar, editar, atribuir roles, desativar, reativar, redefinir senha e PIN, ver e revogar sessões) e roles (`/api/v1/roles`: criar, editar, duplicar, desativar e reativar); ninguém concede permissão, escopo ou limite acima dos seus, só um administrador gere administradores e nada é apagado, só desativado. Toda escrita vai para a trilha de auditoria *append-only*, na mesma transação da escrita, e o papel do banco da aplicação não altera nem apaga a trilha. Cada entrada registra:
 
 - quem agiu, quando e de qual sessão de dispositivo;
 - a ação, o resultado (inclusive as falhas de login) e a entidade;
@@ -151,7 +183,7 @@ A trilha é consultada em `GET /api/v1/audit-entries`, filtrada por usuário, en
 
 O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (GitHub Actions) roda em todo push na `main` e em todo pull request. São três jobs em paralelo, e qualquer falha reprova a execução:
 
-- **Build, testes e contrato:** com JDK 25 e cache do Gradle, roda `./gradlew build` (compilação, testes unitários e de integração com PostgreSQL pelo Testcontainers, verificação de módulos do Spring Modulith, ArchUnit, detekt, ktlint, cobertura e conferência do `api/openapi.yaml`) e `./gradlew checkOpenApi`. Publica como artefatos a documentação dos módulos (`spring-modulith-docs`) e o contrato (`openapi`); se falhar, também os relatórios dos testes.
+- **Build, testes e contrato:** com JDK 25 e cache do Gradle, roda `./gradlew build` (compilação, testes unitários e de integração com PostgreSQL e MinIO pelo Testcontainers, verificação de módulos do Spring Modulith, ArchUnit, detekt, ktlint, cobertura e conferência do `api/openapi.yaml`) e `./gradlew checkOpenApi`. Publica como artefatos a documentação dos módulos (`spring-modulith-docs`) e o contrato (`openapi`); se falhar, também os relatórios dos testes.
 - **Compatibilidade da API:** o [oasdiff](https://github.com/oasdiff/oasdiff) compara o `api/openapi.yaml` com o da `main` (num PR, a ponta da branch de destino; num push, o commit anterior ao push ou, sem ele, o commit pai) e reprova *breaking changes* em `/api/v1`, como endpoint, parâmetro ou propriedade removidos, tipo trocado ou campo que passa a ser obrigatório. Mudança incompatível vai para `/api/v2`; remover um endpoint v1 só passa se ele já estava marcado como `deprecated`. O mesmo teste roda localmente com `.github/scripts/check-api-breaking.sh`.
 - **Imagem Docker:** constrói `docker/Dockerfile` sem publicar.
 

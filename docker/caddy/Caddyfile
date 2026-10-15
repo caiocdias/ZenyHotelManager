@@ -8,7 +8,23 @@
 :80 {
 	# As métricas ficam na rede interna do compose (o Prometheus raspa http://api:8080).
 	@metrics path /actuator/prometheus /actuator/prometheus/*
-	respond @metrics 404
+	handle @metrics {
+		respond 404
+	}
 
-	reverse_proxy api:8080
+	# URLs assinadas dos anexos comuns (módulo files, D14): só GET e HEAD de objetos do bucket vão ao
+	# MinIO, com o Host original (a assinatura SigV4 o inclui; ZENY_STORAGE_PUBLIC_ENDPOINT precisa ser
+	# o endereço que o cliente usa). O bucket é privado: sem assinatura válida e no prazo, o MinIO
+	# recusa. Anexos sensíveis nunca saem por aqui: o servidor os decifra (/api/v1/files/{id}/content).
+	@storage {
+		path /{$ZENY_STORAGE_BUCKET}/*
+		method GET HEAD
+	}
+	handle @storage {
+		reverse_proxy storage:9000
+	}
+
+	handle {
+		reverse_proxy api:8080
+	}
 }

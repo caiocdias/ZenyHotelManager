@@ -82,7 +82,8 @@ class HotelController(
             "Exige `hotel.settings.manage` e o `If-Match`. CNPJ com dígito verificador errado: 400 " +
                 "`VALIDATION_FAILED` (campo `cnpj`, `INVALID_FORMAT`). Código IBGE de outra UF: 400 " +
                 "`INVALID_ADDRESS`. Fuso desconhecido ou de deslocamento fixo: 400 `INVALID_TIMEZONE`. O logotipo é " +
-                "o id de um arquivo enviado antes. Mudar o fuso não muda a data operacional.",
+                "o id de um anexo enviado antes em `POST /files` com a finalidade `hotel.logo`; inexistente ou de " +
+                "outra finalidade: 422 `LOGO_FILE_INVALID`. Mudar o fuso não muda a data operacional.",
     )
     fun updateHotel(
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
@@ -225,7 +226,7 @@ data class HotelRequest(
     @field:Size(max = 64)
     val timezone: String,
     val taxRegime: TaxRegime,
-    @field:Schema(description = "Id do arquivo do logotipo (enviado antes).", nullable = true)
+    @field:Schema(description = "Id do anexo do logotipo (finalidade `hotel.logo`, enviado antes).", nullable = true)
     val logoFileId: UUID?,
 ) {
     fun toCommand() =

@@ -20,6 +20,8 @@ servers:
 security:
 - bearerAuth: []
 tags:
+- description: "Anexos: upload por finalidade e download por URL assinada."
+  name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
 - description: Configuração do hotel e data operacional.
@@ -683,6 +685,147 @@ paths:
       summary: Reativar um colaborador
       tags:
       - staff
+  /api/v1/files:
+    post:
+      description: "Multipart com `purpose` (a finalidade, como `hotel.logo`) e `file`.\
+        \ Exige a permissão de upload da finalidade (403 `PERMISSION_DENIED`). O tipo\
+        \ é detectado pelo conteúdo, não pelo `Content-Type` nem pela extensão. Recusas\
+        \ (400, com o campo em `errors[]`): `UNKNOWN_FILE_PURPOSE`, `FILE_EMPTY`,\
+        \ `FILE_TOO_LARGE` (acima do máximo da finalidade), `FILE_TYPE_NOT_ACCEPTED`\
+        \ (conteúdo de tipo não aceito) e `FILE_EXTENSION_MISMATCH` (extensão diferente\
+        \ do conteúdo); acima do máximo do servidor, 413 `PAYLOAD_TOO_LARGE`. Anexo\
+        \ sensível é cifrado antes de ir ao armazenamento. Não aceita `Idempotency-Key`:\
+        \ repetir o envio cria outro anexo."
+      operationId: uploadFile
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: O arquivo; o tipo é detectado pelo conteúdo.
+                purpose:
+                  type: string
+                  description: "Finalidade do anexo (`<módulo>.<nome>`), como `hotel.logo`."
+              required:
+              - file
+              - purpose
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+          description: Anexo gravado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Enviar um anexo
+      tags:
+      - files
+  /api/v1/files/{id}:
+    get:
+      description: "Exige a permissão de download da finalidade (com escopo `OWN`,\
+        \ só de quem enviou). Inexistente: 404 `FILE_NOT_FOUND`."
+      operationId: getFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar os metadados de um anexo
+      tags:
+      - files
+  /api/v1/files/{id}/content:
+    get:
+      description: "Público: quem autoriza é o `token` da URL gerada em `GET /files/{id}/download-url`,\
+        \ válido até `expiresAt`. Devolve o conteúdo original, decifrado, e grava\
+        \ o download na trilha em nome de quem gerou a URL. Token adulterado, de outro\
+        \ anexo ou ilegível: 403 `DOWNLOAD_URL_INVALID`; vencido: 403 `DOWNLOAD_URL_EXPIRED`."
+      operationId: downloadFileContent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Assinatura da URL de download.
+        in: query
+        name: token
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          description: "O conteúdo do anexo, com o tipo detectado no upload."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security: []
+      summary: Baixar um anexo sensível
+      tags:
+      - files
+  /api/v1/files/{id}/download-url:
+    get:
+      description: "URL assinada de curta duração (`zeny.files.download-url-ttl`,\
+        \ padrão 5 min), sem precisar do access token. Exige a permissão de download\
+        \ da finalidade (com escopo `OWN`, só de quem enviou). Anexo comum: URL direta\
+        \ ao armazenamento. Anexo sensível: URL do próprio servidor, que decifra o\
+        \ conteúdo; a emissão e cada download vão para a trilha de auditoria."
+      operationId: getFileDownloadUrl
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadUrlResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Gerar a URL de download de um anexo
+      tags:
+      - files
   /api/v1/hotel:
     get:
       description: "Exige `hotel.settings.read`. Antes da configuração inicial, `configured`\
@@ -709,8 +852,10 @@ paths:
       description: "Exige `hotel.settings.manage` e o `If-Match`. CNPJ com dígito\
         \ verificador errado: 400 `VALIDATION_FAILED` (campo `cnpj`, `INVALID_FORMAT`).\
         \ Código IBGE de outra UF: 400 `INVALID_ADDRESS`. Fuso desconhecido ou de\
-        \ deslocamento fixo: 400 `INVALID_TIMEZONE`. O logotipo é o id de um arquivo\
-        \ enviado antes. Mudar o fuso não muda a data operacional."
+        \ deslocamento fixo: 400 `INVALID_TIMEZONE`. O logotipo é o id de um anexo\
+        \ enviado antes em `POST /files` com a finalidade `hotel.logo`; inexistente\
+        \ ou de outra finalidade: 422 `LOGO_FILE_INVALID`. Mudar o fuso não muda a\
+        \ data operacional."
       operationId: updateHotel
       parameters:
       - in: header
@@ -2827,6 +2972,19 @@ components:
       required:
       - id
       - name
+    DownloadUrlResponse:
+      type: object
+      description: "URL assinada de download, válida até `expiresAt`."
+      properties:
+        expiresAt:
+          type: string
+          format: date-time
+        url:
+          type: string
+          description: "URL que baixa o anexo sem o access token, até vencer."
+      required:
+      - expiresAt
+      - url
     DuplicateRoleRequest:
       type: object
       properties:
@@ -3017,6 +3175,43 @@ components:
       - code
       - field
       - message
+    FileResponse:
+      type: object
+      description: Metadados de um anexo.
+      properties:
+        contentType:
+          type: string
+          description: Tipo detectado no conteúdo.
+          example: image/png
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        ownerEntityId:
+          type: string
+          description: "Id do registro dono, depois de vinculado pelo módulo da finalidade."
+          nullable: true
+        purpose:
+          type: string
+          description: Finalidade.
+          example: hotel.logo
+        sensitive:
+          type: boolean
+          description: "Anexo sensível: cifrado no armazenamento e com cada acesso\
+            \ auditado."
+        sizeBytes:
+          type: integer
+          format: int64
+          description: "Tamanho do conteúdo original, em bytes."
+      required:
+      - contentType
+      - createdAt
+      - id
+      - purpose
+      - sensitive
+      - sizeBytes
     GenerateScheduleRequest:
       type: object
       description: Período e alcance da geração da escala.
@@ -3095,7 +3290,8 @@ components:
         logoFileId:
           type: string
           format: uuid
-          description: Id do arquivo do logotipo (enviado antes).
+          description: "Id do anexo do logotipo (finalidade `hotel.logo`, enviado\
+            \ antes)."
           nullable: true
         municipalRegistration:
           type: string

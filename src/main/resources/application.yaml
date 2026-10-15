@@ -18,6 +18,14 @@ spring:
       datetime:
         write-dates-as-timestamps: false
 
+  # Upload de anexos (multipart, módulo files): o limite acompanha o maior tamanho aceito por uma
+  # finalidade (zeny.files.max-upload-size); acima dele, 413 PAYLOAD_TOO_LARGE. O pedido inteiro
+  # tem uma folga para os outros campos do formulário.
+  servlet:
+    multipart:
+      max-file-size: ${zeny.files.max-upload-size}
+      max-request-size: 21MB
+
   # Mensagens em pt-BR (RNF-13), inclusive as de validação, qualquer que seja o Accept-Language;
   # os clientes traduzem pelo `code` dos erros.
   web:
@@ -205,6 +213,23 @@ zeny:
     jwt:
       keys: ${ZENY_JWT_KEYS}
       active-key-id: ${ZENY_JWT_ACTIVE_KEY_ID}
+  # Anexos (ARCHITECTURE §8.3 e §14, módulo files). URLs de download assinadas de curta duração (de
+  # 1 s a 15 min); o maior anexo aceito por uma finalidade (o multipart acima acompanha).
+  files:
+    download-url-ttl: PT5M
+    max-upload-size: 20MB
+    # Armazenamento compatível com S3 (D14), sem valor padrão no `prod`: sem as variáveis a
+    # aplicação não sobe. A credencial é a de um usuário de serviço com política só do bucket
+    # (criado pelo docker/storage/init-storage.sh), nunca a do root do MinIO.
+    # ZENY_STORAGE_PUBLIC_ENDPOINT é o endereço que os clientes alcançam, usado nas URLs assinadas
+    # dos anexos comuns (vazio = ZENY_STORAGE_ENDPOINT).
+    storage:
+      endpoint: ${ZENY_STORAGE_ENDPOINT}
+      public-endpoint: ${ZENY_STORAGE_PUBLIC_ENDPOINT:}
+      region: ${ZENY_STORAGE_REGION:us-east-1}
+      bucket: ${ZENY_STORAGE_BUCKET}
+      access-key: ${ZENY_STORAGE_ACCESS_KEY}
+      secret-key: ${ZENY_STORAGE_SECRET_KEY}
   # Cifragem de campo (ARCHITECTURE §8.3). Sem valor padrão em nenhum profile: sem as
   # variáveis a aplicação não sobe. ZENY_ENCRYPTION_KEYS = "id:base64,id:base64" (32 bytes
   # cada, AES-256); ZENY_ENCRYPTION_ACTIVE_KEY_ID = id da chave que cifra os valores novos.
@@ -226,6 +251,16 @@ spring:
   flyway:
     user: ${ZENY_DB_MIGRATION_USERNAME:zeny}
     password: ${ZENY_DB_MIGRATION_PASSWORD:zeny}
+
+# MinIO local em localhost:9000, com o usuário de serviço do docker/storage/init-storage.sh; valores
+# só de desenvolvimento, não são segredos (README.md).
+zeny:
+  files:
+    storage:
+      endpoint: ${ZENY_STORAGE_ENDPOINT:http://localhost:9000}
+      bucket: ${ZENY_STORAGE_BUCKET:zeny-files}
+      access-key: ${ZENY_STORAGE_ACCESS_KEY:zeny-app}
+      secret-key: ${ZENY_STORAGE_SECRET_KEY:zeny-app-dev-only}
 
 logging:
   level:

@@ -1,6 +1,10 @@
 package com.zeny.hotel.hotel.application
 
+import com.zeny.hotel.files.FileId
+import com.zeny.hotel.files.FilesApi
+import com.zeny.hotel.files.ModuleFilePurposes
 import com.zeny.hotel.hotel.HotelErrorCodes
+import com.zeny.hotel.hotel.HotelFilePurposes
 import com.zeny.hotel.hotel.HotelPermissions
 import com.zeny.hotel.hotel.HotelProfile
 import com.zeny.hotel.hotel.OperationalSettings
@@ -14,6 +18,7 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.BrazilianState
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.Cnpj
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
@@ -79,7 +84,8 @@ data class HotelCommand(
  * Configuração do hotel pela API (RF-CFG-01 a 05): consultar exige `hotel.settings.read`; editar,
  * `hotel.settings.manage`, a versão da última leitura (`If-Match`) e passa pela trilha de auditoria.
  * A data operacional é visível a qualquer usuário autenticado e não muda por aqui: só pelo
- * [HotelApiService.advanceBusinessDate].
+ * [HotelApiService.advanceBusinessDate]. Um logotipo novo precisa ser um anexo da finalidade
+ * [HotelFilePurposes.LOGO] (H8), conferido pela [FilesApi] e vinculado ao hotel.
  */
 @Service
 @Suppress("TooManyFunctions") // consulta e edição de cada parte da configuração
@@ -87,6 +93,7 @@ class HotelSettingsService(
     private val store: HotelStore,
     private val authorization: Authorization,
     private val audit: AuditContext,
+    private val files: FilesApi,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -113,12 +120,29 @@ class HotelSettingsService(
         authorization.require(HotelPermissions.SETTINGS_MANAGE)
         val hotel = store.hotel() ?: notInitialized()
         requireCurrentVersion(expectedVersion, checkNotNull(hotel.version))
+        val newLogo = command.logoFileId?.takeIf { it != hotel.logoFileId }?.let(::FileId)
+        newLogo?.let(::requireLogoFile)
         audit.track(HotelAudit.HOTEL, hotel.id.value) { hotel.auditState() }
         if (hotel.configure(command.toProfile(), clock.instant())) {
             store.flush()
             log.info("Dados do hotel alterados")
         }
+        newLogo?.let { files.attach(it, HotelFilePurposes.LOGO, hotel.id.value.toString()) }
         return view(hotel)
+    }
+
+    /**
+     * Só um logotipo novo é conferido (manter o atual não falha): precisa existir e ser da finalidade
+     * de logotipo; senão, `422 LOGO_FILE_INVALID`.
+     */
+    private fun requireLogoFile(id: FileId) {
+        val file = files.find(id)
+        if (file == null || file.purpose != HotelFilePurposes.LOGO) {
+            throw BusinessRuleException(
+                HotelErrorCodes.LOGO_FILE_INVALID,
+                "O logotipo precisa ser uma imagem enviada com a finalidade ${HotelFilePurposes.LOGO}.",
+            )
+        }
     }
 
     @Transactional(readOnly = true)
@@ -239,4 +263,7 @@ class HotelSettingsService(
 class HotelPermissionsConfiguration {
     @Bean
     fun hotelPermissions(): ModulePermissions = HotelPermissions
+
+    @Bean
+    fun hotelFilePurposes(): ModuleFilePurposes = HotelFilePurposes
 }
