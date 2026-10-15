@@ -43,6 +43,18 @@ class ModularityTest {
     }
 
     @Test
+    fun `hotel depends only on shared`() {
+        val hotel = modules.getModuleByName("hotel").orElseThrow()
+
+        hotel
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldBe
+            listOf("shared")
+    }
+
+    @Test
     fun `no module other than staff depends on iam, only on the ports of shared`() {
         val dependents =
             modules

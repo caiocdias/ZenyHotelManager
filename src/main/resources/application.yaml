@@ -47,6 +47,11 @@ spring:
       ddl-auto: validate
     properties:
       hibernate.jdbc.time_zone: UTC
+      # Datas e horários locais (LocalDate, LocalTime: data operacional, horários de check-in) vão
+      # ao driver como java.time, sem passar por java.sql.Date/Time no fuso da JVM: sem isso, o
+      # hibernate.jdbc.time_zone acima deslocaria um `time` pelo fuso da JVM (14:00 viraria 17:00
+      # com a JVM em America/Sao_Paulo). Os instantes continuam em timestamptz UTC.
+      hibernate.type.java_time_use_direct_jdbc: true
 
   # Migrações: uma pasta por módulo em db/migration/<módulo>/, versão por timestamp. O schema
   # de cada módulo é o nome da pasta e o Flyway o cria (ModuleSchemasFlywayCustomizer). O

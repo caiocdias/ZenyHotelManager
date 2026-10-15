@@ -22,6 +22,8 @@ security:
 tags:
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
+- description: Configuração do hotel e data operacional.
+  name: hotel
 - description: Informações sobre o servidor e a API.
   name: meta
 - description: Trilha de auditoria das escritas.
@@ -343,6 +345,249 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/hotel:
+    get:
+      description: "Exige `hotel.settings.read`. Antes da configuração inicial, `configured`\
+        \ é falso e só o fuso vem preenchido. O `ETag` vai no `If-Match` da ediçã\
+        o."
+      operationId: getHotel
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotelResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar os dados do hotel
+      tags:
+      - hotel
+    put:
+      description: "Exige `hotel.settings.manage` e o `If-Match`. CNPJ com dígito\
+        \ verificador errado: 400 `VALIDATION_FAILED` (campo `cnpj`, `INVALID_FORMAT`).\
+        \ Código IBGE de outra UF: 400 `INVALID_ADDRESS`. Fuso desconhecido ou de\
+        \ deslocamento fixo: 400 `INVALID_TIMEZONE`. O logotipo é o id de um arquivo\
+        \ enviado antes. Mudar o fuso não muda a data operacional."
+      operationId: updateHotel
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HotelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HotelResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar os dados do hotel
+      tags:
+      - hotel
+  /api/v1/hotel/business-date:
+    get:
+      description: "A data operacional corrente (RN-01) e o fuso do hotel, para todo\
+        \ usuário autenticado (sem permissão). Só avança no fechamento do dia."
+      operationId: getBusinessDate
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessDateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar a data operacional
+      tags:
+      - hotel
+  /api/v1/hotel/operational-settings:
+    get:
+      description: Exige `hotel.settings.read`. O `ETag` vai no `If-Match` da edição.
+      operationId: getHotelOperationalSettings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationalSettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar os parâmetros operacionais
+      tags:
+      - hotel
+    put:
+      description: "Exige `hotel.settings.manage` e o `If-Match`. Valor fora da faixa:\
+        \ 400 `OPERATIONAL_SETTING_INVALID` com o campo em `errors[]`; horário com\
+        \ segundos: 400 `TIME_NOT_WHOLE_MINUTE`."
+      operationId: updateHotelOperationalSettings
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OperationalSettingsDto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationalSettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar os parâmetros operacionais
+      tags:
+      - hotel
+  /api/v1/hotel/policies:
+    get:
+      description: Exige `hotel.settings.read`. O `ETag` vai no `If-Match` da edição.
+      operationId: getHotelPolicies
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar as políticas operacionais
+      tags:
+      - hotel
+    put:
+      description: "Troca a política inteira. Exige `hotel.settings.manage` e o `If-Match`.\
+        \ Pela Portaria MTur 28/2025 (RN-11): check-out antes do check-in, no mesmo\
+        \ dia (400 `CHECK_TIMES_INCOHERENT`); no máximo 3 horas entre eles e de janela\
+        \ de arrumação (400 `CLEANING_WINDOW_TOO_LONG`); janela que cabe entre eles\
+        \ (400 `CLEANING_WINDOW_INVALID`); early check-in antes do check-in e late\
+        \ check-out depois do check-out, com preço informado (400 `EARLY_CHECK_IN_INVALID`/`LATE_CHECK_OUT_INVALID`);\
+        \ faixas etárias contíguas de 0 à idade limite (400 `CHILD_AGES_INVALID`);\
+        \ texto das confirmações obrigatório; horários em horas e minutos, sem segundos\
+        \ (400 `TIME_NOT_WHOLE_MINUTE`)."
+      operationId: updateHotelPolicies
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PolicySettingsDto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PolicySettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar as políticas operacionais
+      tags:
+      - hotel
+  /api/v1/hotel/tax-settings:
+    get:
+      description: Exige `hotel.settings.read`. O `ETag` vai no `If-Match` da edição.
+      operationId: getHotelTaxSettings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxSettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar as taxas
+      tags:
+      - hotel
+    put:
+      description: Exige `hotel.settings.manage` e o `If-Match`. Taxa de serviço padrão
+        de 0% a 100% (400 `SERVICE_CHARGE_RATE_INVALID`); ISS de 0% a 5% (400 `ISS_RATE_INVALID`);
+        taxa de turismo nula (não cobrada) ou positiva (400 `TOURISM_FEE_INVALID`).
+      operationId: updateHotelTaxSettings
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaxSettingsDto"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaxSettingsDto"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar as taxas
+      tags:
+      - hotel
   /api/v1/meta/version:
     get:
       description: "Público, sem autenticação. A versão da API muda só com mudanç\
@@ -1198,6 +1443,79 @@ components:
         minLength: 1
         pattern: "^[\\x21-\\x7E]+$"
   schemas:
+    AddressDto:
+      type: object
+      description: Endereço no Brasil com o código IBGE do município.
+      properties:
+        city:
+          type: string
+          maxLength: 100
+          minLength: 0
+        complement:
+          type: string
+          maxLength: 100
+          minLength: 0
+          nullable: true
+        district:
+          type: string
+          maxLength: 100
+          minLength: 0
+        ibgeCityCode:
+          type: string
+          description: "Código IBGE do município (7 dígitos, os 2 primeiros da UF)."
+          example: "3550308"
+          pattern: "\\d{7}"
+        number:
+          type: string
+          maxLength: 20
+          minLength: 0
+        postalCode:
+          type: string
+          description: "CEP, com ou sem hífen; volta só com os 8 dígitos."
+          example: 01310-100
+          pattern: "\\d{5}-?\\d{3}"
+        state:
+          type: string
+          enum:
+          - RO
+          - AC
+          - AM
+          - RR
+          - PA
+          - AP
+          - TO
+          - MA
+          - PI
+          - CE
+          - RN
+          - PB
+          - PE
+          - AL
+          - SE
+          - BA
+          - MG
+          - ES
+          - RJ
+          - SP
+          - PR
+          - SC
+          - RS
+          - MS
+          - MT
+          - GO
+          - DF
+        street:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - city
+      - district
+      - ibgeCityCode
+      - number
+      - postalCode
+      - state
+      - street
     ApprovalLimitRequest:
       type: object
       description: O valor pedido de um limite da permissão.
@@ -1360,6 +1678,21 @@ components:
       - id
       - occurredAt
       - outcome
+    BusinessDateResponse:
+      type: object
+      description: A data operacional corrente do hotel.
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: Data de negócio a que lançamentos e diárias se referem (YYYY-MM-DD).
+        timezone:
+          type: string
+          description: "Fuso do hotel (IANA), onde os instantes em UTC são exibidos."
+          example: America/Sao_Paulo
+      required:
+      - businessDate
+      - timezone
     ChangePasswordRequest:
       type: object
       properties:
@@ -1378,6 +1711,25 @@ components:
       required:
       - currentPassword
       - newPassword
+    ChildAgeBandDto:
+      type: object
+      description: "Faixa etária de criança, em anos completos, inclusive nas duas\
+        \ pontas."
+      properties:
+        label:
+          type: string
+          maxLength: 50
+          minLength: 0
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - label
+      - maxAge
+      - minAge
     CreateUserRequest:
       type: object
       properties:
@@ -1524,6 +1876,27 @@ components:
           minLength: 0
       required:
       - name
+    EarlyLateDto:
+      type: object
+      description: "Early check-in ou late check-out oferecido, com o preço informado\
+        \ antes (RN-11)."
+      nullable: true
+      properties:
+        fee:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        limitTime:
+          type: string
+          format: time-local
+          description: "Early: horário mais cedo de entrada; late: horário mais tarde\
+            \ de saída."
+          example: 10:00:00
+      required:
+      - fee
+      - limitTime
     EffectivePermissionResponse:
       type: object
       description: Uma permissão efetiva do usuário corrente.
@@ -1568,6 +1941,116 @@ components:
       - code
       - field
       - message
+    HotelRequest:
+      type: object
+      description: Dados cadastrais do hotel.
+      properties:
+        address:
+          $ref: "#/components/schemas/AddressDto"
+        cadastur:
+          type: string
+          description: Número Cadastur.
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        cnpj:
+          type: string
+          description: "CNPJ (numérico ou alfanumérico), 14 caracteres sem pontuaç\
+            ão."
+          example: 12ABC34501DE35
+          pattern: "^[0-9A-Z]{12}\\d{2}$"
+        legalName:
+          type: string
+          maxLength: 200
+          minLength: 0
+        logoFileId:
+          type: string
+          format: uuid
+          description: Id do arquivo do logotipo (enviado antes).
+          nullable: true
+        municipalRegistration:
+          type: string
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        taxRegime:
+          type: string
+          enum:
+          - SIMPLES_NACIONAL
+          - LUCRO_PRESUMIDO
+          - LUCRO_REAL
+        timezone:
+          type: string
+          description: Fuso de região (IANA).
+          example: America/Sao_Paulo
+          maxLength: 64
+          minLength: 0
+        tradeName:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - address
+      - cnpj
+      - legalName
+      - taxRegime
+      - timezone
+      - tradeName
+    HotelResponse:
+      type: object
+      description: "Os dados do hotel. Antes da configuração inicial, só o fuso vem\
+        \ preenchido."
+      properties:
+        address:
+          allOf:
+          - $ref: "#/components/schemas/AddressDto"
+          nullable: true
+        cadastur:
+          type: string
+          nullable: true
+        cnpj:
+          type: string
+          description: "CNPJ (numérico ou alfanumérico), 14 caracteres sem pontuaç\
+            ão."
+          example: 12ABC34501DE35
+          nullable: true
+          pattern: "^[0-9A-Z]{12}\\d{2}$"
+        configured:
+          type: boolean
+          description: Se os dados cadastrais já foram informados.
+        id:
+          type: string
+          format: uuid
+        legalName:
+          type: string
+          nullable: true
+        logoFileId:
+          type: string
+          format: uuid
+          nullable: true
+        municipalRegistration:
+          type: string
+          nullable: true
+        taxRegime:
+          type: string
+          enum:
+          - SIMPLES_NACIONAL
+          - LUCRO_PRESUMIDO
+          - LUCRO_REAL
+          nullable: true
+        timezone:
+          type: string
+        tradeName:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - configured
+      - id
+      - timezone
+      - updatedAt
     LimitDefinitionResponse:
       type: object
       description: Um parâmetro de limite que a permissão aceita.
@@ -1696,6 +2179,33 @@ components:
       required:
       - id
       - name
+    OperationalSettingsDto:
+      type: object
+      description: Parâmetros operacionais do hotel (RF-CFG-04).
+      properties:
+        endOfDayTime:
+          type: string
+          format: time-local
+          description: "Horário do fechamento do dia, no fuso do hotel."
+          example: 03:00:00
+        lostAndFoundRetentionDays:
+          type: integer
+          format: int32
+          description: "Prazo de guarda de achados e perdidos, em dias (1 a 1825)."
+        preReservationAlertLeadHours:
+          type: integer
+          format: int32
+          description: "Antecedência do alerta de pré-reserva perto do vencimento,\
+            \ em horas."
+        preReservationExpiryHours:
+          type: integer
+          format: int32
+          description: "Validade da pré-reserva, em horas (1 a 720)."
+      required:
+      - endOfDayTime
+      - lostAndFoundRetentionDays
+      - preReservationAlertLeadHours
+      - preReservationExpiryHours
     PermissionResponse:
       type: object
       description: Uma permissão do catálogo.
@@ -1738,6 +2248,64 @@ components:
       - module
       - scopes
       - sensitive
+    PolicySettingsDto:
+      type: object
+      description: "Políticas operacionais do hotel (RF-CFG-02, Portaria MTur 28/2025)."
+      properties:
+        additionalPolicyText:
+          type: string
+          description: "Texto complementar das confirmações (cancelamento, crianç\
+            as, animais…)."
+          maxLength: 4000
+          minLength: 0
+          nullable: true
+        checkInTime:
+          type: string
+          format: time-local
+          example: 14:00:00
+        checkOutTime:
+          type: string
+          format: time-local
+          example: 12:00:00
+        childAgeBands:
+          type: array
+          description: "Faixas de 0 a childMaxAge, contíguas e em ordem; vazia se\
+            \ não diferencia."
+          items:
+            $ref: "#/components/schemas/ChildAgeBandDto"
+          maxItems: 10
+          minItems: 0
+        childMaxAge:
+          type: integer
+          format: int32
+          description: Idade (anos completos) até a qual o hóspede é criança (0 a
+            17).
+        cleaningWindowMinutes:
+          type: integer
+          format: int32
+          description: "Janela de arrumação entre o check-out e o check-in, em minutos\
+            \ (até 180)."
+        earlyCheckIn:
+          allOf:
+          - $ref: "#/components/schemas/EarlyLateDto"
+          nullable: true
+        lateCheckOut:
+          allOf:
+          - $ref: "#/components/schemas/EarlyLateDto"
+          nullable: true
+        stayPolicyText:
+          type: string
+          description: "Texto obrigatório das confirmações: regras da diária, horá\
+            rios e arrumação."
+          maxLength: 4000
+          minLength: 0
+      required:
+      - checkInTime
+      - checkOutTime
+      - childAgeBands
+      - childMaxAge
+      - cleaningWindowMinutes
+      - stayPolicyText
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
@@ -2042,6 +2610,32 @@ components:
           minItems: 0
       required:
       - roleIds
+    TaxSettingsDto:
+      type: object
+      description: Taxas do hotel (RF-CFG-03).
+      properties:
+        issRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        serviceChargeRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        tourismFeePerPersonNight:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - issRate
+      - serviceChargeRate
     TokenResponse:
       type: object
       properties:

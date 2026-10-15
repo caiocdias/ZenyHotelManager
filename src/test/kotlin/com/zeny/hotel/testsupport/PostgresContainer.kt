@@ -28,6 +28,7 @@ object PostgresContainer {
     private val INIT_SCRIPT = Path.of("docker", "postgres", "initdb", "10-create-app-role.sh")
     private const val EXECUTABLE = 0b111_101_101 // 0755
     private const val PASSWORD_BYTES = 18
+    private const val MAX_CONNECTIONS = 400
 
     /** Senha do papel da aplicação, sorteada por JVM (nunca escrita no código). */
     val appPassword: String by lazy {
@@ -43,6 +44,10 @@ object PostgresContainer {
                 "/docker-entrypoint-initdb.d/${INIT_SCRIPT.fileName}",
             ).withEnv("ZENY_DB_USERNAME", APP_USERNAME)
             .withEnv("ZENY_DB_PASSWORD", appPassword)
+            // Cada contexto Spring em cache mantém o seu pool do Hikari (até 10 conexões); com os
+            // contextos de todas as classes de teste, o padrão de 100 conexões do PostgreSQL acaba.
+            // O fsync desligado é o padrão do Testcontainers, repetido porque o comando é trocado.
+            .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=$MAX_CONNECTIONS")
             .also { it.start() }
     }
 

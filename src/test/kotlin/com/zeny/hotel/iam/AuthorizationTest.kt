@@ -180,7 +180,13 @@ class AuthorizationTest(
         adminDiscount shouldContainExactly listOf("maxPercent" to true)
 
         grantsOf(RoleTemplate.MANAGER) shouldContainExactlyInAnyOrder
-            listOf("iam.permissions.read:ALL", "iam.roles.read:ALL", "iam.users.read:ALL", "iam.sessions.manage:ALL")
+            listOf(
+                "iam.permissions.read:ALL",
+                "iam.roles.read:ALL",
+                "iam.users.read:ALL",
+                "iam.sessions.manage:ALL",
+                "hotel.settings.read:ALL",
+            )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldBe emptyList()
 
         // O administrador inicial tem a role Administrador e, com ela, todas as permissões vigentes.
