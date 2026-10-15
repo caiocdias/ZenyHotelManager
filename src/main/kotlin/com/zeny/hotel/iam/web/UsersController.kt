@@ -9,6 +9,7 @@ import com.zeny.hotel.iam.application.UserManagementService
 import com.zeny.hotel.iam.application.UserQueries
 import com.zeny.hotel.iam.application.UserSessionsService
 import com.zeny.hotel.iam.application.UserView
+import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
@@ -40,7 +41,8 @@ import java.util.UUID
 
 /**
  * Gestão de usuários pelo administrador (RF-ACS-01, 09, 10 e 12). Leitura com `iam.users.read`;
- * escrita com `iam.users.manage`; sessões de outros usuários com `iam.sessions.manage`. Usuários
+ * escrita com `iam.users.manage` (ação sensível: sem ela, `403 APPROVAL_REQUIRED` e a repetição
+ * com `X-Approval-Token`); sessões de outros usuários com `iam.sessions.manage`. Usuários
  * nunca são apagados, só desativados. As edições (`PUT`) exigem o `If-Match` da última leitura.
  */
 @ApiV1Controller
@@ -73,6 +75,7 @@ class UsersController(
     )
     @ApiResponse(responseCode = "201", description = "Usuário criado.")
     fun create(
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: CreateUserRequest,
     ): ResponseEntity<UserResponse> {
         val view =
@@ -84,6 +87,7 @@ class UsersController(
                     pin = request.pin,
                     roleIds = request.roleIds.toSet(),
                 ),
+                approvalToken,
             )
         return ResponseEntity
             .created(URI.create("/api/v1/users/${view.id}"))
@@ -114,8 +118,10 @@ class UsersController(
     fun update(
         @PathVariable id: UUID,
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: UpdateUserRequest,
-    ): ResponseEntity<UserResponse> = ok(management.rename(UserId(id), ETags.expectedVersion(ifMatch), request.name))
+    ): ResponseEntity<UserResponse> =
+        ok(management.rename(UserId(id), ETags.expectedVersion(ifMatch), request.name, approvalToken))
 
     @PutMapping("/{id}/roles")
     @Operation(
@@ -131,9 +137,10 @@ class UsersController(
     fun setRoles(
         @PathVariable id: UUID,
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: SetUserRolesRequest,
     ): ResponseEntity<UserResponse> =
-        ok(management.setRoles(UserId(id), ETags.expectedVersion(ifMatch), request.roleIds.toSet()))
+        ok(management.setRoles(UserId(id), ETags.expectedVersion(ifMatch), request.roleIds.toSet(), approvalToken))
 
     @PostMapping("/{id}/deactivate")
     @Operation(
@@ -146,7 +153,8 @@ class UsersController(
     )
     fun deactivate(
         @PathVariable id: UUID,
-    ): ResponseEntity<UserResponse> = ok(management.deactivate(UserId(id)))
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<UserResponse> = ok(management.deactivate(UserId(id), approvalToken))
 
     @PostMapping("/{id}/reactivate")
     @Operation(
@@ -158,7 +166,8 @@ class UsersController(
     )
     fun reactivate(
         @PathVariable id: UUID,
-    ): ResponseEntity<UserResponse> = ok(management.reactivate(UserId(id)))
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<UserResponse> = ok(management.reactivate(UserId(id), approvalToken))
 
     @PostMapping("/{id}/reset-password")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -173,8 +182,9 @@ class UsersController(
     @ApiResponse(responseCode = "204", description = "Senha redefinida.")
     fun resetPassword(
         @PathVariable id: UUID,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: ResetPasswordRequest,
-    ) = management.resetPassword(UserId(id), request.newPassword)
+    ) = management.resetPassword(UserId(id), request.newPassword, approvalToken)
 
     @PostMapping("/{id}/reset-pin")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -188,8 +198,9 @@ class UsersController(
     @ApiResponse(responseCode = "204", description = "PIN definido.")
     fun resetPin(
         @PathVariable id: UUID,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: ResetPinRequest,
-    ) = management.resetPin(UserId(id), request.newPin)
+    ) = management.resetPin(UserId(id), request.newPin, approvalToken)
 
     @GetMapping("/{id}/sessions")
     @Operation(

@@ -1,8 +1,10 @@
 package com.zeny.hotel.iam.application
 
+import com.zeny.hotel.iam.domain.Approval
 import com.zeny.hotel.iam.domain.DeviceSession
 import com.zeny.hotel.iam.domain.Role
 import com.zeny.hotel.iam.domain.User
+import com.zeny.hotel.shared.DeviceSessionId
 import com.zeny.hotel.shared.LimitValue
 import com.zeny.hotel.shared.PermissionDefinition
 import com.zeny.hotel.shared.PermissionScope
@@ -20,6 +22,7 @@ internal object IamAudit {
     const val SESSION = "iam.session"
     const val ROLE = "iam.role"
     const val PERMISSION = "iam.permission"
+    const val APPROVAL = "iam.approval"
 }
 
 /** Um usuário na trilha. O `updatedAt` muda em toda escrita, inclusive na troca da senha. */
@@ -32,6 +35,9 @@ internal data class UserAuditState(
     val passwordChangeRequired: Boolean,
     val failedLoginCount: Int,
     val lockedUntil: Instant?,
+    /** PIN errado seguido nas aprovações (o nome evita a máscara por "pin", que esconderia a contagem). */
+    val failedApprovalAttempts: Int,
+    val approvalsLockedUntil: Instant?,
     val updatedAt: Instant,
 )
 
@@ -45,7 +51,52 @@ internal fun User.auditState() =
         passwordChangeRequired = passwordChangeRequired,
         failedLoginCount = failedLoginCount,
         lockedUntil = lockedUntil,
+        failedApprovalAttempts = failedPinCount,
+        approvalsLockedUntil = pinLockedUntil,
         updatedAt = updatedAt,
+    )
+
+/** O uso único de uma aprovação. */
+internal data class ApprovalUse(
+    val at: Instant,
+    val sessionId: DeviceSessionId,
+)
+
+/**
+ * Uma aprovação de superior na trilha (RF-ACS-07: quem pediu, quem aprovou e o motivo), sem o
+ * token nem o hash dele. [usedAt] e [usedInSessionId] ficam nulos até o uso.
+ */
+internal data class ApprovalAuditState(
+    val action: String,
+    val permission: String,
+    val resourceRef: String,
+    val limitKey: String?,
+    val limitAmount: String?,
+    val reason: String,
+    val requesterId: String,
+    val requesterSessionId: String,
+    val approverId: String,
+    val approvedAt: Instant,
+    val expiresAt: Instant,
+    val usedAt: Instant?,
+    val usedInSessionId: String?,
+)
+
+internal fun Approval.auditState(use: ApprovalUse?) =
+    ApprovalAuditState(
+        action = binding.action,
+        permission = binding.permission.value,
+        resourceRef = binding.resourceRef,
+        limitKey = binding.limitKey,
+        limitAmount = binding.limitAmount?.toPlainString(),
+        reason = reason,
+        requesterId = requesterId.value.toString(),
+        requesterSessionId = requesterSessionId.value.toString(),
+        approverId = approverId.value.toString(),
+        approvedAt = approvedAt,
+        expiresAt = expiresAt,
+        usedAt = use?.at,
+        usedInSessionId = use?.sessionId?.value?.toString(),
     )
 
 /** Uma sessão de dispositivo na trilha, sem o refresh token. */

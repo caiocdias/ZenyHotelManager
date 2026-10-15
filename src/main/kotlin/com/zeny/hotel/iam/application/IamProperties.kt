@@ -15,6 +15,7 @@ class IamProperties(
     val accessToken: AccessToken,
     val refreshToken: RefreshToken,
     val login: Login,
+    val approval: Approval,
     val passwordHashing: PasswordHashing,
     val initialAdmin: InitialAdmin,
 ) {
@@ -48,6 +49,22 @@ class IamProperties(
 
         init {
             lockoutPolicy // valida a combinação na partida
+        }
+    }
+
+    /**
+     * Aprovação de superior (RF-ACS-07): bloqueio progressivo do PIN errado, separado do login
+     * ([LockoutPolicy]). A validade do token é fixa (2 min, `Approval.TTL`).
+     */
+    class Approval(
+        val pinMaxFailures: Int,
+        val pinLockoutBase: Duration,
+        val pinLockoutMax: Duration,
+    ) {
+        val pinLockoutPolicy: LockoutPolicy get() = LockoutPolicy(pinMaxFailures, pinLockoutBase, pinLockoutMax)
+
+        init {
+            pinLockoutPolicy // valida a combinação na partida
         }
     }
 

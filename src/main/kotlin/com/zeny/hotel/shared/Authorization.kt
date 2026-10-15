@@ -92,4 +92,29 @@ interface Authorization {
         permission: PermissionCode,
         key: String,
     ): LimitValue = require(permission).limit(key)
+
+    /**
+     * Autoriza uma ação sensível (RF-ACS-07 e 08, ARCHITECTURE §6.3): pela permissão do usuário
+     * corrente ou por uma aprovação de superior.
+     *
+     * - Com a permissão, no escopo do [SensitiveAction.resource] e com o limite cobrindo o
+     *   [SensitiveAction.limit]: [SensitiveAuthorization.ByPermission]; um token presente é
+     *   ignorado (não é consumido).
+     * - Permissão não sensível: as recusas de sempre (`403 PERMISSION_DENIED`,
+     *   `403 RESOURCE_OUT_OF_SCOPE` ou `422 LIMIT_EXCEEDED`).
+     * - Sensível, sem [approvalToken]: `403 APPROVAL_REQUIRED` ([ApprovalRequiredException]).
+     * - Sensível, com [approvalToken]: consome o token, de uso único, conferindo que é do mesmo
+     *   solicitante e sessão, da mesma ação, permissão, referência e valor de limite, que não
+     *   venceu (2 min) e que o aprovador ainda tem a permissão (escopo e limite);
+     *   [SensitiveAuthorization.ByApproval]. As recusas saem com `403` e código estável
+     *   (`APPROVAL_TOKEN_*`, `APPROVER_NOT_ALLOWED`).
+     *
+     * O consumo grava na transação corrente e marca a aprovação nas entradas de auditoria do caso
+     * de uso: chame dentro de um método `@Audited` com transação de escrita (fora dele, falha com
+     * `IllegalStateException`). Se a transação desfizer, o token volta a valer até vencer.
+     */
+    fun requireOrApproval(
+        action: SensitiveAction,
+        approvalToken: String?,
+    ): SensitiveAuthorization
 }

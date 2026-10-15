@@ -9,7 +9,9 @@ info:
     \ `Authorization: Bearer …`, e um refresh token rotativo da sessão do dispositivo,\
     \ trocado em `POST /api/v1/auth/refresh`. Um `401` com `code` `UNAUTHENTICATED`\
     \ pede um refresh; os demais códigos de `401` (credenciais, bloqueio, refresh)\
-    \ pedem um novo login."
+    \ pedem um novo login. Ação sensível sem permissão (ou acima do limite): 403 `APPROVAL_REQUIRED`;\
+    \ outro usuário aprova em `POST /api/v1/auth/approvals` e a requisição é repetida\
+    \ com `X-Approval-Token`."
   title: Zeny Hotel Manager API
   version: v1
 servers:
@@ -108,6 +110,44 @@ paths:
       summary: Consultar a trilha de auditoria
       tags:
       - audit
+  /api/v1/auth/approvals:
+    post:
+      description: "Recebe a operação recusada com 403 `APPROVAL_REQUIRED` (`action`,\
+        \ `permission`, `resourceRef` e, se houver, `limit`, copiados do problema),\
+        \ o login e o PIN de outro usuário e o motivo. Devolve o token de aprovaçã\
+        o: vale **uma vez**, por **2 min**, só para a mesma operação, pedida pelo\
+        \ mesmo usuário na mesma sessão, no cabeçalho `X-Approval-Token` da requisiç\
+        ão repetida. O aprovador precisa estar ativo e ter a permissão com limite\
+        \ para o valor pedido (403 `APPROVER_NOT_ALLOWED`) e não pode ser o próprio\
+        \ solicitante (403 `APPROVER_IS_REQUESTER`). Login inexistente, aprovador\
+        \ sem PIN ou PIN errado: 403 `APPROVAL_CREDENTIALS_INVALID`; a partir da 3ª\
+        \ falha seguida, as aprovações do aprovador ficam bloqueadas por tempo crescente\
+        \ (403 `APPROVER_LOCKED`, mesmo com o PIN certo), sem bloquear o login dele.\
+        \ Permissão que não aceita aprovação: 422 `APPROVAL_NOT_APPLICABLE`. A aprovaç\
+        ão e as recusas ficam na trilha de auditoria."
+      operationId: grantApproval
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalResponse"
+          description: Aprovação concedida.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Aprovar uma ação sensível (step-up)
+      tags:
+      - iam
   /api/v1/auth/login:
     post:
       description: "Público. Abre uma sessão no dispositivo (um novo login no mesmo\
@@ -412,6 +452,8 @@ paths:
         \ declarado ou inválido, ou permissão repetida: 400 `INVALID_GRANT`. Nome\
         \ já usado, sem diferenciar maiúsculas: 409 `ROLE_NAME_ALREADY_IN_USE`."
       operationId: createRole
+      parameters:
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -425,6 +467,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoleResponse"
           description: Role criada.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -482,6 +535,7 @@ paths:
         required: false
         schema:
           type: string
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -495,6 +549,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoleResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -517,6 +582,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       responses:
         "200":
           content:
@@ -524,6 +590,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoleResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -545,6 +622,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -558,6 +636,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoleResponse"
           description: Role criada.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -579,6 +668,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       responses:
         "200":
           content:
@@ -586,6 +676,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/RoleResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -640,6 +741,8 @@ paths:
         \ diferenciar maiúsculas: 409 `LOGIN_ALREADY_IN_USE`. As roles seguem as regras\
         \ de `PUT /users/{id}/roles`."
       operationId: createUser
+      parameters:
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -653,6 +756,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
           description: Usuário criado.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -707,6 +821,7 @@ paths:
         required: false
         schema:
           type: string
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -720,6 +835,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -743,6 +869,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       responses:
         "200":
           content:
@@ -750,6 +877,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -772,6 +910,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       responses:
         "200":
           content:
@@ -779,6 +918,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -802,6 +952,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -811,6 +962,17 @@ paths:
       responses:
         "204":
           description: Senha redefinida.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -833,6 +995,7 @@ paths:
         schema:
           type: string
           format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -842,6 +1005,17 @@ paths:
       responses:
         "204":
           description: PIN definido.
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -872,6 +1046,7 @@ paths:
         required: false
         schema:
           type: string
+      - $ref: "#/components/parameters/ApprovalToken"
       requestBody:
         content:
           application/json:
@@ -885,6 +1060,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/UserResponse"
           description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
         default:
           content:
             application/problem+json:
@@ -981,6 +1167,20 @@ components:
         enum:
         - "true"
   parameters:
+    ApprovalToken:
+      description: "Token de aprovação de superior (step-up), de `POST /api/v1/auth/approvals`,\
+        \ para repetir a requisição recusada com 403 `APPROVAL_REQUIRED`. Vale uma\
+        \ vez, por 2 min, só para a mesma ação, permissão, recurso e valor de limite,\
+        \ pedida pelo mesmo usuário na mesma sessão. Ignorado quando o usuário já\
+        \ tem a permissão. A ação concluída fica na auditoria com a aprovação (solicitante,\
+        \ aprovador e motivo)."
+      in: header
+      name: X-Approval-Token
+      required: false
+      schema:
+        type: string
+        maxLength: 200
+        minLength: 1
     IdempotencyKey:
       description: "Identificador único da operação, gerado pelo cliente (um UUID).\
         \ Repetir a mesma requisição com a mesma chave em até 24h devolve a resposta\
@@ -998,6 +1198,102 @@ components:
         minLength: 1
         pattern: "^[\\x21-\\x7E]+$"
   schemas:
+    ApprovalLimitRequest:
+      type: object
+      description: O valor pedido de um limite da permissão.
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: "Valor decimal, como no problema."
+          example: "15"
+          minLength: 1
+          pattern: "^\\d{1,14}(\\.\\d{1,4})?$"
+        key:
+          type: string
+          example: maxPercent
+          maxLength: 100
+          minLength: 0
+      required:
+      - amount
+      - key
+    ApprovalRequest:
+      type: object
+      description: Pedido de aprovação de uma ação sensível recusada com 403 `APPROVAL_REQUIRED`.
+      properties:
+        action:
+          type: string
+          description: '`action` do problema `APPROVAL_REQUIRED`.'
+          example: iam.user.deactivate
+          maxLength: 100
+          minLength: 0
+          pattern: "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+$"
+        approverLogin:
+          type: string
+          description: Login do aprovador; não diferencia maiúsculas.
+          example: joana.gerente
+          maxLength: 100
+          minLength: 0
+        approverPin:
+          type: string
+          format: password
+          description: PIN do aprovador (4 a 8 dígitos).
+          minLength: 1
+          pattern: "\\d{4,8}"
+        limit:
+          allOf:
+          - $ref: "#/components/schemas/ApprovalLimitRequest"
+          nullable: true
+        permission:
+          type: string
+          description: '`permission` do problema `APPROVAL_REQUIRED`.'
+          example: iam.users.manage
+          maxLength: 100
+          minLength: 0
+        reason:
+          type: string
+          description: "Motivo da aprovação, para a trilha de auditoria."
+          example: Cortesia da gerência
+          maxLength: 500
+          minLength: 0
+        resourceRef:
+          type: string
+          description: '`resourceRef` do problema `APPROVAL_REQUIRED`.'
+          example: iam.user:0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d
+          maxLength: 200
+          minLength: 0
+      required:
+      - action
+      - approverLogin
+      - approverPin
+      - permission
+      - reason
+      - resourceRef
+    ApprovalResponse:
+      type: object
+      description: "Aprovação concedida: o token vai no cabeçalho `X-Approval-Token`\
+        \ da requisição repetida."
+      properties:
+        approvalId:
+          type: string
+          format: uuid
+        approvalToken:
+          type: string
+          description: "Token opaco de uso único. Não guarde: use na requisição repetida,\
+            \ em até 2 min."
+        approverId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+          description: Até quando o token vale (2 min depois da aprovação).
+      required:
+      - approvalId
+      - approvalToken
+      - approverId
+      - expiresAt
     AuditEntryResponse:
       type: object
       description: Uma entrada da trilha de auditoria.
@@ -1446,15 +1742,19 @@ components:
       type: object
       description: Problema RFC 9457 (application/problem+json).
       properties:
+        action:
+          type: string
+          description: "Em `APPROVAL_REQUIRED`: a operação sensível pedida."
+          example: iam.user.deactivate
         code:
           type: string
           description: "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED,\
             \ MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, PASSWORD_CHANGE_REQUIRED,\
-            \ NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED,\
-            \ PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED,\
-            \ IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE,\
-            \ IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE.\
-            \ Cada módulo acrescenta os seus."
+            \ APPROVAL_REQUIRED, NOT_FOUND, METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT,\
+            \ PRECONDITION_FAILED, PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED,\
+            \ PRECONDITION_REQUIRED, IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID,\
+            \ IDEMPOTENCY_KEY_IN_USE, IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR,\
+            \ SERVICE_UNAVAILABLE. Cada módulo acrescenta os seus."
           example: VALIDATION_FAILED
           pattern: "^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$"
         detail:
@@ -1469,6 +1769,32 @@ components:
           type: string
           format: uri
           description: Caminho da requisição.
+        limit:
+          type: object
+          description: "Em `APPROVAL_REQUIRED` de uma ação acima do limite: a chave\
+            \ do limite e o valor pedido (texto decimal), que o aprovador precisa\
+            \ cobrir."
+          properties:
+            amount:
+              type: string
+              format: decimal
+              example: "15"
+            key:
+              type: string
+              example: maxPercent
+          required:
+          - amount
+          - key
+        permission:
+          type: string
+          description: "Em `APPROVAL_REQUIRED`: a permissão que o aprovador precisa\
+            \ ter."
+          example: iam.users.manage
+        resourceRef:
+          type: string
+          description: "Em `APPROVAL_REQUIRED`: o registro sobre o qual a operaçã\
+            o age."
+          example: iam.user:0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d
         status:
           type: integer
           format: int32

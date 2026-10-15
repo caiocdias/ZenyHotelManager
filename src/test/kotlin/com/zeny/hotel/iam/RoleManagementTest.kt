@@ -151,7 +151,7 @@ class RoleManagementTest(
                 "Sem permissão ${suffix()}",
                 emptyList(),
                 iam.asTestUser(reader),
-            ).problem(403, "PERMISSION_DENIED")
+            ).problem(403, "APPROVAL_REQUIRED") // gerir roles é sensível (E05)
         }
 
         val ids = mutableListOf<String>()

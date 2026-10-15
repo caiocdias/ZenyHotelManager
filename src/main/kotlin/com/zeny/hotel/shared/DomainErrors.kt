@@ -41,6 +41,14 @@ object ErrorCodes {
     val ACCESS_DENIED = ErrorCode("ACCESS_DENIED")
 
     /**
+     * 403: ação sensível sem a permissão (ou acima do limite) do usuário (RF-ACS-07): o problema
+     * traz `action`, `permission`, `resourceRef` e, se houver, `limit`, que o cliente leva a
+     * `POST /api/v1/auth/approvals` para obter o token de aprovação e repetir a requisição com o
+     * cabeçalho `X-Approval-Token` ([ApprovalRequiredException]).
+     */
+    val APPROVAL_REQUIRED = ErrorCode("APPROVAL_REQUIRED")
+
+    /**
      * 403: o usuário precisa trocar a senha (administrador inicial, senha provisória) antes de
      * usar qualquer endpoint além da troca de senha e do logout.
      */
@@ -162,6 +170,14 @@ abstract class DomainException protected constructor(
     cause: Throwable? = null,
 ) : RuntimeException(message, cause) {
     override val message: String get() = super.message.orEmpty()
+
+    /**
+     * Propriedades extras do problema RFC 9457, além de `code` e `errors` (como `action` e
+     * `resourceRef` do `APPROVAL_REQUIRED`). Os nomes padrão do problema (`type`, `title`,
+     * `status`, `detail`, `instance`, `code`, `errors`) são reservados e ignorados. Como a
+     * mensagem, vão para o cliente: nada de dado pessoal nem segredo.
+     */
+    open val problemProperties: Map<String, Any> get() = emptyMap()
 }
 
 /** Entrada inválida que só a aplicação detecta (400), opcionalmente com erros por campo. */

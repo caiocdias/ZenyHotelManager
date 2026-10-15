@@ -23,12 +23,14 @@ import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionScope
+import com.zeny.hotel.shared.SensitiveAction
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.Clock
+import java.util.Locale
 import java.util.UUID
 
 /** Um limite pedido numa concessão: o teto ([max]) ou sem teto ([unlimited]), exatamente um dos dois. */
@@ -62,6 +64,10 @@ data class RoleCommand(
  * sistema Administrador não é editada, desativada nem reativada (`422 SYSTEM_ROLE_IMMUTABLE`).
  * Nada é apagado: a role desativada continua, sem conceder nada. Toda escrita começa pela
  * [AuthorizationLock].
+ *
+ * Toda escrita é ação sensível (RF-ACS-08): sem `iam.roles.manage`, pede a aprovação de um
+ * superior (`403 APPROVAL_REQUIRED`) e aceita o token dela, vinculado à ação e à role
+ * (`iam.role:<id>`; na criação, `iam.role:new:<nome em minúsculas>`).
  */
 @Service
 @Suppress("LongParameterList", "TooManyFunctions") // os casos de uso da gestão de roles e os colaboradores deles
@@ -77,10 +83,13 @@ class RoleManagementService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Audited("iam.role.create")
+    @Audited(CREATE)
     @Transactional
-    fun create(command: RoleCommand): RoleView {
-        val actor = begin()
+    fun create(
+        command: RoleCommand,
+        approvalToken: String? = null,
+    ): RoleView {
+        val actor = begin(CREATE, "${IamAudit.ROLE}:new:${command.name.trim().lowercase(Locale.ROOT)}", approvalToken)
         val catalog = rules.catalog()
         val grants = parse(command.grants, catalog)
         rules.requireHeld(actor, grants, catalog)
@@ -97,15 +106,16 @@ class RoleManagementService(
      * Troca nome, descrição e concessões (as de permissões obsoletas ficam como estão). Só as
      * concessões acrescentadas ou mudadas passam pela regra de delegação.
      */
-    @Audited("iam.role.update")
+    @Audited(UPDATE)
     @Transactional
     fun update(
         roleId: UUID,
         expectedVersion: Long,
         command: RoleCommand,
+        approvalToken: String? = null,
     ): RoleView {
         val id = RoleId(roleId)
-        val actor = begin()
+        val actor = begin(UPDATE, id, approvalToken)
         val role = tracked(find(id))
         requireEditable(role)
         requireCurrentVersion(expectedVersion, checkNotNull(role.version))
@@ -127,15 +137,16 @@ class RoleManagementService(
     }
 
     /** Cria uma role nova com as concessões vigentes de outra (inclusive da role Administrador). */
-    @Audited("iam.role.duplicate")
+    @Audited(DUPLICATE)
     @Transactional
     fun duplicate(
         roleId: UUID,
         name: String,
         description: String?,
+        approvalToken: String? = null,
     ): RoleView {
         val id = RoleId(roleId)
-        val actor = begin()
+        val actor = begin(DUPLICATE, id, approvalToken)
         val source = find(id)
         val catalog = rules.catalog()
         val grants =
@@ -156,11 +167,14 @@ class RoleManagementService(
     }
 
     /** A role deixa de conceder permissão a quem a tem. Desativar de novo não muda nada. */
-    @Audited("iam.role.deactivate")
+    @Audited(DEACTIVATE)
     @Transactional
-    fun deactivate(roleId: UUID): RoleView {
+    fun deactivate(
+        roleId: UUID,
+        approvalToken: String? = null,
+    ): RoleView {
         val id = RoleId(roleId)
-        val actor = begin()
+        val actor = begin(DEACTIVATE, id, approvalToken)
         val role = tracked(find(id))
         requireEditable(role)
         role.deactivate(clock.instant())
@@ -170,11 +184,14 @@ class RoleManagementService(
     }
 
     /** As concessões da role voltam a valer: o ator precisa cobri-las. */
-    @Audited("iam.role.reactivate")
+    @Audited(REACTIVATE)
     @Transactional
-    fun reactivate(roleId: UUID): RoleView {
+    fun reactivate(
+        roleId: UUID,
+        approvalToken: String? = null,
+    ): RoleView {
         val id = RoleId(roleId)
-        val actor = begin()
+        val actor = begin(REACTIVATE, id, approvalToken)
         val role = tracked(find(id))
         requireEditable(role)
         val catalog = rules.catalog()
@@ -194,10 +211,28 @@ class RoleManagementService(
     private fun Map<RoleId, RoleGrants>.with(role: Role) =
         RolesChange(before = this, after = this + (role.id to RoleGrants(role.active, role.grantValues())))
 
-    private fun begin(): Actor {
+    private fun begin(
+        action: String,
+        id: RoleId,
+        approvalToken: String?,
+    ): Actor = begin(action, "${IamAudit.ROLE}:$id", approvalToken)
+
+    /**
+     * Trava as escritas de autorização e exige `iam.roles.manage` ou a aprovação de um superior
+     * para esta ação sobre esta role (ação sensível, RF-ACS-08). Com a aprovação, a delegação
+     * continua conferida contra o próprio ator.
+     */
+    private fun begin(
+        action: String,
+        resourceRef: String,
+        approvalToken: String?,
+    ): Actor {
         lock.acquire()
         val actor = currentActor.current()
-        authorization.require(IamPermissions.ROLES_MANAGE)
+        authorization.requireOrApproval(
+            SensitiveAction(action, IamPermissions.ROLES_MANAGE, resourceRef),
+            approvalToken,
+        )
         return actor
     }
 
@@ -280,6 +315,14 @@ class RoleManagementService(
 
     private fun nameInUse() =
         ConflictException(IamErrorCodes.ROLE_NAME_ALREADY_IN_USE, "Já existe uma role com este nome.")
+
+    private companion object {
+        const val CREATE = "iam.role.create"
+        const val UPDATE = "iam.role.update"
+        const val DUPLICATE = "iam.role.duplicate"
+        const val DEACTIVATE = "iam.role.deactivate"
+        const val REACTIVATE = "iam.role.reactivate"
+    }
 }
 
 /** Consulta de roles para a gestão (exige `iam.roles.read`). */

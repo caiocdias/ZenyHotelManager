@@ -3,7 +3,9 @@ package com.zeny.hotel.iam.application
 import com.zeny.hotel.iam.IamErrorCodes
 import com.zeny.hotel.iam.domain.EffectivePermissions
 import com.zeny.hotel.iam.domain.PermissionCatalog
+import com.zeny.hotel.shared.ApprovalRequiredException
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.GrantedPermission
 import com.zeny.hotel.shared.OwnedResource
@@ -11,6 +13,8 @@ import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionDeniedException
 import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.shared.ScopeFilter
+import com.zeny.hotel.shared.SensitiveAction
+import com.zeny.hotel.shared.SensitiveAuthorization
 import com.zeny.hotel.shared.UserId
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -61,12 +65,16 @@ class EffectivePermissionService(
 /**
  * Implementação da porta [Authorization] do `shared` com as permissões efetivas do ator corrente
  * (ARCHITECTURE §8.2). As recusas saem como `403` com código estável: `PERMISSION_DENIED` sem a
- * permissão e `RESOURCE_OUT_OF_SCOPE` com escopo `OWN` sobre registro alheio.
+ * permissão e `RESOURCE_OUT_OF_SCOPE` com escopo `OWN` sobre registro alheio. Nas ações sensíveis
+ * ([requireOrApproval], RF-ACS-07), a falta da permissão, do escopo ou do limite vira
+ * `APPROVAL_REQUIRED`, e o token de aprovação é consumido pelo [ApprovalTokenConsumer].
  */
 @Service
 class IamAuthorization(
     private val currentActor: CurrentActor,
     private val permissions: EffectivePermissionService,
+    private val catalog: PermissionStore,
+    private val approvals: ApprovalTokenConsumer,
 ) : Authorization {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -99,6 +107,52 @@ class IamAuthorization(
 
     override fun grantOrNull(permission: PermissionCode): GrantedPermission? =
         permissions.of(currentActor.current().userId).of(permission)
+
+    override fun requireOrApproval(
+        action: SensitiveAction,
+        approvalToken: String?,
+    ): SensitiveAuthorization {
+        val actor = currentActor.current()
+        val definition = catalog.activeDefinitions().firstOrNull { it.code == action.permission }
+        action.limit?.let { limit ->
+            require(definition == null || definition.limitOf(limit.key) != null) {
+                "A permissão ${action.permission} não declara o limite '${limit.key}' (${action.action})"
+            }
+        }
+        val granted = permissions.of(actor.userId).of(action.permission)
+        if (granted != null && granted.covers(action, actor.userId)) return SensitiveAuthorization.ByPermission(granted)
+        if (definition?.sensitive != true) refuseWithoutApproval(granted, action, actor.userId)
+        if (approvalToken == null) {
+            log.info("Ação {} do usuário {} pede aprovação de superior", action.action, actor.userId)
+            throw ApprovalRequiredException(action)
+        }
+        return approvals.consume(actor, action, approvalToken)
+    }
+
+    /** A recusa de uma ação não sensível: sem a permissão, fora do escopo ou acima do limite. */
+    private fun refuseWithoutApproval(
+        granted: GrantedPermission?,
+        action: SensitiveAction,
+        userId: UserId,
+    ): Nothing {
+        log.info("Permissão {} negada ao usuário {} em {}", action.permission, userId, action.action)
+        throw when {
+            granted == null -> {
+                PermissionDeniedException(IamErrorCodes.PERMISSION_DENIED, "Você não tem permissão para esta ação.")
+            }
+
+            !granted.reaches(action, userId) -> {
+                PermissionDeniedException(
+                    IamErrorCodes.RESOURCE_OUT_OF_SCOPE,
+                    "Sua permissão vale só para os registros atribuídos a você ou criados por você.",
+                )
+            }
+
+            else -> {
+                BusinessRuleException(IamErrorCodes.LIMIT_EXCEEDED, "O valor passa do seu limite para esta ação.")
+            }
+        }
+    }
 
     override fun scopeFilter(permission: PermissionCode): ScopeFilter =
         when (require(permission).scope) {

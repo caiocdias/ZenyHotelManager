@@ -23,6 +23,7 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.RoleTemplate
+import com.zeny.hotel.shared.SensitiveAction
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
@@ -63,6 +64,10 @@ object PinRules {
  * simultânea não amplia o usuário entre a conferência das regras e a gravação. As que travam o
  * usuário o travam antes das sessões dele, na mesma ordem do login. Só a senha definida aqui é
  * provisória (o usuário a troca no primeiro login); o PIN não.
+ *
+ * Toda escrita é ação sensível (RF-ACS-08): sem `iam.users.manage`, pede a aprovação de um
+ * superior (`403 APPROVAL_REQUIRED`) e aceita o token dela (`X-Approval-Token`), vinculado à ação
+ * e ao usuário alvo (`iam.user:<id>`; na criação, `iam.user:new:<login>`).
  */
 @Service
 @Suppress("LongParameterList", "TooManyFunctions") // os casos de uso da gestão e os colaboradores deles
@@ -82,12 +87,15 @@ class UserManagementService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Audited("iam.user.create")
+    @Audited(CREATE)
     @Transactional
-    fun create(command: CreateUserCommand): UserView {
+    fun create(
+        command: CreateUserCommand,
+        approvalToken: String? = null,
+    ): UserView {
         lock.acquire()
-        val actor = actor()
         val login = Logins.normalize(command.login) ?: throw invalid("login", "Login inválido.")
+        val actor = actor(CREATE, "${IamAudit.USER}:new:$login", approvalToken)
         requirePasswordRules(command.password, "password")
         command.pin?.let { requirePinRules(it, "pin") }
         val now = clock.instant()
@@ -112,14 +120,15 @@ class UserManagementService(
     }
 
     /** Edita o nome (o login não muda: identifica o usuário na auditoria). */
-    @Audited("iam.user.rename")
+    @Audited(RENAME)
     @Transactional
     fun rename(
         id: UserId,
         expectedVersion: Long,
         name: String,
+        approvalToken: String? = null,
     ): UserView {
-        val actor = actor()
+        val actor = actor(RENAME, id, approvalToken)
         val user = tracked(find(id))
         rules.requireCanManage(actor, id)
         requireCurrentVersion(expectedVersion, versionOf(user))
@@ -129,16 +138,17 @@ class UserManagementService(
     }
 
     /** Troca o conjunto de roles do usuário. */
-    @Audited("iam.user.set-roles")
+    @Audited(SET_ROLES)
     @Transactional
     fun setRoles(
         id: UserId,
         expectedVersion: Long,
         requestedRoleIds: Set<UUID>,
+        approvalToken: String? = null,
     ): UserView {
         val roleIds = requestedRoleIds.map(::RoleId).toSet()
         lock.acquire()
-        val actor = actor()
+        val actor = actor(SET_ROLES, id, approvalToken)
         val user = tracked(find(id))
         rules.requireCanManage(actor, id)
         requireCurrentVersion(expectedVersion, versionOf(user))
@@ -153,11 +163,14 @@ class UserManagementService(
     }
 
     /** Desativa o usuário e revoga todas as sessões dele (RF-ACS-10). Desativar de novo não muda nada. */
-    @Audited("iam.user.deactivate")
+    @Audited(DEACTIVATE)
     @Transactional
-    fun deactivate(id: UserId): UserView {
+    fun deactivate(
+        id: UserId,
+        approvalToken: String? = null,
+    ): UserView {
         lock.acquire()
-        val actor = actor()
+        val actor = actor(DEACTIVATE, id, approvalToken)
         val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         if (user.active && rules.isAdministrator(id)) requireAnotherActiveAdministrator()
@@ -170,11 +183,14 @@ class UserManagementService(
     }
 
     /** Reativa o usuário; as sessões revogadas não voltam (ele entra de novo). */
-    @Audited("iam.user.reactivate")
+    @Audited(REACTIVATE)
     @Transactional
-    fun reactivate(id: UserId): UserView {
+    fun reactivate(
+        id: UserId,
+        approvalToken: String? = null,
+    ): UserView {
         lock.acquire()
-        val actor = actor()
+        val actor = actor(REACTIVATE, id, approvalToken)
         val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
         rules.requireHoldsWhatUserHas(actor, id)
@@ -188,14 +204,15 @@ class UserManagementService(
      * Define uma senha provisória: o usuário a troca no próximo login, o bloqueio por tentativas
      * é zerado e todas as sessões dele caem.
      */
-    @Audited("iam.user.reset-password")
+    @Audited(RESET_PASSWORD)
     @Transactional
     fun resetPassword(
         id: UserId,
         password: String,
+        approvalToken: String? = null,
     ) {
         lock.acquire()
-        val actor = actor()
+        val actor = actor(RESET_PASSWORD, id, approvalToken)
         requirePasswordRules(password, "newPassword")
         val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
@@ -206,14 +223,15 @@ class UserManagementService(
     }
 
     /** Define o PIN de aprovação do usuário (RF-ACS-01). */
-    @Audited("iam.user.reset-pin")
+    @Audited(RESET_PIN)
     @Transactional
     fun resetPin(
         id: UserId,
         pin: String,
+        approvalToken: String? = null,
     ) {
         lock.acquire()
-        val actor = actor()
+        val actor = actor(RESET_PIN, id, approvalToken)
         requirePinRules(pin, "newPin")
         val user = tracked(findForUpdate(id))
         rules.requireCanManage(actor, id)
@@ -222,11 +240,38 @@ class UserManagementService(
         log.info("PIN do usuário {} redefinido pelo usuário {}", id, actor.userId)
     }
 
-    /** O ator corrente, com a permissão de gestão de usuários. */
-    private fun actor(): Actor {
+    /**
+     * O ator corrente, com a permissão de gestão de usuários ou com a aprovação de um superior para
+     * esta ação sobre este usuário (ação sensível, RF-ACS-08). Com a aprovação, as regras de
+     * delegação continuam conferidas contra o próprio ator: a aprovação não lhe dá permissões.
+     */
+    private fun actor(
+        action: String,
+        id: UserId,
+        approvalToken: String?,
+    ): Actor = actor(action, "${IamAudit.USER}:$id", approvalToken)
+
+    private fun actor(
+        action: String,
+        resourceRef: String,
+        approvalToken: String?,
+    ): Actor {
         val actor = currentActor.current()
-        authorization.require(IamPermissions.USERS_MANAGE)
+        authorization.requireOrApproval(
+            SensitiveAction(action, IamPermissions.USERS_MANAGE, resourceRef),
+            approvalToken,
+        )
         return actor
+    }
+
+    private companion object {
+        const val CREATE = "iam.user.create"
+        const val RENAME = "iam.user.rename"
+        const val SET_ROLES = "iam.user.set-roles"
+        const val DEACTIVATE = "iam.user.deactivate"
+        const val REACTIVATE = "iam.user.reactivate"
+        const val RESET_PASSWORD = "iam.user.reset-password"
+        const val RESET_PIN = "iam.user.reset-pin"
     }
 
     /**

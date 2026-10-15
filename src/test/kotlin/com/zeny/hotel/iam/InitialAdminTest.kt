@@ -189,6 +189,7 @@ class InitialAdminTest(
         accessToken = IamProperties.AccessToken(Duration.ofMinutes(15), "zeny-hotel-manager"),
         refreshToken = IamProperties.RefreshToken(Duration.ofDays(30)),
         login = IamProperties.Login(5, Duration.ofMinutes(1), Duration.ofHours(1)),
+        approval = IamProperties.Approval(3, Duration.ofMinutes(1), Duration.ofHours(1)),
         passwordHashing = IamProperties.PasswordHashing(1024, 1, 1),
         initialAdmin = IamProperties.InitialAdmin(login, password),
     )

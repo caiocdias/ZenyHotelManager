@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared.web
 
+import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.Cnpj
 import com.zeny.hotel.shared.Cpf
 import com.zeny.hotel.shared.DocumentNumber
@@ -31,13 +32,15 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.web.bind.annotation.RequestHeader
 import io.swagger.v3.oas.models.media.MediaType as OpenApiMediaType
 
 /**
  * Contrato OpenAPI gerado pelo springdoc (ARCHITECTURE §7, D6), versionado em
  * `api/openapi.yaml`: informações da API, os tipos de valor do kernel como `string` (como saem
  * no JSON), o problema RFC 9457 como resposta `default` de toda operação, o cabeçalho
- * `Idempotency-Key` nas operações marcadas com [Idempotent] e o access token JWT
+ * `Idempotency-Key` nas operações marcadas com [Idempotent], o `X-Approval-Token` nas que o
+ * recebem (ações sensíveis, [APPROVAL_TOKEN_HEADER]) e o access token JWT
  * (`Authorization: Bearer`) exigido por toda operação que não declare
  * `@SecurityRequirements` vazio (as públicas: login, refresh e versão).
  */
@@ -60,7 +63,9 @@ class OpenApiConfiguration {
                             "`Authorization: Bearer …`, e um refresh token rotativo da sessão do dispositivo, " +
                             "trocado em `POST /api/v1/auth/refresh`. Um `401` com `code` `UNAUTHENTICATED` pede um " +
                             "refresh; " +
-                            "os demais códigos de `401` (credenciais, bloqueio, refresh) pedem um novo login.",
+                            "os demais códigos de `401` (credenciais, bloqueio, refresh) pedem um novo login. Ação " +
+                            "sensível sem permissão (ou acima do limite): 403 `APPROVAL_REQUIRED`; outro usuário " +
+                            "aprova em `POST /api/v1/auth/approvals` e a requisição é repetida com `X-Approval-Token`.",
                     ),
             ).servers(listOf(Server().url("/").description("Este servidor")))
             .components(Components().addSecuritySchemes(BEARER_AUTH, bearerScheme()))
@@ -84,6 +89,7 @@ class OpenApiConfiguration {
                 .addSchemas(FIELD_VIOLATION, fieldViolationSchema())
                 .addSchemas(PROBLEM, problemSchema())
                 .addParameters(IDEMPOTENCY_KEY, idempotencyKeyParameter())
+                .addParameters(APPROVAL_TOKEN, approvalTokenParameter())
                 .addHeaders(IDEMPOTENT_REPLAYED, idempotentReplayedHeader())
             val problemResponse = problemResponse("Erro no formato RFC 9457, com `code` estável.")
             openApi.paths.orEmpty().values.flatMap { it.readOperations() }.forEach { operation ->
@@ -122,6 +128,49 @@ class OpenApiConfiguration {
             }
             operation
         }
+
+    /**
+     * Operações de ação sensível, que recebem o cabeçalho [APPROVAL_TOKEN_HEADER] num parâmetro
+     * `@RequestHeader`: o parâmetro passa a ser o componente comum `ApprovalToken`, com a
+     * descrição do fluxo, e a operação ganha a resposta 403 da aprovação de superior.
+     */
+    @Bean
+    fun approvalTokenOperationCustomizer(): OperationCustomizer =
+        OperationCustomizer { operation, handlerMethod ->
+            val acceptsApproval =
+                handlerMethod.methodParameters.any { parameter ->
+                    parameter.getParameterAnnotation(RequestHeader::class.java)?.let {
+                        it.name.ifEmpty { it.value }.equals(APPROVAL_TOKEN_HEADER, ignoreCase = true)
+                    } == true
+                }
+            if (acceptsApproval) {
+                operation.parameters?.removeIf { it.name.equals(APPROVAL_TOKEN_HEADER, ignoreCase = true) }
+                operation.addParametersItem(Parameter().`$ref`(ref("parameters", APPROVAL_TOKEN)))
+                operation.responses.putIfAbsent(
+                    "403",
+                    problemResponse(
+                        "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissão (ou acima do limite); o " +
+                            "problema traz `action`, `permission`, `resourceRef` e, se houver, `limit`, para " +
+                            "`POST /api/v1/auth/approvals`. Com `X-Approval-Token`: `APPROVAL_TOKEN_INVALID`, " +
+                            "`APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`, `APPROVAL_TOKEN_MISMATCH` ou " +
+                            "`APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED` e os códigos da operação.",
+                    ),
+                )
+            }
+            operation
+        }
+
+    private fun approvalTokenParameter(): Parameter =
+        HeaderParameter()
+            .name(APPROVAL_TOKEN_HEADER)
+            .required(false)
+            .description(
+                "Token de aprovação de superior (step-up), de `POST /api/v1/auth/approvals`, para repetir a " +
+                    "requisição recusada com 403 `APPROVAL_REQUIRED`. Vale uma vez, por 2 min, só para a mesma " +
+                    "ação, permissão, recurso e valor de limite, pedida pelo mesmo usuário na mesma sessão. " +
+                    "Ignorado quando o usuário já tem a permissão. A ação concluída fica na auditoria com a " +
+                    "aprovação (solicitante, aprovador e motivo).",
+            ).schema(StringSchema().minLength(1).maxLength(MAX_APPROVAL_TOKEN_LENGTH))
 
     private fun problemResponse(description: String): ApiResponse =
         ApiResponse()
@@ -179,7 +228,7 @@ class OpenApiConfiguration {
                     .description(
                         "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED, " +
                             "MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, " +
-                            "PASSWORD_CHANGE_REQUIRED, NOT_FOUND, " +
+                            "PASSWORD_CHANGE_REQUIRED, APPROVAL_REQUIRED, NOT_FOUND, " +
                             "METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE, " +
                             "UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED, " +
                             "IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE, " +
@@ -191,6 +240,30 @@ class OpenApiConfiguration {
                 ArraySchema()
                     .items(Schema<Any>().`$ref`(ref(FIELD_VIOLATION)))
                     .description("Erros por campo; presente nos erros de validação."),
+            ).addProperty(
+                "action",
+                StringSchema()
+                    .description("Em `APPROVAL_REQUIRED`: a operação sensível pedida.")
+                    .example("iam.user.deactivate"),
+            ).addProperty(
+                "permission",
+                StringSchema()
+                    .description("Em `APPROVAL_REQUIRED`: a permissão que o aprovador precisa ter.")
+                    .example("iam.users.manage"),
+            ).addProperty(
+                "resourceRef",
+                StringSchema()
+                    .description("Em `APPROVAL_REQUIRED`: o registro sobre o qual a operação age.")
+                    .example("iam.user:0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d"),
+            ).addProperty(
+                "limit",
+                ObjectSchema()
+                    .description(
+                        "Em `APPROVAL_REQUIRED` de uma ação acima do limite: a chave do limite e o valor pedido " +
+                            "(texto decimal), que o aprovador precisa cobrir.",
+                    ).addProperty("key", StringSchema().example("maxPercent"))
+                    .addProperty("amount", StringSchema().format("decimal").example("15"))
+                    .apply { required = listOf("key", "amount") },
             ).apply { required = listOf("title", "status", "code") }
 
     private fun fieldViolationSchema(): Schema<Any> =
@@ -218,6 +291,8 @@ class OpenApiConfiguration {
         const val IDEMPOTENCY_KEY = "IdempotencyKey"
         const val IDEMPOTENT_REPLAYED = "IdempotentReplayed"
         const val MAX_IDEMPOTENCY_KEY_LENGTH = 255
+        const val APPROVAL_TOKEN = "ApprovalToken"
+        const val MAX_APPROVAL_TOKEN_LENGTH = 200
 
         fun ref(schema: String) = ref("schemas", schema)
 

@@ -140,6 +140,8 @@ class DatabaseRolesTest(
         val appendOnlyTables = appendOnly.flatMap { it.tables() }
         tables shouldContainAll appendOnlyTables
         appendOnlyTables shouldContain "audit.audit_entry"
+        appendOnlyTables shouldContain "iam.approval"
+        appendOnlyTables shouldContain "iam.approval_use"
 
         assertSoftly {
             tables.forEach { table ->
@@ -198,8 +200,9 @@ class DatabaseRolesTest(
     }
 
     /**
-     * Um papel de login novo, não dono e sem atributos, com os privilégios da aplicação na trilha
-     * (`SELECT, INSERT`) e mais [extraGrant] (`%s` = o papel), e a trava ligada a ele. Removido no fim.
+     * Um papel de login novo, não dono e sem atributos, com os privilégios da aplicação nas tabelas
+     * *append-only* (`SELECT, INSERT`: a trilha e as aprovações do `iam`) e mais [extraGrant] (`%s` =
+     * o papel), e a trava ligada a ele. Removido no fim.
      */
     private fun withProbeRole(
         extraGrant: String?,
@@ -211,8 +214,10 @@ class DatabaseRolesTest(
         owner.sql("CREATE ROLE $role LOGIN PASSWORD '$password'").update()
         try {
             owner.sql("GRANT CONNECT ON DATABASE \"$database\" TO $role").update()
-            owner.sql("GRANT USAGE ON SCHEMA audit TO $role").update()
-            owner.sql("GRANT SELECT, INSERT ON audit.audit_entry TO $role").update()
+            appendOnly.flatMap { it.tables() }.forEach { table ->
+                owner.sql("GRANT USAGE ON SCHEMA ${table.substringBefore('.')} TO $role").update()
+                owner.sql("GRANT SELECT, INSERT ON $table TO $role").update()
+            }
             extraGrant?.let { owner.sql(it.replace("%s", role)).update() }
             val dataSource = DriverManagerDataSource(PostgresContainer.instance.jdbcUrl, role, password)
             block(DatabaseRoleGuard(JdbcClient.create(dataSource), flyway, appendOnly))

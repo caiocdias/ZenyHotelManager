@@ -369,7 +369,7 @@ sequenceDiagram
 - A checagem acontece na camada `application`, com `authz.require("housekeeping.task.complete", resource)`, pela porta `Authorization` do `shared`, implementada por `iam`; nenhum módulo importa `iam` para isso. Sem a permissão, `403 PERMISSION_DENIED`.
 - **Escopo `OWN`** é aplicado como filtro nas consultas (ex.: `assignee_id = :currentUser`, por `authz.scopeFilter(...)`) e como checagem de posse nos comandos (`authz.require(permissão, recurso)`; recurso alheio, `403 RESOURCE_OUT_OF_SCOPE`).
 - **Limites** (ex.: `rates.discount.maxPercent`) são lidos do contexto de autorização (`authz.limit(...)`) e validados no domínio. Uma concessão sem valor para uma chave vale teto zero.
-- **Step-up**: ver §6.3. O `Approval` é persistido e referenciado pela entrada de auditoria.
+- **Step-up**: ver §6.3. A porta `Authorization.requireOrApproval(SensitiveAction, token)` do `shared` decide: com a permissão (escopo e limite), passa; numa permissão sensível sem ela, `403 APPROVAL_REQUIRED` com `action`, `permission`, `resourceRef` e, se houver, `limit`; com o `X-Approval-Token`, consome o token na transação do caso de uso. O token vale uma vez, por 2 min, para o mesmo solicitante na mesma sessão de dispositivo e a mesma ação, permissão, recurso e valor de limite; no uso, o aprovador precisa ainda ter a permissão (escopo e limite). O PIN errado tem bloqueio progressivo próprio, separado do login. O `Approval` é persistido (*append-only*, como a trilha) e referenciado pelas entradas de auditoria da ação aprovada; as regras de delegação continuam conferidas contra o solicitante.
 
 ### 8.3 Dados e privacidade
 

@@ -6,6 +6,7 @@ import com.zeny.hotel.iam.application.Users
 import com.zeny.hotel.iam.domain.Role
 import com.zeny.hotel.iam.domain.RoleId
 import com.zeny.hotel.iam.domain.User
+import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.LimitValue
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionDefinition
@@ -80,6 +81,14 @@ class IamTestSupport(
             .sql("UPDATE iam.user_account SET active = false WHERE id = :id")
             .param("id", user.id.value)
             .update() shouldBe 1
+    }
+
+    /** Define o PIN de aprovação do usuário direto pelo repositório. */
+    fun setPin(
+        user: TestUser,
+        pin: String,
+    ) = transactions.executeWithoutResult {
+        users.findByIdForUpdate(user.id)!!.resetPin(hasher.hash(pin), clock.instant())
     }
 
     /** Role nova, ativa, com as concessões dadas. */
@@ -193,18 +202,20 @@ class IamTestSupport(
 
     fun asTestUser(user: TestUser): RequestPostProcessor = asUser(user.id.value)
 
-    /** Uma requisição à API como [auth], com corpo JSON e `If-Match` opcionais. */
+    /** Uma requisição à API como [auth], com corpo JSON, `If-Match` e token de aprovação opcionais. */
     fun call(
         method: HttpMethod,
         path: String,
         auth: RequestPostProcessor,
         body: Any? = null,
         ifMatch: String? = null,
+        approvalToken: String? = null,
     ): MockHttpServletResponse =
         mockMvc
             .request(method, path) {
                 with(auth)
                 if (ifMatch != null) header(HttpHeaders.IF_MATCH, ifMatch)
+                if (approvalToken != null) header(APPROVAL_TOKEN_HEADER, approvalToken)
                 if (body != null) {
                     contentType = MediaType.APPLICATION_JSON
                     content = jsonMapper.writeValueAsString(body)

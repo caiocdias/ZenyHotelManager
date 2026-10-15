@@ -52,7 +52,9 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
     ): ResponseEntity<Any> {
         val status = Problems.statusOf(ex.kind)
         log.debug("Erro esperado {} ({}): {}", ex.code, status.value(), ex.message)
-        return problem(Problems.of(status, ex.code, ex.message, ex.violations), request)
+        val problem = Problems.of(status, ex.code, ex.message, ex.violations)
+        Problems.addProperties(problem, ex.problemProperties)
+        return problem(problem, request)
     }
 
     @ExceptionHandler(OptimisticLockingFailureException::class, OptimisticLockException::class)

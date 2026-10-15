@@ -178,6 +178,12 @@ zeny:
       max-failures: 5
       lockout-base: PT1M
       lockout-max: PT1H
+    # Aprovação de superior (step-up): o token vale 2 min (fixo). PIN errado tem bloqueio
+    # próprio, separado do login: a partir da 3ª falha seguida, 1 min, dobrando até 1h.
+    approval:
+      pin-max-failures: 3
+      pin-lockout-base: PT1M
+      pin-lockout-max: PT1H
     # Argon2id para senha e PIN (OWASP: m=19 MiB, t=2, p=1).
     password-hashing:
       memory-kib: 19456

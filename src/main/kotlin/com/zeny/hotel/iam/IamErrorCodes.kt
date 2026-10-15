@@ -36,6 +36,45 @@ object IamErrorCodes {
     /** 403: a permissão do usuário tem escopo `OWN` e o registro é de outro usuário. */
     val RESOURCE_OUT_OF_SCOPE = ErrorCode("RESOURCE_OUT_OF_SCOPE")
 
+    /** 422: a ação pede um valor acima do limite do usuário numa permissão que não aceita aprovação. */
+    val LIMIT_EXCEEDED = ErrorCode("LIMIT_EXCEEDED")
+
+    // --- Aprovação de superior (M1 E05, RF-ACS-07) ---------------------------------------------
+    // A falta da aprovação é o `APPROVAL_REQUIRED` do `shared`.
+
+    /** 403: login do aprovador inexistente, aprovador sem PIN ou PIN errado (não se diz qual). */
+    val APPROVAL_CREDENTIALS_INVALID = ErrorCode("APPROVAL_CREDENTIALS_INVALID")
+
+    /** 403: aprovações do aprovador bloqueadas por PIN errado seguido; recusado mesmo com o PIN certo. */
+    val APPROVER_LOCKED = ErrorCode("APPROVER_LOCKED")
+
+    /** 403: o aprovador não pode ser o próprio solicitante. */
+    val APPROVER_IS_REQUESTER = ErrorCode("APPROVER_IS_REQUESTER")
+
+    /**
+     * 403: o aprovador não tem (ou não tem mais, no uso do token) a permissão, o escopo ou o limite
+     * que a ação exige, ou está desativado.
+     */
+    val APPROVER_NOT_ALLOWED = ErrorCode("APPROVER_NOT_ALLOWED")
+
+    /** 422: a permissão não existe no catálogo vigente, não é sensível ou não declara o limite pedido. */
+    val APPROVAL_NOT_APPLICABLE = ErrorCode("APPROVAL_NOT_APPLICABLE")
+
+    /** 403: token de aprovação desconhecido ou malformado. */
+    val APPROVAL_TOKEN_INVALID = ErrorCode("APPROVAL_TOKEN_INVALID")
+
+    /** 403: o token de aprovação venceu (2 min). */
+    val APPROVAL_TOKEN_EXPIRED = ErrorCode("APPROVAL_TOKEN_EXPIRED")
+
+    /** 403: o token de aprovação já foi usado (vale uma vez). */
+    val APPROVAL_TOKEN_USED = ErrorCode("APPROVAL_TOKEN_USED")
+
+    /**
+     * 403: o token de aprovação é de outra operação: outra ação, permissão, recurso ou valor de
+     * limite, outro solicitante ou outra sessão dele.
+     */
+    val APPROVAL_TOKEN_MISMATCH = ErrorCode("APPROVAL_TOKEN_MISMATCH")
+
     // --- Gestão de usuários e roles (M1 E03) ---------------------------------------------------
 
     /** 404: usuário inexistente. */

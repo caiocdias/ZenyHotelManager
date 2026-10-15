@@ -20,6 +20,9 @@ internal object Problems {
     const val CODE = "code"
     const val ERRORS = "errors"
 
+    /** Membros padrão do problema (RFC 9457) e os da convenção, que uma exceção não sobrescreve. */
+    val RESERVED = setOf("type", "title", "status", "detail", "instance", CODE, ERRORS)
+
     fun of(
         status: HttpStatusCode,
         code: ErrorCode,
@@ -31,6 +34,14 @@ internal object Problems {
             setProperty(CODE, code.value)
             if (violations.isNotEmpty()) setProperty(ERRORS, violations)
         }
+
+    /** Acrescenta propriedades extras ao problema, ignorando os nomes reservados ([RESERVED]). */
+    fun addProperties(
+        problem: ProblemDetail,
+        properties: Map<String, Any>,
+    ) {
+        properties.filterKeys { it !in RESERVED }.forEach(problem::setProperty)
+    }
 
     /** O problema genérico de um status, para erros que não vieram de uma exceção conhecida. */
     fun forStatus(status: HttpStatusCode): ProblemDetail = of(status, codeOf(status))
@@ -123,6 +134,7 @@ internal object Problems {
             ErrorCodes.INVALID_CURSOR to "Cursor de paginação inválido. Recomece da primeira página.",
             ErrorCodes.UNAUTHENTICATED to "Autentique-se para acessar este recurso.",
             ErrorCodes.ACCESS_DENIED to "Você não tem permissão para esta ação.",
+            ErrorCodes.APPROVAL_REQUIRED to "Esta ação precisa da aprovação de um superior.",
             ErrorCodes.PASSWORD_CHANGE_REQUIRED to "Troque a sua senha antes de continuar.",
             ErrorCodes.NOT_FOUND to "Recurso não encontrado.",
             ErrorCodes.METHOD_NOT_ALLOWED to "Método HTTP não suportado neste recurso.",

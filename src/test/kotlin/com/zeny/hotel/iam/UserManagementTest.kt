@@ -159,18 +159,19 @@ class UserManagementTest(
     }
 
     @Test
-    fun `managing users requires iam users manage and reading requires iam users read`() {
+    fun `managing users requires iam users manage (or an approval) and reading requires iam users read`() {
         val plain = iam.createUser()
         val reader = iam.createUserWith(TestGrant(usersRead, ALL))
         val target = createdUserId()
 
         with(iam) {
-            create(newUser("x.${suffix()}"), iam.asTestUser(plain)).problem(403, "PERMISSION_DENIED")
-            create(newUser("x.${suffix()}"), iam.asTestUser(reader)).problem(403, "PERMISSION_DENIED")
+            // Gerir usuários é ação sensível (RF-ACS-08): sem a permissão, pede aprovação de superior (E05).
+            create(newUser("x.${suffix()}"), iam.asTestUser(plain)).problem(403, "APPROVAL_REQUIRED")
+            create(newUser("x.${suffix()}"), iam.asTestUser(reader)).problem(403, "APPROVAL_REQUIRED")
             iam.call(GET, "/api/v1/users", iam.asTestUser(plain)).problem(403, "PERMISSION_DENIED")
             getUser(target, iam.asTestUser(plain)).problem(403, "PERMISSION_DENIED")
             getUser(target, iam.asTestUser(reader)).ok()
-            action(target, "deactivate", iam.asTestUser(reader)).problem(403, "PERMISSION_DENIED")
+            action(target, "deactivate", iam.asTestUser(reader)).problem(403, "APPROVAL_REQUIRED")
             getUser(UuidV7.generate(), iam.asAdmin()).problem(404, "USER_NOT_FOUND")
             action(UuidV7.generate(), "deactivate", iam.asAdmin()).problem(404, "USER_NOT_FOUND")
         }

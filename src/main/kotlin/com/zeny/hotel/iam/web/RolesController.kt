@@ -7,6 +7,7 @@ import com.zeny.hotel.iam.application.RoleCommand
 import com.zeny.hotel.iam.application.RoleManagementService
 import com.zeny.hotel.iam.application.RoleQueries
 import com.zeny.hotel.iam.application.RoleView
+import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
@@ -38,7 +39,8 @@ import java.util.UUID
 
 /**
  * Gestão de roles pelo administrador (RF-ACS-03 e 09). Leitura com `iam.roles.read`; escrita com
- * `iam.roles.manage`. Roles nunca são apagadas, só desativadas; a role de sistema Administrador
+ * `iam.roles.manage` (ação sensível: sem ela, `403 APPROVAL_REQUIRED` e a repetição com
+ * `X-Approval-Token`). Roles nunca são apagadas, só desativadas; a role de sistema Administrador
  * não muda. A edição (`PUT`) exige o `If-Match` da última leitura.
  */
 @ApiV1Controller
@@ -70,8 +72,9 @@ class RolesController(
     )
     @ApiResponse(responseCode = "201", description = "Role criada.")
     fun create(
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: RoleRequest,
-    ): ResponseEntity<RoleResponse> = created(management.create(request.toCommand()))
+    ): ResponseEntity<RoleResponse> = created(management.create(request.toCommand(), approvalToken))
 
     @GetMapping("/{id}")
     @Operation(
@@ -98,8 +101,10 @@ class RolesController(
     fun update(
         @PathVariable id: UUID,
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: RoleRequest,
-    ): ResponseEntity<RoleResponse> = ok(management.update(id, ETags.expectedVersion(ifMatch), request.toCommand()))
+    ): ResponseEntity<RoleResponse> =
+        ok(management.update(id, ETags.expectedVersion(ifMatch), request.toCommand(), approvalToken))
 
     @PostMapping("/{id}/duplicate")
     @Operation(
@@ -112,8 +117,10 @@ class RolesController(
     @ApiResponse(responseCode = "201", description = "Role criada.")
     fun duplicate(
         @PathVariable id: UUID,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @Valid @RequestBody request: DuplicateRoleRequest,
-    ): ResponseEntity<RoleResponse> = created(management.duplicate(id, request.name, request.description))
+    ): ResponseEntity<RoleResponse> =
+        created(management.duplicate(id, request.name, request.description, approvalToken))
 
     @PostMapping("/{id}/deactivate")
     @Operation(
@@ -125,7 +132,8 @@ class RolesController(
     )
     fun deactivate(
         @PathVariable id: UUID,
-    ): ResponseEntity<RoleResponse> = ok(management.deactivate(id))
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<RoleResponse> = ok(management.deactivate(id, approvalToken))
 
     @PostMapping("/{id}/reactivate")
     @Operation(
@@ -137,7 +145,8 @@ class RolesController(
     )
     fun reactivate(
         @PathVariable id: UUID,
-    ): ResponseEntity<RoleResponse> = ok(management.reactivate(id))
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<RoleResponse> = ok(management.reactivate(id, approvalToken))
 
     private fun ok(view: RoleView): ResponseEntity<RoleResponse> =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(RoleResponse.of(view))

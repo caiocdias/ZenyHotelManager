@@ -22,7 +22,7 @@ import java.time.Instant
  */
 @Entity
 @Table(name = "user_account", schema = "iam")
-@Suppress("TooManyFunctions") // operações do agregado: login, senha, PIN, roles e estado ativo
+@Suppress("TooManyFunctions") // operações do agregado: login, senha, PIN e aprovações, roles e estado ativo
 class User private constructor(
     @Id
     val id: UserId,
@@ -65,6 +65,16 @@ class User private constructor(
 
     @Column(name = "locked_until")
     var lockedUntil: Instant? = null
+        protected set
+
+    /** PIN errado seguido nas aprovações (RF-ACS-07); separado do login. */
+    @Column(name = "failed_pin_count", nullable = false)
+    var failedPinCount: Int = 0
+        protected set
+
+    /** Até quando as aprovações deste usuário ficam recusadas, mesmo com o PIN certo. */
+    @Column(name = "pin_locked_until")
+    var pinLockedUntil: Instant? = null
         protected set
 
     @Version
@@ -138,13 +148,40 @@ class User private constructor(
         updatedAt = now
     }
 
-    /** PIN novo (hash Argon2id) para as aprovações de superior (RF-ACS-01 e 07). */
+    /** PIN novo (hash Argon2id) para as aprovações de superior (RF-ACS-01 e 07); zera o bloqueio do PIN. */
     fun resetPin(
         newHash: String,
         now: Instant,
     ) {
         pinHash = newHash
+        failedPinCount = 0
+        pinLockedUntil = null
         updatedAt = now
+    }
+
+    /** Se as aprovações deste usuário estão bloqueadas em [now] por PIN errado (o login não). */
+    fun isPinLocked(now: Instant): Boolean = pinLockedUntil?.isAfter(now) == true
+
+    /**
+     * Registra um PIN errado numa aprovação e, a partir do limite da [policy], bloqueia as
+     * aprovações deste usuário por tempo crescente. Não mexe no bloqueio do login.
+     */
+    fun recordFailedPin(
+        now: Instant,
+        policy: LockoutPolicy,
+    ) {
+        failedPinCount++
+        policy.lockoutAfter(failedPinCount)?.let { pinLockedUntil = now.plus(it) }
+        updatedAt = now
+    }
+
+    /** PIN certo: zera as falhas e o bloqueio do PIN. */
+    fun recordSuccessfulPin(now: Instant) {
+        if (failedPinCount != 0 || pinLockedUntil != null) {
+            failedPinCount = 0
+            pinLockedUntil = null
+            updatedAt = now
+        }
     }
 
     /** Se o login está bloqueado em [now] (recusado mesmo com a senha certa). */
