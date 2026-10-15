@@ -9,6 +9,7 @@ import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 class PaginationTest {
@@ -17,15 +18,16 @@ class PaginationTest {
         val id = UUID.fromString("0199d6b8-1f2e-7a3b-8c4d-5e6f7a8b9c0d")
         val createdAt = Instant.parse("2026-03-10T01:30:00.123Z")
 
-        val token = PageCursor.of(createdAt.toString(), id.toString(), "a,b%c|d").encode()
+        val token = PageCursor.of(createdAt.toString(), id.toString(), "a,b%c|d", "2026-02-28").encode()
 
         token shouldMatch Regex("[A-Za-z0-9_-]+")
         token shouldNotContain id.toString()
         val decoded = PageCursor.decode(token)
-        decoded.keys shouldContainExactly listOf(createdAt.toString(), id.toString(), "a,b%c|d")
+        decoded.keys shouldContainExactly listOf(createdAt.toString(), id.toString(), "a,b%c|d", "2026-02-28")
         decoded.instant(0) shouldBe createdAt
         decoded.uuid(1) shouldBe id
         decoded.string(2) shouldBe "a,b%c|d"
+        decoded.localDate(3) shouldBe LocalDate.of(2026, 2, 28)
     }
 
     @Test
@@ -49,13 +51,15 @@ class PaginationTest {
 
     @Test
     fun `typed accessors reject keys of the wrong type or position`() {
-        val cursor = PageCursor.decode(PageCursor.of("not-a-uuid", "x").encode())
+        val cursor = PageCursor.decode(PageCursor.of("not-a-uuid", "x", "2026-02-30").encode())
 
         listOf<() -> Unit>(
             { cursor.uuid(0) },
             { cursor.instant(0) },
+            { cursor.localDate(0) },
+            { cursor.localDate(2) },
             { cursor.long(1) },
-            { cursor.string(2) },
+            { cursor.string(3) },
         ).forEach { access ->
             shouldThrow<InvalidInputException> { access() }.code shouldBe ErrorCodes.INVALID_CURSOR
         }

@@ -28,6 +28,8 @@ tags:
   name: meta
 - description: Trilha de auditoria das escritas.
   name: audit
+- description: "Setores, colaboradores, turnos e escala."
+  name: staff
 paths:
   /api/v1/audit-entries:
     get:
@@ -345,6 +347,342 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/departments:
+    get:
+      description: Em ordem de criação (os seis pré-carregados primeiro). Exige `staff.employees.read`.
+      operationId: listDepartments
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageDepartmentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar setores
+      tags:
+      - staff
+    post:
+      description: "Exige `staff.employees.manage`. Nome já usado, sem diferenciar\
+        \ maiúsculas: 409 `DEPARTMENT_NAME_ALREADY_IN_USE`."
+      operationId: createDepartment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepartmentResponse"
+          description: Setor criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um setor
+      tags:
+      - staff
+  /api/v1/departments/{id}:
+    get:
+      description: "Exige `staff.employees.read`. Inexistente: 404 `DEPARTMENT_NOT_FOUND`."
+      operationId: getDepartment
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepartmentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um setor
+      tags:
+      - staff
+    put:
+      description: "Exige `staff.employees.manage` e o `If-Match` (ausente: 428; versã\
+        o diferente: 412). A chave dos setores pré-carregados não muda. Nome já usado:\
+        \ 409 `DEPARTMENT_NAME_ALREADY_IN_USE`."
+      operationId: updateDepartment
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DepartmentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepartmentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Renomear um setor
+      tags:
+      - staff
+  /api/v1/employees:
+    get:
+      description: "Em ordem de nome, opcionalmente de um setor e só ativos ou inativos.\
+        \ Exige `staff.employees.read`."
+      operationId: listEmployees
+      parameters:
+      - description: Só os colaboradores deste setor.
+        in: query
+        name: departmentId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageEmployeeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar colaboradores
+      tags:
+      - staff
+    post:
+      description: "Exige `staff.employees.manage`. Setor inexistente: 400 `UNKNOWN_DEPARTMENT`.\
+        \ O usuário vinculado (opcional) precisa existir (400 `UNKNOWN_USER`), estar\
+        \ ativo (422 `USER_INACTIVE`) e não estar vinculado a outro colaborador (409\
+        \ `USER_ALREADY_LINKED`)."
+      operationId: createEmployee
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+          description: Colaborador cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um colaborador
+      tags:
+      - staff
+  /api/v1/employees/{id}:
+    get:
+      description: "Exige `staff.employees.read`. Inexistente: 404 `EMPLOYEE_NOT_FOUND`."
+      operationId: getEmployee
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um colaborador
+      tags:
+      - staff
+    put:
+      description: "Troca os dados e o usuário vinculado (nulo: sem vínculo). Exige\
+        \ `staff.employees.manage` e o `If-Match` (ausente: 428; versão diferente:\
+        \ 412). Um usuário novo no vínculo segue as regras do cadastro (`UNKNOWN_USER`,\
+        \ `USER_INACTIVE`, `USER_ALREADY_LINKED`)."
+      operationId: updateEmployee
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um colaborador
+      tags:
+      - staff
+  /api/v1/employees/{id}/deactivate:
+    post:
+      description: "Exige `staff.employees.manage`. Nada é apagado: o cadastro, o\
+        \ vínculo e o histórico ficam; as entradas de trabalho (turno e troca) a partir\
+        \ da data operacional saem da escala, e a geração deixa de escalá-lo. Desativar\
+        \ de novo não muda nada."
+      operationId: deactivateEmployee
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um colaborador
+      tags:
+      - staff
+  /api/v1/employees/{id}/reactivate:
+    post:
+      description: Exige `staff.employees.manage`. A próxima geração volta a escalá-lo
+        pelos padrões ativos.
+      operationId: reactivateEmployee
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um colaborador
+      tags:
+      - staff
   /api/v1/hotel:
     get:
       description: "Exige `hotel.settings.read`. Antes da configuração inicial, `configured`\
@@ -941,6 +1279,454 @@ paths:
       summary: Reativar uma role
       tags:
       - iam
+  /api/v1/schedule:
+    get:
+      description: "As entradas de `from` a `to` (no máximo 92 dias; sem `from`, a\
+        \ data operacional; sem `to`, o próprio `from`), em ordem de data, opcionalmente\
+        \ de um setor (o do turno, ou o do colaborador nas ausências) ou de um colaborador.\
+        \ Exige `staff.schedule.read`; com escopo `OWN`, só as do colaborador vinculado\
+        \ ao usuário. Período inválido: 400 `SCHEDULE_PERIOD_INVALID`."
+      operationId: listScheduleEntries
+      parameters:
+      - description: "Primeira data (YYYY-MM-DD); padrão: a data operacional."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Última data, inclusive (YYYY-MM-DD); padrão: `from`."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Só as entradas deste setor.
+        in: query
+        name: departmentId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as entradas deste colaborador.
+        in: query
+        name: employeeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageScheduleEntryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar a escala
+      tags:
+      - staff
+  /api/v1/schedule-patterns:
+    get:
+      description: "Em ordem de criação, opcionalmente de um colaborador. Exige `staff.schedule.read`;\
+        \ com escopo `OWN`, só os do colaborador vinculado ao usuário."
+      operationId: listSchedulePatterns
+      parameters:
+      - description: Só os padrões deste colaborador.
+        in: query
+        name: employeeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageSchedulePatternResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar padrões de escala
+      tags:
+      - staff
+    post:
+      description: "Exige `staff.schedule.manage`. 12x36: um dia sim, um não, a partir\
+        \ de `startsOn`; 6x1: seis dias de trabalho e um de folga, a partir de `startsOn`;\
+        \ fixo: os `weekdays` (obrigatórios só nele). Fim antes do início ou dias\
+        \ da semana incoerentes: 400 `SCHEDULE_PATTERN_INVALID`. Colaborador ou turno\
+        \ inexistente: 400 `UNKNOWN_EMPLOYEE`/`UNKNOWN_SHIFT`; colaborador desativado:\
+        \ 422 `EMPLOYEE_INACTIVE`; outro padrão ativo do colaborador no período: 409\
+        \ `SCHEDULE_PATTERN_OVERLAP`. A escala só muda ao gerar (`POST /schedule/generate`)."
+      operationId: createSchedulePattern
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSchedulePatternRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulePatternResponse"
+          description: Padrão criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um padrão de escala
+      tags:
+      - staff
+  /api/v1/schedule-patterns/{id}:
+    get:
+      description: "Exige `staff.schedule.read`. Inexistente (ou de outro colaborador,\
+        \ com escopo `OWN`): 404 `SCHEDULE_PATTERN_NOT_FOUND`."
+      operationId: getSchedulePattern
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulePatternResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um padrão de escala
+      tags:
+      - staff
+    put:
+      description: "Troca tipo, turno, período e dias da semana (o colaborador nã\
+        o muda), com as regras da criação. Exige `staff.schedule.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Padrão desativado: 422 `SCHEDULE_PATTERN_INACTIVE`.\
+        \ As entradas já geradas só mudam na próxima geração."
+      operationId: updateSchedulePattern
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SchedulePatternRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulePatternResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um padrão de escala
+      tags:
+      - staff
+  /api/v1/schedule-patterns/{id}/deactivate:
+    post:
+      description: Exige `staff.schedule.manage`. O padrão deixa de gerar entradas;
+        as que ele gerou saem na próxima geração do período. Desativar de novo não
+        muda nada.
+      operationId: deactivateSchedulePattern
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SchedulePatternResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um padrão de escala
+      tags:
+      - staff
+  /api/v1/schedule/entries:
+    post:
+      description: "Lança, em cada data de `from` a `to` (no máximo 92 dias), um turno\
+        \ (`SHIFT`), uma troca (`SWAP`), uma folga (`DAY_OFF`), uma falta (`ABSENCE`)\
+        \ ou férias (`VACATION`) do colaborador. Turno e troca exigem `shiftId`; folga,\
+        \ falta e férias não o aceitam (400 `SCHEDULE_ENTRY_INVALID`). A entrada de\
+        \ cada data, gerada ou lançada antes, passa a ser esta e a geração não a toca\
+        \ mais. Colaborador ou turno inexistente: 400 `UNKNOWN_EMPLOYEE`/`UNKNOWN_SHIFT`;\
+        \ colaborador desativado: 422 `EMPLOYEE_INACTIVE`. Exige `staff.schedule.manage`."
+      operationId: recordScheduleEntries
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordScheduleEntriesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleEntriesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Lançar atribuição ou exceção na escala
+      tags:
+      - staff
+  /api/v1/schedule/generate:
+    post:
+      description: "Para o período (no máximo 92 dias, começando na data operacional\
+        \ ou depois: 422 `SCHEDULE_PERIOD_IN_PAST`), opcionalmente só dos colaboradores\
+        \ de um setor ou de um colaborador: cria as entradas que os padrões ativos\
+        \ dos colaboradores ativos pedem, refaz as geradas que mudaram e retira as\
+        \ geradas que nenhum padrão pede mais. As lançadas à mão (atribuição, troca,\
+        \ folga, falta, férias) nunca são sobrescritas. Gerar de novo sem mudança\
+        \ não faz nada. Exige `staff.schedule.manage`."
+      operationId: generateSchedule
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateScheduleRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Gerar a escala a partir dos padrões
+      tags:
+      - staff
+  /api/v1/shifts:
+    get:
+      description: "Em ordem de criação, opcionalmente de um setor. Exige `staff.employees.read`."
+      operationId: listShifts
+      parameters:
+      - description: Só os turnos deste setor.
+        in: query
+        name: departmentId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageShiftResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar turnos
+      tags:
+      - staff
+    post:
+      description: "Exige `staff.employees.manage`. Horários em horas e minutos, no\
+        \ fuso do hotel; fim antes do início é um turno que atravessa a meia-noite\
+        \ (pertence à data em que começa). Início igual ao fim ou com segundos: 400\
+        \ `SHIFT_TIMES_INVALID`. Setor inexistente: 400 `UNKNOWN_DEPARTMENT`. Nome\
+        \ já usado no setor: 409 `SHIFT_NAME_ALREADY_IN_USE`."
+      operationId: createShift
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateShiftRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftResponse"
+          description: Turno criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um turno
+      tags:
+      - staff
+  /api/v1/shifts/{id}:
+    get:
+      description: "Exige `staff.employees.read`. Inexistente: 404 `SHIFT_NOT_FOUND`."
+      operationId: getShift
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um turno
+      tags:
+      - staff
+    put:
+      description: "Troca nome e horários (o setor não muda). Exige `staff.employees.manage`\
+        \ e o `If-Match` (ausente: 428; versão diferente: 412). As entradas da escala\
+        \ que usam o turno passam a mostrar os horários novos."
+      operationId: updateShift
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateShiftRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um turno
+      tags:
+      - staff
   /api/v1/users:
     get:
       description: "Todos os usuários, ativos e inativos, em ordem de login. Exige\
@@ -1730,6 +2516,76 @@ components:
       - label
       - maxAge
       - minAge
+    CreateSchedulePatternRequest:
+      type: object
+      description: "Um padrão de escala novo, para um colaborador."
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        endsOn:
+          type: string
+          format: date
+          nullable: true
+        kind:
+          type: string
+          enum:
+          - TWELVE_THIRTY_SIX
+          - SIX_ON_ONE_OFF
+          - FIXED
+        shiftId:
+          type: string
+          format: uuid
+        startsOn:
+          type: string
+          format: date
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+          uniqueItems: true
+      required:
+      - employeeId
+      - kind
+      - shiftId
+      - startsOn
+      - weekdays
+    CreateShiftRequest:
+      type: object
+      description: Um turno novo.
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+        end:
+          type: string
+          format: time-local
+          description: "Fim, no fuso do hotel; antes do início, termina no dia seguinte."
+          example: 19:00:00
+        name:
+          type: string
+          maxLength: 60
+          minLength: 0
+        start:
+          type: string
+          format: time-local
+          description: "Início, no fuso do hotel."
+          example: 07:00:00
+      required:
+      - departmentId
+      - end
+      - name
+      - start
     CreateUserRequest:
       type: object
       properties:
@@ -1784,6 +2640,34 @@ components:
           nullable: true
       required:
       - items
+    CursorPageDepartmentResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepartmentResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageEmployeeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePermissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -1812,6 +2696,34 @@ components:
           nullable: true
       required:
       - items
+    CursorPageScheduleEntryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleEntryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageSchedulePatternResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SchedulePatternResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageSessionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -1820,6 +2732,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SessionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageShiftResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ShiftResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -1840,6 +2766,47 @@ components:
           nullable: true
       required:
       - items
+    DepartmentRequest:
+      type: object
+      description: Nome de um setor.
+      properties:
+        name:
+          type: string
+          maxLength: 80
+          minLength: 0
+      required:
+      - name
+    DepartmentResponse:
+      type: object
+      description: Um setor.
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Chave dos seis setores pré-carregados; nula nos criados depois.
+          enum:
+          - RECEPTION
+          - HOUSEKEEPING
+          - MAINTENANCE
+          - FOOD_AND_BEVERAGE
+          - EVENTS
+          - ADMINISTRATION
+          nullable: true
+        name:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - id
+      - name
+      - updatedAt
     DeviceRequest:
       type: object
       description: Dispositivo de onde se entra.
@@ -1919,6 +2886,115 @@ components:
       - code
       - limits
       - scope
+    EmployeeRequest:
+      type: object
+      description: Dados de um colaborador.
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+          description: Setor do colaborador.
+        email:
+          type: string
+          format: email
+          description: E-mail de contato.
+          maxLength: 254
+          minLength: 0
+          nullable: true
+        name:
+          type: string
+          maxLength: 120
+          minLength: 0
+        phone:
+          type: string
+          description: Telefone de contato.
+          example: +55 11 98765-4321
+          maxLength: 30
+          minLength: 0
+          nullable: true
+          pattern: "[0-9+() -]*"
+        position:
+          type: string
+          description: Cargo.
+          maxLength: 80
+          minLength: 0
+        userId:
+          type: string
+          format: uuid
+          description: Usuário vinculado (opcional; no máximo um colaborador por usuário).
+          nullable: true
+      required:
+      - departmentId
+      - name
+      - position
+    EmployeeResponse:
+      type: object
+      description: Um colaborador.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        departmentId:
+          type: string
+          format: uuid
+        email:
+          type: string
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        position:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        userId:
+          type: string
+          format: uuid
+          description: Usuário vinculado.
+          nullable: true
+      required:
+      - active
+      - createdAt
+      - departmentId
+      - id
+      - name
+      - position
+      - updatedAt
+    EntryShiftResponse:
+      type: object
+      description: O turno de uma entrada da escala.
+      nullable: true
+      properties:
+        crossesMidnight:
+          type: boolean
+          description: Se termina no dia seguinte à data da entrada.
+        end:
+          type: string
+          format: time-local
+          example: 07:00:00
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        start:
+          type: string
+          format: time-local
+          example: 19:00:00
+      required:
+      - crossesMidnight
+      - end
+      - id
+      - name
+      - start
     FieldViolation:
       type: object
       description: Erro de um campo da requisição.
@@ -1941,6 +3017,59 @@ components:
       - code
       - field
       - message
+    GenerateScheduleRequest:
+      type: object
+      description: Período e alcance da geração da escala.
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+          description: Só os colaboradores deste setor.
+          nullable: true
+        employeeId:
+          type: string
+          format: uuid
+          description: Só este colaborador.
+          nullable: true
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+      required:
+      - from
+      - to
+    GenerationResponse:
+      type: object
+      description: O que a geração fez.
+      properties:
+        created:
+          type: integer
+          format: int32
+        from:
+          type: string
+          format: date
+        keptManual:
+          type: integer
+          format: int32
+          description: Entradas lançadas à mão que a geração deixou como estavam.
+        removed:
+          type: integer
+          format: int32
+        to:
+          type: string
+          format: date
+        updated:
+          type: integer
+          format: int32
+      required:
+      - created
+      - from
+      - keptManual
+      - removed
+      - to
+      - updated
     HotelRequest:
       type: object
       description: Dados cadastrais do hotel.
@@ -2381,6 +3510,43 @@ components:
       - code
       - status
       - title
+    RecordScheduleEntriesRequest:
+      type: object
+      description: Atribuição ou exceção a lançar em cada data do período.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date
+        kind:
+          type: string
+          enum:
+          - SHIFT
+          - SWAP
+          - DAY_OFF
+          - ABSENCE
+          - VACATION
+        note:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        shiftId:
+          type: string
+          format: uuid
+          description: "Turno, obrigatório em `SHIFT` e `SWAP` e proibido nos demais."
+          nullable: true
+        to:
+          type: string
+          format: date
+          description: "Última data, inclusive; padrão: `from`."
+          nullable: true
+      required:
+      - employeeId
+      - from
+      - kind
     RefreshRequest:
       type: object
       properties:
@@ -2546,6 +3712,175 @@ components:
       - name
       - systemRole
       - updatedAt
+    ScheduleEntriesResponse:
+      type: object
+      description: "As entradas lançadas, uma por data."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduleEntryResponse"
+      required:
+      - items
+    ScheduleEntryResponse:
+      type: object
+      description: "Uma entrada da escala: o que o colaborador faz na data."
+      properties:
+        date:
+          type: string
+          format: date
+          description: Data da entrada; um turno que atravessa a meia-noite é da data
+            em que começa.
+        departmentId:
+          type: string
+          format: uuid
+        employeeId:
+          type: string
+          format: uuid
+        employeeName:
+          type: string
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - SHIFT
+          - SWAP
+          - DAY_OFF
+          - ABSENCE
+          - VACATION
+        note:
+          type: string
+          nullable: true
+        patternId:
+          type: string
+          format: uuid
+          nullable: true
+        shift:
+          allOf:
+          - $ref: "#/components/schemas/EntryShiftResponse"
+          nullable: true
+        source:
+          type: string
+          description: "`PATTERN`: gerada por um padrão; `MANUAL`: lançada à mão,\
+            \ prevalece sobre a geração."
+          enum:
+          - PATTERN
+          - MANUAL
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - date
+      - departmentId
+      - employeeId
+      - employeeName
+      - id
+      - kind
+      - source
+      - updatedAt
+    SchedulePatternRequest:
+      type: object
+      description: A definição de um padrão de escala.
+      properties:
+        endsOn:
+          type: string
+          format: date
+          description: "Último dia, inclusive; nulo: sem fim."
+          nullable: true
+        kind:
+          type: string
+          enum:
+          - TWELVE_THIRTY_SIX
+          - SIX_ON_ONE_OFF
+          - FIXED
+        shiftId:
+          type: string
+          format: uuid
+          description: Turno em que o colaborador trabalha nos dias do padrão.
+        startsOn:
+          type: string
+          format: date
+          description: Primeiro dia do padrão (o ciclo de 12x36 e de 6x1 conta a partir
+            dele).
+        weekdays:
+          type: array
+          description: Dias da semana do padrão fixo; vazio nos outros.
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+          uniqueItems: true
+      required:
+      - kind
+      - shiftId
+      - startsOn
+      - weekdays
+    SchedulePatternResponse:
+      type: object
+      description: Um padrão de escala de um colaborador.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        employeeId:
+          type: string
+          format: uuid
+        endsOn:
+          type: string
+          format: date
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - TWELVE_THIRTY_SIX
+          - SIX_ON_ONE_OFF
+          - FIXED
+        shiftId:
+          type: string
+          format: uuid
+        startsOn:
+          type: string
+          format: date
+        updatedAt:
+          type: string
+          format: date-time
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+      required:
+      - active
+      - createdAt
+      - employeeId
+      - id
+      - kind
+      - shiftId
+      - startsOn
+      - updatedAt
+      - weekdays
     ServerVersionResponse:
       type: object
       properties:
@@ -2610,6 +3945,44 @@ components:
           minItems: 0
       required:
       - roleIds
+    ShiftResponse:
+      type: object
+      description: Um turno de um setor.
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        crossesMidnight:
+          type: boolean
+          description: Se o turno termina no dia seguinte ao início.
+        departmentId:
+          type: string
+          format: uuid
+        end:
+          type: string
+          format: time-local
+          example: 07:00:00
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        start:
+          type: string
+          format: time-local
+          example: 19:00:00
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - crossesMidnight
+      - departmentId
+      - end
+      - id
+      - name
+      - start
+      - updatedAt
     TaxSettingsDto:
       type: object
       description: Taxas do hotel (RF-CFG-03).
@@ -2677,6 +4050,28 @@ components:
       - sessionId
       - tokenType
       - userId
+    UpdateShiftRequest:
+      type: object
+      description: Nome e horários de um turno.
+      properties:
+        end:
+          type: string
+          format: time-local
+          description: "Fim, no fuso do hotel; antes do início, termina no dia seguinte."
+          example: 19:00:00
+        name:
+          type: string
+          maxLength: 60
+          minLength: 0
+        start:
+          type: string
+          format: time-local
+          description: "Início, no fuso do hotel."
+          example: 07:00:00
+      required:
+      - end
+      - name
+      - start
     UpdateUserRequest:
       type: object
       properties:

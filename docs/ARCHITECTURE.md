@@ -104,7 +104,7 @@ flowchart LR
 | `iam` | ACS | Usuários, roles, catálogo de permissões, sessões e aprovações | shared |
 | `audit` | ACS | Trilha de auditoria *append-only* | shared |
 | `hotel` | CFG | Configuração, políticas, taxas e **data operacional** | shared, files |
-| `staff` | PES | Colaboradores, setores, turnos e escala | shared, iam |
+| `staff` | PES | Colaboradores, setores, turnos e escala | shared, iam, hotel |
 | `files` | — | Anexos (S3), URLs assinadas e cifragem de sensíveis | shared |
 | `notifications` | NOT | Notificações internas, preferências e push | shared, iam |
 | `printing` | NOT | Agentes, impressoras e fila de impressão | shared, hotel |

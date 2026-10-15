@@ -1,6 +1,7 @@
 package com.zeny.hotel
 
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.modulith.core.ApplicationModules
@@ -52,6 +53,28 @@ class ModularityTest {
             .map { it.identifier.toString() }
             .toList() shouldBe
             listOf("shared")
+    }
+
+    @Test
+    fun `staff depends only on shared, iam and hotel, and only on their public APIs`() {
+        val staff = modules.getModuleByName("staff").orElseThrow()
+
+        staff
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared", "iam", "hotel")
+        // Só a raiz de iam e hotel (a API pública); verify() barra os pacotes internos.
+        val internalTypes =
+            staff
+                .getDirectDependencies(modules)
+                .stream()
+                .map { it.targetType.name }
+                .filter { it.startsWith("com.zeny.hotel.iam.") || it.startsWith("com.zeny.hotel.hotel.") }
+                .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+                .toList()
+        internalTypes shouldBe emptyList()
     }
 
     @Test

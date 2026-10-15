@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import org.springdoc.core.annotations.ParameterObject
 import java.time.Instant
+import java.time.LocalDate
 import java.time.format.DateTimeParseException
 import java.util.Base64
 import java.util.UUID
@@ -98,6 +99,9 @@ class PageCursor private constructor(
     fun uuid(index: Int): UUID = parse(index) { UUID.fromString(it).also { uuid -> require(uuid.toString() == it) } }
 
     fun instant(index: Int): Instant = parse(index, Instant::parse)
+
+    /** Uma data de negócio (`YYYY-MM-DD`), como as chaves de ordenação por data. */
+    fun localDate(index: Int): LocalDate = parse(index, LocalDate::parse)
 
     fun long(index: Int): Long = parse(index, String::toLong)
 
