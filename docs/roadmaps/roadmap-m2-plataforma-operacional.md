@@ -194,7 +194,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E04 | Tempo real (SSE) | #pendente | E02 | `GET /api/v1/stream` com tópicos, filtro por permissão, `Last-Event-ID` e tópico `rooms` |
+| E04 | Tempo real (SSE) | #concluida | E02 | `GET /api/v1/stream` com tópicos, filtro por permissão, `Last-Event-ID` e tópico `rooms` |
 | E05 | Sincronização offline | #pendente | E02 | `GET /sync/changes` por cursor e `POST /sync/commands` idempotente, com `rooms` como primeira fonte |
 | E12 | Limite de tentativas e arquivamento do outbox | #pendente | — | Backoff, abandono com alerta e expurgo das publicações concluídas |
 
@@ -639,7 +639,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E04 — Tempo real (SSE) — #pendente
+## E04 — Tempo real (SSE) — #concluida
 
 **Objetivo:** implementar em `shared` o canal de tempo real da ARCHITECTURE §10: `GET /api/v1/stream?topics=…` por SSE, eventos com payload mínimo filtrados por permissão e escopo do usuário, reconexão com `Last-Event-ID` a partir de um buffer circular e `reset` quando o ID saiu do buffer; e registrar o tópico `rooms`, alimentado pelas mudanças de status.
 
@@ -699,13 +699,13 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Um cliente em `GET /api/v1/stream?topics=rooms` recebe a mudança de status de uma UH em menos de 2 s (teste com cliente SSE real).
-- [ ] Inscrição num tópico sem a permissão → `403 PERMISSION_DENIED`; tópico desconhecido → `400` com `code` estável; com escopo `OWN`, o cliente só recebe eventos dos próprios registros.
-- [ ] Reconexão com `Last-Event-ID` dentro do buffer entrega os eventos perdidos na ordem; fora do buffer, o cliente recebe `reset`.
-- [ ] Mudança feita numa transação revertida não gera evento.
-- [ ] O payload contém só `type`, `id` e `version`.
-- [ ] Revogar a sessão (ou desativar o usuário) encerra a conexão SSE dela; a conexão também termina no `exp` do access token.
-- [ ] `CLAUDE.md` documenta como registrar um tópico; `ApplicationModules.verify()` passa sem `shared` depender de módulos; contrato regenerado; build e oasdiff passam.
+- [x] Um cliente em `GET /api/v1/stream?topics=rooms` recebe a mudança de status de uma UH em menos de 2 s (teste com cliente SSE real).
+- [x] Inscrição num tópico sem a permissão → `403 PERMISSION_DENIED`; tópico desconhecido → `400` com `code` estável; com escopo `OWN`, o cliente só recebe eventos dos próprios registros.
+- [x] Reconexão com `Last-Event-ID` dentro do buffer entrega os eventos perdidos na ordem; fora do buffer, o cliente recebe `reset`.
+- [x] Mudança feita numa transação revertida não gera evento.
+- [x] O payload contém só `type`, `id` e `version`.
+- [x] Revogar a sessão (ou desativar o usuário) encerra a conexão SSE dela; a conexão também termina no `exp` do access token.
+- [x] `CLAUDE.md` documenta como registrar um tópico; `ApplicationModules.verify()` passa sem `shared` depender de módulos; contrato regenerado; build e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -722,14 +722,56 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
-
----
+- Snapshot inicial: `a7a8575000f322bb5cb8db63736a25f2673992c6` (recebido do orquestrador; `HEAD` `7c9773a`, árvore limpa). Snapshot ao fim da implementação, antes deste handoff: `7d98a6532cbe35d16287eaaa9d52f06e4dfd596b`. Preparação: E02 `#concluida`; o código bate com o handoff dela (`RoomStatusChanger` publica `RoomStatusChanged` com `version`, `RoomsPermissions.STATUS_READ`, `RoomsEvents.kt`), e a E03 também está concluída (`OutOfOrderOperations.publish`).
+- Investigação feita pela própria sessão (adendo do orquestrador): ARCHITECTURE §10 e D10 (SSE por tópico, payload `type`/`id`/`version`, filtro por permissão e escopo, `Last-Event-ID` com buffer circular e `reset`, broadcaster em processo, `LISTEN/NOTIFY` só com várias instâncias), RNF-04 (até 2 s); `SseEmitter` com tempo limite explícito (sem ele vale o do contêiner), envio de outra thread, `complete()` disparando o despacho `ASYNC` pela cadeia de filtros (o `AuthorizationFilter` roda em todo tipo de despacho) e o *graceful shutdown* padrão do Boot, que esperaria as conexões longas; revogações de sessão no `iam`: `SessionService.logout`/`revoke`, `UserSessionsService.revoke`, `AuthenticationService.login` (mesmo dispositivo) e `changePassword`, `TokenRefreshService.refresh` (usuário desativado e reuso) e `UserManagementService.revokeAllSessions` (desativação e reset de senha).
+- Arquivos alterados:
+  - novos: `shared/Realtime.kt` (`RealtimeTopic`, `RealtimeMessage`, porta `RealtimePublisher`); `shared/application/realtime/RealtimeStreams.kt` (`RealtimeProperties`, quadros, `StreamSink`, `StreamSubscription`), `RealtimeHub.kt` (broadcaster, `SmartLifecycle`), `RealtimeHistory.kt` (sequência, época e buffers) e `StreamService.kt` (inscrição); `shared/web/StreamController.kt` (`GET /api/v1/stream`); `shared/infrastructure/realtime/RealtimeMetrics.kt` (`zeny_realtime_connections`); `iam/application/SessionRevocations.kt`; `rooms/RoomsRealtime.kt`; testes `realtime/RealtimeStreamTest.kt` (13), `iam/SessionRevocationEventsTest.kt` (5), `testsupport/SseTestClient.kt` e `src/test/kotlin/realtimeexample/RealtimeExample.kt` (tópico só de teste com `OWN`);
+  - alterados: `shared/Actors.kt` (porta `DeviceSessionStatus`, evento `DeviceSessionsRevoked`), `DomainErrors.kt` (`UNKNOWN_STREAM_TOPIC`), `SharedModule.kt` (KDoc), `shared/web/SecurityConfiguration.kt` (libera o despacho `ASYNC`); `iam/application/Sessions.kt`, `Authentication.kt`, `TokenRefreshService.kt`, `UserManagement.kt` (revogação só pela `SessionRevocations`), `iam/infrastructure/Persistence.kt` (`JdbcDeviceSessionStatus`); `rooms/application/RoomStatusService.kt` e `OutOfOrderService.kt` (publicam no tópico), `RoomsRegistry.kt` (bean do tópico); `application.yaml` (`zeny.realtime.*`); `docker/caddy/Caddyfile` (`/api/v1/stream` com `flush_interval -1`); `api/openapi.yaml` (+45 linhas, só acréscimos: `GET /api/v1/stream` e a tag `stream`); `CLAUDE.md` ("Estado atual", nova subseção "Tempo real", ator corrente, autenticação no `iam`, `rooms`, compose e métricas); este roadmap.
+- Decisões (adotadas como a opção mais conservadora pelo implementador; **confirmadas pelo usuário em 2026-10-15**, numa entrevista do orquestrador: 1, 2, 4 e 5 com a opção recomendada; a 3 é a própria H8, já confirmada):
+  1. Protocolo: cada mensagem é um evento SSE com `event: <tópico>`, `id: <época>-<sequência>` (sequência global crescente entre os tópicos; época de 12 dígitos hexadecimais sorteada a cada boot) e `data` JSON com só `type`, `id` e `version`. Toda conexão começa por `event: ready` (sem `Last-Event-ID`, ou depois da reposição) ou `event: reset` (id de outro boot, ilegível, à frente da posição ou anterior a uma mensagem que já saiu do buffer de algum tópico inscrito), ambos com `data: {}` e a posição corrente no `id`, para o cliente sempre ter de onde reconectar. *Heartbeat* como comentário `: heartbeat`.
+  2. Limite de 3 conexões por sessão (`zeny.realtime.max-connections-per-session`): a nova encerra a mais antiga (o cliente que reconecta depois de perder a rede não espera a velha morrer), em vez de recusar a nova. Sem limite global.
+  3. `DeviceSessionsRevoked(userId, sessionIds)` (UUIDs) é publicado pelo `iam` com `ApplicationEventPublisher` e escutado pelo hub com `@EventListener` comum, que registra a sincronização da transação e encerra as conexões no `afterCommit`: **sem outbox** (o efeito é só em memória; não entra em `shared.event_publication` nem no reenvio). Toda revogação passa pela `SessionRevocations` (um evento por chamada que revoga algo; sessão já revogada não entra), e o `SessionRevocationEventsTest` barra com ArchUnit outro chamador de `DeviceSession.revoke`.
+  4. Além do H8: a inscrição consulta a porta `DeviceSessionStatus` (implementada pelo `iam`) e recusa sessão revogada com `401 UNAUTHENTICATED`, porque o access token dela ainda vale até 15 min e o cliente reconectaria na hora. Um conjunto em memória das sessões revogadas nos últimos 10 min fecha a corrida entre a consulta e o registro da conexão.
+  5. O tópico `rooms` carrega também `rooms.out-of-order` (`id` = o período, `version` = a versão dele) ao abrir, alterar e liberar OOO/OOS, porque a sobreposição e a prontidão do painel mudam sem mudar a versão da UH; `rooms.room-status` leva `id` = a UH e `version` = a versão dela (o `ETag` do status). Mudanças de cadastro e observações da governança não vão ao canal.
+  6. Publicar fora de uma transação de escrita falha (`IllegalStateException`), como a trilha de auditoria; tópico não registrado, `IllegalArgumentException`. O boot recusa tópico repetido ou com permissão que nenhum `ModulePermissions` declara.
+  7. Ordem das recusas da inscrição: sem tópico `400 VALIDATION_FAILED` (campo `topics`), tópico desconhecido `400 UNKNOWN_STREAM_TOPIC` (código novo no catálogo comum `ErrorCodes`), sessão revogada `401`, sem permissão `403 PERMISSION_DENIED`. O problema sai em `application/problem+json` mesmo com `Accept: text/event-stream` (conferido no teste).
+  8. Envio por conexão numa fila própria esvaziada por *virtual thread*: quem publica (no commit de uma requisição) nunca espera um cliente lento; fila acima de `buffer-size × tópicos + 64` quadros encerra a conexão (o cliente volta com o `Last-Event-ID`). O encerramento (`complete()`) também roda numa *virtual thread*.
+  9. O hub é um `SmartLifecycle` (fase padrão, para antes do *graceful shutdown* do Tomcat): na parada encerra as conexões, sem esperar os 30 s do *graceful shutdown*; no `start` recria os executores, porque o cache de contextos dos testes do Spring 7 pausa e retoma contextos (a primeira versão quebrou 17 classes de teste por isso).
+  10. A segurança passa a liberar o despacho `DispatcherType.ASYNC` (o fim da resposta assíncrona, quando o servidor encerra o stream), como já liberava o `ERROR`: a requisição original já passou pela autorização, e o token pode ter vencido desde então.
+  11. Tempo limite do `SseEmitter` = até o `exp` do token + 30 s (o canal encerra no `exp`, por um agendamento por conexão; o *heartbeat* também fecha a que passou do `exp`). Padrões: buffer de 1000 mensagens por tópico, *heartbeat* de 15 s.
+  12. O Caddy já não bufferiza `text/event-stream`; a rota `/api/v1/stream` ganhou `flush_interval -1` explícito, sem tempo limite para a conexão longa.
+- Validações executadas (OpenJDK 25, Docker 29.1.3):
+  - Testes escritos antes da implementação (não compilavam sem a API pública). Primeira execução de `RealtimeStreamTest` + `SessionRevocationEventsTest`: os 13 do canal passaram; os 5 do `iam` falharam por injetar `ApplicationEvents` no construtor (corrigido para campo).
+  - Prova de que os testes pegam a regressão (mutação temporária no `RealtimeHub`, revertida): despachar sem esperar o commit, aceitar `OWN` para qualquer dono, tirar o `@EventListener` da revogação e o conjunto de sessões revogadas → 4 falhas (`with the OWN scope…`, `nothing is sent before the commit…`, `revoking a session closes…`, `deactivating the user closes…`). Depois disso, o teste de revogação ganhou o caso da sessão revogada por SQL direto (sem evento), que só a porta `DeviceSessionStatus` recusa.
+  - `./gradlew ktlintFormat` e `./gradlew lint` → ajustes (`TooManyFunctions` no hub: extraído o `RealtimeHistory` e suprimido com justificativa; `ReturnCount`, complexidade do cliente de teste, `ImplicitDefaultLocale`, `LongParameterList` e `VarCouldBeVal` nos testes) → sem problemas.
+  - `./gradlew updateOpenApi` → `api/openapi.yaml` +45/−0.
+  - Primeiro `./gradlew build` → 17 classes de teste com `initializationError` (`Failed to start bean 'realtimeHub'`: `RejectedExecutionException` ao retomar um contexto pausado pelo cache); corrigido (decisão 9). Segundo `./gradlew build` → `BUILD SUCCESSFUL in 3m 22s`: 485 testes, 0 falhas, 0 ignorados (`RealtimeStreamTest` 13/13 em 15 s, `SessionRevocationEventsTest` 5/5); `checkOpenApi`, `detekt*`, `ktlint*Check` e `koverVerify` passaram; `ModularityTest` passou sem `shared` depender de módulo.
+  - `.github/scripts/check-api-breaking.sh` → "No breaking changes to report… Nenhuma mudança incompatível (nível ERR) em /api/v1." contra `7c9773a66675` (merge-base com `origin/main`), antes e depois da última correção.
+  - Lacuna apontada pelo verificador (reposição sem o filtro de escopo passava): novo teste `an OWN subscriber reconnecting with Last-Event-ID gets only its own missed messages, in order` no `RealtimeStreamTest`. Com a mutação `missed?.filter(connection::receives)?.map` → `missed?.map` (`RealtimeHub.kt:208`), só ele falha (14 testes, 1 falha); revertida, passa. `./gradlew build` em seguida → `BUILD SUCCESSFUL in 3m 46s`, 486 testes, 0 falhas.
+  - Inspeção manual pelo proxy do compose (projeto isolado `-p zeny-e04`, `--env-file` no scratchpad com segredos sorteados, porta 8089; `down -v` no fim e o arquivo de variáveis apagado): `curl -N` em `http://localhost:8089/api/v1/stream?topics=rooms` recebeu `ready`, a mudança de governança (`rooms.room-status`, versão 1 e depois 2) cerca de 30 ms depois do `POST` e dois `: heartbeat` em 30 s sem corte; `Last-Event-ID` do `ready` repôs as duas mensagens e o `ready`; `Last-Event-ID: outroboot-5` recebeu `reset`; tópico desconhecido `400 application/problem+json`; o logout encerrou as duas conexões abertas e a reconexão com o mesmo token recebeu `401`; nenhum WARN/ERROR no log da `api`. Efeito colateral: o `up --build` regravou a tag local `zeny-hotel-manager:dev` com esta árvore.
+- Critérios de aceite (evidência para o verificador):
+  - menos de 2 s — `a subscriber of rooms receives a status change in under 2 seconds…` (mede o tempo e confere as chaves exatas do JSON);
+  - `403`/`400`/`OWN` — `subscribing needs a token, known topics and the permission of each one`, `with the OWN scope the subscriber only receives…`;
+  - `Last-Event-ID` e `reset` — `a reconnection with Last-Event-ID replays the missed events in order` e `a Last-Event-ID that left the buffer, from another boot or malformed receives a reset`;
+  - rollback e antes do commit — `nothing is sent before the commit, and a rolled back transaction sends nothing` (inclusive a mudança de status da UH numa transação revertida);
+  - payload — o primeiro e `the rooms topic also carries out-of-order periods…` (só `type`, `id`, `version`);
+  - revogação, desativação e `exp` — `revoking a session closes its connections…`, `deactivating the user closes all of its connections`, `the connection ends when the access token expires`, e o `SessionRevocationEventsTest` para cada ponto de revogação do `iam`;
+  - vazamento — `connections closed by the client are released` (métrica volta a zero) e `a session keeps at most the configured connections, closing the oldest`;
+  - documentação e módulos — `CLAUDE.md` (subseção "Tempo real") e `ModularityTest`.
+- Parecer do verificador: **APROVADO** (verificador independente, 2026-10-15; snapshot verificado `6223194d245190e44180716528d2fd9d6dca6500`). Os 7 critérios aprovados com evidência: `RealtimeStreamTest` 13/13, `SessionRevocationEventsTest` 5/5, `ModularityTest` 9/9, `./gradlew build` com 485 testes e 0 falhas, oasdiff sem `ERR` (base `7c9773a66675`) e inspeção pelo proxy num compose isolado (`zeny-e04v`, `down -v`): evento cerca de 60 ms depois da mudança, *heartbeat* a cada 15 s, reposição e `reset`, 400/401, logout fechando o stream, métrica de 3 para 0 conexões. Nenhum problema grave.
+  - Médio, **M1**: a reposição por `Last-Event-ID` com escopo `OWN` não tem teste. A mutação que tira o filtro em `RealtimeHub.kt:208` (`missed?.filter(connection::receives)`) passou no `RealtimeStreamTest`. O código está certo, mas falta um caso de reconexão de assinante `OWN`; corrija antes do commit.
+  - Baixos:
+    - **B1**: nenhum teste prova que uma revogação desfeita não fecha as conexões; está correto por inspeção.
+    - **B2**: o caminho `USER_DISABLED` do `TokenRefreshService.kt:53` não tem teste de evento próprio; só a regra ArchUnit o cobre.
+    - **B3**: `dispatcherTypeMatchers(ASYNC).permitAll()` vale para todas as rotas, não só para o stream.
+    - **B4**: o limite é só por sessão, sem limite por usuário nem global.
+    - **B5**: o tópico `rooms` entrega id e versão dos períodos OOO/OOS a quem tem `rooms.status.read` sem `rooms.outoforder.read`; aceitável, porque o painel já mostra isso ao mesmo público.
+  - As decisões 1 a 5 foram confirmadas pelo usuário em 2026-10-15 (protocolo `ready`/`reset` e formato do id, 3 conexões por sessão encerrando a mais antiga, 401 na inscrição de sessão revogada, `rooms.out-of-order` no tópico `rooms`).
+- Notas para a próxima etapa:
+  - E09 (notificações): registrar o tópico `notifications` com uma permissão de leitura com `OWN` e publicar com `owners = setOf(destinatário)`; o `DeviceSessionsRevoked` também serve para não mandar push a sessão revogada (escutar com `@ApplicationModuleListener` passaria a gravar no outbox: o evento já usa UUIDs por isso).
+  - M5/M6/M8 (`tasks`, `tabs`, `production`, agente de impressão): mesmo padrão do `rooms` (`RoomsRealtime` + bean na `@Configuration` das permissões + `publish` na transação, só quando algo mudou).
+  - Permissão retirada só vale na reconexão (até o `exp`, 15 min), como decidido no H8.
+  - Com mais de uma instância, o broadcaster precisa de `LISTEN/NOTIFY` (ARCHITECTURE §10); hoje o reinício responde `reset` a todos.
 
 ## E05 — Sincronização offline — #pendente
 

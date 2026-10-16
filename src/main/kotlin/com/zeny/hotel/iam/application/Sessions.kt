@@ -40,6 +40,7 @@ data class SessionView(
 @Service
 class SessionService(
     private val sessions: DeviceSessions,
+    private val revocations: SessionRevocations,
     private val directory: SessionDirectory,
     private val audit: AuditContext,
     private val clock: Clock,
@@ -56,7 +57,7 @@ class SessionService(
             return
         }
         audit.track(IamAudit.SESSION, session.id) { session.auditState() }
-        session.revoke(SessionRevocationReason.LOGOUT, clock.instant())
+        revocations.revoke(session, SessionRevocationReason.LOGOUT, clock.instant())
         log.info("Logout")
     }
 
@@ -84,7 +85,7 @@ class SessionService(
     ) {
         val session = sessionOf(sessions, actor.userId, sessionId)
         audit.track(IamAudit.SESSION, session.id) { session.auditState() }
-        session.revoke(SessionRevocationReason.REVOKED_BY_USER, clock.instant())
+        revocations.revoke(session, SessionRevocationReason.REVOKED_BY_USER, clock.instant())
         log.info("Sessão {} revogada pelo usuário", session.id)
     }
 }
@@ -99,6 +100,7 @@ class SessionService(
 class UserSessionsService(
     private val users: Users,
     private val sessions: DeviceSessions,
+    private val revocations: SessionRevocations,
     private val directory: SessionDirectory,
     private val rules: DelegationRules,
     private val authorization: Authorization,
@@ -128,7 +130,7 @@ class UserSessionsService(
         val actor = authorize(userId)
         val session = sessionOf(sessions, userId, sessionId)
         audit.track(IamAudit.SESSION, session.id) { session.auditState() }
-        session.revoke(SessionRevocationReason.REVOKED_BY_ADMINISTRATOR, clock.instant())
+        revocations.revoke(session, SessionRevocationReason.REVOKED_BY_ADMINISTRATOR, clock.instant())
         log.info("Sessão {} do usuário {} revogada pelo usuário {}", session.id, userId, actor.userId)
     }
 

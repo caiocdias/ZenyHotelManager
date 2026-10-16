@@ -32,6 +32,8 @@ tags:
   name: meta
 - description: Trilha de auditoria das escritas.
   name: audit
+- description: Canal de tempo real (SSE).
+  name: stream
 - description: "Setores, colaboradores, turnos e escala."
   name: staff
 paths:
@@ -3231,6 +3233,49 @@ paths:
       summary: Editar um turno
       tags:
       - staff
+  /api/v1/stream:
+    get:
+      description: "Exige a permissão de cada tópico (sem ela, 403 PERMISSION_DENIED;\
+        \ tópico desconhecido, 400 UNKNOWN_STREAM_TOPIC). Cada mensagem é um evento\
+        \ com o nome do tópico, `id` `<época>-<sequência>` e `data` JSON com só `type`,\
+        \ `id` e `version`: o cliente aplica a mudança ou rebusca o recurso. A conexã\
+        o começa por `ready` (sem `Last-Event-ID`, ou depois de repor as mensagens\
+        \ perdidas) ou por `reset` (o `Last-Event-ID` saiu do buffer ou é de outro\
+        \ boot: recarregue o estado); os dois trazem a posição corrente no `id`. Comentá\
+        rios `: heartbeat` periódicos mantêm a conexão viva. O servidor encerra a\
+        \ conexão no vencimento do access token (renove-o e reconecte com o `Last-Event-ID`)\
+        \ e na revogação da sessão."
+      operationId: openStream
+      parameters:
+      - description: "Tópicos separados por vírgula, como `rooms`."
+        example: rooms
+        in: query
+        name: topics
+        required: false
+        schema:
+          type: string
+      - description: "Id do último evento recebido, para repor o que foi perdido."
+        in: header
+        name: Last-Event-ID
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream SSE (`text/event-stream`).
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Abre o canal de tempo real
+      tags:
+      - stream
   /api/v1/users:
     get:
       description: "Todos os usuários, ativos e inativos, em ordem de login. Exige\

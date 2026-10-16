@@ -8,6 +8,7 @@ import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.rooms.RoomsPermissions
+import com.zeny.hotel.rooms.RoomsRealtime
 import com.zeny.hotel.rooms.domain.Area
 import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomFeature
@@ -25,6 +26,7 @@ import com.zeny.hotel.shared.ModulePermissions
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.RealtimeTopic
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
 import org.springframework.context.annotation.Bean
@@ -429,4 +431,8 @@ class RoomsRegistryService(
 class RoomsPermissionsConfiguration {
     @Bean
     fun roomsPermissions(): ModulePermissions = RoomsPermissions
+
+    /** O tópico `rooms` do canal de tempo real (status das UHs e períodos OOO/OOS). */
+    @Bean
+    fun roomsRealtimeTopic(): RealtimeTopic = RoomsRealtime.TOPIC
 }

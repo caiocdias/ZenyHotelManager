@@ -15,11 +15,14 @@ import org.springframework.modulith.PackageInfo
  * segurança: `UserId`, `DeviceSessionId`, `Actor` e a porta `CurrentActor`, a declaração do
  * catálogo de permissões (`ModulePermissions`, `PermissionDefinition`, `PermissionCode`,
  * `PermissionScope`, limites e `RoleTemplate`) e a porta `Authorization` (com
- * `GrantedPermission`, `OwnedResource` e `ScopeFilter`), implementadas por `iam`. As regras da
- * idempotência ficam em `application`; as implementações (cifragem AES-GCM, gerador de números
- * por sequence, relógio, outbox, chaves de idempotência, jobs) em `infrastructure`; as da API
+ * `GrantedPermission`, `OwnedResource` e `ScopeFilter`), a porta `DeviceSessionStatus` e o evento
+ * `DeviceSessionsRevoked`, implementados por `iam`; e o canal de tempo real (`RealtimeTopic`,
+ * `RealtimeMessage`, porta `RealtimePublisher`). As regras da idempotência e o canal de tempo real
+ * (broadcaster, buffer e inscrição) ficam em `application`; as implementações (cifragem AES-GCM,
+ * gerador de números por sequence, relógio, outbox, chaves de idempotência, jobs, métrica das
+ * conexões de tempo real) em `infrastructure`; as da API
  * (erros RFC 9457, segurança com access token JWT, ator no MDC dos logs, filtro de idempotência,
- * OpenAPI, `GET /api/v1/meta/version`) em `web`.
+ * OpenAPI, `GET /api/v1/meta/version`, `GET /api/v1/stream`) em `web`.
  */
 @PackageInfo
 @ApplicationModule(displayName = "Shared kernel", allowedDependencies = [])

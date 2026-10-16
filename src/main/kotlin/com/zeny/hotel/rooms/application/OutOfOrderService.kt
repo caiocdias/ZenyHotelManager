@@ -10,6 +10,7 @@ import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.rooms.RoomsPermissions
+import com.zeny.hotel.rooms.RoomsRealtime
 import com.zeny.hotel.rooms.domain.OutOfOrder
 import com.zeny.hotel.rooms.domain.OutOfOrderDetails
 import com.zeny.hotel.rooms.domain.OutOfOrderRelease
@@ -23,6 +24,8 @@ import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.RealtimeMessage
+import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.shared.SensitiveAction
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
@@ -64,6 +67,7 @@ class OutOfOrderOperations(
     private val changer: RoomStatusChanger,
     private val overlays: OutOfOrderOverlays,
     private val events: ApplicationEventPublisher,
+    private val realtime: RealtimePublisher,
     private val audit: AuditContext,
     private val currentActor: CurrentActor,
     private val clock: Clock,
@@ -158,6 +162,10 @@ class OutOfOrderOperations(
                 checkNotNull(period.version),
                 now,
             ),
+        )
+        realtime.publish(
+            RoomsRealtime.TOPIC,
+            RealtimeMessage(RoomsRealtime.OUT_OF_ORDER, period.id.value, checkNotNull(period.version)),
         )
     }
 }

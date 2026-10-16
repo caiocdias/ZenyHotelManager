@@ -64,6 +64,7 @@ class AuthTokens(
 class AuthenticationService(
     private val users: Users,
     private val sessions: DeviceSessions,
+    private val revocations: SessionRevocations,
     private val hasher: PasswordHasher,
     private val tokens: AccessTokenIssuer,
     private val properties: IamProperties,
@@ -93,7 +94,7 @@ class AuthenticationService(
 
         sessions.findNotRevokedOnDeviceForUpdate(user.id, command.deviceId)?.let {
             audit.track(IamAudit.SESSION, it.id) { it.auditState() }
-            it.revoke(SessionRevocationReason.REPLACED_BY_LOGIN, now)
+            revocations.revoke(it, SessionRevocationReason.REPLACED_BY_LOGIN, now)
             // A sessão nova ocupa o mesmo (usuário, dispositivo) no índice único das não revogadas.
             sessions.flush()
         }
@@ -136,10 +137,9 @@ class AuthenticationService(
             )
         }
         user.changePassword(hasher.hash(command.newPassword), now)
-        sessions.findNotRevokedOf(user.id, except = actor.deviceSessionId).forEach {
-            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
-            it.revoke(SessionRevocationReason.PASSWORD_CHANGED, now)
-        }
+        val others = sessions.findNotRevokedOf(user.id, except = actor.deviceSessionId)
+        others.forEach { audit.track(IamAudit.SESSION, it.id) { it.auditState() } }
+        revocations.revokeAll(others, SessionRevocationReason.PASSWORD_CHANGED, now)
         log.info("Senha trocada pelo usuário {}", user.id)
     }
 

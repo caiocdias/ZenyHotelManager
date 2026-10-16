@@ -185,6 +185,14 @@ zeny:
     purge:
       interval: PT1H
       initial-delay: PT5M
+  # Canal de tempo real por SSE (ARCHITECTURE §10, GET /api/v1/stream): buffer circular em memória por
+  # tópico para a reconexão com Last-Event-ID (perdeu mais que isso: `reset`), heartbeat para os proxies
+  # e para notar o cliente que sumiu, e o limite de conexões abertas por sessão de dispositivo (a nova
+  # encerra a mais antiga). Cada conexão ocupa um slot assíncrono do Tomcat, não uma thread.
+  realtime:
+    buffer-size: 1000
+    heartbeat-interval: PT15S
+    max-connections-per-session: 3
   # Autenticação (ARCHITECTURE §8.1, módulo iam).
   iam:
     # Access token JWT assinado em RS256 com `kid` (H3).

@@ -8,6 +8,7 @@ import com.zeny.hotel.iam.application.Users
 import com.zeny.hotel.iam.domain.DeviceSession
 import com.zeny.hotel.iam.domain.User
 import com.zeny.hotel.shared.DeviceSessionId
+import com.zeny.hotel.shared.DeviceSessionStatus
 import com.zeny.hotel.shared.UserId
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
@@ -177,3 +178,20 @@ class JdbcSessionDirectory(
 }
 
 private fun utc(instant: Instant): OffsetDateTime = instant.atOffset(ZoneOffset.UTC)
+
+/**
+ * O estado das sessões para o kernel ([DeviceSessionStatus]): o canal de tempo real recusa a inscrição de
+ * uma sessão revogada, cujo access token ainda vale até vencer.
+ */
+@Component
+class JdbcDeviceSessionStatus(
+    private val jdbc: JdbcClient,
+) : DeviceSessionStatus {
+    override fun isRevoked(sessionId: DeviceSessionId): Boolean =
+        jdbc
+            .sql("SELECT revoked_at IS NOT NULL FROM iam.device_session WHERE id = :id")
+            .param("id", sessionId.value)
+            .query(Boolean::class.java)
+            .optional()
+            .orElse(true)
+}

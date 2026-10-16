@@ -87,6 +87,9 @@ class SecurityConfiguration {
             }.authorizeHttpRequests { requests ->
                 // Encaminhamento interno de erro para o ProblemErrorController; acesso direto a /error é negado.
                 requests.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                // Fim de uma resposta assíncrona (o stream SSE de /api/v1/stream, encerrado pelo servidor): a
+                // requisição original já passou pela autorização; o token pode até ter vencido desde então.
+                requests.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                 // Sondas e métricas (ARCHITECTURE §16); o resto do actuator nem existe na web.
                 requests
                     .requestMatchers(

@@ -8,6 +8,7 @@ import com.zeny.hotel.rooms.RoomStatusChanged
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.rooms.RoomsPermissions
+import com.zeny.hotel.rooms.RoomsRealtime
 import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomStatusFieldChange
 import com.zeny.hotel.shared.AuditContext
@@ -19,6 +20,8 @@ import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.RealtimeMessage
+import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
@@ -34,8 +37,9 @@ import java.time.Instant
  * mudança manual): trava a linha da UH (`SELECT … FOR UPDATE`; duas mudanças simultâneas se enfileiram,
  * e a segunda vê o resultado da primeira), confere a versão esperada (se houver), aplica a operação do
  * domínio e, se algo mudou, grava a UH (versão nova), um registro do histórico por campo (RF-UH-06, com o
- * ator da requisição ou o sistema) e publica [RoomStatusChanged] pelo outbox. Sem mudança, não grava nem
- * publica nada.
+ * ator da requisição ou o sistema) e publica [RoomStatusChanged] pelo outbox e a mensagem
+ * [RoomsRealtime.ROOM_STATUS] no tópico `rooms` do canal de tempo real (enviada depois do commit). Sem
+ * mudança, não grava nem publica nada.
  */
 @Component
 @Suppress("LongParameterList") // as portas de uma mudança de status, injetadas pelo Spring
@@ -43,6 +47,7 @@ class RoomStatusChanger(
     private val store: RoomsStore,
     private val records: RoomStatusRecords,
     private val events: ApplicationEventPublisher,
+    private val realtime: RealtimePublisher,
     private val audit: AuditContext,
     private val currentActor: CurrentActor,
     private val overlays: OutOfOrderOverlays,
@@ -76,6 +81,7 @@ class RoomStatusChanger(
                 view.changedAt,
             ),
         )
+        realtime.publish(RoomsRealtime.TOPIC, RealtimeMessage(RoomsRealtime.ROOM_STATUS, id.value, view.version))
         log.info("Status da UH {} mudou ({}): {}", id, source, changes.map { it.field })
         return view
     }

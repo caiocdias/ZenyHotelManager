@@ -36,6 +36,16 @@
 		reverse_proxy storage:9000
 	}
 
+	# Canal de tempo real por SSE (ARCHITECTURE §10, RNF-04): cada evento sai na hora, sem buffer no proxy
+	# (o Caddy já não bufferiza text/event-stream; fica explícito). A conexão longa não tem tempo limite
+	# aqui: a api a encerra no vencimento do access token, e o heartbeat a mantém ativa.
+	@stream path /api/v1/stream
+	handle @stream {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+
 	handle {
 		reverse_proxy api:8080
 	}

@@ -34,6 +34,9 @@ object ErrorCodes {
     /** 400: cursor de paginação inválido, adulterado ou de outra consulta. */
     val INVALID_CURSOR = ErrorCode("INVALID_CURSOR")
 
+    /** 400: tópico do canal de tempo real (`GET /api/v1/stream?topics=…`) que nenhum módulo registrou. */
+    val UNKNOWN_STREAM_TOPIC = ErrorCode("UNKNOWN_STREAM_TOPIC")
+
     /** 401: requisição sem autenticação válida. */
     val UNAUTHENTICATED = ErrorCode("UNAUTHENTICATED")
 

@@ -75,6 +75,7 @@ class UserManagementService(
     private val users: Users,
     private val roles: Roles,
     private val sessions: DeviceSessions,
+    private val revocations: SessionRevocations,
     private val directory: UserDirectory,
     private val data: AuthorizationData,
     private val rules: DelegationRules,
@@ -317,10 +318,9 @@ class UserManagementService(
         reason: SessionRevocationReason,
     ) {
         val now = clock.instant()
-        sessions.findNotRevokedOf(user.id).forEach {
-            audit.track(IamAudit.SESSION, it.id) { it.auditState() }
-            it.revoke(reason, now)
-        }
+        val open = sessions.findNotRevokedOf(user.id)
+        open.forEach { audit.track(IamAudit.SESSION, it.id) { it.auditState() } }
+        revocations.revokeAll(open, reason, now)
     }
 
     /** Acompanha o usuário na trilha: o retrato de agora é o "antes"; o do fim do caso de uso, o "depois". */

@@ -30,6 +30,7 @@ import java.time.Instant
 class TokenRefreshService(
     private val users: Users,
     private val sessions: DeviceSessions,
+    private val revocations: SessionRevocations,
     private val rotated: RotatedRefreshTokens,
     private val tokens: AccessTokenIssuer,
     private val properties: IamProperties,
@@ -49,7 +50,7 @@ class TokenRefreshService(
         if (!session.isActive(now)) refuse(IamErrorCodes.REFRESH_TOKEN_INVALID)
         val user = users.findById(session.userId)
         if (user == null || !user.active) {
-            session.revoke(SessionRevocationReason.USER_DISABLED, now)
+            revocations.revoke(session, SessionRevocationReason.USER_DISABLED, now)
             log.info("Refresh recusado: usuário da sessão {} desativado", session.id)
             refuse(IamErrorCodes.REFRESH_TOKEN_INVALID)
         }
@@ -68,7 +69,7 @@ class TokenRefreshService(
         sessions.findByIdForUpdate(sessionId)?.let {
             audit.attributeTo(it.userId, it.id)
             audit.track(IamAudit.SESSION, it.id) { it.auditState() }
-            it.revoke(SessionRevocationReason.REFRESH_TOKEN_REUSED, now)
+            revocations.revoke(it, SessionRevocationReason.REFRESH_TOKEN_REUSED, now)
         }
         log.warn("Reuso de refresh token detectado: sessão {} revogada", sessionId)
         refuse(IamErrorCodes.REFRESH_TOKEN_REUSED)
