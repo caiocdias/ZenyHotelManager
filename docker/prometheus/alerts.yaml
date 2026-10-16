@@ -4,8 +4,9 @@
 groups:
   - name: zeny-outbox
     rules:
-      # O reprocessamento não tem limite de tentativas (decisão da revisão humana da E02): uma
-      # publicação FAILED por muito tempo indica listener com defeito ou dependência fora.
+      # O reprocessamento reenvia as FAILED com backoff (1, 2, 4… min até 1 h) por 24 h desde a
+      # publicação (H13 do roadmap do M2): uma publicação FAILED por muito tempo indica listener com
+      # defeito ou dependência fora. As abandonadas não entram aqui (state="abandoned", abaixo).
       - alert: ZenyOutboxFailedPublications
         expr: zeny_outbox_publications{state="failed"} > 0
         for: 15m
@@ -20,7 +21,16 @@ groups:
           severity: critical
         annotations:
           summary: "Publicação com falha no outbox há mais de 1 hora"
-          description: "A publicação FAILED mais antiga tem {{ $value | humanizeDuration }}."
+          description: "A publicação FAILED mais antiga tem {{ $value | humanizeDuration }}; aos 24 h ela é abandonada."
+      # Abandonada: falhou numa tentativa feita 24 h ou mais depois da publicação e saiu do reenvio
+      # automático. Só volta pelo reenvio manual (CLAUDE.md, "Eventos e jobs"), depois de corrigir a causa.
+      - alert: ZenyOutboxAbandonedPublications
+        expr: zeny_outbox_publications{state="abandoned"} > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Há publicações abandonadas no outbox"
+          description: "{{ $value }} publicação(ões) abandonada(s) em shared.event_publication: o efeito do evento não aconteceu. Corrija o listener e faça o reenvio manual (CLAUDE.md)."
       # Pendentes envelhecendo: os listeners não estão dando conta ou pararam (aos 10 min o
       # monitor de staleness as passa a FAILED).
       - alert: ZenyOutboxPendingPublicationsStuck

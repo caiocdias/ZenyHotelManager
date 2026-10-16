@@ -242,7 +242,7 @@ Regras internas de cada módulo, verificadas com ArchUnit:
 2. **`application`**: o caso de uso abre a transação, aplica **autorização** (permissão, escopo e aprovação), carrega o agregado, executa e persiste.
 3. **`domain`**: o agregado aplica as regras de negócio, incluindo limites (ex.: desconto ≤ limite) e transições de estado, e registra **eventos de domínio**.
 4. **Commit**: na mesma transação, os eventos são gravados no *Event Publication Registry*, a tabela de outbox do Modulith.
-5. **Pós-commit**: os listeners (`@ApplicationModuleListener`) rodam de forma assíncrona e em transação própria. O que falhar fica pendente e é reprocessado; o reprocessamento também acontece no restart.
+5. **Pós-commit**: os listeners (`@ApplicationModuleListener`) rodam de forma assíncrona e em transação própria. O que falhar fica pendente e é reprocessado com backoff exponencial (1 min dobrando até 1 h); a que ainda falha 24 h depois da publicação é abandonada (fica na tabela, sai do reenvio automático, gera alerta e é reenviada à mão). As concluídas são apagadas depois de 7 dias.
 6. A **auditoria** é gravada na mesma transação do caso de uso, via aspecto `@Audited(action)` que captura antes e depois: o caso de uso descreve as entidades que muda pela porta `AuditContext` (o retrato de antes é lido ao acompanhar a entidade e o de depois no fim do método), e o aspecto, que roda dentro da transação, entrega as entradas à porta `AuditTrail` do `shared`, implementada por `audit`. Rollback não deixa entrada, e uma falha ao gravar a entrada desfaz a escrita. Todo caso de uso de escrita leva a anotação (regra ArchUnit).
 7. O broadcaster **SSE** recebe os eventos relevantes depois do commit e notifica os clientes inscritos.
 
@@ -500,7 +500,8 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 | Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, horário do hotel |
 | Envio de ARI pendente; pull de reservas do channel manager | 1–5 min |
 | Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
-| Reprocessamento de eventos pendentes do outbox | 1 min, e no boot |
+| Reprocessamento de eventos com falha no outbox (backoff de 1 min a 1 h, abandono após 24 h) | 1 min |
+| Expurgo das publicações concluídas do outbox (há mais de 7 dias) | 1 h |
 | Expiração de pré-reservas | 5 min |
 | Renovação de pré-autorizações perto do vencimento | No fechamento |
 | Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |

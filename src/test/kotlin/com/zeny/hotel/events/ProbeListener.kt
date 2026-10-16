@@ -21,6 +21,7 @@ data class ProbeEvent(
 object ProbeState {
     private val failuresLeft = ConcurrentHashMap<UUID, AtomicInteger>()
     private val deliveries = ConcurrentHashMap<UUID, AtomicInteger>()
+    private val invocations = ConcurrentHashMap<UUID, AtomicInteger>()
 
     fun failNext(
         id: UUID,
@@ -29,15 +30,24 @@ object ProbeState {
         failuresLeft[id] = AtomicInteger(times)
     }
 
+    /** O listener falha em toda entrega do evento, até [failNext] com `times = 0`. */
+    fun failAlways(id: UUID) = failNext(id, Int.MAX_VALUE)
+
+    /** Entregas que deram certo. */
     fun deliveriesOf(id: UUID): Int = deliveries[id]?.get() ?: 0
+
+    /** Vezes que o listener rodou para o evento, com falha ou não. */
+    fun invocationsOf(id: UUID): Int = invocations[id]?.get() ?: 0
 
     fun reset() {
         failuresLeft.clear()
         deliveries.clear()
+        invocations.clear()
     }
 
     /** Falha enquanto houver falhas programadas para o evento; depois registra a entrega. */
     fun receive(event: ProbeEvent) {
+        invocations.computeIfAbsent(event.id) { AtomicInteger() }.incrementAndGet()
         val left = failuresLeft[event.id]
         if (left != null && left.getAndDecrement() > 0) {
             error("Falha simulada do listener para ${event.id}")

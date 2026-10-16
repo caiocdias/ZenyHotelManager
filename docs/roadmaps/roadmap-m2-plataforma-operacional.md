@@ -196,7 +196,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 |---|---|---|---|---|
 | E04 | Tempo real (SSE) | #concluida | E02 | `GET /api/v1/stream` com tópicos, filtro por permissão, `Last-Event-ID` e tópico `rooms` |
 | E05 | Sincronização offline | #concluida | E02 | `GET /sync/changes` por cursor e `POST /sync/commands` idempotente, com `rooms` como primeira fonte |
-| E12 | Limite de tentativas e arquivamento do outbox | #pendente | — | Backoff, abandono com alerta e expurgo das publicações concluídas |
+| E12 | Limite de tentativas e arquivamento do outbox | #concluida | — | Backoff, abandono com alerta e expurgo das publicações concluídas |
 
 **Checklists e anexos**
 
@@ -969,7 +969,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 ---
 
-## E12 — Limite de tentativas e arquivamento do outbox — #pendente
+## E12 — Limite de tentativas e arquivamento do outbox — #concluida
 
 **Objetivo:** dar ao reprocessamento do outbox (`shared.event_publication`) um limite de tentativas com backoff, um estado de abandono com métrica e alerta, um procedimento de reenvio manual e o expurgo das publicações concluídas, antes do primeiro listener real do sistema (H13).
 
@@ -1026,11 +1026,11 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Um listener que falha duas vezes e depois funciona é reenviado em intervalos crescentes e a publicação fica concluída (teste com relógio controlado).
-- [ ] Um listener que sempre falha tem a publicação abandonada depois do prazo configurado: ela continua no banco, conta em `zeny_outbox_publications{state="abandoned"}` e não é reenviada pelo job, pelo staleness nem no reinício.
-- [ ] Publicações concluídas mais antigas que a retenção são apagadas; as recentes e as incompletas ficam.
-- [ ] O reenvio manual documentado no `CLAUDE.md` faz uma publicação abandonada ser processada de novo (teste).
-- [ ] A regra de alerta nova passa no `promtool check rules`; build passa.
+- [x] Um listener que falha duas vezes e depois funciona é reenviado em intervalos crescentes e a publicação fica concluída (teste com relógio controlado).
+- [x] Um listener que sempre falha tem a publicação abandonada depois do prazo configurado: ela continua no banco, conta em `zeny_outbox_publications{state="abandoned"}` e não é reenviada pelo job, pelo staleness nem no reinício.
+- [x] Publicações concluídas mais antigas que a retenção são apagadas; as recentes e as incompletas ficam.
+- [x] O reenvio manual documentado no `CLAUDE.md` faz uma publicação abandonada ser processada de novo (teste).
+- [x] A regra de alerta nova passa no `promtool check rules`; build passa.
 
 **Validação obrigatória:**
 
@@ -1045,12 +1045,38 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `af617ff0a93d389167a9230e15d55d0d2e3570bd` (tirado pelo orquestrador; árvore limpa, sem mudanças preexistentes).
+- Arquivos alterados:
+  - Novos (`src/main/kotlin/com/zeny/hotel/shared/infrastructure/events/`): `OutboxProperties.kt` (`zeny.events.resubmission.{initial-backoff, max-backoff, give-up-after, batch-size}` e `zeny.events.completed-retention`, validados no boot), `OutboxRetryPolicy.kt` (backoff, vencimento e abandono; a condição de abandono também em SQL, `ABANDONED_CONDITION_SQL`), `CompletedEventPublicationPurgeJob.kt` (ShedLock `events-purge-completed`, a cada hora).
+  - Alterados: `EventPublicationResubmissionJob.kt` (só reenvia as vencidas e não abandonadas, até `batch-size` por execução), `OutboxMetrics.kt` (estado `abandoned`), `src/main/resources/application.yaml` (padrões da H13, `purge.*` e `republish-outstanding-events-on-restart: false`), `docker/prometheus/alerts.yaml` (regra `ZenyOutboxAbandonedPublications`, comentários das outras), `CLAUDE.md` ("Estado atual", métricas e "Eventos e jobs" com o ciclo, o reenvio manual e o expurgo), `README.md` (métricas), `docs/ARCHITECTURE.md` (§5 passo 5 e tabela de jobs da §13).
+  - Testes: novos `OutboxRetryTest`, `OutboxRetryPolicyTest` e `CompletedEventPublicationPurgeTest`; alterados `EventPublicationRegistryTest` (o boot de um segundo processo não reenvia nada e o job dele pula a abandonada; o teste do job antecipa a publicação, porque a 1ª nova tentativa vence 1 min depois), `OutboxMetricsTest` e `OutboxMetricsFailureTest` (estado `abandoned`), `ProbeListener.kt` (`ProbeState.failAlways` e `invocationsOf`), `testsupport/IntegrationTest.kt` (constante `OUTBOX_PURGE_DEFERRED`, também em `RealtimeStreamTest` e `ProductionProfileApiTest`).
+- Decisões (do implementador, dentro da H13 confirmada):
+  - **Investigação (Spring Modulith 2.1.1, fontes dos jars `spring-modulith-events-{api,core,jdbc}`):** `FailedEventPublications.resubmit(ResubmissionOptions)` lê as `FAILED` em ordem de publicação com `LIMIT batchSize` (e `maxInFlight`) e **só depois** aplica o filtro (`Predicate<EventPublication>`, que vê `status`, `completionAttempts`, `lastResubmissionDate` e `publicationDate` sem desserializar o evento); ao reenviar, `markResubmitted` grava `RESUBMITTED`, `completion_attempts + 1` e `last_resubmission_date` com o `Clock` do registro (o bean `Clock` da aplicação, `ObjectProvider.getIfAvailable`). Na criação, `completion_attempts = 1` e `last_resubmission_date` = data da publicação; a falha (`markFailed`) não grava data nem conta. O staleness só passa `PUBLISHED`/`PROCESSING`/`RESUBMITTED` antigos (pela `publication_date`) a `FAILED`, nunca reenvia. `republish-outstanding-events-on-restart` chama `resubmitIncompletePublications(__ -> true)`: todas as incompletas, sem filtro configurável. `completion-mode`: `update` (padrão), `delete` (apaga ao concluir) e `archive` (move para `event_publication_archive`, sem expurgo); nenhum faz a retenção de 7 dias, mas `CompletedEventPublications.deletePublicationsOlderThan(Duration)` apaga `completion_date < corte AND status = 'COMPLETED'` pelo mesmo `Clock`.
+  - **Backoff:** depois de `n = completion_attempts − 1` reenvios, a próxima tentativa vence em `last_resubmission_date + min(1 min × 2ⁿ, 1 h)`, comparado com o `Clock` da aplicação (o mesmo que grava as datas; nunca o relógio da JVM direto nem o `now()` do banco).
+  - **Abandono:** `FAILED` com `last_resubmission_date ≥ publication_date + 24 h`, ou seja, uma tentativa feita depois do prazo falhou (29º reenvio, 24 h 3 min depois da publicação). A regra só depende das colunas da linha, então nada automático a desfaz; o prazo conta da publicação (com a aplicação fora do ar, o tempo parado conta, mas sempre há ao menos uma tentativa depois do prazo). Alternativa descartada: contar só tentativas (independente do tempo parado), porque a H13 fala em "24 h de falhas" com `give-up-after` em duração.
+  - **Leitura sem limite:** com o lote do Modulith, as abandonadas (que se acumulam) e as que esperam o backoff ocupariam o `LIMIT` e esconderiam as vencidas mais novas. O job passa `withBatchSize(Int.MAX_VALUE)` (só linhas `FAILED`, evento desserializado só no reenvio) e aplica o limite de `batch-size` (100) no filtro, que o Modulith chama em sequência.
+  - **Boot:** `republish-outstanding-events-on-restart` **desligado** (risco previsto na etapa), porque reenviaria as abandonadas; o boot fica coberto pelo job (1ª execução 1 min depois, com o backoff) e pelo staleness (as deixadas em andamento viram `FAILED` aos 10 min).
+  - **Expurgo:** job próprio com ShedLock chamando a API do Modulith, e não o modo de conclusão (nenhum faz a retenção); `completion-mode` continua `update`. Nenhuma migração: o índice `event_publication_by_completion_date_idx` já serve ao `DELETE`.
+  - **Reenvio manual:** SQL documentado no `CLAUDE.md` ("Eventos e jobs"): `UPDATE shared.event_publication SET last_resubmission_date = publication_date WHERE id = '<id>' AND status = 'FAILED' AND last_resubmission_date >= publication_date + interval '24 hours'`, que devolve a linha ao estado de criação; o job a reenvia na execução seguinte e, se falhar, ela volta a ficar abandonada depois dessa tentativa. Também documentados a listagem das abandonadas e a desistência (marcar `COMPLETED`, depois expurgada).
+  - **Alerta:** `ZenyOutboxAbandonedPublications` (`zeny_outbox_publications{state="abandoned"} > 0`, `critical`, sem `for`); as regras de `failed` continuam (agora sem as abandonadas).
+  - **Testes:** o expurgo agendado fica adiado nos testes (`OUTBOX_PURGE_DEFERRED`), porque um contexto em cache com o `MutableClock` adiantado apagaria, no banco compartilhado, publicações de outro teste.
+- Validações executadas:
+  - Testes primeiro: `./gradlew test --tests 'com.zeny.hotel.events.OutboxRetryTest'` contra o job antigo → 4 de 5 falharam (o que não falhou é o de que o reenvio manual não mexe em publicação não abandonada).
+  - `./gradlew test --tests 'com.zeny.hotel.events.*'` → 22 testes, 0 falhas.
+  - `./gradlew build` → `BUILD SUCCESSFUL` (529 testes, 0 falhas; detekt, ktlint, `checkOpenApi` e `koverVerify`). Uma execução anterior falhou no `detektTest` (`LongParameterList` e `!!` desnecessário no `OutboxRetryTest`), corrigido; `./gradlew lint` passou.
+  - `docker run --rm -v "$PWD/docker/prometheus:/rules:ro" --entrypoint promtool prom/prometheus check rules /rules/alerts.yaml` → `SUCCESS: 5 rules found`.
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1" (a etapa não muda a API; o contrato não mudou).
+  - Critérios: (1) `OutboxRetryTest` "a transient failure is resubmitted at growing intervals and completes" (não reenvia aos 59 s, reenvia a 1 min, não aos 1 min 59 s depois, reenvia aos 2 min e conclui, `completion_attempts` 3); (2) "a permanent failure is abandoned…" (esperas 1, 2, 4, 8, 16, 32, 60… min, 29 reenvios, a última tentativa depois de 24 h, `abandoned` 1 e `failed` 0, nada com o relógio 3 dias à frente, nem pelo job nem pela tarefa do staleness) e `EventPublicationRegistryTest` "a new boot resubmits nothing by itself…"; (3) `CompletedEventPublicationPurgeTest` (concluídas há 8 dias e há 7 dias + 1 s apagadas; há 6 dias, há 7 dias − 1 min e as `FAILED`, abandonadas, `PUBLISHED`, `PROCESSING` e `RESUBMITTED` de 30 dias ficam; uma entrega real é apagada só depois de o `Clock` passar a retenção; agendado a cada hora, com ShedLock); (4) "the documented manual resubmission makes an abandoned publication run again" e "…fails again is abandoned again…"; (5) promtool e build acima.
+- Parecer do verificador: **APROVADO** (2026-10-16, verificador independente disparado pelo orquestrador; snapshot verificado `153aedc59acbe27bdd9b12e59132e034f5d0c0f1`). Os 5 critérios APROVADOS com evidência: `OutboxRetryTest`, `EventPublicationRegistryTest` e `CompletedEventPublicationPurgeTest`; `./gradlew build` BUILD SUCCESSFUL com 529 testes e 0 falhas; `promtool` `SUCCESS: 5 rules found`; oasdiff sem mudança incompatível. O verificador conferiu as alegações da investigação no código-fonte do Spring Modulith 2.1.1. Nenhum problema crítico, alto ou médio. Problemas baixos:
+  1. A staleness mede `RESUBMITTED` pela `publication_date`, então a tentativa feita depois das 24 h pode contar como `abandoned` enquanto o listener ainda roda, e o alerta `ZenyOutboxAbandonedPublications` (`critical`, sem `for`) pode disparar sem necessidade. Um `for: 5m` resolveria; fica para o gate (E10) ou a E09.
+  2. O job lê todas as `FAILED` a cada minuto, inclusive as abandonadas, sem teto (irrelevante para 30 UHs).
+  3. Risco pequeno de teste instável: a tarefa de staleness do contexto com o `MutableClock` adiantado não é adiada e pode passar a `FAILED` uma linha `PUBLISHED` de outro teste no banco compartilhado.
+  4. Informativo: sem o republish no boot, uma `PUBLISHED` deixada por uma queda só é reenviada uns 11 min depois.
+- Notas para a próxima etapa:
+  - E07 e E09 (primeiros listeners reais): todo `@ApplicationModuleListener` precisa ser idempotente; o staleness do Modulith pode passar a `FAILED` um reenvio ainda em execução (ele mede pela `publication_date`), e o backoff evita o reenvio em dobro enquanto o listener levar menos que a espera.
+  - Uma falha que não deve ser reenviada (ex.: token FCM inválido na E09) deve ser tratada dentro do listener (registrar e concluir), não lançada: lançar faz o outbox reenviar por 24 h.
+  - Com `give-up-after` diferente de 24 h, o intervalo do SQL de reenvio manual no `CLAUDE.md` muda junto.
+  - Os testes que publicam eventos continuam apagando `shared.event_publication` inteira no `@BeforeEach` (banco compartilhado, testes sequenciais).
 
 ---
 

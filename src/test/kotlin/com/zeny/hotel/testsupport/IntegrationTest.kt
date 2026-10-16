@@ -15,13 +15,13 @@ import org.springframework.test.context.ContextConfiguration
  * `MockMvc` com a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas
  * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
- * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`), adiam
- * o job de reprocessamento do outbox, para que os testes o disparem quando quiserem. Para autenticar uma requisição do
- * `MockMvc` com um usuário de id conhecido, use [asUser].
+ * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
+ * os jobs de reprocessamento e de expurgo do outbox, para que os testes os disparem quando
+ * quiserem. Para autenticar uma requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
-@SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED])
+@SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED, OUTBOX_PURGE_DEFERRED])
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
 @AutoConfigureMetrics
@@ -40,3 +40,9 @@ const val TEST_MIGRATIONS = "spring.flyway.locations=classpath:db/migration,clas
 
 /** O job de reprocessamento só roda quando o teste o chama. */
 const val RESUBMISSION_JOB_DEFERRED = "zeny.events.resubmission.initial-delay=PT24H"
+
+/**
+ * O expurgo das publicações concluídas só roda quando o teste o chama: um contexto em cache com o relógio
+ * adiantado ([MutableClock]) apagaria, no banco compartilhado, as publicações que outro teste espera ver.
+ */
+const val OUTBOX_PURGE_DEFERRED = "zeny.events.purge.initial-delay=PT24H"

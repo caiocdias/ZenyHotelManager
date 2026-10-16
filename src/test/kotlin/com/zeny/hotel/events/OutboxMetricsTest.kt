@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Métricas do outbox (ARCHITECTURE §16; decisão da revisão humana da E02): publicações
- * pendentes e com falha em `shared.event_publication`, com a idade da mais antiga de cada
+ * pendentes, com falha e abandonadas (H13 do M2) em `shared.event_publication`, com a idade da mais antiga de cada
  * estado, expostas no Prometheus para alerta.
  */
 @IntegrationTest
@@ -45,8 +45,10 @@ class OutboxMetricsTest(
 
         count("pending") shouldBe 0.0
         count("failed") shouldBe 0.0
+        count("abandoned") shouldBe 0.0
         oldestAgeSeconds("pending") shouldBe 0.0
         oldestAgeSeconds("failed") shouldBe 0.0
+        oldestAgeSeconds("abandoned") shouldBe 0.0
     }
 
     @Test
@@ -58,14 +60,21 @@ class OutboxMetricsTest(
         insert("RESUBMITTED", now.minus(Duration.ofMinutes(1)))
         insert("FAILED", now.minus(Duration.ofHours(2)))
         insert("FAILED", now.minus(Duration.ofMinutes(30)))
+        // Ainda tentando: o último reenvio foi antes das 24 h desde a publicação.
+        insert("FAILED", now.minus(Duration.ofHours(23)), lastResubmittedAt = now.minus(Duration.ofMinutes(10)))
+        // Abandonadas: uma tentativa depois das 24 h falhou (a regra só olha as datas da linha).
+        insert("FAILED", now.minus(Duration.ofHours(30)), lastResubmittedAt = now.minus(Duration.ofHours(5)))
+        insert("FAILED", now.minus(Duration.ofHours(25)), lastResubmittedAt = now.minus(Duration.ofHours(1)))
         insert("COMPLETED", now.minus(Duration.ofHours(5)), completedAt = now.minus(Duration.ofHours(4)))
 
         metrics.refresh()
 
         count("pending") shouldBe 3.0
-        count("failed") shouldBe 2.0
+        count("failed") shouldBe 3.0
+        count("abandoned") shouldBe 2.0
         oldestAgeSeconds("pending").shouldBeBetween(MINUTES_6, MINUTES_6 + SLACK_SECONDS, 0.0)
-        oldestAgeSeconds("failed").shouldBeBetween(HOURS_2, HOURS_2 + SLACK_SECONDS, 0.0)
+        oldestAgeSeconds("failed").shouldBeBetween(HOURS_23, HOURS_23 + SLACK_SECONDS, 0.0)
+        oldestAgeSeconds("abandoned").shouldBeBetween(HOURS_30, HOURS_30 + SLACK_SECONDS, 0.0)
     }
 
     @Test
@@ -81,6 +90,7 @@ class OutboxMetricsTest(
 
         body shouldContain "zeny_outbox_publications{application=\"zeny-hotel-manager\",state=\"failed\"} 1.0"
         body shouldContain "zeny_outbox_publications{application=\"zeny-hotel-manager\",state=\"pending\"} 0.0"
+        body shouldContain "zeny_outbox_publications{application=\"zeny-hotel-manager\",state=\"abandoned\"} 0.0"
         body shouldContain
             "zeny_outbox_publications_oldest_age_seconds{application=\"zeny-hotel-manager\",state=\"failed\"}"
         body shouldContain
@@ -105,26 +115,30 @@ class OutboxMetricsTest(
         status: String,
         publishedAt: Instant,
         completedAt: Instant? = null,
+        lastResubmittedAt: Instant? = null,
     ) {
         jdbc
             .sql(
                 """
                 INSERT INTO shared.event_publication
                     (id, listener_id, event_type, serialized_event, publication_date, completion_date, status,
-                     completion_attempts)
-                VALUES (:id, 'metrics.probe', 'metrics.Probe', :payload, :publishedAt, :completedAt, :status, 1)
+                     completion_attempts, last_resubmission_date)
+                VALUES (:id, 'metrics.probe', 'metrics.Probe', :payload, :publishedAt, :completedAt, :status, 1,
+                        :lastResubmittedAt)
                 """.trimIndent(),
             ).param("id", UUID.randomUUID())
             .param("payload", "{\"n\":\"${UUID.randomUUID()}\"}")
             .param("publishedAt", OffsetDateTime.ofInstant(publishedAt, ZoneOffset.UTC))
             .param("completedAt", completedAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
             .param("status", status)
+            .param("lastResubmittedAt", lastResubmittedAt?.let { OffsetDateTime.ofInstant(it, ZoneOffset.UTC) })
             .update()
     }
 
     private companion object {
         const val MINUTES_6 = 6 * 60.0
-        const val HOURS_2 = 2 * 3600.0
+        const val HOURS_23 = 23 * 3600.0
+        const val HOURS_30 = 30 * 3600.0
         const val SLACK_SECONDS = 60.0
     }
 }

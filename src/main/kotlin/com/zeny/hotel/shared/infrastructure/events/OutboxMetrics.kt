@@ -19,8 +19,10 @@ import java.util.concurrent.TimeUnit
  * Métricas do outbox (`shared.event_publication`, ARCHITECTURE §5 e §16), para alerta:
  *
  * - `zeny.outbox.publications{state}`: publicações incompletas, `pending` (ainda a entregar:
- *   `PUBLISHED`, `PROCESSING`, `RESUBMITTED`) ou `failed` (o listener falhou e o
- *   [EventPublicationResubmissionJob] vai tentar de novo, sem limite de tentativas);
+ *   `PUBLISHED`, `PROCESSING`, `RESUBMITTED`), `failed` (o listener falhou e o
+ *   [EventPublicationResubmissionJob] vai tentar de novo, com backoff) ou `abandoned` (`FAILED` que
+ *   passou do prazo de `zeny.events.resubmission.give-up-after`, pela regra do [OutboxRetryPolicy]: fora
+ *   do reenvio automático, espera o reenvio manual);
  * - `zeny.outbox.publications.oldest.age{state}`: idade, desde a publicação, da mais antiga de
  *   cada estado (zero se não houver nenhuma).
  *
@@ -35,7 +37,10 @@ import java.util.concurrent.TimeUnit
 class OutboxMetrics(
     private val jdbc: JdbcClient,
     private val clock: Clock,
+    properties: OutboxProperties,
 ) : MeterBinder {
+    private val giveUpAfter = properties.resubmission.policy().giveUpAfterSqlInterval()
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     @Volatile
@@ -77,7 +82,9 @@ class OutboxMetrics(
             jdbc
                 .sql(
                     """
-                    SELECT CASE WHEN status = 'FAILED' THEN 'FAILED' ELSE 'PENDING' END AS state,
+                    SELECT CASE WHEN ${OutboxRetryPolicy.ABANDONED_CONDITION_SQL} THEN 'ABANDONED'
+                                WHEN status = 'FAILED' THEN 'FAILED'
+                                ELSE 'PENDING' END AS state,
                            count(*) AS publications,
                            min(publication_date) AS oldest
                       FROM shared.event_publication
@@ -85,7 +92,8 @@ class OutboxMetrics(
                        AND status IS DISTINCT FROM 'COMPLETED'
                      GROUP BY 1
                     """.trimIndent(),
-                ).query { rs, _ ->
+                ).param("giveUpAfter", giveUpAfter)
+                .query { rs, _ ->
                     State.valueOf(rs.getString("state")) to
                         StateSnapshot(
                             count = rs.getLong("publications"),
@@ -106,6 +114,7 @@ class OutboxMetrics(
     ) {
         PENDING("pending"),
         FAILED("failed"),
+        ABANDONED("abandoned"),
     }
 
     private data class StateSnapshot(

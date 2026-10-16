@@ -88,8 +88,10 @@ spring:
         schema: shared
         schema-initialization:
           enabled: false
-      # No boot, reenvia as publicações que ficaram incompletas (ARCHITECTURE §5 e §13).
-      republish-outstanding-events-on-restart: true
+      # Desligado de propósito (E12 do M2): no boot, o Modulith reenviaria todas as incompletas, sem
+      # filtro, inclusive as abandonadas. As FAILED voltam pelo EventPublicationResubmissionJob (com o
+      # backoff) e as que o processo anterior deixou em andamento, pelo staleness abaixo.
+      republish-outstanding-events-on-restart: false
       # Publicação parada há mais que isso (processo caiu no meio) passa a FAILED e entra no
       # reprocessamento do EventPublicationResubmissionJob.
       staleness:
@@ -168,9 +170,24 @@ logging:
 zeny:
   events:
     resubmission:
-      # Reprocessamento das publicações com falha (ARCHITECTURE §13: a cada minuto).
+      # Reprocessamento das publicações com falha (ARCHITECTURE §13, H13 do roadmap do M2): o job roda a
+      # cada minuto e reenvia só as FAILED cuja próxima tentativa venceu, com espera de initial-backoff
+      # dobrando a cada tentativa até max-backoff (1, 2, 4… min, depois 1 h), contada do último reenvio
+      # (ou da publicação). Uma tentativa feita give-up-after ou mais depois da publicação que falha deixa a
+      # publicação abandonada: continua FAILED, sai do reenvio automático e aparece na métrica
+      # (state="abandoned"); o reenvio é manual (CLAUDE.md). No máximo batch-size reenvios por execução.
       interval: PT1M
       initial-delay: PT1M
+      initial-backoff: PT1M
+      max-backoff: PT1H
+      give-up-after: PT24H
+      batch-size: 100
+    # Publicações concluídas ficam este tempo em shared.event_publication (para investigação) e depois o
+    # CompletedEventPublicationPurgeJob as apaga, sob trava do ShedLock; as incompletas nunca são apagadas.
+    completed-retention: P7D
+    purge:
+      interval: PT1H
+      initial-delay: PT5M
     # Gauges do outbox (shared.event_publication) no Prometheus: o OutboxMetrics recalcula a
     # contagem e a idade da mais antiga das publicações pendentes e com falha neste intervalo,
     # para a raspagem não depender do banco.

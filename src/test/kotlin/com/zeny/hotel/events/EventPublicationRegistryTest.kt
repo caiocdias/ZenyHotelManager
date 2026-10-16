@@ -3,13 +3,13 @@ package com.zeny.hotel.events
 import com.zeny.hotel.ZenyHotelApplication
 import com.zeny.hotel.shared.infrastructure.events.EventPublicationResubmissionJob
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
 import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
 import com.zeny.hotel.testsupport.TEST_MIGRATIONS
 import com.zeny.hotel.testsupport.TestAuthInitializer
 import com.zeny.hotel.testsupport.TestEncryptionKeysInitializer
 import io.kotest.matchers.collections.shouldContain
-import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -31,8 +31,8 @@ import java.util.UUID
 /**
  * Event Publication Registry (outbox do Spring Modulith, ARCHITECTURE §5 e §13): o evento
  * publicado numa transação é gravado junto com ela, entregue depois do commit a um listener
- * assíncrono e, se o listener falhar, fica pendente até ser reprocessado — pelo job agendado
- * ou no boot seguinte.
+ * assíncrono e, se o listener falhar, fica pendente até ser reprocessado pelo job agendado (com
+ * backoff; o boot não reenvia nada). O backoff e o abandono estão no [OutboxRetryTest].
  */
 @IntegrationTest
 @Import(ProbeListenerConfiguration::class)
@@ -89,11 +89,13 @@ class EventPublicationRegistryTest(
         val failed = awaitPublication(event) { it.status == "FAILED" }
         failed.completedAt.shouldBeNull()
         ProbeState.deliveriesOf(event.id) shouldBe 0
+        // A 1ª nova tentativa vence 1 min depois da publicação; este contexto usa o relógio real.
+        backdate(event, Duration.ofMinutes(2))
 
         resubmissionJob.resubmitFailedPublications()
 
         val completed = awaitPublication(event) { it.status == "COMPLETED" && it.completedAt != null }
-        completed.attempts shouldBeGreaterThanOrEqual 1
+        completed.attempts shouldBe 2
         ProbeState.deliveriesOf(event.id) shouldBe 1
         // O job roda sob trava do ShedLock, gravada na tabela do schema shared.
         jdbc
@@ -105,14 +107,32 @@ class EventPublicationRegistryTest(
     }
 
     @Test
-    fun `failed publication is resubmitted when the application boots again`() {
-        val event = ProbeEvent(UUID.randomUUID(), "fails until restart")
-        ProbeState.failNext(event.id, times = 1)
+    fun `a new boot resubmits nothing by itself, and its job skips abandoned publications`() {
+        // Abandonada: falhou numa tentativa feita mais de 24 h depois da publicação.
+        val abandoned = ProbeEvent(UUID.randomUUID(), "abandoned before restart")
+        ProbeState.failNext(abandoned.id, times = 1)
+        transactionTemplate.executeWithoutResult { events.publishEvent(abandoned) }
+        awaitPublication(abandoned) { it.status == "FAILED" }
+        jdbc
+            .sql(
+                """
+                UPDATE shared.event_publication
+                   SET publication_date = now() - interval '25 hours',
+                       last_resubmission_date = now() - interval '30 minutes', completion_attempts = 30
+                 WHERE event_type = :type AND serialized_event LIKE :id
+                """.trimIndent(),
+            ).param("type", ProbeEvent::class.java.name)
+            .param("id", "%${abandoned.id}%")
+            .update()
+        // Com falha e vencida: volta pelo job do processo novo.
+        val failed = ProbeEvent(UUID.randomUUID(), "fails until restart")
+        ProbeState.failNext(failed.id, times = 1)
+        transactionTemplate.executeWithoutResult { events.publishEvent(failed) }
+        awaitPublication(failed) { it.status == "FAILED" }
+        backdate(failed, Duration.ofMinutes(5))
 
-        transactionTemplate.executeWithoutResult { events.publishEvent(event) }
-        awaitPublication(event) { it.status == "FAILED" }
-
-        // Segundo processo sobre o mesmo banco: no boot, reenvia as publicações incompletas.
+        // Segundo processo sobre o mesmo banco: o boot não reenvia nada (republish-outstanding-events-on-restart
+        // desligado, porque reenviaria também as abandonadas); o job dele reenvia só a vencida.
         SpringApplicationBuilder(
             ZenyHotelApplication::class.java,
             ProbeListenerConfiguration::class.java,
@@ -120,11 +140,23 @@ class EventPublicationRegistryTest(
             .initializers(PostgresInitializer(), TestEncryptionKeysInitializer(), TestAuthInitializer())
             // Como argumentos de linha de comando: `properties()` teria prioridade abaixo do application.yaml.
             // Porta aleatória: a 8080 pode estar ocupada (bootRun, proxy do compose).
-            .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED", "--server.port=0")
-            .use { _ ->
-                awaitPublication(event) { it.status == "COMPLETED" && it.completedAt != null }
+            .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED", "--$OUTBOX_PURGE_DEFERRED", "--server.port=0")
+            .use { context ->
+                await().during(Duration.ofMillis(SETTLE_MILLIS)).atMost(Duration.ofSeconds(2)).until {
+                    ProbeState.invocationsOf(failed.id) == 1 && ProbeState.invocationsOf(abandoned.id) == 1
+                }
+                publicationOf(failed).shouldNotBeNull().attempts shouldBe 1
+
+                context.getBean(EventPublicationResubmissionJob::class.java).resubmitFailedPublications()
+
+                awaitPublication(failed) { it.status == "COMPLETED" && it.completedAt != null }
+                publicationOf(abandoned).shouldNotBeNull().let {
+                    it.status shouldBe "FAILED"
+                    it.attempts shouldBe 30
+                }
             }
-        ProbeState.deliveriesOf(event.id) shouldBe 1
+        ProbeState.deliveriesOf(failed.id) shouldBe 1
+        ProbeState.invocationsOf(abandoned.id) shouldBe 1
     }
 
     @Test
@@ -163,6 +195,25 @@ class EventPublicationRegistryTest(
                 )
             }.optional()
             .orElse(null)
+
+    /** Leva a publicação [age] para o passado, como se tivesse falhado antes. */
+    private fun backdate(
+        event: ProbeEvent,
+        age: Duration,
+    ) {
+        jdbc
+            .sql(
+                """
+                UPDATE shared.event_publication
+                   SET publication_date = publication_date - CAST(:age AS interval),
+                       last_resubmission_date = last_resubmission_date - CAST(:age AS interval)
+                 WHERE event_type = :type AND serialized_event LIKE :id
+                """.trimIndent(),
+            ).param("age", age.toString())
+            .param("type", ProbeEvent::class.java.name)
+            .param("id", "%${event.id}%")
+            .update()
+    }
 
     private fun awaitPublication(
         event: ProbeEvent,

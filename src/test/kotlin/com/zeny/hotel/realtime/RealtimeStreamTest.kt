@@ -24,6 +24,7 @@ import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
 import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
 import com.zeny.hotel.testsupport.SseFrame
@@ -83,6 +84,7 @@ import java.util.concurrent.CopyOnWriteArrayList
     properties = [
         TEST_MIGRATIONS,
         RESUBMISSION_JOB_DEFERRED,
+        OUTBOX_PURGE_DEFERRED,
         "zeny.realtime.buffer-size=8",
         "zeny.realtime.heartbeat-interval=PT1S",
         "zeny.realtime.max-connections-per-session=2",
