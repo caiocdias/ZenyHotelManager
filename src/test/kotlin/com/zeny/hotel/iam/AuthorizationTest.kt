@@ -199,8 +199,10 @@ class AuthorizationTest(
                 "rooms.outoforder.read:ALL",
                 "rooms.outoforder.manage:ALL",
                 "rooms.outofservice.manage:ALL",
+                "rooms.offline.read:ALL",
             )
-        grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldBe listOf("staff.schedule.read:OWN")
+        grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
+            listOf("staff.schedule.read:OWN", "rooms.offline.read:ALL")
 
         // O administrador inicial tem a role Administrador e, com ela, todas as permissões vigentes.
         val me = iam.json(getMe(asUser(adminId())))

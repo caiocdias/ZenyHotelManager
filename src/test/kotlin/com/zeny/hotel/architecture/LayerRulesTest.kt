@@ -3,6 +3,7 @@ package com.zeny.hotel.architecture
 import com.tngtech.archunit.core.importer.ClassFileImporter
 import com.tngtech.archunit.lang.ArchRule
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
@@ -81,6 +82,22 @@ class LayerRulesTest {
 
         details.filter { "find" in it || "book(" in it || "list" in it || "restore" in it } shouldBe emptyList()
         details.size shouldBe 5
+    }
+
+    @Test
+    fun `offline command handler without an audited write transaction fails`() {
+        val base = "archfixtures.offlinehandlers"
+        val details =
+            LayerRules(base)
+                .offlineCommandHandlersAreAudited
+                .evaluate(ClassFileImporter().importPackages(base))
+                .failureReport.details
+
+        listOf("UnauditedBookingHandler", "NonTransactionalBookingHandler", "ReadOnlyBookingHandler").forEach { name ->
+            details.filter { name in it } shouldHaveSize 1
+        }
+        details.filter { "$base.booking.application.AuditedBookingHandler." in it } shouldBe emptyList()
+        details.size shouldBe 3
     }
 
     private fun assertViolates(

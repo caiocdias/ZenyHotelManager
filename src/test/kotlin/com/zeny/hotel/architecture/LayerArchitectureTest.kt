@@ -42,6 +42,13 @@ class LayerArchitectureTest {
         rules.writeUseCasesAreAudited.check(classes)
     }
 
+    @Test
+    fun `offline command handlers are audited write use cases`() {
+        rules.offlineCommandHandlersAreAudited.check(classes)
+        // O handler de exemplo dos testes (fora do pacote base) segue a mesma regra.
+        rules.offlineCommandHandlersAreAudited.check(ClassFileImporter().importPackages("syncexample"))
+    }
+
     private companion object {
         const val BASE_PACKAGE = "com.zeny.hotel"
     }

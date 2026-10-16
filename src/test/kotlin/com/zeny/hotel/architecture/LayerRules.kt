@@ -15,6 +15,7 @@ import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import com.zeny.hotel.shared.Audited
+import com.zeny.hotel.shared.OfflineCommandHandler
 import org.springframework.transaction.annotation.Transactional
 import jakarta.transaction.Transactional as JakartaTransactional
 
@@ -30,6 +31,8 @@ import jakarta.transaction.Transactional as JakartaTransactional
  * - Todo caso de uso de escrita de `application` (método público `@Transactional` do Spring sem
  *   `readOnly` ou `@jakarta.transaction.Transactional`, no método ou na classe) leva `@Audited`
  *   (RNF-11, ARCHITECTURE §5).
+ * - Todo `handle` de um `OfflineCommandHandler` (comando offline, ARCHITECTURE §9) é um caso de uso de
+ *   escrita auditado: `@Audited` e `@Transactional` sem `readOnly`, onde quer que a classe esteja.
  *
  * As regras recebem o pacote base para poderem ser exercitadas contra classes de exemplo
  * (ver `LayerRulesTest`). Enquanto não há módulos, as regras aceitam não encontrar classes.
@@ -102,6 +105,18 @@ class LayerRules(
             .allowEmptyShould(true)
             .because("toda escrita é auditada na mesma transação (RNF-11, ARCHITECTURE §5)")
 
+    val offlineCommandHandlersAreAudited: ArchRule =
+        methods()
+            .that()
+            .haveName("handle")
+            .and()
+            .areDeclaredInClassesThat()
+            .implement(OfflineCommandHandler::class.java)
+            .and(NOT_SYNTHETIC)
+            .should(beAuditedWriteUseCases())
+            .allowEmptyShould(true)
+            .because("o comando offline é uma escrita auditada na transação do protocolo (ARCHITECTURE §9)")
+
     val all: List<ArchRule> =
         listOf(
             domainMustNotDependOnSpring,
@@ -110,7 +125,22 @@ class LayerRules(
             webTalksOnlyToApplication,
             modulesUseOnlyPublicApiOfOtherModules,
             writeUseCasesAreAudited,
+            offlineCommandHandlersAreAudited,
         )
+
+    private fun beAuditedWriteUseCases(): ArchCondition<JavaMethod> =
+        object : ArchCondition<JavaMethod>("be @Audited write transactions") {
+            override fun check(
+                item: JavaMethod,
+                events: ConditionEvents,
+            ) {
+                if (!item.isAnnotatedWith(Audited::class.java) || !TRANSACTIONAL_WRITE.test(item)) {
+                    events.add(
+                        SimpleConditionEvent.violated(item, "${item.fullName} não é @Audited com @Transactional"),
+                    )
+                }
+            }
+        }
 
     private fun moduleOf(javaClass: JavaClass): String? =
         javaClass.packageName
@@ -144,6 +174,11 @@ class LayerRules(
 
     private companion object {
         val INTERNAL_LAYERS = listOf("domain", "application", "infrastructure", "web")
+
+        val NOT_SYNTHETIC: DescribedPredicate<JavaMethod> =
+            DescribedPredicate.describe("are not synthetic") {
+                JavaModifier.SYNTHETIC !in it.modifiers && JavaModifier.BRIDGE !in it.modifiers
+            }
 
         val ANNOTATION_OR_ENUM: DescribedPredicate<JavaClass> =
             DescribedPredicate.describe("annotation or enum") { it.isAnnotation || it.isEnum }

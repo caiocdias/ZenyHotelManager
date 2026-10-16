@@ -19,7 +19,8 @@ import com.zeny.hotel.shared.TemplateGrant
  * status: o Gerente tudo; a Governanta consulta, muda o status de governança, registra a sinalização e
  * o que encontrou na UH; a Recepcionista consulta e registra a sinalização do hóspede. OOO/OOS: o
  * Gerente tudo; a Manutenção consulta, abre OOS e só pede OOO (SPEC §3.1: "solicitar OOO/OOS", pela
- * aprovação de superior); a Recepcionista e a Governanta consultam.
+ * aprovação de superior); a Recepcionista e a Governanta consultam. O download offline das UHs
+ * ([OFFLINE_READ]): o Gerente, a Governanta, a Camareira e a Manutenção (decisão do usuário na E05 do M2).
  */
 object RoomsPermissions : ModulePermissions {
     override val module = "rooms"
@@ -50,6 +51,12 @@ object RoomsPermissions : ModulePermissions {
 
     /** Abrir, alterar e liberar períodos OOS (a UH continua vendável). */
     val OUT_OF_SERVICE_MANAGE = PermissionCode("rooms.outofservice.manage")
+
+    /**
+     * Baixar as UHs no app operacional offline (fonte `rooms` de `GET /api/v1/sync/changes`): só id, número,
+     * andar, status e sinalização (RN-13), sem o painel, o histórico nem as discrepâncias.
+     */
+    val OFFLINE_READ = PermissionCode("rooms.offline.read")
 
     private val all = TemplateGrant(ALL)
 
@@ -130,6 +137,18 @@ object RoomsPermissions : ModulePermissions {
                 "Colocar UH fora de serviço (OOS), alterar e liberar o período",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.MAINTENANCE to all),
+            ),
+            PermissionDefinition(
+                OFFLINE_READ,
+                "Baixar no app operacional offline as UHs ativas com número, andar, status e sinalização",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.HOUSEKEEPER to all,
+                        RoleTemplate.ROOM_ATTENDANT to all,
+                        RoleTemplate.MAINTENANCE to all,
+                    ),
             ),
         )
 }

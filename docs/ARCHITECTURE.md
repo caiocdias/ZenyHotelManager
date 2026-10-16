@@ -414,6 +414,8 @@ sequenceDiagram
 
 **Implementação**: o `shared` define a interface `OfflineCommandHandler`. Cada módulo registra os handlers dos seus comandos, de modo que o `sync` não depende dos módulos.
 
+**Cursor sem perda** (decidido pelo usuário no M2 E05, H6): `change_seq` (sequence `shared.change_seq`) e `change_xid` (`xid8`) são gravados por um trigger por tabela sincronizável, criado pelo módulo com a função genérica `shared.mark_offline_change()`. Como a sequence não segue a ordem de commit, o download serve só linhas de transações terminadas (`change_xid < pg_snapshot_xmin(pg_current_snapshot())`), em ordem `(change_xid, change_seq)`, e o cursor opaco leva essa posição. Uma transação de escrita parada atrasa o download sem perder nada; `idle_in_transaction_session_timeout` limita o atraso. As fontes (`OfflineChangeSource`) também são registradas pelos módulos.
+
 ---
 
 ## 10. Tempo real

@@ -30,6 +30,8 @@ tags:
   name: hotel
 - description: Informações sobre o servidor e a API.
   name: meta
+- description: Sincronização offline do app operacional.
+  name: sync
 - description: Trilha de auditoria das escritas.
   name: audit
 - description: Canal de tempo real (SSE).
@@ -3276,6 +3278,96 @@ paths:
       summary: Abre o canal de tempo real
       tags:
       - stream
+  /api/v1/sync/changes:
+    get:
+      description: "Sem `cursor`, o estado completo do que o usuário pode ver no escopo\
+        \ offline; com o `cursor` da resposta anterior, só o que mudou desde ele,\
+        \ em ordem, incluindo *tombstones* (`deleted`: o registro foi apagado, desativado\
+        \ ou saiu do escopo; apague-o). Com `hasMore`, peça a página seguinte com\
+        \ o novo `cursor`; sem ele, guarde o `cursor` para a próxima sincronizaçã\
+        o. `reset` indica um download completo (sem cursor, ou o usuário ou as permissõ\
+        es mudaram): descarte o que tem das fontes antes de aplicar. Cada mudança\
+        \ traz a fonte, o id, a versão e os dados, sem dado pessoal de hóspede (RN-13).\
+        \ Fonte `rooms` (exige `rooms.offline.read`): UHs ativas com `number`, `floor`,\
+        \ `occupancy`, `housekeepingStatus`, `inspectionPending` e `serviceFlag`.\
+        \ Cursor inválido: 400 `INVALID_CURSOR`."
+      operationId: listSyncChanges
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncChangesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Baixa as mudanças desde o cursor
+      tags:
+      - sync
+  /api/v1/sync/commands:
+    post:
+      description: "Lote ordenado de até 100 comandos `{commandId (UUIDv7 gerado no\
+        \ dispositivo), type, payload, occurredAt, deviceClock (o relógio do dispositivo\
+        \ no envio)}`, processados em ordem, cada um na sua transação. Um resultado\
+        \ por comando: `APPLIED`, `APPLIED_WITH_WARNINGS` (com `warnings`), `REJECTED`\
+        \ (com `code` e `message`; definitivo), `FAILED` (falha no servidor: reenvie)\
+        \ ou `NOT_PROCESSED` (um anterior falhou: reenvie a partir dele). Um `commandId`\
+        \ já processado devolve o resultado guardado (`replayed`), sem aplicar de\
+        \ novo; de outro usuário, `COMMAND_ID_CONFLICT`; com outro tipo, `COMMAND_ID_REUSED`;\
+        \ com o instante do UUIDv7, corrigido pela defasagem do relógio, mais antigo\
+        \ que a retenção (30 dias), ou cujo resultado já saiu pela retenção (o id\
+        \ fica guardado por 365 dias), `COMMAND_EXPIRED`. Outras rejeições do protocolo:\
+        \ `COMMAND_ID_INVALID` (não é UUIDv7, ou instante implausível), `DEVICE_TIME_INVALID`\
+        \ (`deviceClock` ou `occurredAt` antes de 2020-01-01 ou mais de 366 dias à\
+        \ frente do servidor), `UNKNOWN_COMMAND_TYPE` e `COMMAND_PAYLOAD_INVALID`.\
+        \ O `occurredAt` é corrigido pela defasagem do relógio (`recebimento − deviceClock`),\
+        \ sem passar do recebimento; acima da tolerância, o comando é aplicado com\
+        \ o alerta `CLOCK_SKEW_EXCEEDED`. O endpoint não usa `Idempotency-Key`."
+      operationId: submitSyncCommands
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncCommandsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncCommandsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Envia um lote de comandos offline
+      tags:
+      - sync
   /api/v1/users:
     get:
       description: "Todos os usuários, ativos e inativos, em ordem de login. Exige\
@@ -6455,6 +6547,164 @@ components:
       - name
       - start
       - updatedAt
+    SyncChangeResponse:
+      type: object
+      description: "Uma mudança de uma fonte offline, ou um tombstone (`deleted`)."
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+          description: "Os dados do registro, no formato da fonte; nulo no tombstone."
+          nullable: true
+        deleted:
+          type: boolean
+          description: "O registro foi apagado, desativado ou saiu do escopo: apague-o."
+        id:
+          type: string
+          format: uuid
+        source:
+          type: string
+          description: A fonte (`rooms`…).
+        version:
+          type: integer
+          format: int64
+          description: A versão do registro; nula em alguns tombstones.
+          nullable: true
+      required:
+      - deleted
+      - id
+      - source
+    SyncChangesResponse:
+      type: object
+      description: Uma página do download offline.
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncChangeResponse"
+        cursor:
+          type: string
+          description: Cursor a mandar na próxima chamada (página seguinte ou próxima
+            sincronização).
+        hasMore:
+          type: boolean
+          description: "Há mais mudanças disponíveis agora: peça a próxima página\
+            \ com o `cursor`."
+        reset:
+          type: boolean
+          description: "Download completo: descarte o que tem das fontes antes de\
+            \ aplicar."
+      required:
+      - changes
+      - cursor
+      - hasMore
+      - reset
+    SyncCommandRequest:
+      type: object
+      properties:
+        commandId:
+          type: string
+          format: uuid
+          description: "UUIDv7 gerado no dispositivo, único por comando."
+          nullable: true
+        deviceClock:
+          type: string
+          format: date-time
+          description: O relógio do dispositivo no envio do lote (para a correção
+            da defasagem).
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+          description: "Quando aconteceu, pelo relógio do dispositivo."
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+          description: "Os dados do comando, no formato do tipo."
+          nullable: true
+        type:
+          type: string
+          description: "O tipo do comando, `<módulo>.<nome>`."
+          maxLength: 100
+          minLength: 0
+          nullable: true
+      required:
+      - commandId
+      - deviceClock
+      - occurredAt
+      - type
+    SyncCommandResultResponse:
+      type: object
+      description: "O resultado de um comando do lote, na ordem do lote."
+      properties:
+        code:
+          type: string
+          description: Motivo estável da rejeição ou da falha.
+          nullable: true
+        commandId:
+          type: string
+          format: uuid
+        message:
+          type: string
+          description: Mensagem em pt-BR da rejeição ou da falha.
+          nullable: true
+        occurredAt:
+          type: string
+          format: date-time
+          description: O `occurredAt` corrigido pela defasagem do relógio.
+          nullable: true
+        replayed:
+          type: boolean
+          description: "Resultado guardado de um envio anterior: não foi aplicado\
+            \ de novo."
+        status:
+          type: string
+          enum:
+          - APPLIED
+          - APPLIED_WITH_WARNINGS
+          - REJECTED
+          - FAILED
+          - NOT_PROCESSED
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncWarningResponse"
+      required:
+      - commandId
+      - replayed
+      - status
+      - warnings
+    SyncCommandsRequest:
+      type: object
+      properties:
+        commands:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncCommandRequest"
+          maxItems: 100
+          minItems: 0
+      required:
+      - commands
+    SyncCommandsResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncCommandResultResponse"
+      required:
+      - results
+    SyncWarningResponse:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
     TaxSettingsDto:
       type: object
       description: Taxas do hotel (RF-CFG-03).

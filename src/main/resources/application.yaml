@@ -193,6 +193,22 @@ zeny:
     buffer-size: 1000
     heartbeat-interval: PT15S
     max-connections-per-session: 3
+  # Sincronização offline (ARCHITECTURE §9, GET /api/v1/sync/changes e POST /api/v1/sync/commands): acima da
+  # tolerância de relógio, o comando é aplicado com o alerta CLOCK_SKEW_EXCEEDED (o horário é corrigido de
+  # qualquer forma); o resultado de cada commandId fica guardado pela retenção, contada do mais tardio entre o
+  # processamento e o instante do id, e o job de expurgo apaga os vencidos sob trava do ShedLock (um commandId
+  # cujo instante, corrigido pela defasagem, passou da retenção é recusado: COMMAND_EXPIRED).
+  # Só o id (com o usuário e o tipo) fica mais tempo: o reenvio de um id cujo resultado saiu é COMMAND_EXPIRED,
+  # qualquer que seja o relógio do aparelho. deviceClock, occurredAt e o instante do commandId fora da faixa
+  # plausível (antes de 2020-01-01 ou mais que max-device-clock-ahead à frente do servidor) são recusados.
+  sync:
+    clock-tolerance: PT5M
+    command-retention: P30D
+    command-id-retention: P365D
+    max-device-clock-ahead: P366D
+    purge:
+      interval: PT1H
+      initial-delay: PT5M
   # Autenticação (ARCHITECTURE §8.1, módulo iam).
   iam:
     # Access token JWT assinado em RS256 com `kid` (H3).

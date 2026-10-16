@@ -509,6 +509,9 @@ class RoomsApiTest(
                 listOf(RoleTemplate.MANAGER)
             definition(RoomsPermissions.OUT_OF_SERVICE_MANAGE).templates.keys shouldContainExactlyInAnyOrder
                 listOf(RoleTemplate.MANAGER, RoleTemplate.MAINTENANCE)
+            // O download offline das UHs (M2 E05): quem usa o app operacional.
+            definition(RoomsPermissions.OFFLINE_READ).templates.keys shouldContainExactlyInAnyOrder
+                housekeeping + listOf(RoleTemplate.ROOM_ATTENDANT, RoleTemplate.MAINTENANCE)
             // Só colocar UH em OOO é sensível (RF-ACS-08).
             RoomsPermissions.permissions.filter { it.sensitive }.map { it.code } shouldContainExactly
                 listOf(RoomsPermissions.OUT_OF_ORDER_MANAGE)
@@ -529,6 +532,7 @@ class RoomsApiTest(
                 "rooms.outoforder.read",
                 "rooms.outoforder.manage",
                 "rooms.outofservice.manage",
+                "rooms.offline.read",
             )
     }
 
