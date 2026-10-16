@@ -9,7 +9,11 @@ import com.zeny.hotel.shared.InvalidInputException
 import java.security.MessageDigest
 import java.util.HexFormat
 
-/** Um upload que passou pelas regras da finalidade: o tipo detectado e o resumo do conteúdo original. */
+/**
+ * Um upload que passou pelas regras da finalidade: o tipo detectado e o resumo do conteúdo que vai
+ * ao armazenamento ([sizeBytes] e [sha256]: o recebido ou, numa finalidade com reencode, o
+ * regravado, ver [withContent]) e o SHA-256 do conteúdo como chegou ([receivedSha256]).
+ */
 data class ValidatedUpload(
     val type: FileType,
     val sizeBytes: Long,
@@ -17,7 +21,12 @@ data class ValidatedUpload(
     val sensitive: Boolean,
     /** O nome informado pelo cliente, sem caminho e sem caracteres de controle, ou `null`. */
     val originalName: String?,
-)
+    val receivedSha256: String = sha256,
+) {
+    /** O mesmo upload com o conteúdo trocado pelo reencodado (do mesmo tipo). */
+    fun withContent(content: ByteArray): ValidatedUpload =
+        copy(sizeBytes = content.size.toLong(), sha256 = FileContentRules.sha256(content))
+}
 
 /**
  * Regras de um upload contra a finalidade (ARCHITECTURE §14): não vazio, até o tamanho máximo, de um

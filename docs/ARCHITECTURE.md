@@ -518,6 +518,7 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 - Chaves organizadas por módulo e finalidade (`<módulo>/<finalidade>/<id>`); o registro dono fica nos metadados (schema `files`).
 - Download só por URL assinada de curta duração (5 min por padrão, no máximo 15). Anexo comum: URL pré-assinada direto ao bucket (no compose, pelo proxy). Anexo sensível: cifrado antes de ir ao bucket (§8.3) e servido só pelo servidor, que decifra, por uma URL assinada pelo próprio servidor; a emissão e cada download vão para a trilha de auditoria.
 - Limites de tamanho e tipo por finalidade, declarados em código pelo módulo dono; o tipo é detectado pelo conteúdo, não pela extensão.
+- Ciclo de vida (M2 E11): o módulo dono vincula, desvincula e apaga os anexos pela `FilesApi`; o anexo apagado fica marcado na linha (a trilha o referencia) e o objeto sai do bucket depois do commit. Um anexo sem vínculo há mais de 24 h (configurável) é expurgado por um job, com cada expurgo na trilha (ator sistema). O upload aceita um id gerado pelo cliente (`clientFileId`), que torna a repetição segura para o app offline. Finalidades marcadas (as fotos de checklist) têm a imagem JPEG/PNG regravada no servidor, sem metadados EXIF/GPS e com o lado maior limitado.
 - XMLs fiscais e de NF-e de entrada também são guardados aqui.
 
 **Impressão**

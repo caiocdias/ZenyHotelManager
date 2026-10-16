@@ -20,23 +20,32 @@ import java.time.Duration
  * - [maxUploadSize]: maior tamanho aceito por qualquer finalidade (padrão 20 MB). Os limites do
  *   multipart do servidor (`spring.servlet.multipart.max-file-size` e `max-request-size`) são
  *   configurados à parte e não o acompanham sozinhos: o [FilePurposeCatalog] recusa o boot se
- *   algum deles ficar abaixo deste valor.
+ *   algum deles ficar abaixo deste valor;
+ * - [orphanRetention]: quanto tempo um anexo fica sem vínculo (desde a criação ou o último
+ *   desvínculo) antes de o expurgo o apagar (padrão 24 h; ao menos 1 h, para o módulo dono ter
+ *   tempo de vincular um anexo recém-enviado).
  */
 @ConfigurationProperties("zeny.files")
 class FilesProperties(
     val downloadUrlTtl: Duration,
     val maxUploadSize: DataSize,
+    val orphanRetention: Duration = DEFAULT_ORPHAN_RETENTION,
 ) {
     init {
         require(downloadUrlTtl >= MIN_TTL && downloadUrlTtl <= MAX_TTL) {
             "zeny.files.download-url-ttl precisa ficar entre $MIN_TTL e $MAX_TTL (URL assinada de curta duração)"
         }
         require(maxUploadSize.toBytes() > 0) { "zeny.files.max-upload-size precisa ser positivo" }
+        require(orphanRetention >= MIN_ORPHAN_RETENTION) {
+            "zeny.files.orphan-retention precisa ser de ao menos $MIN_ORPHAN_RETENTION"
+        }
     }
 
     companion object {
         val MIN_TTL: Duration = Duration.ofSeconds(1)
         val MAX_TTL: Duration = Duration.ofMinutes(15)
+        val MIN_ORPHAN_RETENTION: Duration = Duration.ofHours(1)
+        val DEFAULT_ORPHAN_RETENTION: Duration = Duration.ofHours(24)
     }
 }
 

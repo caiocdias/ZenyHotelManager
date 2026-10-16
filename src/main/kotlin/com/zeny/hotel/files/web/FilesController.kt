@@ -34,8 +34,9 @@ import java.util.UUID
 
 /**
  * Anexos (ARCHITECTURE §8.3 e §14): upload por finalidade e download só por URL assinada de curta
- * duração. O upload é multipart e não é idempotente (`Idempotency-Key` não se aplica a multipart):
- * repetir gera outro anexo, que fica sem dono.
+ * duração. O upload é multipart, e o `Idempotency-Key` não se aplica a multipart: a repetição segura
+ * é pela parte opcional `clientFileId` (H10 do roadmap do M2), o id do anexo gerado pelo cliente.
+ * Sem ela, repetir gera outro anexo, que fica órfão e sai no expurgo.
  */
 @ApiV1Controller
 @RequestMapping("/files")
@@ -53,10 +54,18 @@ class FilesController(
                 "pela extensão. Recusas (400, com o campo em `errors[]`): `UNKNOWN_FILE_PURPOSE`, `FILE_EMPTY`, " +
                 "`FILE_TOO_LARGE` (acima do máximo da finalidade), `FILE_TYPE_NOT_ACCEPTED` (conteúdo de tipo não " +
                 "aceito) e `FILE_EXTENSION_MISMATCH` (extensão diferente do conteúdo); acima do máximo do servidor, " +
-                "413 `PAYLOAD_TOO_LARGE`. Anexo sensível é cifrado antes de ir ao armazenamento. Não aceita " +
-                "`Idempotency-Key`: repetir o envio cria outro anexo.",
+                "413 `PAYLOAD_TOO_LARGE`. Numa finalidade com reencode, a imagem (JPEG ou PNG) é regravada no " +
+                "servidor sem metadados (EXIF, GPS) e com o lado maior limitado; imagem ilegível é " +
+                "`FILE_IMAGE_UNREADABLE` e acima do teto de pixels, `FILE_IMAGE_TOO_LARGE`. Anexo sensível é cifrado " +
+                "antes de ir ao armazenamento. Não aceita `Idempotency-Key`; para repetir o envio com segurança " +
+                "(app offline), mande `clientFileId`, um UUIDv7 gerado pelo cliente, que vira o id do anexo: a " +
+                "repetição pelo mesmo usuário, com a mesma finalidade e o mesmo arquivo devolve 200 com o anexo " +
+                "existente, sem gravar de novo; o mesmo id com outro arquivo, outra finalidade, de outro usuário ou " +
+                "de um anexo já apagado é 409 `CLIENT_FILE_ID_CONFLICT`; fora do formato, 400 " +
+                "`CLIENT_FILE_ID_INVALID`. Sem `clientFileId`, repetir cria outro anexo.",
     )
     @ApiResponse(responseCode = "201", description = "Anexo gravado.")
+    @ApiResponse(responseCode = "200", description = "Repetição com o mesmo `clientFileId`: o anexo já gravado.")
     fun upload(
         @Parameter(description = "Finalidade do anexo (`<módulo>.<nome>`), como `hotel.logo`.")
         @RequestPart("purpose")
@@ -64,9 +73,17 @@ class FilesController(
         @Parameter(description = "O arquivo; o tipo é detectado pelo conteúdo.")
         @RequestPart("file")
         file: MultipartFile,
+        @Parameter(
+            description =
+                "Opcional: id do anexo gerado pelo cliente (UUIDv7), para repetir o envio sem duplicar o anexo.",
+        )
+        @RequestPart("clientFileId", required = false)
+        clientFileId: String?,
     ): ResponseEntity<FileResponse> {
-        val view = files.upload(UploadCommand(purpose, file.originalFilename, file.bytes))
-        return ResponseEntity.created(URI.create("$API_V1/files/${view.id.value}")).body(FileResponse.of(view))
+        val result = files.upload(UploadCommand(purpose, file.originalFilename, file.bytes, clientFileId))
+        val body = FileResponse.of(result.file)
+        if (result.replayed) return ResponseEntity.ok(body)
+        return ResponseEntity.created(URI.create("$API_V1/files/${result.file.id.value}")).body(body)
     }
 
     @GetMapping("/{id}")
@@ -74,8 +91,8 @@ class FilesController(
         operationId = "getFile",
         summary = "Consultar os metadados de um anexo",
         description =
-            "Exige a permissão de download da finalidade (com escopo `OWN`, só de quem enviou). Inexistente: 404 " +
-                "`FILE_NOT_FOUND`.",
+            "Exige a permissão de download da finalidade (com escopo `OWN`, só de quem enviou). Inexistente ou " +
+                "apagado: 404 `FILE_NOT_FOUND`.",
     )
     fun metadata(
         @PathVariable id: UUID,
@@ -89,7 +106,8 @@ class FilesController(
             "URL assinada de curta duração (`zeny.files.download-url-ttl`, padrão 5 min), sem precisar do access " +
                 "token. Exige a permissão de download da finalidade (com escopo `OWN`, só de quem enviou). Anexo " +
                 "comum: URL direta ao armazenamento. Anexo sensível: URL do próprio servidor, que decifra o " +
-                "conteúdo; a emissão e cada download vão para a trilha de auditoria.",
+                "conteúdo; a emissão e cada download vão para a trilha de auditoria. Inexistente ou apagado: 404 " +
+                "`FILE_NOT_FOUND`.",
     )
     fun downloadUrl(
         @PathVariable id: UUID,

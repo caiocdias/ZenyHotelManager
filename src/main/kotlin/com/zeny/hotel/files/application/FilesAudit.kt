@@ -12,6 +12,11 @@ internal object FilesAudit {
 
     const val UPLOAD = "files.file.upload"
     const val ATTACH = "files.file.attach"
+    const val DETACH = "files.file.detach"
+    const val DELETE = "files.file.delete"
+
+    /** Expurgo de um órfão pelo job, com ator sistema (H12 do roadmap do M2). */
+    const val PURGE_ORPHAN = "files.file.purge-orphan"
 
     /** Geração de URL de download de anexo sensível (as de anexo comum não vão para a trilha). */
     const val ISSUE_DOWNLOAD_URL = "files.file.issue-download-url"
@@ -28,6 +33,8 @@ internal data class StoredFileAuditState(
     val sizeBytes: Long,
     val sensitive: Boolean,
     val encryptionKeyId: String?,
+    val detachedAt: Instant?,
+    val deletedAt: Instant?,
 )
 
 internal fun StoredFile.auditState() =
@@ -39,6 +46,8 @@ internal fun StoredFile.auditState() =
         sizeBytes = sizeBytes,
         sensitive = sensitive,
         encryptionKeyId = encryptionKeyId,
+        detachedAt = detachedAt,
+        deletedAt = deletedAt,
     )
 
 /** O acesso a um anexo sensível: a URL emitida ou o download feito com ela, e até quando ela vale. */

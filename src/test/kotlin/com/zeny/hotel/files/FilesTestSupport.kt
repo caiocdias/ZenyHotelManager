@@ -14,6 +14,13 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.multipart
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.http.SdkHttpMethod
+import software.amazon.awssdk.http.SdkHttpRequest
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4FamilyHttpSigner
+import software.amazon.awssdk.http.auth.aws.signer.AwsV4HttpSigner
+import software.amazon.awssdk.http.auth.spi.signer.HttpSigner
+import software.amazon.awssdk.http.auth.spi.signer.SignRequest
+import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
@@ -23,15 +30,20 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 /**
- * Validade das URLs de download nos testes de anexos: curta, para o teste de expiração esperar pouco.
- * As classes que a usam (e o mesmo `@Import`) compartilham um contexto.
+ * Validade das URLs de download nos testes de anexos, com folga para uma CI lenta: o vencimento é
+ * conferido com o relógio controlado ([com.zeny.hotel.testsupport.MutableClock]) e, no bucket, com
+ * uma URL assinada no passado ([FilesTestSupport.presignedAt]), sem esperar. As classes que a usam
+ * (com o mesmo `@Import`, inclusive o `MutableClockConfiguration`) compartilham um contexto.
  */
-const val FILES_TEST_URL_TTL = "zeny.files.download-url-ttl=PT4S"
-const val FILES_TEST_URL_TTL_SECONDS = 4L
+const val FILES_TEST_URL_TTL = "zeny.files.download-url-ttl=PT2M"
+const val FILES_TEST_URL_TTL_SECONDS = 120L
 
 /** Uma entrada da trilha de auditoria de um anexo. */
 data class FileAuditRow(
@@ -50,21 +62,25 @@ class FilesTestSupport(
     private val jsonMapper: JsonMapper,
     private val jdbc: JdbcClient,
     private val s3: S3Client,
-    private val bucket: String,
+    private val storage: StorageProperties,
 ) {
+    private val bucket = storage.bucket
     private val http: HttpClient = HttpClient.newHttpClient()
 
+    @Suppress("LongParameterList") // as partes do multipart, com os padrões de um PNG sem clientFileId
     fun upload(
         purpose: String,
         auth: RequestPostProcessor,
         content: ByteArray,
         name: String? = "arquivo.png",
         contentType: String = "image/png",
+        clientFileId: String? = null,
     ): MockHttpServletResponse =
         mockMvc
             .multipart("/api/v1/files") {
                 file(MockMultipartFile("file", name, contentType, content))
                 part(MockPart("purpose", purpose.toByteArray(Charsets.UTF_8)))
+                clientFileId?.let { part(MockPart("clientFileId", it.toByteArray(Charsets.UTF_8))) }
                 with(auth)
             }.andReturn()
             .response
@@ -101,6 +117,41 @@ class FilesTestSupport(
     fun httpGet(url: URI): HttpResponse<ByteArray> =
         http.send(HttpRequest.newBuilder(url).GET().build(), HttpResponse.BodyHandlers.ofByteArray())
 
+    /**
+     * Uma URL pré-assinada do objeto [key] com as credenciais da aplicação, como se assinada em
+     * [signedAt] e válida por [ttl]: prova, sem esperar, que o bucket recusa a URL vencida.
+     */
+    fun presignedAt(
+        key: String,
+        signedAt: Instant,
+        ttl: Duration,
+    ): URI {
+        val request =
+            SdkHttpRequest
+                .builder()
+                .method(SdkHttpMethod.GET)
+                .uri(URI.create("${storage.endpoint}/$bucket/$key"))
+                .build()
+        val signRequest =
+            SignRequest
+                .builder(AwsCredentialsIdentity.create(storage.accessKey, storage.secretKey))
+                .request(request)
+                .putProperty(AwsV4HttpSigner.REGION_NAME, storage.region)
+                .putProperty(AwsV4FamilyHttpSigner.SERVICE_SIGNING_NAME, "s3")
+                .putProperty(AwsV4FamilyHttpSigner.AUTH_LOCATION, AwsV4FamilyHttpSigner.AuthLocation.QUERY_STRING)
+                .putProperty(AwsV4FamilyHttpSigner.EXPIRATION_DURATION, ttl)
+                .putProperty(AwsV4FamilyHttpSigner.PAYLOAD_SIGNING_ENABLED, false)
+                .putProperty(AwsV4FamilyHttpSigner.DOUBLE_URL_ENCODE, false)
+                .putProperty(AwsV4FamilyHttpSigner.NORMALIZE_PATH, false)
+                .putProperty(HttpSigner.SIGNING_CLOCK, Clock.fixed(signedAt, ZoneOffset.UTC))
+                .build()
+        return AwsV4HttpSigner
+            .create()
+            .sign(signRequest)
+            .request()
+            .uri
+    }
+
     /** Baixa uma URL do servidor (`/api/v1/files/{id}/content?token=…`) sem access token. */
     fun serverGet(url: URI): MockHttpServletResponse =
         mockMvc.get(URI.create(url.rawPath + "?" + url.rawQuery)).andReturn().response
@@ -134,6 +185,8 @@ class FilesTestSupport(
             .param("id", id)
             .query()
             .singleRow()
+
+    fun objectExists(key: String): Boolean = objectKeys(key).contains(key)
 
     fun countRows(purpose: String): Int =
         jdbc
@@ -193,5 +246,5 @@ class FilesTestConfiguration {
         jdbc: JdbcClient,
         s3: S3Client,
         storage: StorageProperties,
-    ) = FilesTestSupport(mockMvc, jsonMapper, jdbc, s3, storage.bucket)
+    ) = FilesTestSupport(mockMvc, jsonMapper, jdbc, s3, storage)
 }

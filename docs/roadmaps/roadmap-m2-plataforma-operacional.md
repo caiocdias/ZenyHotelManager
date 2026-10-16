@@ -203,7 +203,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E06 | Modelos de checklist | #concluida | — | Modelos, versões imutáveis, itens, condicionais, aplicabilidade e ações configuradas |
-| E11 | Ciclo de vida dos anexos | #pendente | — | `detach`/`delete`, expurgo de órfãos, upload com `clientFileId` e reencode de imagens |
+| E11 | Ciclo de vida dos anexos | #concluida | — | `detach`/`delete`, expurgo de órfãos, upload com `clientFileId` e reencode de imagens |
 | E07 | Execução de checklists e rotinas | #pendente | E05, E06, E11, E12 | Execução online e offline com fotos, `ChecklistCompleted` e rotinas por setor e escala |
 | E08 | Relatórios de checklists | #pendente | E07 | Conformidade por modelo, itens mais reprovados e histórico por local |
 
@@ -1212,7 +1212,7 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 ---
 
-## E11 — Ciclo de vida dos anexos — #pendente
+## E11 — Ciclo de vida dos anexos — #concluida
 
 **Objetivo:** completar o módulo `files` com o que as fotos de checklist (E07) e a primeira finalidade sensível (M3) precisam: desvincular e apagar anexos pela `FilesApi`, expurgar os órfãos, aceitar um upload idempotente com id gerado pelo cliente para o app offline e reencodar as imagens das finalidades que pedirem (H10, H11, H12).
 
@@ -1272,12 +1272,12 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] `FilesApi.detach` deixa o anexo sem dono e grava `files.file.detach`; `FilesApi.delete` remove o objeto do bucket só depois do commit, marca a linha e grava `files.file.delete`; depois, `find` devolve `null` e metadados e URL dão `404 FILE_NOT_FOUND`.
-- [ ] O job apaga o objeto e marca a linha de um órfão mais antigo que a retenção, com entrada `files.file.purge-orphan` de ator sistema; órfão recente e anexo vinculado ficam (teste com relógio controlado).
-- [ ] Upload com o mesmo `clientFileId`, o mesmo usuário e o mesmo conteúdo devolve `200` com o mesmo anexo e deixa uma só linha e um só objeto; com outro conteúdo, outra finalidade ou outro usuário → `409` com `code` estável.
-- [ ] Numa finalidade com reencode, uma foto JPEG com EXIF e GPS é gravada sem esses metadados e com o lado máximo respeitado; o SHA-256 gravado é o do conteúdo reencodado; o boot recusa finalidade com reencode que aceite WebP ou PDF.
-- [ ] `FilesApiTest` não usa `Thread.sleep` para ver a URL vencer; o logotipo do hotel continua com o mesmo comportamento (`HotelLogoTest` sem mudança de asserção).
-- [ ] `CLAUDE.md` e `README.md` atualizados; contrato regenerado; build e oasdiff passam.
+- [x] `FilesApi.detach` deixa o anexo sem dono e grava `files.file.detach`; `FilesApi.delete` remove o objeto do bucket só depois do commit, marca a linha e grava `files.file.delete`; depois, `find` devolve `null` e metadados e URL dão `404 FILE_NOT_FOUND`.
+- [x] O job apaga o objeto e marca a linha de um órfão mais antigo que a retenção, com entrada `files.file.purge-orphan` de ator sistema; órfão recente e anexo vinculado ficam (teste com relógio controlado).
+- [x] Upload com o mesmo `clientFileId`, o mesmo usuário e o mesmo conteúdo devolve `200` com o mesmo anexo e deixa uma só linha e um só objeto; com outro conteúdo, outra finalidade ou outro usuário → `409` com `code` estável.
+- [x] Numa finalidade com reencode, uma foto JPEG com EXIF e GPS é gravada sem esses metadados e com o lado máximo respeitado; o SHA-256 gravado é o do conteúdo reencodado; o boot recusa finalidade com reencode que aceite WebP ou PDF.
+- [x] `FilesApiTest` não usa `Thread.sleep` para ver a URL vencer; o logotipo do hotel continua com o mesmo comportamento (`HotelLogoTest` sem mudança de asserção).
+- [x] `CLAUDE.md` e `README.md` atualizados; contrato regenerado; build e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -1294,12 +1294,56 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `b5033440250e860543216c2edfbe9152042279cd` (recebido do orquestrador; `HEAD` `282f356`, árvore limpa; E12 e E06 já commitadas e não tocadas). Snapshot ao fim da implementação: `5c5610623f7a5e6ca7ef2c0b3b7718ec67bcefe1` (35 arquivos, +2131/−130, antes deste handoff). Preparação: a E09 do M1 está `#concluida` e a `FilesApi` tinha só `find` e `attach`, como no plano. A investigação (fluxo do `files`, `afterCompletion` do upload e `javax.imageio`) foi feita direto, sem subagente (adendo do orquestrador).
+- Arquivos alterados:
+  - `files`, raiz: `FilesApi.kt` (`detach` e `delete`, KDoc do ciclo de vida), `FilePurposes.kt` (`FilePurpose.reencode` e `ImageReencoding`, com a recusa de WebP/PDF no `init`), `FilesErrorCodes.kt` (`FILE_IMAGE_UNREADABLE`, `FILE_IMAGE_TOO_LARGE`, `CLIENT_FILE_ID_INVALID`, `CLIENT_FILE_ID_CONFLICT`).
+  - `files/domain/`: `StoredFile.kt` (`received_sha256`, `detached_at`, `deleted_at`, `detachFrom`, `deleteFor`, `isOrphanSince`, `purgeOrphan`), `FileContentRules.kt` (`ValidatedUpload.receivedSha256` e `withContent`) e `ImageReencoder.kt` (novo: reencode e `ExifOrientation`).
+  - `files/application/`: `FilesService.kt` (upload com `clientFileId`, trava consultiva, repetição e reencode; `created_at` em microssegundos), `FilesApiService.kt` (`detach`, `delete`), `FileOrphanPurge.kt` (novo, `@Audited("files.file.purge-orphan")`), `StoredObjectRemovals.kt` (novo: remoção do objeto no rollback do upload e depois do commit da exclusão), `FilePorts.kt`, `FilesAudit.kt` e `FilesConfiguration.kt` (`zeny.files.orphan-retention`).
+  - `files/infrastructure/`: `FilesPersistence.kt` (consultas só dos não apagados, órfãos vencidos, `pg_advisory_xact_lock`) e `FileOrphanPurgeJob.kt` (novo, ShedLock `files-orphans-purge`); `files/web/FilesController.kt` (parte `clientFileId`, `200` na repetição, descrições).
+  - Banco: `db/migration/files/V2026_10_16_0430__add_stored_file_lifecycle.sql` (colunas anuláveis, `CHECK` do `received_sha256` e o índice parcial `stored_file_orphan_idx`). Configuração: `application.yaml` (`orphan-retention: PT24H`, `orphan-purge.interval`/`initial-delay`).
+  - Testes: novos `FilesLifecycleTest` (9), `ImageReencoderTest` (6) e `TestImages`; alterados `FilesApiTest` (relógio controlado, URL do bucket assinada no passado, sem `Thread.sleep`), `FileContentRulesTest` (+2), `FilesTestSupport` (`clientFileId`, `presignedAt`, `objectExists`), `filesexample/FileExamples.kt` (finalidade `fileexamples.reencoded-photo`), `HotelLogoTest` (só o `@Import` com o `MutableClockConfiguration`, para continuar no contexto dos anexos; nenhuma asserção mudou), `IntegrationTest.kt` (`FILES_PURGE_DEFERRED`) e os três contextos montados à mão (`EventPublicationRegistryTest`, `RealtimeStreamTest`, `ProductionProfileApiTest`), que passam a adiar o expurgo também.
+  - Contrato e documentação: `api/openapi.yaml` (parte `clientFileId`, resposta `200`, descrições), `CLAUDE.md` (estado atual, seção "Anexos" com reencode, upload repetível, `detach`/`delete` e expurgo, testes, jobs, regra da auditoria e testes de integração), `README.md` (ciclo de vida dos anexos e o `curl` com `clientFileId`), `docs/ARCHITECTURE.md` (§14) e este roadmap.
+- Decisões (todas **decididas pela opção recomendada, por autorização do usuário em 2026-10-16**, para revisão posterior; alternativas descartadas entre parênteses):
+  1. **Idade do órfão:** conta de `COALESCE(detached_at, created_at)`, com a coluna nova `detached_at` gravada pelo `detach` (o expurgo não apaga um anexo recém-desvinculado). (Contar só do `created_at`, que apagaria na hora uma foto trocada de uma execução antiga.)
+  2. **`detach` e `delete` sobre outro dono:** `409 FILE_ALREADY_ATTACHED`, o código que já existia ("vinculado a outro registro"); `detach` de um órfão não muda nada; `delete` aceita o anexo do registro ou um órfão da finalidade. (Código novo para "não é deste registro"; `delete` só de anexo vinculado.)
+  3. **Anexo apagado:** some de `find`, `GET /files/{id}`, `download-url`, `attach`, `detach` e `delete` (`404 FILE_NOT_FOUND`); a linha fica com o último dono. O download do servidor com um token ainda válido de um anexo apagado segue o caminho de anexo inexistente que já havia (`403 DOWNLOAD_URL_INVALID`). (Apagar a linha: H12 a mantém.)
+  4. **Falha do armazenamento depois do commit:** só log (`WARN` com a chave, sem dado pessoal); o objeto fica no bucket sem linha viva que o sirva. (Job de nova tentativa ou coluna de "objeto removido": fica para o M8, com a métrica de falha do S3 já prevista.)
+  5. **`clientFileId`:** UUIDv7 na forma canônica (senão `400 CLIENT_FILE_ID_INVALID`, campo `clientFileId`); um código só, `409 CLIENT_FILE_ID_CONFLICT`, para outro conteúdo, outra finalidade, outro usuário e anexo já apagado (o cliente faz o mesmo nos quatro: gera outro id); a repetição compara o SHA-256 **do recebido** (coluna nova `received_sha256`), porque o regravado pode mudar com a versão do JDK; a repetição não grava entrada na trilha (nada mudou); dois envios simultâneos se enfileiram por `pg_advisory_xact_lock` e o segundo recebe `200`. (Comparar o SHA-256 gravado; deixar a violação da chave primária virar `409`.)
+  6. **Reencode:** atributo por finalidade, `ImageReencoding(maxSidePixels = 2048)` (de 16 a 8192), em vez de uma propriedade global; JPEG com qualidade 0,85; orientação EXIF aplicada aos pixels antes de descartar os metadados (sem isso, as fotos do celular sairiam deitadas); transparência do PNG mantida; teto de 50 MP conferido no cabeçalho (`400 FILE_IMAGE_TOO_LARGE`) e subamostragem na decodificação quando o lado passa do dobro do máximo; conteúdo ilegível `400 FILE_IMAGE_UNREADABLE`; o limite de tamanho da finalidade vale para o recebido. Memória (risco da etapa): pico do raster decodificado mais a imagem final, uns 36 MB + 12 MB numa foto de 12 MP e no máximo uns 64 MB + 16 MB; o heap da imagem é `-XX:MaxRAMPercentage=75.0` (Dockerfile). (Propriedade global; não aplicar a orientação; sem teto de pixels.)
+  7. **Retenção e job:** `zeny.files.orphan-retention` de ao menos 1 h (o boot recusa menos), lotes de 100, até 10 por execução, um anexo por transação, conferido de novo com a linha travada (um `attach` simultâneo o preserva). O método do job não devolve nada: o ShedLock recusa (na chamada) método com retorno primitivo.
+  8. **`created_at` do upload na precisão do banco** (microssegundos): a resposta do upload e a da repetição, lida do banco, ficam iguais.
+  9. **Testes sem `Thread.sleep`:** `FILES_TEST_URL_TTL` passou de 4 s a 2 min (folga) e os testes de anexos (`FilesApiTest`, `FilesLifecycleTest`, `HotelLogoTest`) compartilham um contexto com o `MutableClockConfiguration`. A URL do servidor vence avançando o relógio da aplicação; a do bucket (o S3 assina pelo relógio da JVM, sem como injetar o `Clock`) é conferida pela janela assinada (`X-Amz-Date` dentro do pedido e `X-Amz-Expires` = TTL, os dois cobertos pela assinatura: mexer neles dá 403) e por uma URL legítima assinada no passado com as mesmas credenciais (`presignedAt`, `AwsV4HttpSigner` com `SIGNING_CLOCK`), que o MinIO recusa como "expired", com a de controle assinada agora dando 200. O relógio desses testes nunca fica à frente da hora real: eles recuam antes e voltam no fim. A primeira versão o deixava adiantado e o `HotelSettingsApiTest` falhou, porque a entrada da trilha do `HotelLogoTest` parecia mais nova (`lastAudit` ordena por `occurred_at`). Pelo mesmo motivo o `@IntegrationTest` adia o expurgo de órfãos (`FILES_PURGE_DEFERRED`).
+  10. **Logotipo:** sem reencode e com o mesmo fluxo; o vinculado nunca é expurgado. Um logotipo enviado e não salvo no hotel em 24 h passa a ser expurgado, como qualquer órfão (H12).
+  11. **Desvio de protocolo:** os testes foram escritos junto com a implementação e não rodaram vermelhos antes dela. Em compensação, as mutações abaixo mostram que eles pegam as falhas do foco do verificador.
+- Validações executadas:
+  - `./gradlew build` → `BUILD SUCCESSFUL` em 3 min 25 s (detekt com e sem tipos, ktlint, `test`, `generateOpenApi`, `checkOpenApi`, `koverVerify`): 569 testes em 71 classes, 0 falhas, 0 pulados. O `HkdfTokenSealerTest` não falhou nesta execução. Antes, duas rodadas falharam por `MaxLineLength`/`LongParameterList` (corrigidos) e uma pelo `HotelSettingsApiTest` (decisão 9, corrigida).
+  - `./gradlew updateOpenApi` regravou o contrato (+25/−5: parte `clientFileId` opcional, resposta `200`, descrições). `.github/scripts/check-api-breaking.sh` (base `origin/main`, `7c9773a`) e `… HEAD` (`282f356`) → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+  - Critério 1: `FilesLifecycleTest.detach turns an attached file into an orphan again…` (vínculo desfeito, `detached_at`, trilha `upload`/`attach`/`detach`, nada novo ao repetir, 409/422/404) e `delete marks the row and removes the object only after the commit…` (dentro da transação o `find` já é `null`, mas o objeto continua no bucket; depois do commit o objeto sumiu, `deleted_at` gravado, `GET /files/{id}` e `download-url` `404 FILE_NOT_FOUND`, `attach`/`detach`/`delete` 404, `files.file.delete` com `deletedAt`); `a delete in a transaction that rolls back keeps the row and the object…` (rollback: objeto, linha e download intactos, sem entrada).
+  - Critério 2: `the purge deletes orphans older than the retention with a system audit entry, and keeps the others` (relógio recuado 48 h: órfão comum e sensível de 25 h apagados, objeto removido, `files.file.purge-orphan` `SUCCEEDED` sem usuário nem sessão; vinculado, recente de 2 h e desvinculado há 2 h preservados; `purge.purge` de um vinculado devolve `false`; 23 h depois, o recente e o desvinculado saem e o vinculado fica).
+  - Critério 3: `an upload repeated with the same clientFileId returns the same file without storing it again` (201 com `Location` do id do cliente; repetição 200 com o mesmo corpo, uma linha, um objeto e uma entrada; outro conteúdo, outra finalidade e outro usuário 409 `CLIENT_FILE_ID_CONFLICT`; apagado, 409), `a clientFileId that is not a canonical uuid v7…` (`abc`, UUIDv4, `1-1-1-1-1` e sem hífens → 400 no campo) e `two simultaneous uploads with the same clientFileId store the file once` (201 e 200, uma linha, um objeto).
+  - Critério 4: `ImageReencoderTest` (JPEG 3000 × 1000 com APP1 `Exif` com GPS e descrição → JPEG 2048 × 683 só com o APP0 JFIF, sem `Exif` nem o marcador; orientações 6, 8 e 3 aplicadas; PNG com `tEXt`, `eXIf` e HTML depois do IEND → só os chunks da imagem, sem sobra, transparência mantida; JPEG com comentário HTML e bytes depois do EOI → limpo; imagem menor não ampliada; 5000 px subamostrado; teto de 50 MP; ilegíveis) e `FilesLifecycleTest.a photo of a purpose with reencode is stored without exif or gps…` (no bucket, sem APP1 nem marcador, 2048 × 683; `sha256` e `size_bytes` do regravado, `received_sha256` do original; download entrega o regravado; repetição com `clientFileId` 200; poliglota PNG limpo) e `…refuses unreadable images and webp, and other purposes are not reencoded` (400 `FILE_IMAGE_UNREADABLE`, `FILE_IMAGE_TOO_LARGE`, `FILE_TYPE_NOT_ACCEPTED`; a foto comum guarda o conteúdo como chegou). `FileContentRulesTest.the boot refuses a purpose that reencodes images but accepts webp or pdf`.
+  - Critério 5: `grep Thread.sleep` nos testes de anexos → 0; `FilesApiTest` com o relógio controlado (8/8); `HotelLogoTest` 3/3, diff só no `@Import`.
+  - Mutações (cada uma revertida em seguida, `--tests 'com.zeny.hotel.files.*'`), todas pegas: objeto apagado antes do commit → 2 falhas; expurgo de anexo vinculado → 1; idade do órfão pelo `created_at` na consulta e no domínio → 1 (só no domínio, 0: a consulta também protege); expurgo sem retrato na trilha → 1; repetição aceita de qualquer usuário → 1; sem reencode → 2; sem a trava consultiva → 1 (a corrida); `find` enxergando apagados → 3; sem a orientação → 1.
+  - Imagem do runtime: um programa de prova com o `ImageReencoder` compilado rodou em `eclipse-temurin:25-jre-alpine` (headless): JPEG e PNG de 3000 × 1000 → 2048 × 683.
+- Parecer do verificador: **APROVADO** (2026-10-16, verificador independente disparado pelo orquestrador; snapshot verificado `7c3e7f2bae4d2a2154db7d4e65a1b4032c07344d`). Os 6 critérios APROVADOS com evidência:
+  - `FilesLifecycleTest` (9/9): detach e delete auditados; objeto só removido no `afterCompletion` `COMMITTED`, conferido dentro da transação e no rollback; expurgo com ator sistema e relógio controlado; `clientFileId` com 201/200, 409 e corrida.
+  - `ImageReencoderTest` (6/6): sem APP1, "Exif", GPS nem bytes após IEND/EOI.
+  - `FileContentRulesTest`: o boot recusa WebP/PDF com reencode.
+  - `FilesApiTest` sem `Thread.sleep`; `HotelLogoTest` sem mudança de asserção.
+  - `./gradlew build` BUILD SUCCESSFUL com 569 testes e 0 falhas; oasdiff sem `ERR` (bases `origin/main` e `HEAD`).
+
+  Sem problema grave ou médio. Baixos:
+  1. Corrida improvável no rollback de um upload com `clientFileId`: a trava consultiva sai antes do `afterCompletion` apagar o objeto, e o `DELETE` atrasado de T1 pode apagar o objeto que T2 gravou com a mesma chave (nota para a E07 ou o M8).
+  2. O teste da reconferência do expurgo não simula o vínculo entre a busca e o expurgo.
+  3. Falta teste do download de um anexo sensível apagado (403 `DOWNLOAD_URL_INVALID`; o código cumpre).
+  4. O vencimento da URL do bucket é provado de forma indireta (o SDK assina pelo relógio da JVM).
+  5. Orientações EXIF 2, 4, 5 e 7 sem teste (conferidas à mão).
+
+  Informativo: as 11 decisões foram tomadas pela opção recomendada, sem entrevista, por autorização do usuário ao orquestrador nesta execução (2026-10-16). Elas ficam para a revisão humana.
+- Notas para a próxima etapa:
+  - E07 (fotos de checklist): declarar `ChecklistsFilePurposes` com `checklists.photo`, `acceptedTypes = setOf(JPEG, PNG)` e `reencode = ImageReencoding()` (WebP é recusado no boot). O app envia a foto com `clientFileId` (UUIDv7) antes do comando; a repetição dá 200 e o conflito 409 (gerar outro id). O handler confere a foto com `FilesApi.find` (apagada ou expurgada = `null`: aplicar com alerta, sem a foto, H10), vincula com `attach` na transação e, ao trocar ou retirar a foto, chama `detach` (o expurgo a apaga 24 h depois) ou `delete`.
+  - Uma foto enviada e não vinculada em 24 h é expurgada: o comando offline que a cita mais de 24 h depois do envio cai no caso "foto inexistente" da H10.
+  - M8: falha do S3 depois do commit só vai para o log (decisão 4); entra na métrica de falha do S3 e, se preciso, numa nova tentativa.
 
 ---
 

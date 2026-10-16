@@ -18,6 +18,7 @@ import java.time.Clock
 @Service
 class FilesApiService(
     private val files: StoredFiles,
+    private val objectRemovals: StoredObjectRemovals,
     private val audit: AuditContext,
     private val clock: Clock,
 ) : FilesApi {
@@ -31,14 +32,51 @@ class FilesApiService(
         purpose: FilePurposeCode,
         ownerEntityId: String,
     ): FileSummary {
+        val file = lockedOf(id, purpose)
+        audit.track(FilesAudit.FILE, id.value) { file.auditState() }
+        if (file.attachTo(ownerEntityId, clock.instant())) files.flush()
+        return file.summary()
+    }
+
+    @Audited(FilesAudit.DETACH)
+    @Transactional
+    override fun detach(
+        id: FileId,
+        purpose: FilePurposeCode,
+        ownerEntityId: String,
+    ): FileSummary {
+        val file = lockedOf(id, purpose)
+        audit.track(FilesAudit.FILE, id.value) { file.auditState() }
+        if (file.detachFrom(ownerEntityId, clock.instant())) files.flush()
+        return file.summary()
+    }
+
+    @Audited(FilesAudit.DELETE)
+    @Transactional
+    override fun delete(
+        id: FileId,
+        purpose: FilePurposeCode,
+        ownerEntityId: String,
+    ) {
+        val file = lockedOf(id, purpose)
+        audit.track(FilesAudit.FILE, id.value) { file.auditState() }
+        file.deleteFor(ownerEntityId, clock.instant())
+        files.flush()
+        // Só depois do commit: a transação de quem chama pode ainda desfazer a exclusão.
+        objectRemovals.removeAfterCommit(file.objectKey)
+    }
+
+    /** O anexo não apagado, travado para a mudança, conferida a finalidade. */
+    private fun lockedOf(
+        id: FileId,
+        purpose: FilePurposeCode,
+    ): StoredFile {
         val file =
             files.findForUpdate(id) ?: throw NotFoundException(FilesErrorCodes.FILE_NOT_FOUND, "Anexo não encontrado.")
         if (file.purpose != purpose) {
             throw BusinessRuleException(FilesErrorCodes.FILE_PURPOSE_MISMATCH, "O anexo é de outra finalidade.")
         }
-        audit.track(FilesAudit.FILE, id.value) { file.auditState() }
-        if (file.attachTo(ownerEntityId, clock.instant())) files.flush()
-        return file.summary()
+        return file
     }
 }
 

@@ -4,13 +4,37 @@ import com.zeny.hotel.files.FileId
 import com.zeny.hotel.files.domain.StoredFile
 import java.net.URI
 import java.time.Duration
+import java.time.Instant
 
-/** Os metadados dos anexos, na transação corrente (implementada por JPA em `infrastructure`). */
+/**
+ * Os metadados dos anexos, na transação corrente (implementada por JPA em `infrastructure`). [find] e
+ * [findForUpdate] só enxergam os anexos não apagados.
+ */
 interface StoredFiles {
+    /** O anexo não apagado com o [id], ou `null`. */
     fun find(id: FileId): StoredFile?
 
-    /** Trava a linha (`SELECT … FOR UPDATE`) para mudar o vínculo. */
+    /** Trava a linha (`SELECT … FOR UPDATE`) do anexo não apagado, para mudar o vínculo ou apagá-lo. */
     fun findForUpdate(id: FileId): StoredFile?
+
+    /** O anexo com o [id], apagado ou não (a repetição de um upload com `clientFileId`). */
+    fun findIncludingDeleted(id: FileId): StoredFile?
+
+    /**
+     * Trava consultiva da transação (`pg_advisory_xact_lock`) sobre o id escolhido pelo cliente:
+     * dois uploads simultâneos com o mesmo `clientFileId` se enfileiram, e o segundo vê o anexo
+     * gravado pelo primeiro.
+     */
+    fun lockClientFileId(id: FileId)
+
+    /**
+     * Até [limit] órfãos (sem vínculo e não apagados) sem vínculo desde antes de [cutoff] (o
+     * desvínculo ou, se nunca houve, a criação), dos mais antigos aos mais novos.
+     */
+    fun orphansBefore(
+        cutoff: Instant,
+        limit: Int,
+    ): List<FileId>
 
     /** Grava e descarrega na hora, para a falha de banco acontecer antes de gravar o objeto. */
     fun add(file: StoredFile)

@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared.web
 
+import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
 import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
@@ -26,7 +27,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 
 /** Com o profile `prod`, o Swagger UI e o `/v3/api-docs` não existem (ARCHITECTURE §7). */
-@SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED, OUTBOX_PURGE_DEFERRED])
+@SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED, OUTBOX_PURGE_DEFERRED, FILES_PURGE_DEFERRED])
 @ActiveProfiles("prod")
 @AutoConfigureMockMvc
 @ContextConfiguration(

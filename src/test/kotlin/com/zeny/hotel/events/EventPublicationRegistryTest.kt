@@ -2,6 +2,7 @@ package com.zeny.hotel.events
 
 import com.zeny.hotel.ZenyHotelApplication
 import com.zeny.hotel.shared.infrastructure.events.EventPublicationResubmissionJob
+import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
@@ -140,8 +141,13 @@ class EventPublicationRegistryTest(
             .initializers(PostgresInitializer(), TestEncryptionKeysInitializer(), TestAuthInitializer())
             // Como argumentos de linha de comando: `properties()` teria prioridade abaixo do application.yaml.
             // Porta aleatória: a 8080 pode estar ocupada (bootRun, proxy do compose).
-            .run("--$TEST_MIGRATIONS", "--$RESUBMISSION_JOB_DEFERRED", "--$OUTBOX_PURGE_DEFERRED", "--server.port=0")
-            .use { context ->
+            .run(
+                "--$TEST_MIGRATIONS",
+                "--$RESUBMISSION_JOB_DEFERRED",
+                "--$OUTBOX_PURGE_DEFERRED",
+                "--$FILES_PURGE_DEFERRED",
+                "--server.port=0",
+            ).use { context ->
                 await().during(Duration.ofMillis(SETTLE_MILLIS)).atMost(Duration.ofSeconds(2)).until {
                     ProbeState.invocationsOf(failed.id) == 1 && ProbeState.invocationsOf(abandoned.id) == 1
                 }

@@ -22,13 +22,28 @@ object FilesErrorCodes {
     /** 400: a extensão do nome do arquivo não é a do tipo detectado no conteúdo. */
     val FILE_EXTENSION_MISMATCH = ErrorCode("FILE_EXTENSION_MISMATCH")
 
-    /** 404: anexo inexistente (ou de uma finalidade retirada do catálogo). */
+    /** 400: o conteúdo de uma finalidade com reencode não pôde ser lido como imagem. */
+    val FILE_IMAGE_UNREADABLE = ErrorCode("FILE_IMAGE_UNREADABLE")
+
+    /** 400: imagem de uma finalidade com reencode com dimensões acima do teto (antes de decodificar). */
+    val FILE_IMAGE_TOO_LARGE = ErrorCode("FILE_IMAGE_TOO_LARGE")
+
+    /** 400: `clientFileId` que não é um UUIDv7 na forma canônica. */
+    val CLIENT_FILE_ID_INVALID = ErrorCode("CLIENT_FILE_ID_INVALID")
+
+    /**
+     * 409: `clientFileId` já usado por outro anexo: de outro usuário, de outra finalidade, com outro
+     * conteúdo ou já apagado. O cliente gera outro id.
+     */
+    val CLIENT_FILE_ID_CONFLICT = ErrorCode("CLIENT_FILE_ID_CONFLICT")
+
+    /** 404: anexo inexistente, apagado (ou de uma finalidade retirada do catálogo). */
     val FILE_NOT_FOUND = ErrorCode("FILE_NOT_FOUND")
 
     /** 422: o anexo é de outra finalidade. */
     val FILE_PURPOSE_MISMATCH = ErrorCode("FILE_PURPOSE_MISMATCH")
 
-    /** 409: o anexo já está vinculado a outro registro. */
+    /** 409: o anexo já está vinculado a outro registro (ao vincular, desvincular ou apagar). */
     val FILE_ALREADY_ATTACHED = ErrorCode("FILE_ALREADY_ATTACHED")
 
     /** 403: URL de download adulterada, de outro anexo ou ilegível. */

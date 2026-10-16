@@ -3,6 +3,7 @@ package filesexample
 import com.zeny.hotel.files.FilePurpose
 import com.zeny.hotel.files.FilePurposeCode
 import com.zeny.hotel.files.FileType
+import com.zeny.hotel.files.ImageReencoding
 import com.zeny.hotel.files.ModuleFilePurposes
 import com.zeny.hotel.shared.ModulePermissions
 import com.zeny.hotel.shared.PermissionCode
@@ -37,17 +38,21 @@ object FileExamplePermissions : ModulePermissions {
 
 /**
  * Finalidades de anexo de exemplo, só de teste (como um módulo de negócio declara as suas): um
- * documento **sensível** (PDF, JPEG ou PNG de até 64 KB, como o documento de hóspede do M3) e uma
- * foto comum (PNG ou JPEG de até 1 KB, para o teste do tamanho).
+ * documento **sensível** (PDF, JPEG ou PNG de até 64 KB, como o documento de hóspede do M3), uma
+ * foto comum (PNG ou JPEG de até 1 KB, para o teste do tamanho) e uma foto **reencodada** (JPEG ou
+ * PNG de até 2 MB, regravada sem metadados e com o lado de até 2048 px, como a foto de checklist da
+ * E07 do M2).
  */
 object FileExamplePurposes : ModuleFilePurposes {
     override val module = "fileexamples"
 
     val DOCUMENT = FilePurposeCode("fileexamples.identity-document")
     val PHOTO = FilePurposeCode("fileexamples.photo")
+    val REENCODED_PHOTO = FilePurposeCode("fileexamples.reencoded-photo")
 
     const val DOCUMENT_MAX_SIZE: Long = 64 * 1024
     const val PHOTO_MAX_SIZE: Long = 1024
+    const val REENCODED_PHOTO_MAX_SIZE: Long = 2 * 1024 * 1024
 
     override val purposes =
         listOf(
@@ -68,6 +73,16 @@ object FileExamplePurposes : ModuleFilePurposes {
                 sensitive = false,
                 uploadPermission = FileExamplePermissions.PHOTOS_UPLOAD,
                 downloadPermission = FileExamplePermissions.PHOTOS_READ,
+            ),
+            FilePurpose(
+                REENCODED_PHOTO,
+                "Foto de exemplo reencodada",
+                REENCODED_PHOTO_MAX_SIZE,
+                setOf(FileType.JPEG, FileType.PNG),
+                sensitive = false,
+                uploadPermission = FileExamplePermissions.PHOTOS_UPLOAD,
+                downloadPermission = FileExamplePermissions.PHOTOS_READ,
+                reencode = ImageReencoding(),
             ),
         )
 }

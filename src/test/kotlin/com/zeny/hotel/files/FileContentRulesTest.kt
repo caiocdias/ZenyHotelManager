@@ -168,6 +168,41 @@ class FileContentRulesTest {
         FilesProperties(Duration.ofMinutes(15), DataSize.ofMegabytes(1)).downloadUrlTtl shouldBe Duration.ofMinutes(15)
     }
 
+    @Test
+    fun `orphans are kept at least one hour, 24 hours by default`() {
+        FilesProperties(Duration.ofMinutes(5), DataSize.ofMegabytes(1)).orphanRetention shouldBe Duration.ofHours(24)
+        FilesProperties(Duration.ofMinutes(5), DataSize.ofMegabytes(1), Duration.ofHours(1))
+            .orphanRetention shouldBe Duration.ofHours(1)
+        shouldThrow<IllegalArgumentException> {
+            FilesProperties(Duration.ofMinutes(5), DataSize.ofMegabytes(1), Duration.ofMinutes(59))
+        }.message shouldContain "orphan-retention"
+    }
+
+    @Test
+    fun `the boot refuses a purpose that reencodes images but accepts webp or pdf`() {
+        val photos = images.copy(acceptedTypes = setOf(FileType.JPEG, FileType.PNG), reencode = ImageReencoding())
+        photos.reencode!!.maxSidePixels shouldBe 2048
+        images
+            .copy(
+                acceptedTypes = setOf(FileType.JPEG),
+                reencode = ImageReencoding(1024),
+            ).reencode!!
+            .maxSidePixels shouldBe
+            1024
+
+        // O FilePurpose é criado no objeto das finalidades do módulo, carregado pelo bean no boot.
+        shouldThrow<IllegalArgumentException> {
+            images.copy(acceptedTypes = setOf(FileType.JPEG, FileType.WEBP), reencode = ImageReencoding())
+        }.message shouldContain "WEBP"
+        shouldThrow<IllegalArgumentException> {
+            images.copy(acceptedTypes = setOf(FileType.PNG, FileType.PDF), reencode = ImageReencoding())
+        }.message shouldContain "PDF"
+        shouldThrow<IllegalArgumentException> { ImageReencoding(maxSidePixels = 15) }
+        shouldThrow<IllegalArgumentException> { ImageReencoding(maxSidePixels = 8193) }
+        // Sem reencode, WebP e PDF continuam aceitos (o logotipo, por exemplo).
+        images.reencode shouldBe null
+    }
+
     private fun multipart(
         fileBytes: Long = 1000,
         requestBytes: Long = 1001,

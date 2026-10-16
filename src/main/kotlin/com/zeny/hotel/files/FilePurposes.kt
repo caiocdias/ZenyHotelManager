@@ -101,7 +101,11 @@ enum class FileType(
  *   decifra, e com cada geração de URL e cada download na trilha de auditoria.
  * - [uploadPermission] e [downloadPermission]: permissões do catálogo (de qualquer módulo,
  *   normalmente o dono). O download aceita o escopo `OWN`: com ele, só quem enviou o anexo baixa.
+ * - [reencode]: se presente, a imagem é decodificada e regravada no servidor antes de ir ao
+ *   armazenamento ([ImageReencoding]); só para finalidades que aceitam apenas JPEG e PNG (o boot
+ *   recusa WebP e PDF).
  */
+@Suppress("LongParameterList") // os atributos da finalidade
 data class FilePurpose(
     val code: FilePurposeCode,
     val description: String,
@@ -110,11 +114,44 @@ data class FilePurpose(
     val sensitive: Boolean,
     val uploadPermission: PermissionCode,
     val downloadPermission: PermissionCode,
+    val reencode: ImageReencoding? = null,
 ) {
     init {
         require(description.isNotBlank()) { "Finalidade $code sem descrição" }
         require(maxSizeBytes > 0) { "Finalidade $code com tamanho máximo não positivo" }
         require(acceptedTypes.isNotEmpty()) { "Finalidade $code sem tipo aceito" }
+        require(reencode == null || ImageReencoding.REENCODABLE_TYPES.containsAll(acceptedTypes)) {
+            "A finalidade $code reencoda imagens, mas aceita ${acceptedTypes - ImageReencoding.REENCODABLE_TYPES}: " +
+                "o reencode só lê ${ImageReencoding.REENCODABLE_TYPES}"
+        }
+    }
+}
+
+/**
+ * Reencode das imagens de uma finalidade (H11 do roadmap do M2), para fotos tiradas no celular: o
+ * servidor decodifica a imagem com o `javax.imageio` do JDK e a regrava no mesmo tipo (JPEG ou PNG),
+ * **sem nenhum metadado** (EXIF, GPS, XMP, comentários, chunks de texto) e com o lado maior de no
+ * máximo [maxSidePixels] (padrão 2048 px; a imagem menor não é ampliada). A orientação EXIF do JPEG é
+ * aplicada aos pixels antes de sair. O que vai ao armazenamento, e cujo SHA-256 é gravado, é o
+ * conteúdo regravado: um arquivo poliglota (imagem que também é outro formato) perde tudo o que não
+ * é a imagem. WebP fica de fora: o JDK não o lê sem biblioteca.
+ */
+data class ImageReencoding(
+    val maxSidePixels: Int = DEFAULT_MAX_SIDE_PIXELS,
+) {
+    init {
+        require(maxSidePixels in MIN_SIDE_PIXELS..MAX_SIDE_PIXELS) {
+            "Lado máximo do reencode fora de $MIN_SIDE_PIXELS a $MAX_SIDE_PIXELS px: $maxSidePixels"
+        }
+    }
+
+    companion object {
+        const val DEFAULT_MAX_SIDE_PIXELS = 2048
+        const val MIN_SIDE_PIXELS = 16
+        const val MAX_SIDE_PIXELS = 8192
+
+        /** Os tipos que o reencode lê e grava (com o `javax.imageio` do JDK). */
+        val REENCODABLE_TYPES: Set<FileType> = setOf(FileType.JPEG, FileType.PNG)
     }
 }
 

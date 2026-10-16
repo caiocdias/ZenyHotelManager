@@ -268,10 +268,16 @@ zeny:
       active-key-id: ${ZENY_JWT_ACTIVE_KEY_ID}
   # Anexos (ARCHITECTURE §8.3 e §14, módulo files). URLs de download assinadas de curta duração (de
   # 1 s a 15 min); o maior anexo aceito por uma finalidade (os limites do multipart, acima, precisam
-  # acompanhar à mão: o boot recusa os menores).
+  # acompanhar à mão: o boot recusa os menores). Um anexo sem vínculo há mais de orphan-retention
+  # (desde o upload ou o último desvínculo; ao menos 1 h) é apagado pelo FileOrphanPurgeJob, sob trava
+  # do ShedLock, com cada expurgo na trilha de auditoria (ator sistema).
   files:
     download-url-ttl: PT5M
     max-upload-size: 20MB
+    orphan-retention: PT24H
+    orphan-purge:
+      interval: PT1H
+      initial-delay: PT5M
     # Armazenamento compatível com S3 (D14), sem valor padrão no `prod`: sem as variáveis a
     # aplicação não sobe. A credencial é a de um usuário de serviço com política só do bucket
     # (criado pelo docker/storage/init-storage.sh), nunca a do root do MinIO.

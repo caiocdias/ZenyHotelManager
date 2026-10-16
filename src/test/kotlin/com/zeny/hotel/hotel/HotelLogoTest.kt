@@ -11,6 +11,7 @@ import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.MutableClockConfiguration
 import filesexample.FileExamplePurposes
 import filesexample.FileExamplesConfiguration
 import io.kotest.matchers.collections.shouldContain
@@ -32,7 +33,13 @@ import java.util.UUID
  * conferido ao salvar os dados do hotel (aresta `hotel` → `files`) e vinculado ao hotel.
  */
 @IntegrationTest
-@Import(IamTestConfiguration::class, FilesTestConfiguration::class, FileExamplesConfiguration::class)
+// O mesmo contexto dos testes de anexos (FilesApiTest), com o relógio controlado.
+@Import(
+    IamTestConfiguration::class,
+    FilesTestConfiguration::class,
+    FileExamplesConfiguration::class,
+    MutableClockConfiguration::class,
+)
 @TestPropertySource(properties = [FILES_TEST_URL_TTL])
 class HotelLogoTest(
     @Autowired private val iam: IamTestSupport,

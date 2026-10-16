@@ -1240,9 +1240,18 @@ paths:
         \ (400, com o campo em `errors[]`): `UNKNOWN_FILE_PURPOSE`, `FILE_EMPTY`,\
         \ `FILE_TOO_LARGE` (acima do máximo da finalidade), `FILE_TYPE_NOT_ACCEPTED`\
         \ (conteúdo de tipo não aceito) e `FILE_EXTENSION_MISMATCH` (extensão diferente\
-        \ do conteúdo); acima do máximo do servidor, 413 `PAYLOAD_TOO_LARGE`. Anexo\
-        \ sensível é cifrado antes de ir ao armazenamento. Não aceita `Idempotency-Key`:\
-        \ repetir o envio cria outro anexo."
+        \ do conteúdo); acima do máximo do servidor, 413 `PAYLOAD_TOO_LARGE`. Numa\
+        \ finalidade com reencode, a imagem (JPEG ou PNG) é regravada no servidor\
+        \ sem metadados (EXIF, GPS) e com o lado maior limitado; imagem ilegível é\
+        \ `FILE_IMAGE_UNREADABLE` e acima do teto de pixels, `FILE_IMAGE_TOO_LARGE`.\
+        \ Anexo sensível é cifrado antes de ir ao armazenamento. Não aceita `Idempotency-Key`;\
+        \ para repetir o envio com segurança (app offline), mande `clientFileId`,\
+        \ um UUIDv7 gerado pelo cliente, que vira o id do anexo: a repetição pelo\
+        \ mesmo usuário, com a mesma finalidade e o mesmo arquivo devolve 200 com\
+        \ o anexo existente, sem gravar de novo; o mesmo id com outro arquivo, outra\
+        \ finalidade, de outro usuário ou de um anexo já apagado é 409 `CLIENT_FILE_ID_CONFLICT`;\
+        \ fora do formato, 400 `CLIENT_FILE_ID_INVALID`. Sem `clientFileId`, repetir\
+        \ cria outro anexo."
       operationId: uploadFile
       requestBody:
         content:
@@ -1250,6 +1259,10 @@ paths:
             schema:
               type: object
               properties:
+                clientFileId:
+                  type: string
+                  description: "Opcional: id do anexo gerado pelo cliente (UUIDv7),\
+                    \ para repetir o envio sem duplicar o anexo."
                 file:
                   type: string
                   format: binary
@@ -1261,6 +1274,12 @@ paths:
               - file
               - purpose
       responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileResponse"
+          description: "Repetição com o mesmo `clientFileId`: o anexo já gravado."
         "201":
           content:
             application/json:
@@ -1279,7 +1298,7 @@ paths:
   /api/v1/files/{id}:
     get:
       description: "Exige a permissão de download da finalidade (com escopo `OWN`,\
-        \ só de quem enviou). Inexistente: 404 `FILE_NOT_FOUND`."
+        \ só de quem enviou). Inexistente ou apagado: 404 `FILE_NOT_FOUND`."
       operationId: getFile
       parameters:
       - in: path
@@ -1348,7 +1367,8 @@ paths:
         \ padrão 5 min), sem precisar do access token. Exige a permissão de download\
         \ da finalidade (com escopo `OWN`, só de quem enviou). Anexo comum: URL direta\
         \ ao armazenamento. Anexo sensível: URL do próprio servidor, que decifra o\
-        \ conteúdo; a emissão e cada download vão para a trilha de auditoria."
+        \ conteúdo; a emissão e cada download vão para a trilha de auditoria. Inexistente\
+        \ ou apagado: 404 `FILE_NOT_FOUND`."
       operationId: getFileDownloadUrl
       parameters:
       - in: path

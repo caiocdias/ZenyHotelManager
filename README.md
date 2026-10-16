@@ -78,6 +78,12 @@ export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACT
 
 Os anexos (logotipo do hotel e, nos próximos marcos, fotos de checklist, documentos de hóspede e XMLs fiscais) ficam num armazenamento compatível com S3: MinIO no compose, S3/R2/B2 na nuvem (ARCHITECTURE §14, D14). Os metadados ficam no schema `files`. O envio é `POST /api/v1/files` (multipart com `purpose` e `file`), e cada finalidade tem tamanho máximo, tipos aceitos (detectados pelo conteúdo, não pela extensão) e as permissões de envio e de download. O download é só por URL assinada de curta duração (`GET /api/v1/files/{id}/download-url`, 5 min por padrão). Anexo sensível é cifrado com AES-256-GCM, com as mesmas chaves de `ZENY_ENCRYPTION_KEYS`, antes de ir ao bucket; ele é baixado só pelo servidor, que o decifra, e cada URL gerada e cada download vão para a trilha de auditoria.
 
+Ciclo de vida (M2 E11):
+
+- **Envio repetível:** a parte opcional `clientFileId` (um UUIDv7 gerado pelo app, que vira o id do anexo) torna o envio seguro de repetir, para o app offline: o mesmo usuário reenviando o mesmo arquivo, com a mesma finalidade e o mesmo id, recebe `200` com o anexo já gravado, sem gravar de novo. O mesmo id com outro arquivo, outra finalidade, de outro usuário ou de um anexo já apagado dá `409 CLIENT_FILE_ID_CONFLICT`, e um id fora do formato dá `400 CLIENT_FILE_ID_INVALID`. Sem `clientFileId`, cada envio cria um anexo (`201`).
+- **Reencode:** nas finalidades marcadas (as fotos de checklist, a partir da E07), a imagem JPEG ou PNG é regravada no servidor com o `javax.imageio` do JDK, sem metadados (EXIF, GPS, comentários) e com o lado maior de até 2048 px, e a orientação do EXIF é aplicada à imagem. Imagem ilegível dá `400 FILE_IMAGE_UNREADABLE`, e acima de 50 megapixels, `400 FILE_IMAGE_TOO_LARGE`. Essas finalidades não aceitam WebP. O logotipo não é reencodado.
+- **Vínculo, exclusão e expurgo:** o módulo dono vincula o anexo ao registro dele e pode desvinculá-lo ou apagá-lo. O anexo apagado sai do bucket depois do commit e passa a responder `404 FILE_NOT_FOUND`, mas a linha fica, porque a trilha a referencia. Um anexo sem vínculo há mais de `zeny.files.orphan-retention` (24 h por padrão), contado do envio ou do último desvínculo, é apagado por um job a cada hora (`files-orphans-purge`), e cada expurgo vai para a trilha de auditoria.
+
 | Variável | Para quê |
 |---|---|
 | `ZENY_STORAGE_ENDPOINT` | URL do S3 visto pelo servidor (no compose, `http://storage:9000`) |
@@ -150,6 +156,8 @@ O [`docker/compose.yaml`](docker/compose.yaml) sobe o servidor como em produçã
    curl http://localhost/api/v1/files/<id>/download-url -H "Authorization: Bearer $TOKEN"   # {"url": "…", "expiresAt": "…"}
    curl -o logo-baixado.png "<url>"                       # sem token: a URL assinada vale por 5 min
    ```
+
+   Para um envio que pode ser repetido sem duplicar o anexo, acrescente `-F clientFileId=<uuid v7>`: a repetição devolve `200` com o mesmo anexo. Um logotipo enviado e não salvo no hotel em 24 h é apagado pelo expurgo de órfãos.
 
    A porta e o endereço do proxy vêm de `ZENY_HTTP_PORT` (80) e `ZENY_HTTP_ADDRESS` (`127.0.0.1`; use `0.0.0.0` para abrir à rede local). O profile padrão é `prod` (logs em JSON, sem Swagger UI); com `ZENY_PROFILE=local` no `docker/.env`, o Swagger UI fica em `/swagger-ui.html`.
 

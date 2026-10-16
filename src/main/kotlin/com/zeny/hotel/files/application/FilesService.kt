@@ -5,10 +5,12 @@ import com.zeny.hotel.files.FilePurpose
 import com.zeny.hotel.files.FilePurposeCode
 import com.zeny.hotel.files.FilesErrorCodes
 import com.zeny.hotel.files.domain.FileContentRules
+import com.zeny.hotel.files.domain.ImageReencoder
 import com.zeny.hotel.files.domain.StoredFile
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.ContentCipher
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.DomainException
@@ -17,24 +19,37 @@ import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.OwnedResource
 import com.zeny.hotel.shared.PermissionDeniedException
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.shared.isVersion7
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.transaction.support.TransactionSynchronization
-import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.net.URI
 import java.time.Clock
 import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.UUID
 
-/** Um upload como chega da API: a finalidade pedida, o nome informado e o conteúdo. */
+/**
+ * Um upload como chega da API: a finalidade pedida, o nome informado, o conteúdo e, opcionalmente,
+ * o id escolhido pelo cliente (`clientFileId`, H10 do roadmap do M2), em texto, ainda não validado.
+ */
 class UploadCommand(
     val purpose: String,
     val originalName: String?,
     val content: ByteArray,
+    val clientFileId: String? = null,
 ) {
-    override fun toString(): String = "UploadCommand(purpose=$purpose, size=${content.size})"
+    override fun toString(): String =
+        "UploadCommand(purpose=$purpose, size=${content.size}, clientFileId=$clientFileId)"
 }
+
+/** O resultado de um upload: o anexo e se ele já existia (repetição com o mesmo `clientFileId`). */
+data class UploadResult(
+    val file: StoredFileView,
+    val replayed: Boolean,
+)
 
 /** Os metadados de um anexo como a API os mostra. */
 data class StoredFileView(
@@ -80,8 +95,12 @@ class FileContent(
  * Upload e download de anexos (ARCHITECTURE §8.3 e §14, RNF-09):
  *
  * - **upload:** exige a permissão de upload da finalidade, valida tamanho e tipo pelo conteúdo,
- *   cifra o anexo sensível ([ContentCipher], com o id do anexo como dado associado) e grava o objeto
- *   depois dos metadados; se a transação desfizer, o objeto é apagado;
+ *   reencoda a imagem se a finalidade pede ([ImageReencoder]), cifra o anexo sensível
+ *   ([ContentCipher], com o id do anexo como dado associado) e grava o objeto depois dos
+ *   metadados; se a transação desfizer, o objeto é apagado. Com `clientFileId` (H10), o id do
+ *   anexo é o do cliente, e a repetição pelo mesmo usuário, com a mesma finalidade e o mesmo
+ *   conteúdo devolve o anexo existente sem gravar nada; qualquer outra coisa com o mesmo id é
+ *   `409 CLIENT_FILE_ID_CONFLICT`;
  * - **URL de download:** exige a permissão de download da finalidade (escopo `OWN`: só quem enviou).
  *   Anexo comum recebe uma URL assinada pelo S3; anexo sensível, uma URL do servidor, e a emissão
  *   vai para a trilha;
@@ -94,6 +113,7 @@ class FilesService(
     private val catalog: FilePurposeCatalog,
     private val files: StoredFiles,
     private val storage: FileStorage,
+    private val objectRemovals: StoredObjectRemovals,
     private val cipher: ContentCipher,
     private val tokens: DownloadTokens,
     private val properties: FilesProperties,
@@ -106,13 +126,27 @@ class FilesService(
 
     @Audited(FilesAudit.UPLOAD)
     @Transactional
-    fun upload(command: UploadCommand): StoredFileView {
+    fun upload(command: UploadCommand): UploadResult {
         val purpose = purposeOf(command.purpose)
         authorization.require(purpose.uploadPermission)
         val actor = currentActor.current()
-        val upload = FileContentRules.validate(purpose, command.content, command.originalName)
-        val id = FileId(UuidV7.generate())
-        val stored = if (purpose.sensitive) cipher.encrypt(command.content, associatedDataOf(id)) else command.content
+        val clientFileId = command.clientFileId?.let(::clientFileIdOf)
+        if (clientFileId != null) {
+            files.lockClientFileId(clientFileId)
+            val existing = files.findIncludingDeleted(clientFileId)
+            if (existing != null) {
+                requireSameUpload(existing, purpose, actor.userId, FileContentRules.sha256(command.content))
+                audit.noChanges()
+                return UploadResult(existing.view(), replayed = true)
+            }
+        }
+        val received = FileContentRules.validate(purpose, command.content, command.originalName)
+        val content =
+            purpose.reencode?.let { ImageReencoder.reencode(command.content, received.type, it.maxSidePixels) }
+                ?: command.content
+        val upload = if (purpose.reencode != null) received.withContent(content) else received
+        val id = clientFileId ?: FileId(UuidV7.generate())
+        val stored = if (purpose.sensitive) cipher.encrypt(content, associatedDataOf(id)) else content
         val file =
             StoredFile.create(
                 id = id,
@@ -121,16 +155,42 @@ class FilesService(
                 storedSizeBytes = stored.size.toLong(),
                 encryptionKeyId = if (purpose.sensitive) cipher.keyIdOf(stored) else null,
                 createdBy = actor.userId,
-                now = clock.instant(),
+                // Na precisão do banco: a resposta do upload e a da repetição (lida do banco) são iguais.
+                now = clock.instant().truncatedTo(ChronoUnit.MICROS),
             )
         audit.created(FilesAudit.FILE, id.value) { file.auditState() }
         files.add(file)
         // O objeto depois dos metadados: falha de banco não deixa objeto; falha do armazenamento
         // desfaz os metadados; e o objeto de uma transação que desfaz depois daqui é apagado.
-        deleteObjectOnRollback(file.objectKey)
+        objectRemovals.removeOnRollback(file.objectKey)
         storage.put(file.objectKey, stored, if (file.sensitive) ENCRYPTED_CONTENT_TYPE else file.contentType)
         log.info("Anexo {} gravado ({}, {} bytes, sensível: {})", id, purpose.code, file.sizeBytes, file.sensitive)
-        return file.view()
+        return UploadResult(file.view(), replayed = false)
+    }
+
+    /**
+     * A repetição de um upload com o mesmo `clientFileId` só devolve o anexo existente se é o mesmo
+     * upload: do mesmo usuário, da mesma finalidade, com o mesmo conteúdo recebido e ainda não
+     * apagado. Senão, `409 CLIENT_FILE_ID_CONFLICT`, sem dizer o quê (o anexo pode ser de outro
+     * usuário).
+     */
+    private fun requireSameUpload(
+        existing: StoredFile,
+        purpose: FilePurpose,
+        userId: UserId,
+        receivedSha256: String,
+    ) {
+        val same =
+            !existing.deleted &&
+                existing.createdBy == userId &&
+                existing.purpose == purpose.code &&
+                existing.receivedSha256 == receivedSha256
+        if (!same) {
+            throw ConflictException(
+                FilesErrorCodes.CLIENT_FILE_ID_CONFLICT,
+                "O id informado já pertence a outro anexo. Envie com um id novo.",
+            )
+        }
     }
 
     @Transactional(readOnly = true)
@@ -220,16 +280,20 @@ class FilesService(
 
     private fun ownership(file: StoredFile) = OwnedResource.of(file.createdBy)
 
-    private fun deleteObjectOnRollback(key: String) {
-        TransactionSynchronizationManager.registerSynchronization(
-            object : TransactionSynchronization {
-                override fun afterCompletion(status: Int) {
-                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
-                        runCatching { storage.delete(key) }
-                            .onFailure { log.warn("Objeto {} de um upload desfeito não foi apagado", key, it) }
-                    }
-                }
-            },
+    /** O `clientFileId` na forma canônica de um UUIDv7 (8-4-4-4-12, hexadecimal); senão, `400`. */
+    private fun clientFileIdOf(text: String): FileId {
+        val id =
+            text
+                .trim()
+                .takeIf { CANONICAL_UUID.matches(it) }
+                ?.let(UUID::fromString)
+                ?.takeIf { it.isVersion7() }
+        if (id != null) return FileId(id)
+        val message = "O id do anexo precisa ser um UUIDv7."
+        throw InvalidInputException(
+            FilesErrorCodes.CLIENT_FILE_ID_INVALID,
+            message,
+            listOf(FieldViolation("clientFileId", FilesErrorCodes.CLIENT_FILE_ID_INVALID.value, message)),
         )
     }
 
@@ -238,6 +302,7 @@ class FilesService(
     private companion object {
         const val ENCRYPTED_CONTENT_TYPE = "application/octet-stream"
         const val INVALID_URL = "O link de download é inválido. Peça um novo."
+        val CANONICAL_UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
         /** O id do anexo como dado associado: o conteúdo cifrado de um anexo não decifra como outro. */
         fun associatedDataOf(id: FileId): ByteArray = "files.file:${id.value}".toByteArray(Charsets.US_ASCII)
