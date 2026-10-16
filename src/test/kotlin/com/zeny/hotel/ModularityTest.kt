@@ -1,9 +1,11 @@
 package com.zeny.hotel
 
+import com.zeny.hotel.checklists.ChecklistsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
+import org.springframework.modulith.ApplicationModule
 import org.springframework.modulith.core.ApplicationModules
 import org.springframework.modulith.docs.Documenter
 import java.nio.file.Files
@@ -115,6 +117,36 @@ class ModularityTest {
             .map { it.targetType.name }
             .filter { it.startsWith("com.zeny.hotel.hotel.") }
             .filter { it.substringBeforeLast('.') != "com.zeny.hotel.hotel" }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `checklists depends only on shared for now, within shared, hotel, staff and files, and only on public APIs`() {
+        val checklists = modules.getModuleByName("checklists").orElseThrow()
+        val allowed = setOf("shared", "hotel", "staff", "files")
+        val dependencies =
+            checklists
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1: shared, hotel, staff e files. Na E06 só o shared; a E07 passa à lista exata.
+        dependencies shouldContainExactlyInAnyOrder listOf("shared")
+        (dependencies - allowed) shouldBe emptyList()
+        // O módulo declara exatamente a lista da ARCHITECTURE: rooms, inventory e afins ficam barrados pelo verify().
+        ChecklistsModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Nenhum tipo interno de outro módulo (só a raiz de cada um; verify() também barra).
+        checklists
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.checklists.") }
+            .filter { !it.startsWith("com.zeny.hotel.shared.") }
+            .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
             .toList() shouldBe emptyList()
     }
 

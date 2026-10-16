@@ -32,6 +32,8 @@ tags:
   name: meta
 - description: Sincronização offline do app operacional.
   name: sync
+- description: "Modelos de checklist, rascunhos e versões publicadas."
+  name: checklists
 - description: Trilha de auditoria das escritas.
   name: audit
 - description: Canal de tempo real (SSE).
@@ -560,6 +562,340 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/checklist-templates:
+    get:
+      description: "Em ordem de nome, sem o conteúdo. Exige `checklists.templates.read`."
+      operationId: listChecklistTemplates
+      parameters:
+      - description: Só os modelos deste contexto.
+        in: query
+        name: context
+        required: false
+        schema:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageChecklistTemplateSummaryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar modelos de checklist
+      tags:
+      - checklists
+    post:
+      description: "Cria o modelo com o rascunho, sem publicar. Exige `checklists.templates.manage`.\
+        \ Recusas do conteúdo, `400` com o campo em `errors[]`: `CHECKLIST_DATA_INVALID`,\
+        \ `CHECKLIST_ITEM_KEY_DUPLICATED`, `CHECKLIST_ITEM_OPTIONS_INVALID`, `CHECKLIST_CONDITION_UNKNOWN_ITEM`,\
+        \ `CHECKLIST_CONDITION_FORWARD_REFERENCE` (a condição só cita item anterior),\
+        \ `CHECKLIST_CONDITION_INCOMPATIBLE`, `CHECKLIST_ACTION_INVALID`, `CHECKLIST_ACTION_ITEM_TYPE_MISMATCH`\
+        \ (baixa de estoque e troca de enxoval só em item de quantidade; ocorrência\
+        \ só em item de marcação) e `CHECKLIST_APPLICABILITY_INVALID`."
+      operationId: createChecklistTemplate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChecklistTemplateRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistTemplateResponse"
+          description: Modelo criado (rascunho).
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um modelo de checklist
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}:
+    get:
+      description: "Com o rascunho e o número da última versão publicada. Exige `checklists.templates.read`.\
+        \ Inexistente: 404 `CHECKLIST_TEMPLATE_NOT_FOUND`."
+      operationId: getChecklistTemplate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistTemplateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um modelo de checklist
+      tags:
+      - checklists
+    put:
+      description: "Troca o nome (vale na hora) e o rascunho inteiro (aplicabilidade,\
+        \ seções e itens; vale na próxima publicação). As versões publicadas não mudam.\
+        \ Exige `checklists.templates.manage` e o `If-Match` (ausente: 428; versã\
+        o diferente: 412). Modelo desativado: 422 `CHECKLIST_TEMPLATE_INACTIVE`. Recusas\
+        \ do conteúdo, `400` com o campo em `errors[]`: `CHECKLIST_DATA_INVALID`,\
+        \ `CHECKLIST_ITEM_KEY_DUPLICATED`, `CHECKLIST_ITEM_OPTIONS_INVALID`, `CHECKLIST_CONDITION_UNKNOWN_ITEM`,\
+        \ `CHECKLIST_CONDITION_FORWARD_REFERENCE` (a condição só cita item anterior),\
+        \ `CHECKLIST_CONDITION_INCOMPATIBLE`, `CHECKLIST_ACTION_INVALID`, `CHECKLIST_ACTION_ITEM_TYPE_MISMATCH`\
+        \ (baixa de estoque e troca de enxoval só em item de quantidade; ocorrência\
+        \ só em item de marcação) e `CHECKLIST_APPLICABILITY_INVALID`."
+      operationId: updateChecklistTemplate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateChecklistTemplateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistTemplateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar o rascunho de um modelo
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}/deactivate:
+    post:
+      description: "Exige `checklists.templates.manage`. Nada é apagado: as versõ\
+        es publicadas ficam, mas o modelo deixa de ser escolhido para os sujeitos\
+        \ e não é editado nem publicado. Desativar de novo não muda nada."
+      operationId: deactivateChecklistTemplate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistTemplateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um modelo
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}/publish:
+    post:
+      description: "Congela o rascunho na versão seguinte (1, 2, …); as anteriores\
+        \ continuam iguais. Exige `checklists.templates.manage` e o `If-Match` (ausente:\
+        \ 428; versão diferente: 412): publica-se o rascunho que se viu. Rascunho\
+        \ igual à última versão: 422 `CHECKLIST_NOTHING_TO_PUBLISH`; modelo desativado:\
+        \ 422 `CHECKLIST_TEMPLATE_INACTIVE`."
+      operationId: publishChecklistTemplate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistVersionResponse"
+          description: Versão publicada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Publicar o rascunho como uma versão nova
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}/reactivate:
+    post:
+      description: Exige `checklists.templates.manage`.
+      operationId: reactivateChecklistTemplate
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistTemplateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um modelo
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}/versions:
+    get:
+      description: "Da mais nova para a mais antiga, sem o conteúdo. Exige `checklists.templates.read`."
+      operationId: listChecklistTemplateVersions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageChecklistVersionSummaryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as versões publicadas de um modelo
+      tags:
+      - checklists
+  /api/v1/checklist-templates/{id}/versions/{number}:
+    get:
+      description: "O conteúdo congelado na publicação. Exige `checklists.templates.read`.\
+        \ Inexistente: 404 `CHECKLIST_VERSION_NOT_FOUND`."
+      operationId: getChecklistTemplateVersion
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: number
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistVersionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma versão publicada
+      tags:
+      - checklists
   /api/v1/departments:
     get:
       description: Em ordem de criação (os seis pré-carregados primeiro). Exige `staff.employees.read`.
@@ -3943,6 +4279,45 @@ components:
       - postalCode
       - state
       - street
+    ApplicabilityRuleDto:
+      type: object
+      description: "Regra de aplicabilidade: o modelo vale para o sujeito quando cada\
+        \ lista não vazia contém o atributo dele (lista vazia: o critério não restringe).\
+        \ Ao menos uma lista não vazia. Os IDs são de outros módulos e não são conferidos."
+      properties:
+        areaIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+        assetIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+        cleaningTypeIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+        roomTypeIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 200
+          minItems: 0
+      required:
+      - areaIds
+      - assetIds
+      - cleaningTypeIds
+      - roomTypeIds
     ApprovalLimitRequest:
       type: object
       description: O valor pedido de um limite da permissão.
@@ -4200,6 +4575,269 @@ components:
       required:
       - currentPassword
       - newPassword
+    ChecklistItemDto:
+      type: object
+      description: Um item (pergunta) do checklist.
+      properties:
+        actions:
+          type: array
+          description: "Ações executadas ao concluir o checklist (RF-CHK-05), até\
+            \ 5."
+          items:
+            $ref: "#/components/schemas/ItemActionDto"
+          maxItems: 5
+          minItems: 0
+        key:
+          type: string
+          description: "Chave do item no modelo: minúsculas, dígitos, `_` e `-`, até\
+            \ 40, única no modelo. Fica igual entre as versões para identificar o\
+            \ mesmo item; as condições a citam."
+          example: towels
+        label:
+          type: string
+          description: Até 200 caracteres.
+          example: Toalhas repostas
+        options:
+          type: array
+          description: "Só nos itens de escolha (`SINGLE_CHOICE`, `MULTI_CHOICE`):\
+            \ de 2 a 50."
+          items:
+            $ref: "#/components/schemas/ChoiceOptionDto"
+          maxItems: 50
+          minItems: 0
+        required:
+          type: boolean
+          description: Obrigatório quando aparece. Padrão `false` para todos os tipos
+            (a foto nunca é exigida por padrão).
+        type:
+          type: string
+          enum:
+          - CHECK
+          - QUANTITY
+          - NUMBER
+          - TEXT
+          - SINGLE_CHOICE
+          - MULTI_CHOICE
+          - PHOTO
+        unit:
+          type: string
+          description: "Só em `QUANTITY` e `NUMBER`: até 20 caracteres."
+          example: °C
+          nullable: true
+        visibleWhen:
+          allOf:
+          - $ref: "#/components/schemas/ItemConditionDto"
+          nullable: true
+      required:
+      - actions
+      - key
+      - label
+      - options
+      - required
+      - type
+    ChecklistSectionDto:
+      type: object
+      description: "Uma seção, com os itens na ordem de exibição (de 1 a 100)."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistItemDto"
+          maxItems: 100
+          minItems: 0
+        title:
+          type: string
+          description: Até 120 caracteres.
+          example: Banheiro
+      required:
+      - items
+      - title
+    ChecklistTemplateResponse:
+      type: object
+      description: "Um modelo de checklist: os dados, o rascunho e a última versã\
+        o publicada."
+      properties:
+        active:
+          type: boolean
+        applicability:
+          type: array
+          description: Aplicabilidade do rascunho.
+          items:
+            $ref: "#/components/schemas/ApplicabilityRuleDto"
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        createdAt:
+          type: string
+          format: date-time
+        hasUnpublishedChanges:
+          type: boolean
+          description: Se o rascunho difere da última versão publicada (ou nunca foi
+            publicado).
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishedVersion:
+          type: integer
+          format: int32
+          description: Número da última versão publicada; nulo se nunca foi publicado.
+          nullable: true
+        sections:
+          type: array
+          description: Seções do rascunho.
+          items:
+            $ref: "#/components/schemas/ChecklistSectionDto"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - applicability
+      - context
+      - createdAt
+      - hasUnpublishedChanges
+      - id
+      - name
+      - sections
+      - updatedAt
+    ChecklistTemplateSummaryResponse:
+      type: object
+      description: "Um modelo de checklist na listagem, sem o conteúdo."
+      properties:
+        active:
+          type: boolean
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        createdAt:
+          type: string
+          format: date-time
+        hasUnpublishedChanges:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        publishedVersion:
+          type: integer
+          format: int32
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Versão do registro (a mesma do `ETag` do detalhe).
+      required:
+      - active
+      - context
+      - createdAt
+      - hasUnpublishedChanges
+      - id
+      - name
+      - updatedAt
+      - version
+    ChecklistVersionResponse:
+      type: object
+      description: "Uma versão publicada de um modelo: imutável."
+      properties:
+        applicability:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApplicabilityRuleDto"
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: Nome do modelo na publicação.
+        number:
+          type: integer
+          format: int32
+        publishedAt:
+          type: string
+          format: date-time
+        publishedBy:
+          type: string
+          format: uuid
+          description: Usuário que publicou.
+          nullable: true
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistSectionDto"
+        templateId:
+          type: string
+          format: uuid
+      required:
+      - applicability
+      - context
+      - id
+      - name
+      - number
+      - publishedAt
+      - sections
+      - templateId
+    ChecklistVersionSummaryResponse:
+      type: object
+      description: "Uma versão publicada na listagem, sem o conteúdo."
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        number:
+          type: integer
+          format: int32
+        publishedAt:
+          type: string
+          format: date-time
+        publishedBy:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - id
+      - name
+      - number
+      - publishedAt
     ChildAgeBandDto:
       type: object
       description: "Faixa etária de criança, em anos completos, inclusive nas duas\
@@ -4219,6 +4857,61 @@ components:
       - label
       - maxAge
       - minAge
+    ChoiceOptionDto:
+      type: object
+      description: Uma opção de um item de escolha.
+      properties:
+        label:
+          type: string
+          description: Até 120 caracteres.
+          example: Forte
+        value:
+          type: string
+          description: "Valor estável: minúsculas, dígitos, `_` e `-`, até 40, único\
+            \ no item."
+          example: strong
+      required:
+      - label
+      - value
+    CreateChecklistTemplateRequest:
+      type: object
+      description: "Um modelo de checklist novo: nome, contexto (fixo depois de criado)\
+        \ e o rascunho."
+      properties:
+        applicability:
+          type: array
+          description: "Regras de aplicabilidade (RF-CHK-04); vale qualquer uma. Vazio:\
+            \ o modelo geral do contexto."
+          items:
+            $ref: "#/components/schemas/ApplicabilityRuleDto"
+          maxItems: 20
+          minItems: 0
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        name:
+          type: string
+          description: Até 120 caracteres.
+          example: Limpeza de saída
+        sections:
+          type: array
+          description: "As seções, na ordem de exibição (de 1 a 30)."
+          items:
+            $ref: "#/components/schemas/ChecklistSectionDto"
+          maxItems: 30
+          minItems: 0
+      required:
+      - applicability
+      - context
+      - name
+      - sections
     CreateSchedulePatternRequest:
       type: object
       description: "Um padrão de escala novo, para um colaborador."
@@ -4351,6 +5044,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditEntryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageChecklistTemplateSummaryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistTemplateSummaryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageChecklistVersionSummaryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistVersionSummaryResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -5112,6 +5833,76 @@ components:
           - REJECT_INSPECTION
       required:
       - transition
+    ItemActionDto:
+      type: object
+      description: "Ação vinculada ao item (RF-CHK-05), com os parâmetros do tipo\
+        \ e nenhum outro. `CONSUME_STOCK` (`stockItemId`, `defaultQuantity` opcional)\
+        \ e `LINEN_EXCHANGE` (`linenTypeId`, `movement`) só num item `QUANTITY`; `OPEN_OCCURRENCE`\
+        \ (`occurrenceKind`, `category` opcional) só num item `CHECK`, quando a resposta\
+        \ é `NOT_OK`. Os IDs são de outros módulos e não são conferidos."
+      properties:
+        category:
+          type: string
+          description: "Categoria da ocorrência, do módulo que a trata: letras, dí\
+            gitos, `_` e `-`, até 40."
+          example: PLUMBING
+          nullable: true
+        defaultQuantity:
+          type: number
+          description: "Quantidade sugerida na baixa: maior que zero, até 999999,\
+            \ até 3 casas."
+          example: 2
+          nullable: true
+        linenTypeId:
+          type: string
+          format: uuid
+          description: Tipo de enxoval da troca.
+          nullable: true
+        movement:
+          type: string
+          description: O que a quantidade respondida representa na troca de enxoval.
+          enum:
+          - REMOVED
+          - PLACED
+          nullable: true
+        occurrenceKind:
+          type: string
+          description: O que a ocorrência gera.
+          enum:
+          - MAINTENANCE
+          - LOST_AND_FOUND
+          - DAMAGE
+          nullable: true
+        stockItemId:
+          type: string
+          format: uuid
+          description: Insumo da baixa de estoque.
+          nullable: true
+        type:
+          type: string
+          enum:
+          - CONSUME_STOCK
+          - LINEN_EXCHANGE
+          - OPEN_OCCURRENCE
+      required:
+      - type
+    ItemConditionDto:
+      type: object
+      description: "O item só aparece se o item `itemKey`, anterior a este, tiver\
+        \ a resposta `answer`: num item de marcação, `OK`, `NOT_OK` ou `NOT_APPLICABLE`;\
+        \ num de escolha, o valor de uma das opções (na escolha múltipla, basta a\
+        \ opção estar marcada)."
+      nullable: true
+      properties:
+        answer:
+          type: string
+          example: NOT_OK
+        itemKey:
+          type: string
+          example: shower
+      required:
+      - answer
+      - itemKey
     LimitDefinitionResponse:
       type: object
       description: Um parâmetro de limite que a permissão aceita.
@@ -6772,6 +7563,34 @@ components:
       - sessionId
       - tokenType
       - userId
+    UpdateChecklistTemplateRequest:
+      type: object
+      description: O nome (vale na hora) e o rascunho inteiro de um modelo (vale na
+        próxima publicação).
+      properties:
+        applicability:
+          type: array
+          description: "Regras de aplicabilidade (RF-CHK-04); vale qualquer uma. Vazio:\
+            \ o modelo geral do contexto."
+          items:
+            $ref: "#/components/schemas/ApplicabilityRuleDto"
+          maxItems: 20
+          minItems: 0
+        name:
+          type: string
+          description: Até 120 caracteres.
+          example: Limpeza de saída
+        sections:
+          type: array
+          description: "As seções, na ordem de exibição (de 1 a 30)."
+          items:
+            $ref: "#/components/schemas/ChecklistSectionDto"
+          maxItems: 30
+          minItems: 0
+      required:
+      - applicability
+      - name
+      - sections
     UpdateShiftRequest:
       type: object
       description: Nome e horários de um turno.

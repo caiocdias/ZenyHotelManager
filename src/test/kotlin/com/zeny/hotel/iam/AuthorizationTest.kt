@@ -200,6 +200,8 @@ class AuthorizationTest(
                 "rooms.outoforder.manage:ALL",
                 "rooms.outofservice.manage:ALL",
                 "rooms.offline.read:ALL",
+                "checklists.templates.read:ALL",
+                "checklists.templates.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf("staff.schedule.read:OWN", "rooms.offline.read:ALL")

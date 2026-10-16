@@ -202,7 +202,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E06 | Modelos de checklist | #pendente | — | Modelos, versões imutáveis, itens, condicionais, aplicabilidade e ações configuradas |
+| E06 | Modelos de checklist | #concluida | — | Modelos, versões imutáveis, itens, condicionais, aplicabilidade e ações configuradas |
 | E11 | Ciclo de vida dos anexos | #pendente | — | `detach`/`delete`, expurgo de órfãos, upload com `clientFileId` e reencode de imagens |
 | E07 | Execução de checklists e rotinas | #pendente | E05, E06, E11, E12 | Execução online e offline com fotos, `ChecklistCompleted` e rotinas por setor e escala |
 | E08 | Relatórios de checklists | #pendente | E07 | Conformidade por modelo, itens mais reprovados e histórico por local |
@@ -1080,7 +1080,7 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 ---
 
-## E06 — Modelos de checklist — #pendente
+## E06 — Modelos de checklist — #concluida
 
 **Objetivo:** criar o módulo `checklists` com modelos por contexto, versões publicadas imutáveis, seções e itens ordenáveis dos tipos da SPEC, itens obrigatórios e condicionais, regras de aplicabilidade e ações configuradas por item, mais a API pública que escolhe o modelo de um sujeito.
 
@@ -1140,13 +1140,13 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Publicar um rascunho cria a versão 1; editar o modelo publicado e publicar cria a versão 2, e a versão 1 continua idêntica (teste).
-- [ ] Os sete tipos de item da SPEC §8.2.11 são aceitos; foto não é obrigatória por padrão.
-- [ ] Condição que referencia item posterior, inexistente ou com valor incompatível → `400` com `code` estável.
-- [ ] Ação de baixa de estoque fora de item de quantidade → `400` com `code` estável.
-- [ ] `resolveTemplate` devolve o modelo cuja aplicabilidade casa com os atributos informados e, sem regra específica, o modelo geral do contexto (teste de módulo).
-- [ ] Escritas com permissão e auditadas; `ModularityTest` mostra `checklists` dependendo só da API pública de módulos da lista da ARCHITECTURE §3.1.
-- [ ] Contrato regenerado; build e oasdiff passam.
+- [x] Publicar um rascunho cria a versão 1; editar o modelo publicado e publicar cria a versão 2, e a versão 1 continua idêntica (teste).
+- [x] Os sete tipos de item da SPEC §8.2.11 são aceitos; foto não é obrigatória por padrão.
+- [x] Condição que referencia item posterior, inexistente ou com valor incompatível → `400` com `code` estável.
+- [x] Ação de baixa de estoque fora de item de quantidade → `400` com `code` estável.
+- [x] `resolveTemplate` devolve o modelo cuja aplicabilidade casa com os atributos informados e, sem regra específica, o modelo geral do contexto (teste de módulo).
+- [x] Escritas com permissão e auditadas; `ModularityTest` mostra `checklists` dependendo só da API pública de módulos da lista da ARCHITECTURE §3.1.
+- [x] Contrato regenerado; build e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -1161,12 +1161,54 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `365269eac7bce8d607738cc64f2b705be41ff477` (recebido do orquestrador). Snapshot ao fim da implementação: `12b283fb83e04d8a4bb6e8ef9c2a119091df492d`.
+- Preparação: M1 E09 `#concluida`; o código bate com o "Contexto confirmado" (módulos `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`; última migração `V2026_10_16_0112`, de teste; E12 commitada em `270f820`, não tocada). A investigação de SPEC §5.15 e §8.2.11 foi feita pelo próprio subagente (adendo do orquestrador), sem `Explore`.
+- Arquivos alterados:
+  - novo módulo `src/main/kotlin/com/zeny/hotel/checklists/`: raiz `ChecklistsModule.kt` (`allowedDependencies = ["shared", "hotel", "staff", "files"]`), `ChecklistsPermissions.kt`, `ChecklistsErrorCodes.kt`, `ChecklistContent.kt` (contexto, tipos de item, conteúdo, aplicabilidade, condição, ações), `ChecklistsApi.kt` (API pública, ids, `ChecklistVersionView`); `domain/ChecklistTemplate.kt` (agregado e `ChecklistVersion`), `domain/ChecklistContentRules.kt` (validação), `domain/TemplateResolution.kt`; `application/ChecklistTemplates.kt` (casos de uso, `ChecklistsApiService`, bean das permissões), `ChecklistsPorts.kt`, `ChecklistsAudit.kt`; `infrastructure/JdbcChecklists.kt` (persistência `JdbcClient` + `jsonb`, bean `AppendOnlyTables`); `web/ChecklistTemplatesController.kt`, `web/ChecklistsDtos.kt`;
+  - migrações `src/main/resources/db/migration/checklists/V2026_10_16_0340__create_checklist_templates.sql` e `V2026_10_16_0341__grant_checklists_to_app_role.sql`;
+  - testes `src/test/kotlin/com/zeny/hotel/checklists/ChecklistDomainTest.kt` (12), `ChecklistTemplatesApiTest.kt` (10), `ChecklistsTestSupport.kt`; `ModularityTest.kt` (teste novo do `checklists`); `iam/AuthorizationTest.kt` (o modelo Gerente ganha as duas permissões novas);
+  - `api/openapi.yaml` (regenerado), `CLAUDE.md` ("Estado atual" e seção "Modelos de checklist"), este roadmap (tags e handoff).
+- Decisões (todas **decididas pela opção recomendada, por autorização do usuário em 2026-10-16**, para revisão posterior):
+  1. **Persistência:** o conteúdo do modelo (aplicabilidade, seções, itens, condições, ações) é um documento `jsonb` — o rascunho em `checklists.checklist_template.draft`, cada versão em `checklists.checklist_version.content` —, com o agregado em Kotlin puro e `JdbcClient` (como o catálogo de permissões do `iam`). Descartadas: tabelas normalizadas com JPA para seção, item e ação (imutabilidade teria de ser garantida em cada tabela) e um mapeamento JSON do Hibernate.
+  2. **Imutabilidade das versões:** a tabela é *append-only* para o papel da aplicação (`REVOKE UPDATE, DELETE, TRUNCATE`, bean `AppendOnlyTables`, conferido pelo `DatabaseRoleGuard`) e o trigger `checklist_version_immutable` recusa `UPDATE`/`DELETE` até do dono. FK composta do modelo para a última versão publicada. Descartada: só uma das duas proteções.
+  3. **Rascunho no próprio modelo**, número da versão atribuído na publicação (`ultima + 1`, único por `checklist_version_number_uk`). Descartada: uma linha de versão "rascunho" com `published_at` nulo.
+  4. **Nome** do modelo não versionado (vale na hora; a versão guarda o nome da publicação), **contexto** fixo desde a criação, **aplicabilidade versionada** junto com o conteúdo (a escolha usa a da última versão publicada). Descartada: aplicabilidade no modelo, valendo sem publicar (SPEC §8.2.11 a desenha no modelo; aqui ela é um conteúdo do modelo que também passa pela publicação, para "o que vale é o publicado").
+  5. **Identidade do item:** `key` informada pelo cliente (slug, única no modelo, estável entre versões), citada pelas condições e, na E07, pelas respostas. Descartado: UUID gerado pelo servidor (a condição sobre um item novo no mesmo `PUT` não teria como citá-lo).
+  6. **Linguagem de condição** (risco da etapa): só "o item X, anterior na ordem do modelo, tem a resposta Y", sobre `CHECK` e itens de escolha (na múltipla, "a opção está marcada"); três códigos (`CHECKLIST_CONDITION_FORWARD_REFERENCE`, `_UNKNOWN_ITEM`, `_INCOMPATIBLE`). Descartadas: comparações numéricas e expressões compostas.
+  7. **Ações:** `CONSUME_STOCK` e `LINEN_EXCHANGE` só em item `QUANTITY`; `OPEN_OCCURRENCE` só em `CHECK` (dispara no `NOT_OK`); `LINEN_EXCHANGE` ganhou `movement` (`REMOVED`/`PLACED`, para "peças retiradas e colocadas" da RF-CHK-05; extensão da SPEC); `occurrenceKind` `MAINTENANCE`/`LOST_AND_FOUND`/`DAMAGE`; na API, objeto plano com `type` e só os parâmetros do tipo (`CHECKLIST_ACTION_INVALID` para faltante ou de outro tipo). Descartados: `oneOf` polimórfico no contrato e uma troca de enxoval com duas quantidades no mesmo item.
+  8. **Foto:** `required` é `false` por padrão em todo tipo; um item `PHOTO` pode ser marcado obrigatório explicitamente ("não exigida por padrão", RF-CHK-02). Descartado: proibir foto obrigatória.
+  9. **Escolha do modelo:** regra mais específica (mais critérios restritos) entre as que casam; sem nenhuma, o modelo geral (sem regras); empate, o criado primeiro; regra sem critério recusada (`CHECKLIST_APPLICABILITY_INVALID`); modelos inativos ou nunca publicados não entram. Descartados: recusar a ambiguidade na publicação e desempatar pela publicação mais recente.
+  10. **Publicação com `If-Match` obrigatório** (publica-se o rascunho que se viu) e `422 CHECKLIST_NOTHING_TO_PUBLISH` sem diferença; modelo desativado não é editado nem publicado (`422 CHECKLIST_TEMPLATE_INACTIVE`).
+  11. **Permissões:** `checklists.templates.read` e `.manage`, só `ALL`, não sensíveis, sugeridas a Gerente e Governanta (SPEC §3.1).
+  12. **`ModularityTest`:** o `checklists` depende hoje exatamente de `shared`, dentro da lista declarada (`shared`, `hotel`, `staff`, `files`, conferida na anotação), e de nenhum tipo interno de outro módulo.
+- Validações executadas:
+  - `./gradlew test --tests 'com.zeny.hotel.checklists.*' --tests 'com.zeny.hotel.ModularityTest'` → 32 testes, 0 falhas (a primeira rodada pegou um `500` na corrida de duas publicações: o `SELECT … FOR UPDATE` com `LEFT JOIN` da versão reavaliava só o modelo; corrigido travando num comando à parte, e o teste passou a dar `201` + `412`).
+  - `./gradlew updateOpenApi` → contrato regenerado (só acréscimos: `/api/v1/checklist-templates…` e os schemas).
+  - `./gradlew ktlintCheck detekt detektMain detektTest` → sem violações.
+  - `./gradlew build` → **BUILD SUCCESSFUL** (552 testes, 0 falhas; inclui `checkOpenApi`, `ModularityTest`, ArchUnit, `DatabaseRolesTest`, `MigrationConventionTest` e `koverVerify`). Duas rodadas anteriores falharam: a 1ª no `AuthorizationTest` (lista exata das concessões do Gerente, atualizada com as duas permissões novas) e a 2ª no `HkdfTokenSealerTest.tampered, relabeled or malformed tokens fail`, **instável e preexistente** (trocar o último caractere base64url às vezes só mexe nos bits de preenchimento e o token decodifica igual), sem relação com a etapa e não alterado; a 3ª passou inteira.
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1" (base `7c9773a`, merge-base com `origin/main`).
+- Critérios de aceite (autoavaliação, pendente do verificador):
+  - versão 1 → edição → versão 2, com a 1 idêntica pela API (JSON igual) e no banco (`to_jsonb` da linha igual): `ChecklistTemplatesApiTest` "a draft is published as version 1, an edit as version 2, and version 1 stays identical" e `ChecklistDomainTest`;
+  - os sete tipos e foto não obrigatória por padrão: "the seven item types are accepted, and nothing (photo included) is required by default" (API e domínio);
+  - condição posterior, inexistente ou incompatível → `400` com `code` e campo: "a condition on a later, unknown or incompatible item…" (API) e dois testes de domínio;
+  - baixa de estoque fora de item de quantidade → `400 CHECKLIST_ACTION_ITEM_TYPE_MISMATCH`: "a stock action outside a quantity item…" (API, cada tipo) e domínio;
+  - `resolveTemplate` pela aplicabilidade e o geral sem regra específica: "resolveTemplate picks the published template…" (bean `ChecklistsApi` no contexto) e dois testes do `TemplateResolution`;
+  - escritas com permissão (403 para quem só lê) e auditadas (`checklists.template.*` e `checklists.version`); `ModularityTest` "checklists depends only on shared for now…";
+  - contrato regenerado; build e oasdiff passam.
+- Parecer do verificador: **APROVADO** (2026-10-16, verificador independente disparado pelo orquestrador; snapshot verificado `22eaffddfbb1b4ea73d7a64768a38dc273495923`). Os 7 critérios APROVADOS com evidência: `ChecklistTemplatesApiTest` (a v1 idêntica pela API e por `to_jsonb` no banco; os sete tipos; condição e ação inválidas; `resolveTemplate` sobre o bean real), `ChecklistDomainTest`, `ModularityTest` com dependências exatamente `[shared]`; `./gradlew build` BUILD SUCCESSFUL com 552 testes e 0 falhas; oasdiff sem `ERR`, contrato só com acréscimos. A versão publicada não muda pela API, nem pelo papel da aplicação (REVOKE + `AppendOnlyTables`), nem pelo dono via UPDATE/DELETE (trigger); duas publicações simultâneas dão 201 + 412. Sem problema grave ou médio. Ressalvas baixas:
+  1. O dono ainda contorna a imutabilidade com `TRUNCATE` ou `DISABLE TRIGGER` (aceitável; vale citar no CLAUDE.md).
+  2. Os parâmetros das ações são validados no controller, então dá 400 antes do 403 (mesmo padrão do M1).
+  3. O cursor das versões trunca `long` → `Int` em silêncio em vez de `400 INVALID_CURSOR`.
+  4. O teste do `resolveTemplate` desativa por SQL todos os modelos `EVENT` do banco compartilhado (contexto reservado ao teste; frágil).
+  5. Desativar e reativar não pedem `If-Match` (coerente com os outros módulos).
+  6. `HkdfTokenSealerTest` instável, anterior à etapa: trocar o último caractere base64url às vezes só mexe nos bits de preenchimento. Fica como pendência própria.
+- Notas para a próxima etapa (E07):
+  - A resposta cita o item pela `key` da versão (`ChecklistVersionView.content.items`); a condição de visibilidade e a obrigatoriedade são avaliadas com as regras da E06 (`required` só vale com o item visível; condição sobre item oculto conta como não atendida).
+  - O gatilho das ações é derivável do tipo: `CONSUME_STOCK`/`LINEN_EXCHANGE` com a quantidade respondida (> 0) e `OPEN_OCCURRENCE` com `NOT_OK`.
+  - Foto pode ser obrigatória por configuração: decidir na E07 o comando offline com foto obrigatória ainda não enviada (H10 fala em "aplicado com alerta").
+  - Fonte offline das versões aplicáveis: `checklist_version` precisa de `change_seq`/`change_xid` e do trigger `shared.mark_offline_change()`; o passo `UPDATE … SET change_seq = NULL` do modelo do `rooms` esbarra no trigger `checklist_version_immutable` e no `REVOKE` (a migração roda como dono, mas o trigger recusa): desligue o trigger na própria migração (`ALTER TABLE … DISABLE TRIGGER checklist_version_immutable` e `ENABLE` depois) ou crie as colunas antes de haver linhas em produção. O `BEFORE INSERT` do `mark_offline_change` não conflita com o `BEFORE UPDATE OR DELETE` da imutabilidade.
+  - A E07 acrescenta as dependências de `hotel`, `staff` e `files` e troca o teste do `ModularityTest` pela lista exata.
+  - Pendência fora da etapa: o `HkdfTokenSealerTest` instável (acima) merece correção própria (trocar um caractere do meio do token, não o último).
 
 ---
 
