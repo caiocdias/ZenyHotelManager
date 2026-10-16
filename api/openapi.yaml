@@ -817,6 +817,226 @@ paths:
       summary: Assumir a execução pendente de uma rotina
       tags:
       - checklists
+  /api/v1/checklist-reports/compliance:
+    get:
+      description: "Por modelo, as execuções concluídas no período (pela conclusã\
+        o) e as respostas de marcação por resultado, com a taxa de conformidade (OK\
+        \ sobre os avaliados; nula sem nada avaliado). Em ordem de nome do modelo.\
+        \ Só os itens de marcação têm resultado: OK conta como conforme, NÃO OK como\
+        \ não conforme, e \"não se aplica\" fica fora do denominador (`evaluatedCount`\
+        \ = OK + NÃO OK). Período em datas no fuso do hotel, inclusive nas duas pontas\
+        \ (`from` e `to`, opcionais); fim antes do início: 400 `CHECKLIST_REPORT_PERIOD_INVALID`.\
+        \ Exige `checklists.reports.read`."
+      operationId: getChecklistComplianceReport
+      parameters:
+      - description: "Primeira data (YYYY-MM-DD), no fuso do hotel."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive, no fuso do hotel."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: templateId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: "Só os sujeitos deste tipo (o local: `rooms.room`, `rooms.area`…\
+          )."
+        in: query
+        name: subjectType
+        required: false
+        schema:
+          type: string
+          maxLength: 60
+          minLength: 0
+      - description: Só este sujeito (o local).
+        in: query
+        name: subjectId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistComplianceReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Conformidade por modelo
+      tags:
+      - checklists
+  /api/v1/checklist-reports/failed-items:
+    get:
+      description: "Os itens de marcação com ao menos uma reprovação (NÃO OK) em execuç\
+        ões concluídas no período (pela conclusão), do mais reprovado ao menos (desempate\
+        \ pela taxa de reprovação), até `limit`. O rótulo é o da versão mais nova\
+        \ entre as execuções do filtro (a chave do item é estável entre as versões).\
+        \ Só os itens de marcação têm resultado: OK conta como conforme, NÃO OK como\
+        \ não conforme, e \"não se aplica\" fica fora do denominador (`evaluatedCount`\
+        \ = OK + NÃO OK). Período em datas no fuso do hotel, inclusive nas duas pontas\
+        \ (`from` e `to`, opcionais); fim antes do início: 400 `CHECKLIST_REPORT_PERIOD_INVALID`.\
+        \ Exige `checklists.reports.read`."
+      operationId: getChecklistFailedItemsReport
+      parameters:
+      - description: "Primeira data (YYYY-MM-DD), no fuso do hotel."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive, no fuso do hotel."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: templateId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: "Só os sujeitos deste tipo (o local: `rooms.room`, `rooms.area`…\
+          )."
+        in: query
+        name: subjectType
+        required: false
+        schema:
+          type: string
+          maxLength: 60
+          minLength: 0
+      - description: Só este sujeito (o local).
+        in: query
+        name: subjectId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: "Quantos itens, no máximo (de 1 a 200)."
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistFailedItemsReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Itens mais reprovados
+      tags:
+      - checklists
+  /api/v1/checklist-reports/location-history:
+    get:
+      description: "As execuções de um local (sujeito), em qualquer situação — inclusive\
+        \ a pendente de rotina que ninguém fez —, da mais recente para a mais antiga\
+        \ pela referência (`referenceAt`: a conclusão, senão o início, senão o prazo\
+        \ da rotina), com as respostas de marcação por resultado (parciais enquanto\
+        \ em andamento). O período filtra pela referência. Só os itens de marcaçã\
+        o têm resultado: OK conta como conforme, NÃO OK como não conforme, e \"nã\
+        o se aplica\" fica fora do denominador (`evaluatedCount` = OK + NÃO OK). Perí\
+        odo em datas no fuso do hotel, inclusive nas duas pontas (`from` e `to`, opcionais);\
+        \ fim antes do início: 400 `CHECKLIST_REPORT_PERIOD_INVALID`. Exige `checklists.reports.read`."
+      operationId: getChecklistLocationHistory
+      parameters:
+      - description: "O tipo do sujeito (o local: `rooms.room`, `rooms.area`…)."
+        in: query
+        name: subjectType
+        required: true
+        schema:
+          type: string
+          maxLength: 60
+          minLength: 1
+      - description: O sujeito (o local).
+        in: query
+        name: subjectId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: "Primeira data (YYYY-MM-DD), no fuso do hotel."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive, no fuso do hotel."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: templateId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageLocationHistoryEntryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Histórico por local
+      tags:
+      - checklists
   /api/v1/checklist-routines:
     get:
       description: Em ordem de nome. Exige `checklists.routines.read`.
@@ -5166,6 +5386,16 @@ components:
       - itemKey
       - itemType
       - photoMissing
+    ChecklistComplianceReportResponse:
+      type: object
+      description: Conformidade por modelo (RF-CHK-09).
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateComplianceResponse"
+      required:
+      - items
     ChecklistExecutionResponse:
       type: object
       description: Uma execução de checklist com as respostas e o conteúdo da versão
@@ -5288,6 +5518,16 @@ components:
       - templateId
       - updatedAt
       - version
+    ChecklistFailedItemsReportResponse:
+      type: object
+      description: Itens mais reprovados (RF-CHK-09).
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FailedItemResponse"
+      required:
+      - items
     ChecklistItemDto:
       type: object
       description: Um item (pergunta) do checklist.
@@ -5983,6 +6223,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageLocationHistoryEntryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LocationHistoryEntryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageOutOfOrderResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -6421,6 +6675,52 @@ components:
       - id
       - name
       - start
+    FailedItemResponse:
+      type: object
+      description: Um item de marcação com reprovações no filtro.
+      properties:
+        evaluatedCount:
+          type: integer
+          format: int64
+          description: "As respostas que contam na taxa: OK + NÃO OK (\"não se aplica\"\
+            \ fica de fora)."
+        failureRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        itemKey:
+          type: string
+        itemLabel:
+          type: string
+          description: O rótulo do item na versão mais nova entre as execuções do
+            filtro.
+        notApplicableCount:
+          type: integer
+          format: int64
+        notOkCount:
+          type: integer
+          format: int64
+        okCount:
+          type: integer
+          format: int64
+        templateId:
+          type: string
+          format: uuid
+        templateName:
+          type: string
+          description: O nome atual do modelo.
+      required:
+      - evaluatedCount
+      - failureRate
+      - itemKey
+      - itemLabel
+      - notApplicableCount
+      - notOkCount
+      - okCount
+      - templateId
+      - templateName
     FieldViolation:
       type: object
       description: Erro de um campo da requisição.
@@ -6842,6 +7142,110 @@ components:
       required:
       - key
       - unlimited
+    LocationHistoryEntryResponse:
+      type: object
+      description: Uma execução no histórico de um local.
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: "A data operacional da rotina, se houver."
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        complianceRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        dueAt:
+          type: string
+          format: date-time
+          description: "O prazo da rotina, se houver."
+          nullable: true
+        duplicateOf:
+          type: string
+          format: uuid
+          description: "A execução original, se esta foi registrada à parte (RN-22)."
+          nullable: true
+        evaluatedCount:
+          type: integer
+          format: int64
+          description: "As respostas que contam na taxa: OK + NÃO OK (\"não se aplica\"\
+            \ fica de fora)."
+        executionId:
+          type: string
+          format: uuid
+        executorId:
+          type: string
+          format: uuid
+          description: O usuário executor; nulo na pendente.
+          nullable: true
+        notApplicableCount:
+          type: integer
+          format: int64
+        notOkCount:
+          type: integer
+          format: int64
+        okCount:
+          type: integer
+          format: int64
+        referenceAt:
+          type: string
+          format: date-time
+          description: "O que posiciona a execução no histórico: a conclusão, senã\
+            o o início, senão o prazo."
+        routineId:
+          type: string
+          format: uuid
+          description: "A rotina que a gerou, se houver."
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum:
+          - PENDING
+          - IN_PROGRESS
+          - COMPLETED
+        templateId:
+          type: string
+          format: uuid
+        templateName:
+          type: string
+          description: O nome atual do modelo.
+        versionNumber:
+          type: integer
+          format: int32
+          description: O número da versão usada; nulo na pendente.
+          nullable: true
+      required:
+      - context
+      - evaluatedCount
+      - executionId
+      - notApplicableCount
+      - notOkCount
+      - okCount
+      - referenceAt
+      - status
+      - templateId
+      - templateName
     LoginRequest:
       type: object
       properties:
@@ -8464,6 +8868,60 @@ components:
       required:
       - issRate
       - serviceChargeRate
+    TemplateComplianceResponse:
+      type: object
+      description: A conformidade de um modelo no filtro.
+      properties:
+        complianceRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        evaluatedCount:
+          type: integer
+          format: int64
+          description: "As respostas que contam na taxa: OK + NÃO OK (\"não se aplica\"\
+            \ fica de fora)."
+        executions:
+          type: integer
+          format: int64
+          description: Execuções concluídas no filtro.
+        notApplicableCount:
+          type: integer
+          format: int64
+        notOkCount:
+          type: integer
+          format: int64
+        okCount:
+          type: integer
+          format: int64
+        templateId:
+          type: string
+          format: uuid
+        templateName:
+          type: string
+          description: O nome atual do modelo.
+      required:
+      - context
+      - evaluatedCount
+      - executions
+      - notApplicableCount
+      - notOkCount
+      - okCount
+      - templateId
+      - templateName
     TokenResponse:
       type: object
       properties:

@@ -132,6 +132,9 @@ object ChecklistsErrorCodes {
      */
     val CHECKLIST_ROUTINE_INVALID = ErrorCode("CHECKLIST_ROUTINE_INVALID")
 
+    /** 400: período de relatório com o fim (`to`) antes do início (`from`). */
+    val CHECKLIST_REPORT_PERIOD_INVALID = ErrorCode("CHECKLIST_REPORT_PERIOD_INVALID")
+
     // --- Alertas dos comandos offline (RN-22: aplicado e sinalizado, não descartado) -------------------------
 
     /** Alerta: a foto citada ainda não chegou ao servidor (ou foi expurgada): a resposta ficou sem a foto (H10). */

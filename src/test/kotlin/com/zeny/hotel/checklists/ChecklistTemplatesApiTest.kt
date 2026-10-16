@@ -265,6 +265,10 @@ class ChecklistTemplatesApiTest(
                 "/api/v1/checklist-routines/{id}",
                 "/api/v1/checklist-routines/{id}/deactivate",
                 "/api/v1/checklist-routines/{id}/reactivate",
+                // M2 E08: relatórios, só leitura.
+                "/api/v1/checklist-reports/compliance",
+                "/api/v1/checklist-reports/failed-items",
+                "/api/v1/checklist-reports/location-history",
             )
     }
 
@@ -616,6 +620,7 @@ class ChecklistTemplatesApiTest(
                     ChecklistsPermissions.EXECUTIONS_EXECUTE,
                     ChecklistsPermissions.ROUTINES_READ,
                     ChecklistsPermissions.ROUTINES_MANAGE,
+                    ChecklistsPermissions.REPORTS_READ,
                 )
             ChecklistsPermissions.permissions.forEach {
                 it.sensitive shouldBe false

@@ -205,7 +205,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | E06 | Modelos de checklist | #concluida | — | Modelos, versões imutáveis, itens, condicionais, aplicabilidade e ações configuradas |
 | E11 | Ciclo de vida dos anexos | #concluida | — | `detach`/`delete`, expurgo de órfãos, upload com `clientFileId` e reencode de imagens |
 | E07 | Execução de checklists e rotinas | #concluida | E05, E06, E11, E12 | Execução online e offline com fotos, `ChecklistCompleted` e rotinas por setor e escala |
-| E08 | Relatórios de checklists | #pendente | E07 | Conformidade por modelo, itens mais reprovados e histórico por local |
+| E08 | Relatórios de checklists | #concluida | E07 | Conformidade por modelo, itens mais reprovados e histórico por local |
 
 **Notificações e gate**
 
@@ -1518,7 +1518,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 ---
 
-## E08 — Relatórios de checklists — #pendente
+## E08 — Relatórios de checklists — #concluida
 
 **Objetivo:** entregar os relatórios do RF-CHK-09 — conformidade por modelo, itens mais reprovados e histórico por local — a partir de views de leitura publicadas por `checklists`, no padrão que o `reporting` usará em M6.
 
@@ -1594,12 +1594,51 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `bbc44f1db976b2cce84e3c9f411cd335e9057635` (recebido do orquestrador; `HEAD` `3b2d019`, árvore limpa). Snapshot ao fim da implementação, antes deste handoff: `93cce9b69b46b5ff9c7a24546f3c24bcef1ac1b6`. Preparação: E07 está `#concluida` e o código bate com o handoff dela (`checklists.checklist_answer` com uma linha por item, `item_type` e `check_value`; `checklist_execution` com versão usada, sujeito, rotina, `business_date`, `due_at`, `duplicate_of` e horários reais; a pendente de rotina fica `PENDING`; última migração `V2026_10_16_1440`). Investigação feita pela própria sessão, sem subagente (adendo do orquestrador): RF-CHK-09 (SPEC §5.15) e ARCHITECTURE §11 "Leitura para relatórios".
+- Arquivos alterados:
+  - Banco: `db/migration/checklists/V2026_10_16_1700__create_checklist_report_views.sql` (novo): as views `checklists.report_execution_compliance`, `report_check_item_outcome` e `report_location_history`, documentadas no comentário como API de leitura do módulo; dois índices parciais em `checklist_execution` (`completed_at` das concluídas; `subject_id, subject_type`); `GRANT SELECT` e `REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER` por view ao `"${app_role}"`.
+  - `checklists`, raiz: `ChecklistsPermissions.kt` (`checklists.reports.read`, só `ALL`, Gerente e Governanta, não sensível), `ChecklistsErrorCodes.kt` (`CHECKLIST_REPORT_PERIOD_INVALID`).
+  - `domain/CheckOutcomes.kt` (novo: a regra única da taxa, "não se aplica" fora do denominador, `null` sem nada avaliado, `Percent` com 4 casas e `HALF_EVEN`).
+  - `application/ChecklistReports.kt` (novo: filtro, `ReportQuery`, `CheckCounts`, as linhas, a porta `ChecklistReportsStore` e o `ChecklistReportsService`, só leitura, com a permissão e o período no fuso do hotel pela `HotelApi.timezone()`).
+  - `infrastructure/JdbcChecklistReports.kt` (novo: as três consultas por `JdbcClient`, só `FROM checklists.report_*`).
+  - `web/ChecklistReportsController.kt` (novo: `GET /api/v1/checklist-reports/compliance`, `/failed-items` e `/location-history`, com os DTOs).
+  - Testes: novos `checklists/ChecklistReportsTest.kt` (7) e `checklists/CheckOutcomesTest.kt` (3); ajustados `persistence/DatabaseRolesTest.kt` (toda view de módulo é `report_*` e o papel da aplicação só tem `SELECT` nela), `checklists/ChecklistTemplatesApiTest.kt` (catálogo com a 7ª permissão e os três caminhos) e `iam/AuthorizationTest.kt` (concessões do Gerente).
+  - Contrato e documentação: `api/openapi.yaml` (regenerado, só acréscimos: os três caminhos e os esquemas `ChecklistComplianceReportResponse`, `TemplateComplianceResponse`, `ChecklistFailedItemsReportResponse`, `FailedItemResponse`, `LocationHistoryEntryResponse`), `CLAUDE.md` ("Estado atual", o padrão "Views de relatório `report_*`" em "Schemas e migrações" e a seção "Relatórios de checklists"), este roadmap (tag e handoff).
+- Decisões (do implementador; nenhuma exigiu o usuário):
+  1. **Views de fatos, não de agregados:** cada linha é uma execução (conformidade, histórico) ou uma resposta de marcação (itens); o adaptador filtra e agrega. Assim o período, o modelo e o local filtram as mesmas views, e o `reporting` do M6 agrega como quiser. As contagens vêm de um `CROSS JOIN LATERAL` por execução (os filtros do `WHERE` descem até a tabela, sem agregar tudo antes).
+  2. **Conformidade:** só itens `CHECK` têm resultado; taxa = OK / (OK + NÃO OK); "não se aplica" conta à parte (`notApplicableCount`) e fica fora do denominador; sem nada avaliado, `complianceRate` nulo (nunca zero). Quantidade, número, escolha, texto e foto não entram.
+  3. **Execução registrada à parte (`duplicate_of`, RN-22) conta** na conformidade e nos itens, como verificação que de fato aconteceu; o histórico a mostra com `duplicateOf`.
+  4. **Período em datas no fuso do hotel**, inclusive nas duas pontas (`from`/`to` opcionais), convertido em instantes pelo caso de uso; a conformidade e os itens contam a **conclusão** (`completed_at`), o histórico a **referência** (`reference_at` = conclusão, senão início, senão prazo da rotina). Não usa `business_date`, que só as rotinas têm.
+  5. **Local** = o sujeito opaco (`subjectType`, `subjectId`, H3); cada um filtra sozinho na conformidade e nos itens; no histórico os dois são obrigatórios. O nome do local não está nas views (o `checklists` não conhece `rooms`); o cliente o resolve.
+  6. **Histórico inclui todas as situações**, inclusive a pendente de rotina que ninguém fez (a nota da E07 pedia as pendentes); contagens parciais na em andamento, zero na pendente.
+  7. **Nomes:** o do modelo é o atual (`checklist_template.name`); o rótulo do item é o da versão usada (tirado do `content` da versão), e o ranking mostra o da versão mais nova entre as execuções do filtro (a chave é estável entre as versões).
+  8. **Itens mais reprovados:** só itens com ao menos um NÃO OK, ordem por reprovações, desempate pela taxa de reprovação, depois nome do modelo e chave; `limit` de 1 a 200 (padrão 20), sem cursor (é um ranking).
+  9. **Sem dado pessoal nas views:** sem resposta de texto, observação, foto nem nada de hóspede; o executor só como id de usuário. **Sem CSV** (opcional no escopo): fica para a exportação do M6 (RF-REL-07).
+  10. **Privilégios das views:** o `ALTER DEFAULT PRIVILEGES` da pasta daria DML nas views; a migração as deixa só com `SELECT`, e o `DatabaseRolesTest` passou a conferir isso para toda view de módulo (e que toda view é `report_*`).
+  11. **"Só as views" provado em tempo de execução:** o `ChecklistReportsTest` roda o próprio `JdbcChecklistReports` numa conexão do dono com `SET ROLE` para um papel novo que só tem `USAGE` no schema e `SELECT` nas três views (com o controle de que esse papel não lê `checklist_execution`). A camada web lê `CheckCounts` (application), que delega ao `CheckOutcomes` do domínio, por causa da regra "web só fala com application".
+  12. **Desvio de protocolo declarado:** os testes de integração foram escritos antes da implementação, mas só rodaram com ela pronta (passaram de primeira); para compensar, as mutações abaixo mostram que eles pegam as falhas do foco do verificador.
+- Validações executadas (OpenJDK 25, Docker):
+  - `./gradlew test --tests 'com.zeny.hotel.checklists.ChecklistReportsTest' --tests 'com.zeny.hotel.checklists.CheckOutcomesTest'` → 10 testes, 0 falhas.
+  - Mutações (aplicadas juntas e revertidas; todas pegas): "não se aplica" no denominador (`evaluated = ok + notOk + notApplicable`) → 4 testes de relatório e os 3 do `CheckOutcomesTest` falharam (`expected:<9L> but was:<15L>` etc.); a consulta do histórico juntando `checklists.checklist_template` → `the report queries read only the report views` falhou com `permission denied for table checklist_template`; sem `authorization.require` na conformidade → `without checklists_reports_read every report is refused with 403` falhou (200 com os dados); sem o `REVOKE` de uma view → `the application role only reads each report view` e `DatabaseRolesTest.the application role only reads the module views…` falharam (`SELECT, INSERT, UPDATE, DELETE`).
+  - `./gradlew ktlintFormat` e `./gradlew lint` → um `UseOrEmpty` no teste, corrigido → sem problemas.
+  - `./gradlew updateOpenApi` → contrato só com acréscimos (+458 linhas, nenhuma removida).
+  - `./gradlew build` → a primeira rodada falhou só em `LayerArchitectureTest.web talks only to application` (os DTOs liam o `CheckOutcomes` do domínio), corrigido com o `CheckCounts`; a segunda: `BUILD SUCCESSFUL in 4m 39s`, 608 testes, 0 falhas, 0 ignorados (`ModularityTest`, ArchUnit, `MigrationConventionTest`, `DatabaseMigrationsTest`, `DatabaseRolesTest`, `ApiSecurityTest`, `checkOpenApi`, `detekt*`, `ktlint*Check` e `koverVerify`).
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1", contra `3b2d019a6e81` (merge-base com `origin/main`, o próprio `HEAD`).
+- Critérios de aceite (evidência para o verificador; marcados pelo orquestrador depois do parecer):
+  - valores esperados: `ChecklistReportsTest.compliance by template counts only completed executions…` (modelo A 6 OK, 3 NÃO OK, 6 N/A → `66.6667`; por local R1 `60.0000` e `100.0000`; R2 `50.0000`), `compliance by template filters by the period in the hotel time zone` (`60.0000` nas antigas, `75.0000` nas recentes, vazio fora), `the most failed items rank…` (`shower` 2/4 `50.0000` com o rótulo da versão 2, `bed` 1/4 `25.0000`; só as antigas, rótulo da versão 1) e `the history of a location lists every execution there…` (ordem em andamento, B1, pendente, A2, A1; contagens, taxa, campos da pendente, páginas de 2 e filtros);
+  - "não se aplica" fora do denominador: os mesmos testes (com N/A no denominador a taxa do modelo A seria `40.0000`), a execução só com N/A sem taxa e `CheckOutcomesTest`;
+  - só as views e o papel da aplicação lendo cada uma: `the report queries read only the report views` (papel só com as views + controle `42501`), `the application role only reads each report view` (lê cada view; privilégios = só `SELECT`) e `DatabaseRolesTest.the application role only reads the module views, all of them report views`;
+  - `403`: `without checklists_reports_read every report is refused with 403` (usuário com ler e executar todas as execuções e usuário sem nada; o leitor de relatórios recebe `200`);
+  - `CLAUDE.md` com o padrão de view `report_*`; contrato, build e oasdiff acima.
+- Parecer do verificador: **APROVADO** (2026-10-16, verificador independente disparado pelo orquestrador; snapshot verificado `dd3d69d19bf3ddf11dd1be7ad929ddf3d1c8eb8e`, 15 arquivos, +2065/−14, todos no escopo). Os 5 critérios APROVADOS com evidência: `ChecklistReportsTest` (modelo A `66.6667` com 6 OK, 3 não OK e 6 "não se aplica" — daria `40.0000` com N/A no denominador; só N/A → taxa `null`; período no fuso do hotel; ranking com o rótulo da versão mais nova e `limit`; histórico paginado com a pendente), `CheckOutcomesTest`, o teste com `SET ROLE` para um papel que só lê as três views (controle `42501` em `checklist_execution`), o papel da aplicação só com `SELECT` em cada view e `DatabaseRolesTest` (toda view de módulo é `report_*` e só `SELECT`), `403 PERMISSION_DENIED` nos três caminhos sem `checklists.reports.read`. `./gradlew build` BUILD SUCCESSFUL (608 testes, 0 falhas); oasdiff sem `ERR` (base `3b2d019`), contrato só com acréscimos (+458). Nenhuma view com dado pessoal (executor só como UUID; sem texto, observação ou foto). Nenhum problema grave ou médio. Ressalvas baixas:
+  1. A coluna `evaluated_count` das views (API para o `reporting` do M6) não é lida por código nem teste; o endpoint recalcula a partir de `ok`/`not_ok`/`n/a`.
+  2. O fuso do hotel no filtro de período não é testado na virada do dia (as execuções do teste ficam ~10 dias distantes).
+  3. Em `location-history` sem `subjectType`/`subjectId`, quem não tem permissão recebe `400` antes do `403` (ressalva já aceita no projeto).
+  4. `subjectType=` vazio é aceito em `compliance` e `failed-items` (devolve vazio; inofensivo).
+- Notas para a próxima etapa:
+  - M6 (`reporting`): leia só as views `<módulo>.report_*` (padrão no `CLAUDE.md`, "Schemas e migrações"); as três do `checklists` são fatos por execução ou resposta, com o período a filtrar por `completed_at` (ou `reference_at` no histórico) e o fuso do hotel; a exportação CSV (RF-REL-07) entra lá. O `reporting` precisará de um papel ou da mesma conexão com `SELECT` nas views de cada módulo (hoje só o papel da aplicação as lê).
+  - Um módulo que publicar a primeira view de relatório segue a migração da E08 (o `GRANT SELECT` e o `REVOKE` por view): o `DatabaseRolesTest` recusa view com DML ou fora do padrão `report_*`.
+  - E10 (gate): "relatórios de checklists respondem" é coberto pelo `ChecklistReportsTest`; no compose, os relatórios respondem vazios até haver execuções (as rotinas só aparecem quando o M6 avançar a data).
 
 ---
 

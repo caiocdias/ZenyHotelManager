@@ -207,6 +207,7 @@ class AuthorizationTest(
                 "checklists.executions.execute:ALL",
                 "checklists.routines.read:ALL",
                 "checklists.routines.manage:ALL",
+                "checklists.reports.read:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

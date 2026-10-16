@@ -15,6 +15,7 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldStartWith
 import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -154,6 +155,34 @@ class DatabaseRolesTest(
                         setOf("SELECT", "INSERT", "UPDATE", "DELETE")
                     }
                 withClue(table) { privilegesOn(table) shouldBe expected }
+            }
+        }
+    }
+
+    /**
+     * As views de módulo são as `report_*` (ARCHITECTURE §11, M2 E08), a API de leitura para relatórios: o papel da
+     * aplicação só as lê (o `ALTER DEFAULT PRIVILEGES` da pasta daria também DML; a migração da view o retira).
+     */
+    @Test
+    fun `the application role only reads the module views, all of them report views`() {
+        val views =
+            owner
+                .sql(
+                    """
+                    SELECT n.nspname || '.' || c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                    WHERE n.nspname IN (:schemas) AND c.relkind IN ('v', 'm')
+                    """.trimIndent(),
+                ).param("schemas", schemas)
+                .query { rs, _ -> rs.getString(1) }
+                .list()
+        views shouldContain "checklists.report_execution_compliance"
+
+        assertSoftly {
+            views.forEach { view ->
+                withClue(view) {
+                    view.substringAfter('.') shouldStartWith "report_"
+                    privilegesOn(view) shouldBe setOf("SELECT")
+                }
             }
         }
     }

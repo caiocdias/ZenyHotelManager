@@ -9,11 +9,12 @@ import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.shared.TemplateGrant
 
 /**
- * Permissões do módulo `checklists` (RF-ACS-02, SPEC §5.15). Os modelos e as rotinas não têm dono, então só
- * aceitam o escopo `ALL`; as execuções aceitam `OWN` (o executor e, numa rotina, os candidatos escalados, H14) e
- * `ALL`. Nenhuma é sensível. Sugestões aos modelos (SPEC §3.1): o Gerente ("toda a operação") e a Governanta
- * ("modelos de checklist") consultam e mantêm modelos e rotinas e veem e executam todas as execuções; a
- * Camareira, a Manutenção e o Garçom executam e veem só as próprias.
+ * Permissões do módulo `checklists` (RF-ACS-02, SPEC §5.15). Os modelos, as rotinas e os relatórios (agregados de
+ * todas as execuções) não têm dono, então só aceitam o escopo `ALL`; as execuções aceitam `OWN` (o executor e, numa
+ * rotina, os candidatos escalados, H14) e `ALL`. Nenhuma é sensível. Sugestões aos modelos (SPEC §3.1): o Gerente
+ * ("toda a operação") e a Governanta ("modelos de checklist") consultam e mantêm modelos e rotinas, consultam os
+ * relatórios e veem e executam todas as execuções; a Camareira, a Manutenção e o Garçom executam e veem só as
+ * próprias.
  */
 object ChecklistsPermissions : ModulePermissions {
     override val module = "checklists"
@@ -35,6 +36,9 @@ object ChecklistsPermissions : ModulePermissions {
 
     /** Criar e editar rotinas, desativar e reativar. */
     val ROUTINES_MANAGE = PermissionCode("checklists.routines.manage")
+
+    /** Consultar os relatórios de checklists (conformidade, itens mais reprovados e histórico por local, M2 E08). */
+    val REPORTS_READ = PermissionCode("checklists.reports.read")
 
     private val all = TemplateGrant(ALL)
     private val own = TemplateGrant(OWN)
@@ -78,6 +82,12 @@ object ChecklistsPermissions : ModulePermissions {
             PermissionDefinition(
                 ROUTINES_MANAGE,
                 "Criar e editar rotinas de checklist, desativar e reativar",
+                setOf(ALL),
+                templates = managers,
+            ),
+            PermissionDefinition(
+                REPORTS_READ,
+                "Consultar os relatórios de checklists: conformidade, itens mais reprovados e histórico por local",
                 setOf(ALL),
                 templates = managers,
             ),
