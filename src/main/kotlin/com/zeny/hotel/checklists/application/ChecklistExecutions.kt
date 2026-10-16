@@ -213,8 +213,8 @@ class ChecklistExecutionsApiService(
         val execution = operations.lock(id)
         val executor = execution.inProgressExecutor()
         val answers = operations.normalize(execution, inputs, completedAt)
-        val photos = operations.replaceAnswers(execution, executor, answers, PhotoPolicy.TOLERATE)
-        operations.complete(execution, executor, completedAt, null, null)
+        val photos =
+            operations.completeWithAnswers(execution, executor, answers, PhotoPolicy.TOLERATE, completedAt, null, null)
         return ChecklistCompletion(execution.view(), photos.missing, photos.rejected)
     }
 }

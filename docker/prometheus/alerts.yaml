@@ -24,8 +24,11 @@ groups:
           description: "A publicação FAILED mais antiga tem {{ $value | humanizeDuration }}; aos 24 h ela é abandonada."
       # Abandonada: falhou numa tentativa feita 24 h ou mais depois da publicação e saiu do reenvio
       # automático. Só volta pelo reenvio manual (CLAUDE.md, "Eventos e jobs"), depois de corrigir a causa.
+      # O `for` evita o falso alarme da última tentativa ainda em execução: a staleness mede o reenvio pela
+      # data da publicação, então ela conta como abandonada enquanto o listener roda (gate E10 do M2).
       - alert: ZenyOutboxAbandonedPublications
         expr: zeny_outbox_publications{state="abandoned"} > 0
+        for: 5m
         labels:
           severity: critical
         annotations:

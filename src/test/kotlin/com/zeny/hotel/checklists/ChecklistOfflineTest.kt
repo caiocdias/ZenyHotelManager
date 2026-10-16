@@ -45,7 +45,7 @@ class ChecklistOfflineTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired files: FilesTestSupport,
     @Autowired private val filesApi: FilesApi,
-    @Autowired jdbc: JdbcClient,
+    @Autowired private val jdbc: JdbcClient,
 ) {
     private val support = ChecklistExecutionsTestSupport(iam, files, jdbc)
 
@@ -109,6 +109,15 @@ class ChecklistOfflineTest(
         support.executionCount(start.id) shouldBe 1
         ChecklistCompletedEvents.received.count { it.executionId == start.id } shouldBe 1
         support.completedPublications(start.id) shouldBe 1
+        // Uma entrada por comando na trilha (ajuste da E07 no gate E10): a conclusão vai numa só, do andamento sem as
+        // respostas até a concluída com elas.
+        val trail = executionTrail(start.id)
+        trail.map { it["action"] } shouldContainExactly
+            listOf("checklists.execution.start-offline", "checklists.execution.complete-offline")
+        trail[1]["before_status"] shouldBe "IN_PROGRESS"
+        trail[1]["before_answers"] shouldBe 0
+        trail[1]["after_status"] shouldBe "COMPLETED"
+        trail[1]["after_answers"] shouldBe 5
 
         // Os horários são os do aparelho corrigidos, não o do servidor (que recebeu agora).
         val row = support.executionRow(start.id)
@@ -312,6 +321,30 @@ class ChecklistOfflineTest(
         val (later, _) = download(auth, cursor)
         later.single { it["id"].asString() == mine.id.toString() }["deleted"].asBoolean() shouldBe true
     }
+
+    /** As entradas da trilha da execução, em ordem, com a situação e o número de respostas antes e depois. */
+    private fun executionTrail(id: UUID): List<Map<String, Any?>> =
+        jdbc
+            .sql(
+                """
+                SELECT action, before_state ->> 'status' AS before_status,
+                       (SELECT count(*) FROM jsonb_object_keys(COALESCE(before_state -> 'answers', '{}'))) AS before_answers,
+                       after_state ->> 'status' AS after_status,
+                       (SELECT count(*) FROM jsonb_object_keys(COALESCE(after_state -> 'answers', '{}'))) AS after_answers
+                FROM audit.audit_entry
+                WHERE entity_type = 'checklists.execution' AND entity_id = :id
+                ORDER BY occurred_at, id
+                """.trimIndent(),
+            ).param("id", id.toString())
+            .query { rs, _ ->
+                mapOf(
+                    "action" to rs.getString("action"),
+                    "before_status" to rs.getString("before_status"),
+                    "before_answers" to rs.getInt("before_answers"),
+                    "after_status" to rs.getString("after_status"),
+                    "after_answers" to rs.getInt("after_answers"),
+                )
+            }.list()
 
     private fun download(
         auth: RequestPostProcessor,

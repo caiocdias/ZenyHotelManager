@@ -185,6 +185,37 @@ class ExecutionOperations(
     ): PhotoIssues {
         execution.requireInProgressBy(actor)
         audit.track(ChecklistsAudit.EXECUTION, execution.id.value) { execution.auditState() }
+        return applyAnswers(execution, actor, answers, policy)
+    }
+
+    /**
+     * Troca as respostas e conclui, como [replaceAnswers] seguido de [complete], com **uma** entrada na trilha (do
+     * andamento antes das respostas à concluída): o caminho da conclusão offline e da API pública, que recebem as
+     * respostas junto com a conclusão.
+     */
+    @Suppress("LongParameterList") // as respostas e os dados da conclusão, numa operação só
+    fun completeWithAnswers(
+        execution: ChecklistExecution,
+        actor: UserId,
+        answers: List<ChecklistAnswer>,
+        policy: PhotoPolicy,
+        completedAt: Instant,
+        session: DeviceSessionId?,
+        commandId: UUID?,
+    ): PhotoIssues {
+        execution.requireInProgressBy(actor)
+        audit.track(ChecklistsAudit.EXECUTION, execution.id.value) { execution.auditState() }
+        val photos = applyAnswers(execution, actor, answers, policy)
+        finish(execution, actor, completedAt, session, commandId)
+        return photos
+    }
+
+    private fun applyAnswers(
+        execution: ChecklistExecution,
+        actor: UserId,
+        answers: List<ChecklistAnswer>,
+        policy: PhotoPolicy,
+    ): PhotoIssues {
         val previous = execution.photoIds
         val missing = mutableListOf<String>()
         val rejected = mutableListOf<String>()
@@ -227,6 +258,16 @@ class ExecutionOperations(
         commandId: UUID?,
     ) {
         audit.track(ChecklistsAudit.EXECUTION, execution.id.value) { execution.auditState() }
+        finish(execution, actor, completedAt, session, commandId)
+    }
+
+    private fun finish(
+        execution: ChecklistExecution,
+        actor: UserId,
+        completedAt: Instant,
+        session: DeviceSessionId?,
+        commandId: UUID?,
+    ) {
         val version = version(checkNotNull(execution.versionId))
         val before = execution.photoIds
         val actions = execution.complete(actor, version.content, completedAt, session, commandId, now())

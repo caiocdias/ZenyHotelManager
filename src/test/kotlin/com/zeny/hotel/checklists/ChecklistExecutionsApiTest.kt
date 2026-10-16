@@ -434,6 +434,14 @@ class ChecklistExecutionsApiTest(
             completion.missingPhotos shouldBe emptyList()
             completion.execution.status shouldBe ChecklistExecutionStatus.COMPLETED
             filesApi.find(FileId(logo))!!.ownerEntityId.shouldBeNull()
+            // Uma entrada por chamada na trilha (ajuste da E07 no gate E10).
+            jdbc
+                .sql(
+                    "SELECT action FROM audit.audit_entry WHERE entity_type = 'checklists.execution' " +
+                        "AND entity_id = :id ORDER BY occurred_at, id",
+                ).param("id", id.value.toString())
+                .query(String::class.java)
+                .list() shouldContainExactly listOf("checklists.execution.start", "checklists.execution.complete")
         }
 
     @Test

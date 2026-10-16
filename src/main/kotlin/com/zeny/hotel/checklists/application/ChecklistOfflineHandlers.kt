@@ -255,8 +255,16 @@ class CompleteChecklistExecutionHandler(
                 answer.toInput(corrected ?: command.occurredAt)
             }
         val answers = operations.normalize(execution, inputs, command.occurredAt)
-        val photos = operations.replaceAnswers(execution, current.userId, answers, PhotoPolicy.TOLERATE)
-        operations.complete(execution, current.userId, command.occurredAt, current.deviceSessionId, command.commandId)
+        val photos =
+            operations.completeWithAnswers(
+                execution,
+                current.userId,
+                answers,
+                PhotoPolicy.TOLERATE,
+                command.occurredAt,
+                current.deviceSessionId,
+                command.commandId,
+            )
         val warnings =
             photos.missing.map {
                 OfflineCommandWarning(
