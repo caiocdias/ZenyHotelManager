@@ -1,6 +1,7 @@
 package com.zeny.hotel
 
 import com.zeny.hotel.checklists.ChecklistsModule
+import com.zeny.hotel.notifications.NotificationsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -152,7 +153,33 @@ class ModularityTest {
     }
 
     @Test
-    fun `no module other than staff depends on iam, only on the ports of shared`() {
+    fun `notifications depends only on shared and iam, and only on the public API of iam`() {
+        val notifications = modules.getModuleByName("notifications").orElseThrow()
+        val allowed = setOf("shared", "iam")
+
+        // ARCHITECTURE §3.1 e H9 do M2: iam pela IamApi (destinatários por permissão e sessões ativas).
+        notifications
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared", "iam")
+        NotificationsModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Só a raiz de iam (a API pública); verify() também barra os pacotes internos.
+        notifications
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.iam.") }
+            .filter { it.substringBeforeLast('.') != "com.zeny.hotel.iam" }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `no module other than staff and notifications depends on iam, only on the ports of shared`() {
         val dependents =
             modules
                 .filter { it.identifier.toString() != "iam" }
@@ -160,7 +187,7 @@ class ModularityTest {
                     module.getDirectDependencies(modules).uniqueModules().anyMatch { it.identifier.toString() == "iam" }
                 }.map { it.identifier.toString() }
 
-        (dependents - "staff") shouldBe emptyList()
+        (dependents - setOf("staff", "notifications")) shouldBe emptyList()
     }
 
     @Test

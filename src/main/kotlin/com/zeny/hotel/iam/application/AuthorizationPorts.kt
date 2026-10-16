@@ -102,6 +102,9 @@ interface AuthorizationData {
     /** Os usuários que têm a role atribuída (ativos ou não). */
     fun holdersOf(roleId: RoleId): List<UserId>
 
+    /** Os usuários ativos com alguma role ativa que concede [permission] (candidatos; sem conferir o catálogo). */
+    fun activeUsersGranted(permission: PermissionCode): List<UserId>
+
     /** As roles ativas atribuídas ao usuário, em ordem de nome. */
     fun activeRolesOf(userId: UserId): List<AssignedRole>
 

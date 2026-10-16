@@ -40,6 +40,9 @@ tags:
   name: stream
 - description: "Setores, colaboradores, turnos e escala."
   name: staff
+- description: "Notificações internas, preferências e dispositivos de push do pró\
+    prio usuário."
+  name: notifications
 paths:
   /api/v1/areas:
     get:
@@ -2332,6 +2335,194 @@ paths:
       summary: Versão do servidor e da API
       tags:
       - meta
+  /api/v1/notification-preferences:
+    get:
+      description: "Todos os tipos do catálogo, em ordem de tipo; sem preferência\
+        \ gravada, painel e push ligados."
+      operationId: getNotificationPreferences
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar as próprias preferências de notificação
+      tags:
+      - notifications
+    put:
+      description: "Define os tipos enviados (os outros ficam como estavam) e devolve\
+        \ todos. Sem painel, nada é criado para o tipo (nem push). Recusas: 400 `UNKNOWN_NOTIFICATION_TYPE`,\
+        \ 400 `NOTIFICATION_PREFERENCE_INVALID` (tipo repetido, push sem painel),\
+        \ 422 `NOTIFICATION_TYPE_MANDATORY` (painel desligado num tipo obrigatório)."
+      operationId: updateNotificationPreferences
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferencesRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferencesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir as próprias preferências de notificação
+      tags:
+      - notifications
+  /api/v1/notifications:
+    get:
+      description: Da mais nova para a mais antiga. Exige só autenticação.
+      operationId: listNotifications
+      parameters:
+      - description: Só as não lidas (`true`); omita ou `false` para todas.
+        in: query
+        name: unread
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageNotificationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as próprias notificações
+      tags:
+      - notifications
+  /api/v1/notifications/read-all:
+    post:
+      description: Devolve quantas foram marcadas agora. Exige só autenticação.
+      operationId: readAllNotifications
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadAllResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Marcar todas as próprias notificações como lidas
+      tags:
+      - notifications
+  /api/v1/notifications/unread-count:
+    get:
+      description: Exige só autenticação.
+      operationId: countUnreadNotifications
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCountResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Contar as próprias notificações não lidas
+      tags:
+      - notifications
+  /api/v1/notifications/{id}:
+    get:
+      description: "Com o `ETag` da versão. De outro usuário ou inexistente: 404 `NOTIFICATION_NOT_FOUND`."
+      operationId: getNotification
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma notificação própria
+      tags:
+      - notifications
+  /api/v1/notifications/{id}/read:
+    post:
+      description: "Idempotente: já lida, nada muda. De outro usuário ou inexistente:\
+        \ 404 `NOTIFICATION_NOT_FOUND`."
+      operationId: readNotification
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Marcar uma notificação própria como lida
+      tags:
+      - notifications
   /api/v1/out-of-order:
     get:
       description: "Os períodos que bloqueiam algum dia de `from` (padrão: a data\
@@ -2445,6 +2636,106 @@ paths:
       summary: Listar o catálogo de permissões
       tags:
       - iam
+  /api/v1/push-devices:
+    get:
+      description: "Do mais novo para o mais antigo, sem o token. Exige só autenticaç\
+        ão."
+      operationId: listPushDevices
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePushDeviceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os próprios dispositivos de push
+      tags:
+      - notifications
+    post:
+      description: "201 com o dispositivo novo; o mesmo token e plataforma já ativos\
+        \ nesta sessão: 200 com o existente. Um token novo nesta sessão, ou este token\
+        \ noutra sessão, desativa o anterior (`REPLACED`). Sessão revogada: 401 `UNAUTHENTICATED`."
+      operationId: registerPushDevice
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushDeviceRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceResponse"
+          description: Dispositivo registrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar o token de push do aparelho na sessão corrente
+      tags:
+      - notifications
+  /api/v1/push-devices/{id}/deactivate:
+    post:
+      description: "Idempotente. De outro usuário ou inexistente: 404 `PUSH_DEVICE_NOT_FOUND`."
+      operationId: deactivatePushDevice
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushDeviceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um dispositivo de push próprio
+      tags:
+      - notifications
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -6237,6 +6528,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageNotificationResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageOutOfOrderResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -6259,6 +6564,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PermissionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPagePushDeviceResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PushDeviceResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -7312,6 +7631,105 @@ components:
       required:
       - id
       - name
+    NotificationPreferenceRequest:
+      type: object
+      description: A preferência para um tipo.
+      properties:
+        inApp:
+          type: boolean
+          nullable: true
+        push:
+          type: boolean
+          nullable: true
+        type:
+          type: string
+          maxLength: 64
+          minLength: 1
+          nullable: true
+      required:
+      - inApp
+      - push
+      - type
+    NotificationPreferenceResponse:
+      type: object
+      description: A preferência do usuário para um tipo de notificação.
+      properties:
+        description:
+          type: string
+        inApp:
+          type: boolean
+          description: Aparece no painel (e no tópico `notifications`).
+        mandatory:
+          type: boolean
+          description: "Tipo obrigatório: o painel não desliga; só o push."
+        push:
+          type: boolean
+          description: Vai por push aos dispositivos ativos (exige `inApp`).
+        type:
+          type: string
+      required:
+      - description
+      - inApp
+      - mandatory
+      - push
+      - type
+    NotificationPreferencesRequest:
+      type: object
+      description: As preferências a definir; os tipos que não vierem ficam como estavam.
+      properties:
+        preferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationPreferenceRequest"
+          maxItems: 100
+          minItems: 1
+          nullable: true
+      required:
+      - preferences
+    NotificationPreferencesResponse:
+      type: object
+      description: "As preferências do usuário, uma por tipo do catálogo, em ordem\
+        \ de tipo."
+      properties:
+        preferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/NotificationPreferenceResponse"
+      required:
+      - preferences
+    NotificationResponse:
+      type: object
+      description: Uma notificação do próprio usuário.
+      properties:
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        readAt:
+          type: string
+          format: date-time
+          description: Quando foi lida; nulo se ainda não foi.
+          nullable: true
+        title:
+          type: string
+        type:
+          type: string
+          description: "Tipo da notificação (`<módulo>.<nome>`), como em `GET /notification-preferences`."
+        version:
+          type: integer
+          format: int64
+          description: Versão da notificação (a do `ETag` e do tópico `notifications`).
+      required:
+      - body
+      - createdAt
+      - id
+      - title
+      - type
+      - version
     OpenOutOfOrderRequest:
       type: object
       description: Um período OOO/OOS para abrir.
@@ -7690,6 +8108,78 @@ components:
       - code
       - status
       - title
+    PushDeviceRequest:
+      type: object
+      description: Registro do token do FCM do aparelho na sessão corrente.
+      properties:
+        platform:
+          type: string
+          enum:
+          - ANDROID
+          - IOS
+          - WEB
+          nullable: true
+        token:
+          type: string
+          description: O token de registro do FCM do aparelho. Nunca volta nas respostas.
+          maxLength: 4096
+          minLength: 1
+          nullable: true
+          pattern: "[\\x21-\\x7E]+"
+      required:
+      - platform
+      - token
+    PushDeviceResponse:
+      type: object
+      description: Um dispositivo de push do próprio usuário (sem o token).
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        currentSession:
+          type: boolean
+          description: Se é o dispositivo da sessão que fez a requisição.
+        deactivatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        deactivationReason:
+          type: string
+          description: "Por que deixou de receber push: `USER` (desativado pelo usuá\
+            rio), `REPLACED` (token ou sessão registrados de novo), `INVALID_TOKEN`\
+            \ (recusado pelo FCM), `SESSION_ENDED` (sessão revogada ou vencida)."
+          enum:
+          - USER
+          - REPLACED
+          - INVALID_TOKEN
+          - SESSION_ENDED
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+          enum:
+          - ANDROID
+          - IOS
+          - WEB
+      required:
+      - active
+      - createdAt
+      - currentSession
+      - id
+      - platform
+    ReadAllResponse:
+      type: object
+      description: Quantas notificações foram marcadas como lidas agora.
+      properties:
+        read:
+          type: integer
+          format: int32
+      required:
+      - read
     RecordScheduleEntriesRequest:
       type: object
       description: Atribuição ou exceção a lançar em cada data do período.
@@ -8963,6 +9453,15 @@ components:
       - sessionId
       - tokenType
       - userId
+    UnreadCountResponse:
+      type: object
+      description: Quantas notificações do próprio usuário ainda não foram lidas.
+      properties:
+        count:
+          type: integer
+          format: int32
+      required:
+      - count
     UpdateChecklistTemplateRequest:
       type: object
       description: O nome (vale na hora) e o rascunho inteiro de um modelo (vale na

@@ -423,6 +423,7 @@ sequenceDiagram
 - Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications`, via SSE.
 - O payload é mínimo (`type`, `id`, `version`): o cliente aplica a mudança ou rebusca o recurso.
 - Os eventos são filtrados por permissão e escopo do usuário conectado.
+- O tópico `notifications` é pessoal: não exige permissão, e cada usuário recebe só as mensagens das próprias notificações.
 - Reconexão com `Last-Event-ID`, a partir de um buffer circular em memória. Se o ID já saiu do buffer, o servidor responde `reset` e o cliente recarrega.
 - O broadcaster roda em processo, já que há uma única instância. Se um dia houver mais de uma, o caminho é PostgreSQL `LISTEN/NOTIFY`.
 
@@ -483,7 +484,7 @@ Os testes de contrato usam WireMock.
 | PSP Pix | `payments` | Cobrança (`cob`/`cobv`) e devolução | Confirmação por webhook **ou consulta periódica** da cobrança | Sim, com polling (confirmação mais lenta). Webhook pede túnel. |
 | Cartão — TEF | `payments` + cliente | O servidor cria o `PaymentIntent`; o cliente desktop/PDV executa o TEF pela biblioteca local (SiTef/PayGo) e reporta o resultado | — | Sim |
 | Cartão — Smart POS | `payments` | Pedido enviado ao terminal pela API em nuvem do adquirente, quando houver | Resultado por webhook/polling | Sim, com polling |
-| Push | `notifications` | FCM HTTP v1 | — | Sim |
+| Push | `notifications` | FCM HTTP v1 (conta de serviço em `ZENY_FCM_CREDENTIALS`; vazia, push desligado) | — | Sim |
 | E-mail (opcional) | `notifications` | SMTP (relatórios do fechamento à gerência) | — | Sim |
 | Impressão | `printing` | Jobs por SSE para o agente | Confirmação do agente | Sim (o agente inicia a conexão) |
 

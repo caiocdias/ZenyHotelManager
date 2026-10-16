@@ -338,7 +338,9 @@ class RealtimeHub(
             val duplicated = topics.groupBy { it.name }.filterValues { it.size > 1 }.keys
             require(duplicated.isEmpty()) { "Tópicos de tempo real repetidos: $duplicated" }
             topics.forEach {
-                require(it.permission in declared) { "Tópico ${it.name}: permissão ${it.permission} não declarada" }
+                require(it.personal || it.permission in declared) {
+                    "Tópico ${it.name}: permissão ${it.permission} não declarada"
+                }
             }
             return topics.associateBy { it.name }
         }

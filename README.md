@@ -101,6 +101,16 @@ docker run --rm --network container:zeny-storage -v "$PWD/docker/storage:/zeny:r
 
 O script [`docker/storage/init-storage.sh`](docker/storage/init-storage.sh) cria o bucket privado e o usuário de serviço, com política só para ler, gravar, apagar e listar objetos desse bucket. Ele é idempotente e lê as credenciais da entrada padrão, sem passá-las pela linha de comando.
 
+## Notificações e push (FCM)
+
+As notificações internas (RF-NOT-01) aparecem no painel do destinatário (`GET /api/v1/notifications`) e no tópico pessoal `notifications` do canal de tempo real (`GET /api/v1/stream?topics=notifications`), e cada usuário escolhe por tipo se quer o painel e o push (`/api/v1/notification-preferences`). O app registra o token do FCM do aparelho na sessão em que está logado (`POST /api/v1/push-devices`); a sessão revogada ou vencida deixa de receber push, e o token que o FCM recusa é desativado. O envio é assíncrono, pelo outbox: uma falha temporária do FCM é reenviada com o backoff de 1 min a 1 h e abandonada, com alerta, depois de 24 h.
+
+| Variável | Para quê |
+|---|---|
+| `ZENY_FCM_CREDENTIALS` | opcional: o JSON da conta de serviço do projeto Firebase, em base64 numa linha (`base64 -w0 conta-de-servico.json`). O `project_id` sai do JSON. Vazia, o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot |
+
+A conta de serviço sai do console do Firebase (Configurações do projeto > Contas de serviço > Gerar nova chave privada). Ela manda push em nome do projeto: guarde-a só no `docker/.env` (ou no cofre de segredos da implantação), nunca no repositório, e apague o arquivo JSON depois de copiá-la.
+
 ## Autenticação: chaves JWT e administrador inicial
 
 O login (`POST /api/v1/auth/login`) devolve um access token JWT de 15 min, assinado em RS256, e um refresh token rotativo da sessão do dispositivo (ARCHITECTURE §8.1). As chaves de assinatura vêm de `ZENY_JWT_KEYS` (`kid:base64[,kid:base64…]`, cada uma uma chave privada RSA de 2048 bits ou mais em PKCS#8 DER, em base64) e `ZENY_JWT_ACTIVE_KEY_ID` (o `kid` que assina), obrigatórias em todos os profiles e sem valor padrão: sem elas a aplicação não sobe. Para desenvolvimento:

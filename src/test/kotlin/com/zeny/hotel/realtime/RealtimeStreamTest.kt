@@ -12,6 +12,9 @@ import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.iam.TestUser
 import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
+import com.zeny.hotel.notifications.NotificationRecipients
+import com.zeny.hotel.notifications.NotificationsApi
+import com.zeny.hotel.notifications.NotificationsTypes
 import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderRequest
@@ -115,6 +118,7 @@ class RealtimeStreamTest(
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val jsonMapper: JsonMapper,
     @Autowired private val clock: Clock,
+    @Autowired private val notifications: NotificationsApi,
     @LocalServerPort private val port: Int,
 ) {
     private val rooms = RoomsTestSupport(iam)
@@ -187,6 +191,36 @@ class RealtimeStreamTest(
         open(reader, "rooms,unknown-topic").problem(400, "UNKNOWN_STREAM_TOPIC")
         open(reader, null).problem(400, "VALIDATION_FAILED")
         open(reader, " , ").problem(400, "VALIDATION_FAILED")
+    }
+
+    @Test
+    fun `the personal notifications topic needs no permission and delivers only the subscriber's notifications`() {
+        val alice = iam.createUser()
+        val bob = iam.createUser()
+        val aliceToken = tokenOf(alice)
+        val aliceClient = open(aliceToken, "notifications").also { it.expectReady() }
+        val bobClient = open(tokenOf(bob), "notifications").also { it.expectReady() }
+
+        val id =
+            notifications
+                .notify(NotificationsTypes.TASK_ASSIGNED, "Tarefa", "UH 12", NotificationRecipients.user(alice.id))
+                .single()
+
+        val event = aliceClient.nextEvent(Duration.ofSeconds(2)).shouldNotBeNull()
+        event.event shouldBe "notifications"
+        val data = json(event)
+        data.propertyNames().toList() shouldContainExactly listOf("type", "id", "version")
+        data["type"].asString() shouldBe "notifications.notification"
+        data["id"].asString() shouldBe id.toString()
+        data["version"].asLong() shouldBe 0
+        bobClient.eventsWithin(Duration.ofMillis(700)).shouldBeEmpty()
+
+        // Ler a notificação muda a versão e avisa os outros aparelhos do mesmo usuário.
+        iam.postWithToken("/api/v1/notifications/$id/read", aliceToken).status shouldBe 200
+        val read = json(aliceClient.nextEvent(Duration.ofSeconds(2)).shouldNotBeNull())
+        read["id"].asString() shouldBe id.toString()
+        read["version"].asLong() shouldBe 1
+        bobClient.eventsWithin(Duration.ofMillis(300)).shouldBeEmpty()
     }
 
     @Test

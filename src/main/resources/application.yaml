@@ -290,6 +290,16 @@ zeny:
       bucket: ${ZENY_STORAGE_BUCKET}
       access-key: ${ZENY_STORAGE_ACCESS_KEY}
       secret-key: ${ZENY_STORAGE_SECRET_KEY}
+  # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
+  # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
+  # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.
+  notifications:
+    push:
+      fcm:
+        credentials: ${ZENY_FCM_CREDENTIALS:}
+        endpoint: https://fcm.googleapis.com
+        connect-timeout: PT5S
+        read-timeout: PT10S
   # Cifragem de campo (ARCHITECTURE §8.3). Sem valor padrão em nenhum profile: sem as
   # variáveis a aplicação não sobe. ZENY_ENCRYPTION_KEYS = "id:base64,id:base64" (32 bytes
   # cada, AES-256); ZENY_ENCRYPTION_ACTIVE_KEY_ID = id da chave que cifra os valores novos.

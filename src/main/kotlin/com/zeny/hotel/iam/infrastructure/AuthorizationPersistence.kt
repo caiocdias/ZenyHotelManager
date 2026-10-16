@@ -259,6 +259,22 @@ class JdbcAuthorizationData(
             .query { rs, _ -> UserId(rs.getObject("user_id", UUID::class.java)) }
             .list()
 
+    override fun activeUsersGranted(permission: PermissionCode): List<UserId> =
+        jdbc
+            .sql(
+                """
+                SELECT DISTINCT ur.user_id
+                FROM iam.user_role ur
+                JOIN iam.user_account u ON u.id = ur.user_id AND u.active
+                JOIN iam.role r ON r.id = ur.role_id AND r.active
+                JOIN iam.role_grant g ON g.role_id = r.id
+                WHERE g.permission_code = :permission
+                ORDER BY ur.user_id
+                """.trimIndent(),
+            ).param("permission", permission.value)
+            .query { rs, _ -> UserId(rs.getObject("user_id", UUID::class.java)) }
+            .list()
+
     override fun activeRolesOf(userId: UserId): List<AssignedRole> =
         jdbc
             .sql(

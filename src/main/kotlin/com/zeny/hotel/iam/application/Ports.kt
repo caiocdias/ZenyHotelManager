@@ -110,6 +110,12 @@ interface SessionDirectory {
         afterId: UUID?,
         limit: Int,
     ): List<SessionSummary>
+
+    /** Os ids das sessões não revogadas e não vencidas em [now]. */
+    fun activeSessionIdsOf(
+        userId: UserId,
+        now: Instant,
+    ): Set<DeviceSessionId>
 }
 
 /** Uma sessão ativa, como o próprio usuário a vê. */

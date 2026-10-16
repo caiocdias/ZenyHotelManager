@@ -7,6 +7,7 @@ import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.FieldViolationCodes
 import com.zeny.hotel.shared.InvalidInputException
+import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.RealtimeTopic
 import com.zeny.hotel.shared.UnauthenticatedException
 import org.springframework.stereotype.Service
@@ -19,7 +20,8 @@ import java.util.UUID
  * ordem: os tópicos pedidos existem (`400 VALIDATION_FAILED` sem nenhum, `400 UNKNOWN_STREAM_TOPIC` com um
  * desconhecido), a sessão do access token não foi revogada (`401`; o token de uma sessão revogada ainda vale
  * até vencer) e o ator tem a permissão de cada tópico (`403 PERMISSION_DENIED`), cujo escopo fica guardado
- * na conexão. A transação (só leitura) termina aqui: a conexão longa não segura conexão de banco.
+ * na conexão; num tópico pessoal, sem permissão, o escopo é `OWN`. A transação (só leitura) termina aqui: a
+ * conexão longa não segura conexão de banco.
  */
 @Service
 class StreamService(
@@ -38,7 +40,11 @@ class StreamService(
         val requested = topicsOf(topics)
         val actor = currentActor.current()
         if (tokenExpiresAt == null || sessions.isRevoked(actor.deviceSessionId)) throw sessionEnded()
-        val grants = requested.associateWith { authorization.require(it.permission).scope }
+        // Tópico pessoal (sem permissão): só as mensagens de que o assinante é dono, como com `OWN`.
+        val grants =
+            requested.associateWith { topic ->
+                topic.permission?.let { authorization.require(it).scope } ?: OWN
+            }
         return hub.connect(StreamSubscription(actor, grants, tokenExpiresAt), lastEventId, sink)
     }
 

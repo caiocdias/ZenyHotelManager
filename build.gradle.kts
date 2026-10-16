@@ -104,6 +104,8 @@ dependencies {
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.mockk)
+    // Testes de contrato das integrações (ARCHITECTURE §12): o FCM HTTP v1 do módulo notifications.
+    testImplementation(libs.wiremock.standalone)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

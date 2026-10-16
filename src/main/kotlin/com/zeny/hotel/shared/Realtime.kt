@@ -7,19 +7,24 @@ import java.util.UUID
  * dono o declara como bean (`@Bean fun xTopic(): RealtimeTopic = XTopics.Y`, numa `@Configuration` de
  * `application`) e publica nele pelo [RealtimePublisher]. Na inscrição, o assinante precisa de
  * [permission]: com escopo `ALL` recebe toda mensagem do tópico; com `OWN`, só as que o têm entre os
- * [RealtimeMessage.owners]. O boot recusa nome repetido, fora do formato ou permissão que nenhum
+ * [RealtimeMessage.owners]. Sem [permission], o tópico é **pessoal** ([personal]): qualquer usuário autenticado
+ * se inscreve e recebe só as mensagens de que é dono, como se tivesse a permissão com `OWN` (as próprias
+ * notificações, M2 E09). O boot recusa nome repetido, fora do formato ou permissão que nenhum
  * `ModulePermissions` declara.
  *
  * @property name minúsculas, dígitos e hífen, começando por letra (até 40 caracteres): `rooms`, `tasks`.
- * @property permission a permissão de leitura que a inscrição exige.
+ * @property permission a permissão de leitura que a inscrição exige; `null` num tópico pessoal.
  */
 data class RealtimeTopic(
     val name: String,
-    val permission: PermissionCode,
+    val permission: PermissionCode? = null,
 ) {
     init {
         require(NAME.matches(name)) { "Nome de tópico inválido: '$name'" }
     }
+
+    /** Tópico pessoal: sem permissão, cada assinante recebe só as mensagens de que é dono. */
+    val personal: Boolean get() = permission == null
 
     override fun toString(): String = name
 

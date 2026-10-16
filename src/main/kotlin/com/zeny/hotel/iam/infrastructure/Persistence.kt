@@ -175,6 +175,19 @@ class JdbcSessionDirectory(
                     expiresAt = rs.getObject("expires_at", OffsetDateTime::class.java).toInstant(),
                 )
             }.list()
+
+    override fun activeSessionIdsOf(
+        userId: UserId,
+        now: Instant,
+    ): Set<DeviceSessionId> =
+        jdbc
+            .sql(
+                "SELECT id FROM iam.device_session " +
+                    "WHERE user_id = :userId AND revoked_at IS NULL AND expires_at > :now",
+            ).param("userId", userId.value)
+            .param("now", utc(now))
+            .query { rs, _ -> DeviceSessionId(rs.getObject("id", UUID::class.java)) }
+            .set()
 }
 
 private fun utc(instant: Instant): OffsetDateTime = instant.atOffset(ZoneOffset.UTC)

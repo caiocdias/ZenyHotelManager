@@ -45,6 +45,9 @@ services:
       ZENY_STORAGE_BUCKET: ${ZENY_STORAGE_BUCKET:-zeny-files}
       ZENY_STORAGE_ACCESS_KEY: ${ZENY_STORAGE_ACCESS_KEY:?defina ZENY_STORAGE_ACCESS_KEY no docker/.env}
       ZENY_STORAGE_SECRET_KEY: ${ZENY_STORAGE_SECRET_KEY:?defina ZENY_STORAGE_SECRET_KEY no docker/.env}
+      # Push pelo FCM HTTP v1 (módulo notifications, H7 do M2): o JSON da conta de serviço do projeto
+      # Firebase em base64. Opcional: vazia, o push fica desligado e só o painel é entregue.
+      ZENY_FCM_CREDENTIALS: ${ZENY_FCM_CREDENTIALS:-}
     # Sem porta publicada: o acesso de fora passa pelo proxy. Na rede do compose, a API fica em
     # http://api:8080 (o Prometheus raspa http://api:8080/actuator/prometheus).
     expose:
