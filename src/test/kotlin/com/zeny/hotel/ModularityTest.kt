@@ -121,7 +121,7 @@ class ModularityTest {
     }
 
     @Test
-    fun `checklists depends only on shared for now, within shared, hotel, staff and files, and only on public APIs`() {
+    fun `checklists depends only on shared, hotel, staff and files, and only on their public APIs`() {
         val checklists = modules.getModuleByName("checklists").orElseThrow()
         val allowed = setOf("shared", "hotel", "staff", "files")
         val dependencies =
@@ -131,8 +131,9 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1: shared, hotel, staff e files. Na E06 só o shared; a E07 passa à lista exata.
-        dependencies shouldContainExactlyInAnyOrder listOf("shared")
+        // ARCHITECTURE §3.1: shared, hotel (data operacional e BusinessDateAdvanced), staff (escala do dia) e files
+        // (fotos), exatamente (M2 E07).
+        dependencies shouldContainExactlyInAnyOrder listOf("shared", "hotel", "staff", "files")
         (dependencies - allowed) shouldBe emptyList()
         // O módulo declara exatamente a lista da ARCHITECTURE: rooms, inventory e afins ficam barrados pelo verify().
         ChecklistsModule::class.java

@@ -1,15 +1,22 @@
 package com.zeny.hotel.checklists.application
 
+import com.zeny.hotel.checklists.ChecklistAnswerInput
+import com.zeny.hotel.checklists.ChecklistCompletion
 import com.zeny.hotel.checklists.ChecklistContext
+import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
 import com.zeny.hotel.checklists.ChecklistVersionView
 import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ChecklistsErrorCodes
+import com.zeny.hotel.checklists.ChecklistsFilePurposes
 import com.zeny.hotel.checklists.ChecklistsPermissions
 import com.zeny.hotel.checklists.SubjectAttributes
 import com.zeny.hotel.checklists.domain.ChecklistTemplate
 import com.zeny.hotel.checklists.domain.TemplateResolution
+import com.zeny.hotel.files.ModuleFilePurposes
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
@@ -19,12 +26,14 @@ import com.zeny.hotel.shared.ModulePermissions
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
+import java.time.Instant
 
 /**
  * Modelos de checklist (RF-CHK-01 a 06): criar, editar o rascunho, publicar versões, desativar e reativar.
@@ -161,6 +170,7 @@ class ChecklistTemplatesService(
 @Service
 class ChecklistsApiService(
     private val directory: ChecklistDirectory,
+    private val executions: ChecklistExecutionsApiService,
 ) : ChecklistsApi {
     @Transactional(readOnly = true)
     override fun resolveTemplate(
@@ -179,12 +189,31 @@ class ChecklistsApiService(
 
     @Transactional(readOnly = true)
     override fun version(id: ChecklistVersionId): ChecklistVersionView? = directory.version(id)?.view()
+
+    override fun execution(id: ChecklistExecutionId): ChecklistExecutionView? = executions.execution(id)
+
+    override fun startExecution(
+        versionId: ChecklistVersionId,
+        subject: ChecklistSubject?,
+        executor: UserId,
+        startedAt: Instant,
+        id: ChecklistExecutionId,
+    ): ChecklistExecutionView = executions.start(versionId, subject, executor, startedAt, id)
+
+    override fun completeExecution(
+        id: ChecklistExecutionId,
+        answers: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion = executions.complete(id, answers, completedAt)
 }
 
 @Configuration(proxyBeanMethods = false)
 class ChecklistsPermissionsConfiguration {
     @Bean
     fun checklistsPermissions(): ModulePermissions = ChecklistsPermissions
+
+    @Bean
+    fun checklistsFilePurposes(): ModuleFilePurposes = ChecklistsFilePurposes
 }
 
 internal fun ChecklistTemplate.view() =

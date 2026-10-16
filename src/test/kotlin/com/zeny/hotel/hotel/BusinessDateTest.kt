@@ -154,8 +154,10 @@ class BusinessDateTest(
         jdbc
             .sql(
                 "SELECT status FROM shared.event_publication " +
-                    "WHERE event_type = :type AND serialized_event LIKE :previous",
+                    "WHERE event_type = :type AND serialized_event LIKE :previous AND listener_id LIKE :listener",
             ).param("type", BusinessDateAdvanced::class.java.name)
+            // Outros listeners (as rotinas de checklist, M2 E07) também recebem o evento: confere a do de teste.
+            .param("listener", "%BusinessDateProbeListener%")
             .param("previous", "%\"previous\":\"$previous\"%")
             .query(String::class.java)
             .optional()

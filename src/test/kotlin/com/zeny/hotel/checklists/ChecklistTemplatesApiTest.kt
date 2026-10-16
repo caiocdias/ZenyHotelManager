@@ -12,6 +12,7 @@ import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.assertSoftly
@@ -254,6 +255,16 @@ class ChecklistTemplatesApiTest(
                 "$BASE/{id}/reactivate",
                 "$BASE/{id}/versions",
                 "$BASE/{id}/versions/{number}",
+                // M2 E07: execuções e rotinas; nenhum endpoint gera rotinas (H14: só o listener da data).
+                "/api/v1/checklist-executions",
+                "/api/v1/checklist-executions/{id}",
+                "/api/v1/checklist-executions/{id}/start",
+                "/api/v1/checklist-executions/{id}/answers",
+                "/api/v1/checklist-executions/{id}/complete",
+                "/api/v1/checklist-routines",
+                "/api/v1/checklist-routines/{id}",
+                "/api/v1/checklist-routines/{id}/deactivate",
+                "/api/v1/checklist-routines/{id}/reactivate",
             )
     }
 
@@ -593,13 +604,34 @@ class ChecklistTemplatesApiTest(
     @Test
     fun `the role templates of SPEC 3_1 get the checklist template permissions`() {
         val housekeeping = listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER)
+        val executors =
+            housekeeping + listOf(RoleTemplate.ROOM_ATTENDANT, RoleTemplate.MAINTENANCE, RoleTemplate.WAITER)
+        val executions = setOf(ChecklistsPermissions.EXECUTIONS_READ, ChecklistsPermissions.EXECUTIONS_EXECUTE)
         assertSoftly {
             ChecklistsPermissions.permissions.map { it.code } shouldContainExactly
-                listOf(ChecklistsPermissions.TEMPLATES_READ, ChecklistsPermissions.TEMPLATES_MANAGE)
+                listOf(
+                    ChecklistsPermissions.TEMPLATES_READ,
+                    ChecklistsPermissions.TEMPLATES_MANAGE,
+                    ChecklistsPermissions.EXECUTIONS_READ,
+                    ChecklistsPermissions.EXECUTIONS_EXECUTE,
+                    ChecklistsPermissions.ROUTINES_READ,
+                    ChecklistsPermissions.ROUTINES_MANAGE,
+                )
             ChecklistsPermissions.permissions.forEach {
-                it.templates.keys shouldContainExactlyInAnyOrder housekeeping
                 it.sensitive shouldBe false
-                it.scopes shouldBe setOf(ALL)
+                if (it.code in executions) {
+                    // M2 E07: o executor (e o candidato da rotina) com OWN; governanta e gerente com ALL.
+                    it.templates.keys shouldContainExactlyInAnyOrder executors
+                    it.scopes shouldBe setOf(OWN, ALL)
+                    it.templates
+                        .filterKeys { key -> key !in housekeeping }
+                        .values
+                        .map { grant -> grant.scope }
+                        .toSet() shouldBe setOf(OWN)
+                } else {
+                    it.templates.keys shouldContainExactlyInAnyOrder housekeeping
+                    it.scopes shouldBe setOf(ALL)
+                }
             }
         }
     }

@@ -31,6 +31,37 @@ interface ChecklistsApi {
 
     /** A versão publicada pelo id, ou `null` se não existe. */
     fun version(id: ChecklistVersionId): ChecklistVersionView?
+
+    /** A execução com as respostas, ou `null` se não existe. */
+    fun execution(id: ChecklistExecutionId): ChecklistExecutionView?
+
+    /**
+     * Inicia uma execução da versão [versionId] (de um modelo ativo ou não: a versão é a usada, RF-CHK-06) para
+     * o [subject], com o [executor] e o início real [startedAt] (quem chama corrige o horário do dispositivo).
+     * Para o módulo dono do sujeito (governança no M6, que já se autorizou). Auditada
+     * (`checklists.execution.start`). Versão inexistente: `404 CHECKLIST_VERSION_NOT_FOUND`.
+     */
+    fun startExecution(
+        versionId: ChecklistVersionId,
+        subject: ChecklistSubject?,
+        executor: UserId,
+        startedAt: Instant,
+        id: ChecklistExecutionId = ChecklistExecutionId.new(),
+    ): ChecklistExecutionView
+
+    /**
+     * Conclui a execução em andamento com as [answers] (todas: substituem as gravadas) no horário real
+     * [completedAt] e publica `ChecklistCompleted` (uma vez: concluir de novo é `409
+     * CHECKLIST_EXECUTION_ALREADY_COMPLETED`). As fotos são conferidas (finalidade `checklists.photo`, enviadas
+     * pelo executor) e vinculadas à execução; a que ainda não chegou fica de fora e volta em
+     * [ChecklistCompletion.missingPhotos] (H10). Item obrigatório visível sem resposta: `422
+     * CHECKLIST_REQUIRED_ITEMS_MISSING`. Auditada (`checklists.execution.complete`).
+     */
+    fun completeExecution(
+        id: ChecklistExecutionId,
+        answers: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion
 }
 
 /**

@@ -562,6 +562,458 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/checklist-executions:
+    get:
+      description: "Da mais nova para a mais antiga, sem as respostas. Exige `checklists.executions.read`.\
+        \ Com o escopo `OWN`, só as execuções de que o usuário é executor ou candidato\
+        \ (rotina, H14)."
+      operationId: listChecklistExecutions
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - IN_PROGRESS
+          - COMPLETED
+      - in: query
+        name: context
+        required: false
+        schema:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+      - description: Só as geradas por esta rotina.
+        in: query
+        name: routineId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as de rotina desta data operacional.
+        in: query
+        name: businessDate
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Só as deste tipo de sujeito (com `subjectId`, deste sujeito)."
+        in: query
+        name: subjectType
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: subjectId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageChecklistExecutionSummaryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar execuções de checklist
+      tags:
+      - checklists
+    post:
+      description: "Com a última versão publicada do modelo (`templateId`, ativo)\
+        \ ou do modelo que vale para o sujeito no contexto (`context` e `attributes`,\
+        \ RF-CHK-04); o executor é o usuário e o início, agora. Exige `checklists.executions.execute`.\
+        \ Nem um nem outro, ou os dois: 400 `CHECKLIST_EXECUTION_INVALID`; nenhum\
+        \ modelo que valha: 422 `CHECKLIST_NO_APPLICABLE_TEMPLATE`; modelo desativado\
+        \ ou nunca publicado: 422 `CHECKLIST_TEMPLATE_INACTIVE` ou `CHECKLIST_TEMPLATE_NOT_PUBLISHED`."
+      operationId: startChecklistExecution
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartChecklistExecutionRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistExecutionResponse"
+          description: Execução iniciada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Iniciar uma execução avulsa
+      tags:
+      - checklists
+  /api/v1/checklist-executions/{id}:
+    get:
+      description: "Com as respostas e o conteúdo da versão usada. Exige `checklists.executions.read`.\
+        \ Com o escopo `OWN`, só as execuções de que o usuário é executor ou candidato\
+        \ (rotina, H14). Inexistente ou fora do escopo: 404 `CHECKLIST_EXECUTION_NOT_FOUND`."
+      operationId: getChecklistExecution
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistExecutionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma execução
+      tags:
+      - checklists
+  /api/v1/checklist-executions/{id}/answers:
+    put:
+      description: "A lista substitui as respostas gravadas; uma resposta que não\
+        \ mudou mantém o horário. As fotos novas são conferidas e vinculadas à execuç\
+        ão; as que saem, desvinculadas. Exige `checklists.executions.execute` e o\
+        \ `If-Match` (ausente: 428; versão diferente: 412). Só o executor responde\
+        \ e conclui (403 `CHECKLIST_EXECUTOR_REQUIRED`); pendente: 409 `CHECKLIST_EXECUTION_NOT_STARTED`;\
+        \ concluída: 409 `CHECKLIST_EXECUTION_ALREADY_COMPLETED`. Recusas das respostas,\
+        \ `400` com o campo em `errors[]`: `CHECKLIST_ANSWER_UNKNOWN_ITEM`, `CHECKLIST_ANSWER_DUPLICATED`\
+        \ e `CHECKLIST_ANSWER_INVALID`. Foto inexistente: 422 `CHECKLIST_PHOTO_NOT_FOUND`;\
+        \ de outra finalidade, de outro usuário ou de outro registro: 422 `CHECKLIST_PHOTO_INVALID`."
+      operationId: replaceChecklistAnswers
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReplaceChecklistAnswersRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistExecutionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Responder (trocar todas as respostas)
+      tags:
+      - checklists
+  /api/v1/checklist-executions/{id}/complete:
+    post:
+      description: "Confere os obrigatórios visíveis (o item oculto pela condição\
+        \ não é exigido; a resposta dele sai), conclui e publica `ChecklistCompleted`\
+        \ com as respostas que disparam ações (RF-CHK-05), uma vez. Exige `checklists.executions.execute`.\
+        \ Obrigatório visível sem resposta: 422 `CHECKLIST_REQUIRED_ITEMS_MISSING`,\
+        \ com as chaves em `missingItems`. Só o executor responde e conclui (403 `CHECKLIST_EXECUTOR_REQUIRED`);\
+        \ pendente: 409 `CHECKLIST_EXECUTION_NOT_STARTED`; concluída: 409 `CHECKLIST_EXECUTION_ALREADY_COMPLETED`."
+      operationId: completeChecklistExecution
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistExecutionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Concluir uma execução
+      tags:
+      - checklists
+  /api/v1/checklist-executions/{id}/start:
+    post:
+      description: "O primeiro candidato que inicia assume a execução (H14), com a\
+        \ última versão publicada do modelo. Exige `checklists.executions.execute`\
+        \ (com `OWN`, ser candidato: 403 `RESOURCE_OUT_OF_SCOPE`). Já iniciada: 409\
+        \ `CHECKLIST_EXECUTION_ALREADY_STARTED`."
+      operationId: startScheduledChecklistExecution
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistExecutionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Assumir a execução pendente de uma rotina
+      tags:
+      - checklists
+  /api/v1/checklist-routines:
+    get:
+      description: Em ordem de nome. Exige `checklists.routines.read`.
+      operationId: listChecklistRoutines
+      parameters:
+      - description: Só as ativas (`true`) ou só as inativas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageChecklistRoutineResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar rotinas de checklist
+      tags:
+      - checklists
+    post:
+      description: "A rotina gera, a cada virada da data operacional em que ocorre,\
+        \ uma execução pendente com os candidatos escalados no setor num turno que\
+        \ cobre o horário (H14). Exige `checklists.routines.manage`. Recusas: 400\
+        \ `CHECKLIST_ROUTINE_INVALID` (nome, dias da semana só na semanal e obrigató\
+        rios nela, horário com segundos, local), 400 `UNKNOWN_CHECKLIST_TEMPLATE`\
+        \ e `UNKNOWN_DEPARTMENT`, 422 `CHECKLIST_TEMPLATE_INACTIVE`."
+      operationId: createChecklistRoutine
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistRoutineRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistRoutineResponse"
+          description: Rotina criada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar uma rotina de checklist
+      tags:
+      - checklists
+  /api/v1/checklist-routines/{id}:
+    get:
+      description: "Exige `checklists.routines.read`. Inexistente: 404 `CHECKLIST_ROUTINE_NOT_FOUND`."
+      operationId: getChecklistRoutine
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistRoutineResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma rotina
+      tags:
+      - checklists
+    put:
+      description: "Troca todos os dados; vale nas próximas gerações (as execuções\
+        \ já geradas ficam). Exige `checklists.routines.manage` e o `If-Match` (ausente:\
+        \ 428; versão diferente: 412). Recusas: 400 `CHECKLIST_ROUTINE_INVALID` (nome,\
+        \ dias da semana só na semanal e obrigatórios nela, horário com segundos,\
+        \ local), 400 `UNKNOWN_CHECKLIST_TEMPLATE` e `UNKNOWN_DEPARTMENT`, 422 `CHECKLIST_TEMPLATE_INACTIVE`."
+      operationId: updateChecklistRoutine
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChecklistRoutineRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistRoutineResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma rotina
+      tags:
+      - checklists
+  /api/v1/checklist-routines/{id}/deactivate:
+    post:
+      description: "Desativada, não gera mais execuções. Exige `checklists.routines.manage`."
+      operationId: deactivateChecklistRoutine
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistRoutineResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma rotina
+      tags:
+      - checklists
+  /api/v1/checklist-routines/{id}/reactivate:
+    post:
+      description: Exige `checklists.routines.manage`.
+      operationId: reactivateChecklistRoutine
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChecklistRoutineResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma rotina
+      tags:
+      - checklists
   /api/v1/checklist-templates:
     get:
       description: "Em ordem de nome, sem o conteúdo. Exige `checklists.templates.read`."
@@ -4595,6 +5047,247 @@ components:
       required:
       - currentPassword
       - newPassword
+    ChecklistAnswerDto:
+      type: object
+      description: "Uma resposta: a chave do item e só o campo do tipo dele — `check`\
+        \ (CHECK), `quantity` (QUANTITY, de 0 a 999999, até 3 casas), `number` (NUMBER,\
+        \ até 4 casas), `text` (TEXT, até 2000), `choice` (SINGLE_CHOICE), `choices`\
+        \ (MULTI_CHOICE) ou `photoFileId` (PHOTO: um anexo da finalidade `checklists.photo`\
+        \ enviado pelo executor) — e a observação opcional (até 500)."
+      properties:
+        check:
+          type: string
+          enum:
+          - OK
+          - NOT_OK
+          - NOT_APPLICABLE
+          nullable: true
+        choice:
+          type: string
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        choices:
+          type: array
+          items:
+            type: string
+            nullable: true
+          maxItems: 50
+          minItems: 0
+          nullable: true
+        itemKey:
+          type: string
+          example: towels
+          maxLength: 40
+          minLength: 0
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        number:
+          type: number
+          example: 4.5
+          nullable: true
+        photoFileId:
+          type: string
+          format: uuid
+          nullable: true
+        quantity:
+          type: number
+          example: 2
+          nullable: true
+        text:
+          type: string
+          maxLength: 2000
+          minLength: 0
+          nullable: true
+      required:
+      - itemKey
+    ChecklistAnswerResponse:
+      type: object
+      description: Uma resposta gravada.
+      properties:
+        answeredAt:
+          type: string
+          format: date-time
+          description: "Quando a resposta foi dada (offline, o horário do dispositivo\
+            \ corrigido)."
+        check:
+          type: string
+          enum:
+          - OK
+          - NOT_OK
+          - NOT_APPLICABLE
+          nullable: true
+        choice:
+          type: string
+          nullable: true
+        choices:
+          type: array
+          items:
+            type: string
+        itemKey:
+          type: string
+        itemType:
+          type: string
+          enum:
+          - CHECK
+          - QUANTITY
+          - NUMBER
+          - TEXT
+          - SINGLE_CHOICE
+          - MULTI_CHOICE
+          - PHOTO
+        note:
+          type: string
+          nullable: true
+        number:
+          type: number
+          nullable: true
+        photoFileId:
+          type: string
+          format: uuid
+          nullable: true
+        photoMissing:
+          type: boolean
+          description: "A foto citada offline não ficou com a resposta: ainda não\
+            \ tinha chegado ou não servia (outra finalidade, outro autor ou outro\
+            \ registro). Conta como respondida num item de foto obrigatório."
+        quantity:
+          type: number
+          nullable: true
+        text:
+          type: string
+          nullable: true
+      required:
+      - answeredAt
+      - choices
+      - itemKey
+      - itemType
+      - photoMissing
+    ChecklistExecutionResponse:
+      type: object
+      description: Uma execução de checklist com as respostas e o conteúdo da versão
+        usada.
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistAnswerResponse"
+        checklistVersion:
+          allOf:
+          - $ref: "#/components/schemas/ChecklistVersionResponse"
+          nullable: true
+        execution:
+          $ref: "#/components/schemas/ChecklistExecutionSummaryResponse"
+      required:
+      - answers
+      - execution
+    ChecklistExecutionSummaryResponse:
+      type: object
+      description: "Uma execução de checklist na listagem, sem as respostas."
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional da rotina.
+          nullable: true
+        candidateIds:
+          type: array
+          description: Os candidatos escalados da rotina (H14).
+          items:
+            type: string
+            format: uuid
+            description: Os candidatos escalados da rotina (H14).
+        completedAt:
+          type: string
+          format: date-time
+          description: "Fim real (offline, o horário do dispositivo corrigido)."
+          nullable: true
+        context:
+          type: string
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+        createdAt:
+          type: string
+          format: date-time
+        dueAt:
+          type: string
+          format: date-time
+          description: O horário previsto da rotina.
+          nullable: true
+        duplicateOf:
+          type: string
+          format: uuid
+          description: "A execução offline de uma rotina já assumida por outra pessoa\
+            \ fica à parte, ligada à original (RN-22)."
+          nullable: true
+        executorId:
+          type: string
+          format: uuid
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        offline:
+          type: boolean
+          description: Iniciada ou concluída por comando offline.
+        routineId:
+          type: string
+          format: uuid
+          description: A rotina que gerou a execução.
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          description: "Início real (offline, o horário do dispositivo corrigido)."
+          nullable: true
+        status:
+          type: string
+          enum:
+          - PENDING
+          - IN_PROGRESS
+          - COMPLETED
+        subject:
+          allOf:
+          - $ref: "#/components/schemas/ChecklistSubjectDto"
+          nullable: true
+        templateId:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Versão do registro (a mesma do `ETag` do detalhe).
+        versionId:
+          type: string
+          format: uuid
+          description: A versão usada; nula na pendente de uma rotina.
+          nullable: true
+        versionNumber:
+          type: integer
+          format: int32
+          nullable: true
+      required:
+      - candidateIds
+      - context
+      - createdAt
+      - id
+      - offline
+      - status
+      - templateId
+      - updatedAt
+      - version
     ChecklistItemDto:
       type: object
       description: Um item (pergunta) do checklist.
@@ -4655,6 +5348,123 @@ components:
       - options
       - required
       - type
+    ChecklistRoutineRequest:
+      type: object
+      description: "Uma rotina (RF-CHK-08): o modelo, o setor, a frequência (`DAILY`,\
+        \ sem dias; `WEEKLY`, com os dias da semana), o horário (horas e minutos,\
+        \ no fuso do hotel) e o local opcional."
+      properties:
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        dueAt:
+          type: string
+          example: 06:00
+          nullable: true
+        frequency:
+          type: string
+          enum:
+          - DAILY
+          - WEEKLY
+          nullable: true
+        location:
+          allOf:
+          - $ref: "#/components/schemas/ChecklistSubjectDto"
+          nullable: true
+        name:
+          type: string
+          description: Até 120 caracteres.
+          example: Abertura do restaurante
+        templateId:
+          type: string
+          format: uuid
+          nullable: true
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+          uniqueItems: true
+      required:
+      - departmentId
+      - dueAt
+      - frequency
+      - name
+      - templateId
+      - weekdays
+    ChecklistRoutineResponse:
+      type: object
+      description: Uma rotina de checklist.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        departmentId:
+          type: string
+          format: uuid
+        dueAt:
+          type: string
+          example: 06:00
+        frequency:
+          type: string
+          enum:
+          - DAILY
+          - WEEKLY
+        id:
+          type: string
+          format: uuid
+        location:
+          allOf:
+          - $ref: "#/components/schemas/ChecklistSubjectDto"
+          nullable: true
+        name:
+          type: string
+        templateId:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+          description: Versão do registro (a mesma do `ETag` do detalhe).
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+      required:
+      - active
+      - createdAt
+      - departmentId
+      - dueAt
+      - frequency
+      - id
+      - name
+      - templateId
+      - updatedAt
+      - version
+      - weekdays
     ChecklistSectionDto:
       type: object
       description: "Uma seção, com os itens na ordem de exibição (de 1 a 100)."
@@ -4672,6 +5482,25 @@ components:
       required:
       - items
       - title
+    ChecklistSubjectDto:
+      type: object
+      description: "O sujeito ou local, de outro módulo: o tipo (minúsculas, dígitos,\
+        \ hífen e ponto, até 60, ex.: `rooms.room`, `rooms.area`) e o id. Nenhum dos\
+        \ dois é conferido."
+      nullable: true
+      properties:
+        id:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          type: string
+          example: rooms.area
+          maxLength: 60
+          minLength: 0
+      required:
+      - id
+      - type
     ChecklistTemplateResponse:
       type: object
       description: "Um modelo de checklist: os dados, o rascunho e a última versã\
@@ -5064,6 +5893,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AuditEntryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageChecklistExecutionSummaryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistExecutionSummaryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageChecklistRoutineResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistRoutineResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -6476,6 +7333,18 @@ components:
           minLength: 0
       required:
       - refreshToken
+    ReplaceChecklistAnswersRequest:
+      type: object
+      description: "Todas as respostas da execução: a lista substitui a gravada."
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChecklistAnswerDto"
+          maxItems: 300
+          minItems: 0
+      required:
+      - answers
     ResetPasswordRequest:
       type: object
       properties:
@@ -7358,6 +8227,59 @@ components:
       - name
       - start
       - updatedAt
+    StartChecklistExecutionRequest:
+      type: object
+      description: "Iniciar uma execução avulsa: pelo modelo (`templateId`, a última\
+        \ versão publicada) ou pelo contexto e os atributos do sujeito (`context`\
+        \ e `attributes`, o modelo que vale para ele, RF-CHK-04), um dos dois."
+      properties:
+        attributes:
+          allOf:
+          - $ref: "#/components/schemas/SubjectAttributesDto"
+          nullable: true
+        context:
+          type: string
+          description: O contexto em que se escolhe o modelo do sujeito.
+          enum:
+          - HOUSEKEEPING
+          - INSPECTION
+          - MAINTENANCE
+          - COMMON_AREA
+          - RESTAURANT
+          - EVENT
+          - OTHER
+          nullable: true
+        subject:
+          allOf:
+          - $ref: "#/components/schemas/ChecklistSubjectDto"
+          nullable: true
+        templateId:
+          type: string
+          format: uuid
+          description: O modelo a executar (ativo e publicado).
+          nullable: true
+    SubjectAttributesDto:
+      type: object
+      description: Os atributos do sujeito (IDs de outros módulos) para escolher o
+        modelo (RF-CHK-04).
+      nullable: true
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          nullable: true
+        assetId:
+          type: string
+          format: uuid
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
     SyncChangeResponse:
       type: object
       description: "Uma mudança de uma fonte offline, ou um tombstone (`deleted`)."

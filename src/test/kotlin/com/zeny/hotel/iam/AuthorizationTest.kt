@@ -153,6 +153,7 @@ class AuthorizationTest(
     }
 
     @Test
+    @Suppress("LongMethod") // as listas exatas das concessões dos modelos, que crescem com os módulos
     fun `the role templates of SPEC 3_1 exist and the administrator holds every permission`() {
         val templates =
             jdbc
@@ -202,9 +203,18 @@ class AuthorizationTest(
                 "rooms.offline.read:ALL",
                 "checklists.templates.read:ALL",
                 "checklists.templates.manage:ALL",
+                "checklists.executions.read:ALL",
+                "checklists.executions.execute:ALL",
+                "checklists.routines.read:ALL",
+                "checklists.routines.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
-            listOf("staff.schedule.read:OWN", "rooms.offline.read:ALL")
+            listOf(
+                "staff.schedule.read:OWN",
+                "rooms.offline.read:ALL",
+                "checklists.executions.read:OWN",
+                "checklists.executions.execute:OWN",
+            )
 
         // O administrador inicial tem a role Administrador e, com ela, todas as permissões vigentes.
         val me = iam.json(getMe(asUser(adminId())))
