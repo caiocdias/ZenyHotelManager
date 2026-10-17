@@ -73,8 +73,11 @@ class HkdfTokenSealerTest {
         val sealer = HkdfTokenSealer(ring("k1" to oldKey, "k2" to oldKey, active = "k1"))
         val token = sealer.seal("p", "payload")
 
-        val last = token.last()
-        shouldThrow<FieldDecryptionException> { sealer.open("p", token.dropLast(1) + if (last == 'A') 'B' else 'A') }
+        // Adultera um caractere do meio, que sempre carrega 6 bits: o último, sem padding, pode ter bits que o
+        // decodificador descarta, e trocá-lo às vezes não muda nenhum byte (o teste falhava 1 vez em 16).
+        val at = token.length - 10
+        val tampered = token.replaceRange(at, at + 1, if (token[at] == 'A') "B" else "A")
+        shouldThrow<FieldDecryptionException> { sealer.open("p", tampered) }
         // Trocar o id da chave (mesmo material) falha pelo AAD: o cabeçalho `t1:<id>` entra nele. A chave
         // derivada não depende do id, só do material e da finalidade, e é a mesma para k1 e k2 aqui.
         shouldThrow<FieldDecryptionException> { sealer.open("p", token.replaceFirst("t1:k1:", "t1:k2:")) }
