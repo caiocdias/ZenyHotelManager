@@ -58,9 +58,8 @@ data class StartChecklistExecutionPayload(
 data class CompleteChecklistExecutionPayload(
     @field:NotNull
     val executionId: UUID?,
-    @field:Valid
     @field:Size(max = MAX_ANSWERS)
-    val answers: List<OfflineAnswerPayload> = emptyList(),
+    val answers: List<@Valid OfflineAnswerPayload> = emptyList(),
 ) {
     companion object {
         const val MAX_ANSWERS = 300

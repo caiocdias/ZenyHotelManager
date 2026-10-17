@@ -34,6 +34,8 @@ tags:
   name: sync
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
+- description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
+  name: guests
 - description: Trilha de auditoria das escritas.
   name: audit
 - description: Canal de tempo real (SSE).
@@ -1571,6 +1573,219 @@ paths:
       summary: Consultar uma versão publicada
       tags:
       - checklists
+  /api/v1/companies:
+    get:
+      description: Em ordem de nome (sem acento). `name` procura cada palavra como
+        trecho da razão social ou do nome fantasia; `cnpj` é exato. Exige `guests.companies.read`.
+      operationId: listCompanies
+      parameters:
+      - description: Trecho da razão social ou do nome fantasia (de 2 a 200 caracteres).
+        in: query
+        name: name
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          minLength: 2
+      - description: "CNPJ, com ou sem pontuação."
+        in: query
+        name: cnpj
+        required: false
+        schema:
+          type: string
+          description: "CNPJ (numérico ou alfanumérico), 14 caracteres sem pontuaç\
+            ão."
+          example: 12ABC34501DE35
+          pattern: "^[0-9A-Z]{12}\\d{2}$"
+      - description: Só as ativas (`true`) ou só as desativadas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCompanyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Buscar empresas
+      tags:
+      - guests
+    post:
+      description: "Exige `guests.companies.manage`. CNPJ com dígito verificador errado:\
+        \ 400 `VALIDATION_FAILED` (campo `cnpj`, `INVALID_FORMAT`); já usado por outra\
+        \ empresa, inclusive desativada: 409 `CNPJ_ALREADY_IN_USE`."
+      operationId: createCompany
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+          description: Empresa cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma empresa
+      tags:
+      - guests
+  /api/v1/companies/{id}:
+    get:
+      description: "Exige `guests.companies.read`. Inexistente: 404 `COMPANY_NOT_FOUND`."
+      operationId: getCompany
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma empresa
+      tags:
+      - guests
+    put:
+      description: "Troca todos os dados. Exige `guests.companies.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). CNPJ com dígito verificador errado:\
+        \ 400 `VALIDATION_FAILED` (campo `cnpj`, `INVALID_FORMAT`); já usado por outra\
+        \ empresa, inclusive desativada: 409 `CNPJ_ALREADY_IN_USE`."
+      operationId: updateCompany
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompanyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma empresa
+      tags:
+      - guests
+  /api/v1/companies/{id}/deactivate:
+    post:
+      description: Exige `guests.companies.manage`. Nada é apagado e o CNPJ continua
+        dela; perfis novos não a recebem (422 `COMPANY_INACTIVE`).
+      operationId: deactivateCompany
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma empresa
+      tags:
+      - guests
+  /api/v1/companies/{id}/reactivate:
+    post:
+      description: Exige `guests.companies.manage`.
+      operationId: reactivateCompany
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompanyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma empresa
+      tags:
+      - guests
   /api/v1/departments:
     get:
       description: Em ordem de criação (os seis pré-carregados primeiro). Exige `staff.employees.read`.
@@ -2068,6 +2283,412 @@ paths:
       summary: Gerar a URL de download de um anexo
       tags:
       - files
+  /api/v1/guests:
+    get:
+      description: "Em ordem de nome (sem acento). `name` procura cada palavra como\
+        \ trecho do nome ou do nome social, sem diferenciar acento nem maiúsculas;\
+        \ `email` é exato. Para buscar por documento, use `POST /api/v1/guests/search-by-document`\
+        \ (o número não vai na URL). Exige `guests.profiles.read`. Os documentos vê\
+        m mascarados (só os últimos caracteres) e os dados sensíveis da FNRH nunca\
+        \ vêm."
+      operationId: listGuests
+      parameters:
+      - description: Trecho do nome ou do nome social (de 2 a 200 caracteres).
+        in: query
+        name: name
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          minLength: 2
+      - description: E-mail exato.
+        in: query
+        name: email
+        required: false
+        schema:
+          type: string
+          maxLength: 254
+          minLength: 0
+      - description: Só os da lista de restrição (`true`) ou só os fora dela (`false`).
+        in: query
+        name: restricted
+        required: false
+        schema:
+          type: boolean
+      - description: Só os VIP (`true`) ou só os não VIP (`false`).
+        in: query
+        name: vip
+        required: false
+        schema:
+          type: boolean
+      - description: Só os ligados a esta empresa.
+        in: query
+        name: companyId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageGuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Buscar perfis de hóspedes
+      tags:
+      - guests
+    post:
+      description: "Exige `guests.profiles.manage`. O endereço completo é só de quem\
+        \ reside no Brasil (400 `ADDRESS_REQUIRES_BRAZIL_RESIDENCE`). CPF com dígito\
+        \ verificador errado ou número fora do formato do tipo: 400 `DOCUMENT_NUMBER_INVALID`;\
+        \ país emissor incompatível com o tipo: 400 `DOCUMENT_COUNTRY_INVALID`. Restriç\
+        ões alimentares: 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`."
+      operationId: createGuest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateGuestRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: Perfil cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um perfil de hóspede
+      tags:
+      - guests
+  /api/v1/guests/search-by-document:
+    post:
+      description: "Pelo índice cego (H8): o número é normalizado como no cadastro\
+        \ e comparado só pelo hash, sem decifrar os registros. Vai no corpo, nunca\
+        \ na URL. Até 50 perfis (mais de um: duplicados). Número inválido para o tipo:\
+        \ 400 `DOCUMENT_NUMBER_INVALID`. Exige `guests.profiles.read`. Os documentos\
+        \ vêm mascarados (só os últimos caracteres) e os dados sensíveis da FNRH nunca\
+        \ vêm."
+      operationId: searchGuestsByDocument
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestDocumentSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Buscar perfis por documento
+      tags:
+      - guests
+  /api/v1/guests/{id}:
+    get:
+      description: "Exige `guests.profiles.read`. Os documentos vêm mascarados (só\
+        \ os últimos caracteres) e os dados sensíveis da FNRH nunca vêm. Inexistente:\
+        \ 404 `GUEST_NOT_FOUND`."
+      operationId: getGuest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um perfil de hóspede
+      tags:
+      - guests
+    put:
+      description: "Troca os dados do perfil (não os documentos, os dados sensíveis\
+        \ nem a restrição, que têm ações próprias). Exige `guests.profiles.manage`.\
+        \ e o `If-Match` (ausente: 428; versão diferente: 412)."
+      operationId: updateGuest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestProfileRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Corrigir um perfil de hóspede
+      tags:
+      - guests
+  /api/v1/guests/{id}/documents:
+    post:
+      description: "Exige `guests.profiles.manage`. Um documento de cada tipo e paí\
+        s por perfil (repetido: 409 `DOCUMENT_ALREADY_RECORDED`; para corrigir, retire\
+        \ o anterior). Devolve o perfil."
+      operationId: addGuestDocument
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestDocumentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Acrescentar um documento
+      tags:
+      - guests
+  /api/v1/guests/{id}/documents/{documentId}/remove:
+    post:
+      description: "Exige `guests.profiles.manage`. De outro perfil ou inexistente:\
+        \ 404 `GUEST_DOCUMENT_NOT_FOUND`. Devolve o perfil."
+      operationId: removeGuestDocument
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: documentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retirar um documento
+      tags:
+      - guests
+  /api/v1/guests/{id}/documents/{documentId}/reveal:
+    post:
+      description: "O número inteiro (H9). Exige `guests.documents.reveal`; cada acesso\
+        \ fica na trilha de auditoria. A resposta não vai para cache (`Cache-Control:\
+        \ no-store`)."
+      operationId: revealGuestDocument
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: documentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RevealedDocumentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Revelar o número de um documento
+      tags:
+      - guests
+  /api/v1/guests/{id}/lift-restriction:
+    post:
+      description: "Exige `guests.restrictions.manage`. Fora da lista, não muda nada."
+      operationId: liftGuestRestriction
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retirar da lista de restrição
+      tags:
+      - guests
+  /api/v1/guests/{id}/restrict:
+    post:
+      description: "Com o motivo, que gera alerta na reserva e no check-in (RF-HOS-04);\
+        \ de novo, troca o motivo. Exige `guests.restrictions.manage`."
+      operationId: restrictGuest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestrictGuestRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Incluir na lista de restrição
+      tags:
+      - guests
+  /api/v1/guests/{id}/sensitive-data:
+    put:
+      description: "Raça/cor e deficiência (RN-19): ficam cifrados e nunca voltam\
+        \ pela API (só `hasSensitiveData`); os dois nulos apagam. Define o valor,\
+        \ sem `If-Match`. Exige `guests.profiles.manage`."
+      operationId: recordGuestSensitiveData
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestSensitiveDataRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Gravar os dados sensíveis da FNRH
+      tags:
+      - guests
   /api/v1/hotel:
     get:
       description: "Exige `hotel.settings.read`. Antes da configuração inicial, `configured`\
@@ -6253,6 +6874,136 @@ components:
       required:
       - label
       - value
+    CompanyRequest:
+      type: object
+      description: Dados de uma empresa (RF-HOS-06).
+      properties:
+        address:
+          allOf:
+          - $ref: "#/components/schemas/GuestAddressDto"
+          nullable: true
+        billingEmail:
+          type: string
+          description: E-mail de cobrança.
+          maxLength: 254
+          minLength: 0
+          nullable: true
+        cnpj:
+          type: string
+          description: "CNPJ (numérico ou alfanumérico), 14 caracteres sem pontuaç\
+            ão."
+          example: 12ABC34501DE35
+          nullable: true
+          pattern: "^[0-9A-Z]{12}\\d{2}$"
+        contactName:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        creditLimit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        email:
+          type: string
+          maxLength: 254
+          minLength: 0
+          nullable: true
+        legalName:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        municipalRegistration:
+          type: string
+          description: Inscrição municipal.
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        phone:
+          type: string
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        stateRegistration:
+          type: string
+          description: Inscrição estadual.
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        tradeName:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+      required:
+      - cnpj
+      - legalName
+    CompanyResponse:
+      type: object
+      description: Uma empresa.
+      properties:
+        active:
+          type: boolean
+        address:
+          allOf:
+          - $ref: "#/components/schemas/GuestAddressDto"
+          nullable: true
+        billingEmail:
+          type: string
+          nullable: true
+        cnpj:
+          type: string
+          description: "CNPJ (numérico ou alfanumérico), 14 caracteres sem pontuaç\
+            ão."
+          example: 12ABC34501DE35
+          pattern: "^[0-9A-Z]{12}\\d{2}$"
+        contactName:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        creditLimit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        email:
+          type: string
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        legalName:
+          type: string
+        municipalRegistration:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        stateRegistration:
+          type: string
+          nullable: true
+        tradeName:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - cnpj
+      - createdAt
+      - id
+      - legalName
+      - updatedAt
     CreateChecklistTemplateRequest:
       type: object
       description: "Um modelo de checklist novo: nome, contexto (fixo depois de criado)\
@@ -6292,6 +7043,29 @@ components:
       - context
       - name
       - sections
+    CreateGuestRequest:
+      type: object
+      description: "Um perfil novo: os dados, os documentos e, opcionalmente, os dados\
+        \ sensíveis da FNRH."
+      properties:
+        documents:
+          type: array
+          description: Documentos de identidade (até 6; um de cada tipo e país).
+          items:
+            $ref: "#/components/schemas/GuestDocumentRequest"
+          maxItems: 6
+          minItems: 0
+        profile:
+          allOf:
+          - $ref: "#/components/schemas/GuestProfileRequest"
+          nullable: true
+        sensitiveData:
+          allOf:
+          - $ref: "#/components/schemas/GuestSensitiveDataRequest"
+          nullable: true
+      required:
+      - documents
+      - profile
     CreateSchedulePatternRequest:
       type: object
       description: "Um padrão de escala novo, para um colaborador."
@@ -6486,6 +7260,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageCompanyResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CompanyResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageDepartmentResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -6508,6 +7296,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EmployeeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageGuestResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuestResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -7152,6 +7954,411 @@ components:
       - removed
       - to
       - updated
+    GuestAddressDto:
+      type: object
+      description: Endereço no Brasil com o código IBGE do município.
+      properties:
+        city:
+          type: string
+          maxLength: 100
+          minLength: 0
+        complement:
+          type: string
+          maxLength: 100
+          minLength: 0
+          nullable: true
+        district:
+          type: string
+          maxLength: 100
+          minLength: 0
+        ibgeCityCode:
+          type: string
+          description: "Código IBGE do município (7 dígitos, os 2 primeiros da UF)."
+          example: "3550308"
+          pattern: "\\d{7}"
+        number:
+          type: string
+          maxLength: 20
+          minLength: 0
+        postalCode:
+          type: string
+          description: "CEP, com ou sem hífen; volta só com os 8 dígitos."
+          example: 01310-100
+          pattern: "\\d{5}-?\\d{3}"
+        state:
+          type: string
+          enum:
+          - RO
+          - AC
+          - AM
+          - RR
+          - PA
+          - AP
+          - TO
+          - MA
+          - PI
+          - CE
+          - RN
+          - PB
+          - PE
+          - AL
+          - SE
+          - BA
+          - MG
+          - ES
+          - RJ
+          - SP
+          - PR
+          - SC
+          - RS
+          - MS
+          - MT
+          - GO
+          - DF
+        street:
+          type: string
+          maxLength: 200
+          minLength: 0
+      required:
+      - city
+      - district
+      - ibgeCityCode
+      - number
+      - postalCode
+      - state
+      - street
+    GuestDocumentRequest:
+      type: object
+      description: Um documento de identidade com o número em claro (só na entrada).
+      properties:
+        issuingCountry:
+          type: string
+          description: "País emissor (ISO 3166-1 alfa-2). Obrigatório para PASSPORT\
+            \ e FOREIGN_ID; nos documentos brasileiros (CPF, RG, CNH, RNM) é sempre\
+            \ BR e pode ser omitido."
+          example: AR
+          maxLength: 2
+          minLength: 0
+          nullable: true
+        number:
+          type: string
+          description: "Número, com ou sem pontuação. Fica cifrado e só volta mascarado."
+          example: 529.982.247-25
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        type:
+          type: string
+          enum:
+          - CPF
+          - RG
+          - CNH
+          - PASSPORT
+          - RNM
+          - FOREIGN_ID
+          nullable: true
+      required:
+      - number
+      - type
+    GuestDocumentResponse:
+      type: object
+      description: "Um documento com o número mascarado (H9): tipo, país e só os ú\
+        ltimos caracteres."
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        issuingCountry:
+          type: string
+        maskedNumber:
+          type: string
+          description: Número mascarado.
+          example: '***4725'
+        type:
+          type: string
+          enum:
+          - CPF
+          - RG
+          - CNH
+          - PASSPORT
+          - RNM
+          - FOREIGN_ID
+      required:
+      - createdAt
+      - id
+      - issuingCountry
+      - maskedNumber
+      - type
+    GuestDocumentSearchRequest:
+      type: object
+      description: "Um termo de busca por documento (o número vai no corpo, nunca\
+        \ na URL)."
+      properties:
+        issuingCountry:
+          type: string
+          maxLength: 2
+          minLength: 0
+          nullable: true
+        number:
+          type: string
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        type:
+          type: string
+          enum:
+          - CPF
+          - RG
+          - CNH
+          - PASSPORT
+          - RNM
+          - FOREIGN_ID
+          nullable: true
+      required:
+      - number
+      - type
+    GuestListResponse:
+      type: object
+      description: Os perfis encontrados.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuestResponse"
+      required:
+      - items
+    GuestPreferencesDto:
+      type: object
+      description: "Preferências do hóspede (RF-HOS-02), em texto curto."
+      properties:
+        bed:
+          type: string
+          description: Camas.
+          example: Casal
+          maxLength: 60
+          minLength: 0
+          nullable: true
+        floor:
+          type: string
+          description: Andar preferido.
+          example: Alto
+          maxLength: 60
+          minLength: 0
+          nullable: true
+        pillow:
+          type: string
+          description: Travesseiro.
+          example: Baixo
+          maxLength: 60
+          minLength: 0
+          nullable: true
+    GuestProfileRequest:
+      type: object
+      description: Dados de um perfil de hóspede (RF-HOS-01 e 02).
+      properties:
+        address:
+          allOf:
+          - $ref: "#/components/schemas/GuestAddressDto"
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        companyId:
+          type: string
+          format: uuid
+          description: "Empresa a que o hóspede está ligado (contato), se houver."
+          nullable: true
+        dietaryRestrictions:
+          type: string
+          description: "Restrições alimentares: dado sensível, só com o consentimento\
+            \ do hóspede (RF-HOS-02). Até o consentimento existir, qualquer valor\
+            \ é recusado com 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        email:
+          type: string
+          maxLength: 254
+          minLength: 0
+          nullable: true
+        fullName:
+          type: string
+          description: Nome completo.
+          example: Maria da Silva
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        gender:
+          type: string
+          enum:
+          - FEMALE
+          - MALE
+          - OTHER
+          - NOT_INFORMED
+          nullable: true
+        nationality:
+          type: string
+          description: "Nacionalidade. País pela ISO 3166-1 alfa-2 (BR, AR, US…)."
+          example: BR
+          maxLength: 2
+          minLength: 0
+          nullable: true
+        notes:
+          type: string
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+        phone:
+          type: string
+          maxLength: 30
+          minLength: 0
+          nullable: true
+        preferences:
+          allOf:
+          - $ref: "#/components/schemas/GuestPreferencesDto"
+          nullable: true
+        residenceCountry:
+          type: string
+          description: "País de residência. País pela ISO 3166-1 alfa-2 (BR, AR, US…\
+            )."
+          example: BR
+          maxLength: 2
+          minLength: 0
+          nullable: true
+        socialName:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        vip:
+          type: boolean
+      required:
+      - fullName
+      - vip
+    GuestResponse:
+      type: object
+      description: Um perfil de hóspede. Os documentos vêm mascarados e os dados sensíveis
+        da FNRH nunca vêm (só `hasSensitiveData`).
+      properties:
+        address:
+          allOf:
+          - $ref: "#/components/schemas/GuestAddressDto"
+          nullable: true
+        birthDate:
+          type: string
+          format: date
+          nullable: true
+        companyId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuestDocumentResponse"
+        email:
+          type: string
+          nullable: true
+        fullName:
+          type: string
+        gender:
+          type: string
+          enum:
+          - FEMALE
+          - MALE
+          - OTHER
+          - NOT_INFORMED
+          nullable: true
+        hasSensitiveData:
+          type: boolean
+          description: Se os dados sensíveis da FNRH já foram gravados (os valores
+            nunca voltam).
+        id:
+          type: string
+          format: uuid
+        nationality:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        preferences:
+          $ref: "#/components/schemas/GuestPreferencesDto"
+        residenceCountry:
+          type: string
+          nullable: true
+        restriction:
+          allOf:
+          - $ref: "#/components/schemas/GuestRestrictionResponse"
+          nullable: true
+        socialName:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        vip:
+          type: boolean
+      required:
+      - createdAt
+      - documents
+      - fullName
+      - hasSensitiveData
+      - id
+      - preferences
+      - updatedAt
+      - vip
+    GuestRestrictionResponse:
+      type: object
+      description: A inclusão na lista de restrição (RF-HOS-04).
+      properties:
+        reason:
+          type: string
+        restrictedBy:
+          type: string
+          format: uuid
+          description: "Quem incluiu (nulo: o sistema)."
+          nullable: true
+        since:
+          type: string
+          format: date-time
+      required:
+      - reason
+      - since
+    GuestSensitiveDataRequest:
+      type: object
+      description: "Dados sensíveis da FNRH (RN-19). Só se gravam: ficam cifrados,\
+        \ nunca voltam pela API (só `hasSensitiveData`) e são lidos apenas pela integraç\
+        ão FNRH. Os dois nulos apagam o que havia."
+      properties:
+        disability:
+          type: string
+          description: "Código da deficiência no domínio da FNRH (letras maiúsculas,\
+            \ dígitos e _)."
+          maxLength: 60
+          minLength: 0
+          nullable: true
+        raceColor:
+          type: string
+          description: Raça/cor pelas categorias do IBGE.
+          enum:
+          - WHITE
+          - BLACK
+          - BROWN
+          - YELLOW
+          - INDIGENOUS
+          - NOT_DECLARED
+          nullable: true
     HotelRequest:
       type: object
       description: Dados cadastrais do hotel.
@@ -8261,6 +9468,48 @@ components:
           pattern: "\\d{4,8}"
       required:
       - newPin
+    RestrictGuestRequest:
+      type: object
+      description: A inclusão na lista de restrição.
+      properties:
+        reason:
+          type: string
+          description: "O motivo, mostrado no alerta da reserva e do check-in."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+      required:
+      - reason
+    RevealedDocumentResponse:
+      type: object
+      description: O número inteiro de um documento (cada acesso fica na trilha de
+        auditoria).
+      properties:
+        guestId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        issuingCountry:
+          type: string
+        number:
+          type: string
+        type:
+          type: string
+          enum:
+          - CPF
+          - RG
+          - CNH
+          - PASSPORT
+          - RNM
+          - FOREIGN_ID
+      required:
+      - guestId
+      - id
+      - issuingCountry
+      - number
+      - type
     RoleGrantRequest:
       type: object
       description: O conjunto completo das concessões da role.

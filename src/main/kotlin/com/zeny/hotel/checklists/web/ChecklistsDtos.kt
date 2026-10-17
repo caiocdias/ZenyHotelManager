@@ -48,13 +48,11 @@ data class CreateChecklistTemplateRequest(
         description =
             "Regras de aplicabilidade (RF-CHK-04); vale qualquer uma. Vazio: o modelo geral do contexto.",
     )
-    @field:Valid
     @field:Size(max = MAX_RULES)
-    val applicability: List<ApplicabilityRuleDto> = emptyList(),
+    val applicability: List<@Valid ApplicabilityRuleDto> = emptyList(),
     @field:Schema(description = "As seções, na ordem de exibição (de 1 a 30).")
-    @field:Valid
     @field:Size(max = MAX_SECTIONS)
-    val sections: List<ChecklistSectionDto> = emptyList(),
+    val sections: List<@Valid ChecklistSectionDto> = emptyList(),
 ) {
     fun toCommand() = ChecklistTemplateCommand(name, content(applicability, sections))
 }
@@ -67,13 +65,11 @@ data class UpdateChecklistTemplateRequest(
         description =
             "Regras de aplicabilidade (RF-CHK-04); vale qualquer uma. Vazio: o modelo geral do contexto.",
     )
-    @field:Valid
     @field:Size(max = MAX_RULES)
-    val applicability: List<ApplicabilityRuleDto> = emptyList(),
+    val applicability: List<@Valid ApplicabilityRuleDto> = emptyList(),
     @field:Schema(description = "As seções, na ordem de exibição (de 1 a 30).")
-    @field:Valid
     @field:Size(max = MAX_SECTIONS)
-    val sections: List<ChecklistSectionDto> = emptyList(),
+    val sections: List<@Valid ChecklistSectionDto> = emptyList(),
 ) {
     fun toCommand() = ChecklistTemplateCommand(name, content(applicability, sections))
 }
@@ -111,9 +107,8 @@ data class ApplicabilityRuleDto(
 data class ChecklistSectionDto(
     @field:Schema(description = "Até 120 caracteres.", example = "Banheiro")
     val title: String,
-    @field:Valid
     @field:Size(max = MAX_ITEMS)
-    val items: List<ChecklistItemDto> = emptyList(),
+    val items: List<@Valid ChecklistItemDto> = emptyList(),
 ) {
     companion object {
         fun of(section: ChecklistSection) = ChecklistSectionDto(section.title, section.items.map(ChecklistItemDto::of))
@@ -145,15 +140,13 @@ data class ChecklistItemDto(
     @field:Valid
     val visibleWhen: ItemConditionDto? = null,
     @field:Schema(description = "Só nos itens de escolha (`SINGLE_CHOICE`, `MULTI_CHOICE`): de 2 a 50.")
-    @field:Valid
     @field:Size(max = MAX_OPTIONS)
-    val options: List<ChoiceOptionDto> = emptyList(),
+    val options: List<@Valid ChoiceOptionDto> = emptyList(),
     @field:Schema(description = "Só em `QUANTITY` e `NUMBER`: até 20 caracteres.", nullable = true, example = "°C")
     val unit: String? = null,
     @field:Schema(description = "Ações executadas ao concluir o checklist (RF-CHK-05), até 5.")
-    @field:Valid
     @field:Size(max = MAX_ACTIONS)
-    val actions: List<ItemActionDto> = emptyList(),
+    val actions: List<@Valid ItemActionDto> = emptyList(),
 ) {
     fun toItem(path: String) =
         ChecklistItem(

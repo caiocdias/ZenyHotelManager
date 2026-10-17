@@ -164,8 +164,7 @@ data class SyncChangeResponse(
 data class SyncCommandsRequest(
     @field:NotEmpty
     @field:Size(max = MAX_BATCH)
-    @field:Valid
-    val commands: List<SyncCommandRequest> = emptyList(),
+    val commands: List<@Valid SyncCommandRequest> = emptyList(),
 ) {
     companion object {
         const val MAX_BATCH = 100

@@ -1303,12 +1303,14 @@ classDiagram
     boolean sensitive
   }
 
-  Guest "1" *-- "1..*" IdDocument
+  Guest "1" *-- "0..*" IdDocument
   Guest "1" *-- "0..1" SensitiveGuestData
   Guest "1" *-- "*" Consent
   Guest "1" -- "*" Attachment
   Company "1" -- "*" Guest : contatos
 ```
+
+O perfil pode nascer sem documento e sem data de nascimento (uma reserva por telefone, por exemplo): a FNRH exige CPF ou passaporte, e o menor exige a data de nascimento, mas a conferência é feita no check-in (RF-REC, M5), não no cadastro do perfil (decisão do usuário em 2026-10-16, revisão da E01 do M3).
 
 #### 8.2.5 Tarifas
 

@@ -16,12 +16,21 @@ import org.springframework.test.context.ContextConfiguration
  * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
  * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
- * os jobs de reprocessamento e de expurgo do outbox e o expurgo de anexos órfãos, para que os testes os disparem quando
+ * os jobs de reprocessamento e de expurgo do outbox, o expurgo de anexos órfãos e a rotação de chaves dos
+ * documentos de hóspede, para que os testes os disparem quando
  * quiserem. Para autenticar uma requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
-@SpringBootTest(properties = [TEST_MIGRATIONS, RESUBMISSION_JOB_DEFERRED, OUTBOX_PURGE_DEFERRED, FILES_PURGE_DEFERRED])
+@SpringBootTest(
+    properties = [
+        TEST_MIGRATIONS,
+        RESUBMISSION_JOB_DEFERRED,
+        OUTBOX_PURGE_DEFERRED,
+        FILES_PURGE_DEFERRED,
+        GUESTS_REKEY_DEFERRED,
+    ],
+)
 @ActiveProfiles("local")
 @AutoConfigureMockMvc
 @AutoConfigureMetrics
@@ -52,3 +61,9 @@ const val OUTBOX_PURGE_DEFERRED = "zeny.events.purge.initial-delay=PT24H"
  * ([MutableClock]) apagaria, no banco compartilhado, os anexos que outro teste acabou de enviar.
  */
 const val FILES_PURGE_DEFERRED = "zeny.files.orphan-purge.initial-delay=PT24H"
+
+/**
+ * A rotação de chaves dos documentos de hóspede só roda quando o teste a chama: os testes gravam de propósito
+ * documentos com a chave anterior (e um com o número ilegível) e conferem o que acontece com eles.
+ */
+const val GUESTS_REKEY_DEFERRED = "zeny.guests.document-rekey.initial-delay=PT24H"

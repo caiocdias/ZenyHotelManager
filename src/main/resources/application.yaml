@@ -290,6 +290,13 @@ zeny:
       bucket: ${ZENY_STORAGE_BUCKET}
       access-key: ${ZENY_STORAGE_ACCESS_KEY}
       secret-key: ${ZENY_STORAGE_SECRET_KEY}
+  # Rotação das chaves de cifragem nos documentos de hóspede (módulo guests, H8 do M3): o
+  # GuestDocumentRekeyJob, sob trava do ShedLock, re-cifra o número e recalcula o índice cego com a chave
+  # ativa de cada documento gravado com outra chave, para que a chave antiga possa sair do anel.
+  guests:
+    document-rekey:
+      interval: PT1H
+      initial-delay: PT10M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

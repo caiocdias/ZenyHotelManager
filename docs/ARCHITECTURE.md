@@ -377,6 +377,7 @@ sequenceDiagram
   - credenciais de integrações;
   - dados sensíveis da FNRH;
   - número de documento.
+- **Busca em coluna cifrada** só por **índice cego** (M3 E01): HMAC-SHA256 do valor normalizado com chave derivada por HKDF de cada chave do anel (porta `BlindIndex` do `shared`), gravado com o id da chave; a busca procura o hash calculado com cada chave do anel, então a rotação segue a do anel sem segredo novo e nenhuma busca decifra a tabela. As consultas devolvem o documento mascarado, pelo sufixo guardado em claro (nenhuma listagem decifra); o número inteiro sai só por uma ação própria, com permissão e cada acesso na trilha. Na rotação, o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede ainda na chave antiga antes de ela sair do anel; os demais valores cifrados (dados sensíveis da FNRH, nome original dos anexos, token de push, anexos sensíveis no bucket) ainda não têm job (pendência do M8).
 - Anexos sensíveis são cifrados no armazenamento e servidos por URL assinada de curta duração. **Todo acesso é auditado.**
 - **LGPD**:
   - um job de retenção anonimiza perfis vencidos e expurga dados sensíveis da FNRH (RN-19, RN-20);

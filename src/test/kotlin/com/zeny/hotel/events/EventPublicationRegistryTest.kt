@@ -3,6 +3,7 @@ package com.zeny.hotel.events
 import com.zeny.hotel.ZenyHotelApplication
 import com.zeny.hotel.shared.infrastructure.events.EventPublicationResubmissionJob
 import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
+import com.zeny.hotel.testsupport.GUESTS_REKEY_DEFERRED
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
@@ -146,6 +147,7 @@ class EventPublicationRegistryTest(
                 "--$RESUBMISSION_JOB_DEFERRED",
                 "--$OUTBOX_PURGE_DEFERRED",
                 "--$FILES_PURGE_DEFERRED",
+                "--$GUESTS_REKEY_DEFERRED",
                 "--server.port=0",
             ).use { context ->
                 await().during(Duration.ofMillis(SETTLE_MILLIS)).atMost(Duration.ofSeconds(2)).until {

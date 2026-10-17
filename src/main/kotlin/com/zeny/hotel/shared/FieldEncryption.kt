@@ -90,6 +90,46 @@ interface TokenSealer {
 }
 
 /**
+ * Índice cego (H8 do M3) para buscar por igualdade numa coluna cifrada, como o número de documento:
+ * HMAC-SHA256 do valor já normalizado com uma chave **derivada** (HKDF-SHA256) de cada chave do anel
+ * `ZENY_ENCRYPTION_KEYS`, com `info` = [purpose]; nunca a chave das colunas cifradas nem a dos tokens, e
+ * o índice de uma finalidade não casa com o de outra. Grava-se o resultado de [compute] (o id da chave e o
+ * hash) ao lado do valor cifrado; a busca procura qualquer um dos [candidates], um por chave do anel, então
+ * os valores indexados antes de uma rotação continuam encontráveis enquanto a chave antiga seguir no anel.
+ * Antes de retirar uma chave do anel, reindexe (como se re-cifra) as linhas cujo índice ainda a usa
+ * ([BlindIndexValue.keyId] diferente da chave ativa).
+ *
+ * O índice revela só a igualdade (duas linhas com o mesmo valor têm o mesmo hash com a mesma chave);
+ * normalize antes (dígitos, maiúsculas, tipo e país) para que grafias do mesmo valor se encontrem.
+ */
+interface BlindIndex {
+    /** A chave ativa do anel: o índice gravado com outra chave precisa ser recalculado antes de ela sair do anel. */
+    val activeKeyId: String
+
+    /** O índice de [normalizedValue] para [purpose], com a chave ativa: o que se grava. */
+    fun compute(
+        purpose: String,
+        normalizedValue: String,
+    ): BlindIndexValue
+
+    /** O índice de [normalizedValue] com cada chave do anel (a ativa primeiro): o que se procura. */
+    fun candidates(
+        purpose: String,
+        normalizedValue: String,
+    ): List<BlindIndexValue>
+}
+
+/**
+ * Um índice cego: [keyId] é a chave do anel de que a chave do HMAC foi derivada e [hash], o HMAC-SHA256 em
+ * base64url sem preenchimento (43 caracteres). Os hashes de chaves diferentes não colidem na prática, então
+ * a busca pode comparar só o [hash].
+ */
+data class BlindIndexValue(
+    val keyId: String,
+    val hash: String,
+)
+
+/**
  * Valor ou conteúdo cifrado que não pode ser decifrado: formato inválido, chave ausente ou dado
  * adulterado ([FieldCipher], [ContentCipher] e [TokenSealer]).
  */

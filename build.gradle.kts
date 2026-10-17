@@ -26,6 +26,9 @@ kotlin {
     compilerOptions {
         jvmTarget = JvmTarget.JVM_25
         freeCompilerArgs.add("-Xjsr305=strict")
+        // Grava no bytecode as anotações de uso de tipo (`List<@Valid T>`), que o Hibernate Validator lê
+        // para validar em cascata os itens da lista (H15 do M3: `@Valid` no `List` é obsoleto, HV000271).
+        freeCompilerArgs.add("-Xemit-jvm-type-annotations")
     }
 }
 

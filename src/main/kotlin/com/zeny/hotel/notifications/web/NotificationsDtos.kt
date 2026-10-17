@@ -98,8 +98,7 @@ data class NotificationPreferenceRequest(
 data class NotificationPreferencesRequest(
     @field:NotNull
     @field:Size(min = 1, max = MAX_PREFERENCES)
-    @field:Valid
-    val preferences: List<NotificationPreferenceRequest>?,
+    val preferences: List<@Valid NotificationPreferenceRequest>?,
 ) {
     fun toPreferences(): List<NotificationPreference> =
         preferences.orEmpty().mapIndexed { index, item ->

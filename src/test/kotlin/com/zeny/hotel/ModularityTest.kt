@@ -1,6 +1,7 @@
 package com.zeny.hotel
 
 import com.zeny.hotel.checklists.ChecklistsModule
+import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -176,6 +177,23 @@ class ModularityTest {
             .filter { it.startsWith("com.zeny.hotel.iam.") }
             .filter { it.substringBeforeLast('.') != "com.zeny.hotel.iam" }
             .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `guests depends only on shared`() {
+        val guests = modules.getModuleByName("guests").orElseThrow()
+
+        // ARCHITECTURE §3.1 (camada Cadastros): files entra com os anexos, na E03 do M3.
+        guests
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldBe
+            listOf("shared")
+        GuestsModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe setOf("shared")
     }
 
     @Test

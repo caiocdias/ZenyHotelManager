@@ -97,9 +97,8 @@ data class SubjectAttributesDto(
 
 @Schema(description = "Todas as respostas da execução: a lista substitui a gravada.")
 data class ReplaceChecklistAnswersRequest(
-    @field:Valid
     @field:Size(max = MAX_ANSWERS)
-    val answers: List<ChecklistAnswerDto> = emptyList(),
+    val answers: List<@Valid ChecklistAnswerDto> = emptyList(),
 )
 
 @Schema(

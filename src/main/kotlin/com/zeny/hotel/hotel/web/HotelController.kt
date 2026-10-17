@@ -338,9 +338,8 @@ data class PolicySettingsDto(
     @field:Schema(description = "Idade (anos completos) até a qual o hóspede é criança (0 a 17).")
     val childMaxAge: Int,
     @field:Schema(description = "Faixas de 0 a childMaxAge, contíguas e em ordem; vazia se não diferencia.")
-    @field:Valid
     @field:Size(max = 10)
-    val childAgeBands: List<ChildAgeBandDto>,
+    val childAgeBands: List<@Valid ChildAgeBandDto>,
     @field:Schema(description = "Texto obrigatório das confirmações: regras da diária, horários e arrumação.")
     @field:NotBlank
     @field:Size(max = 4000)

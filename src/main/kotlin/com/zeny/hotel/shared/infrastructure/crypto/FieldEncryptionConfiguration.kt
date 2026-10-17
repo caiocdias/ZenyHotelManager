@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared.infrastructure.crypto
 
+import com.zeny.hotel.shared.BlindIndex
 import com.zeny.hotel.shared.ContentCipher
 import com.zeny.hotel.shared.FieldCipher
 import com.zeny.hotel.shared.TokenSealer
@@ -49,4 +50,8 @@ class FieldEncryptionConfiguration {
 
     @Bean
     fun tokenSealer(keyRing: EncryptionKeyRing): TokenSealer = HkdfTokenSealer(keyRing)
+
+    /** O índice cego das colunas cifradas pesquisáveis (H8 do M3), com chaves derivadas do mesmo anel. */
+    @Bean
+    fun blindIndex(keyRing: EncryptionKeyRing): BlindIndex = HmacBlindIndex(keyRing)
 }

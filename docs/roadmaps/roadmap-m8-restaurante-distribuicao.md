@@ -73,6 +73,8 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
 
 - **Implantação com TLS:** o SSE (`GET /api/v1/stream`, M2 E04) passa pelo proxy público: conferir `flush_interval` sem buffer e o tempo limite de conexões longas no Caddy com TLS (e em qualquer balanceador da nuvem), com o heartbeat do M2.
+- **Log de acesso sem query string** (herdado do M3 E01, decisão do usuário em 2026-10-16): a busca de hóspedes leva nome e e-mail na query string (`GET /api/v1/guests?name=…&email=…`) e o cursor leva o nome normalizado; ao configurar o Caddy com TLS e a observabilidade de produção (E11), não ligar log de acesso com a query string, nem no proxy nem na aplicação (o número de documento já vai no corpo, `POST /api/v1/guests/search-by-document`).
+- **Re-cifragem na rotação de chaves** (herdado do M3 E01): o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede; os outros valores cifrados (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token` e os anexos sensíveis no bucket) ainda não têm job, então uma chave só sai do anel depois de re-cifrá-los (procedimento em "Chaves de cifragem" no `CLAUDE.md`).
 - **Segredos de implantação:** as `ZENY_FCM_*` (credencial da conta de serviço do FCM, M2 E09) entram com as demais credenciais da implantação, fora do repositório; vazias, o push fica desligado.
 
 ## Definição global de pronto

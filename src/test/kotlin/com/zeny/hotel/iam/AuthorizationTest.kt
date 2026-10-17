@@ -208,6 +208,12 @@ class AuthorizationTest(
                 "checklists.routines.read:ALL",
                 "checklists.routines.manage:ALL",
                 "checklists.reports.read:ALL",
+                "guests.profiles.read:ALL",
+                "guests.profiles.manage:ALL",
+                "guests.documents.reveal:ALL",
+                "guests.restrictions.manage:ALL",
+                "guests.companies.read:ALL",
+                "guests.companies.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

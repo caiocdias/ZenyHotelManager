@@ -74,6 +74,8 @@ Dados sensíveis são cifrados com AES-256-GCM (ARCHITECTURE §8.3). As chaves v
 export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACTIVE_KEY_ID=dev
 ```
 
+As mesmas chaves derivam (por HKDF) as chaves dos índices cegos, que permitem buscar por igualdade num campo cifrado (o número de documento do hóspede) sem decifrar a tabela. Na rotação, acrescente a chave nova e aponte a ativa para ela; um job re-cifra e reindexa os documentos de hóspede a cada hora (terminou quando a métrica `zeny_guests_documents_rekey_pending` chega a zero). Os outros valores cifrados ainda não têm job: mantenha a chave antiga até re-cifrá-los (passo a passo em "Chaves de cifragem" no [`CLAUDE.md`](CLAUDE.md)).
+
 ## Anexos (armazenamento S3)
 
 Os anexos (logotipo do hotel, fotos de checklist e, nos próximos marcos, documentos de hóspede e XMLs fiscais) ficam num armazenamento compatível com S3: MinIO no compose, S3/R2/B2 na nuvem (ARCHITECTURE §14, D14). Os metadados ficam no schema `files`. O envio é `POST /api/v1/files` (multipart com `purpose` e `file`), e cada finalidade tem tamanho máximo, tipos aceitos (detectados pelo conteúdo, não pela extensão) e as permissões de envio e de download. O download é só por URL assinada de curta duração (`GET /api/v1/files/{id}/download-url`, 5 min por padrão). Anexo sensível é cifrado com AES-256-GCM, com as mesmas chaves de `ZENY_ENCRYPTION_KEYS`, antes de ir ao bucket; ele é baixado só pelo servidor, que o decifra, e cada URL gerada e cada download vão para a trilha de auditoria.
@@ -212,6 +214,10 @@ Operação (M2):
 - **Checklists:** modelos com versões publicadas imutáveis, itens condicionais, regras de aplicabilidade e ações por item (`/api/v1/checklist-templates`), execução online e offline com fotos (`/api/v1/checklist-executions`, comandos `checklists.start-execution` e `checklists.complete-execution`), rotinas por setor e escala geradas na virada da data operacional (`/api/v1/checklist-routines`) e relatórios de conformidade, itens mais reprovados e histórico por local (`/api/v1/checklist-reports`).
 - **Notificações:** painel, preferências e push, na seção "Notificações e push (FCM)".
 
+Hóspedes e contas (M3):
+
+- **Hóspedes e empresas:** perfis com os campos da FNRH, preferências, VIP e lista de restrição em `/api/v1/guests` (busca por nome sem acento e por e-mail; por documento em `POST /api/v1/guests/search-by-document`, com o número no corpo), documentos com o número cifrado, buscado por índice cego e mostrado mascarado (o número inteiro só em `POST …/documents/{id}/reveal`, com permissão própria e cada acesso na trilha), raça/cor e deficiência da FNRH só gravadas (cifradas, nunca devolvidas) e empresas com CNPJ único em `/api/v1/companies`. Nada é apagado, e a trilha não guarda dado pessoal em claro.
+
 Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: [`CLAUDE.md`](CLAUDE.md).
 
 ## Integração contínua
@@ -234,6 +240,7 @@ src/main/kotlin/com/zeny/hotel/
 ├── shared/                  # kernel compartilhado: Money, Percent, IDs, CPF/CNPJ, Address, cifragem
 ├── iam/ audit/ hotel/ staff/ files/   # módulos de plataforma do M1 (ARCHITECTURE §3.1)
 ├── rooms/ checklists/ notifications/  # módulos do M2
+├── guests/                  # módulo do M3 (hóspedes e empresas)
 └── <módulo>/
     ├── <Módulo>Api.kt       # raiz do pacote = API pública: interfaces, DTOs e eventos
     ├── domain/              # agregados e regras, sem Spring

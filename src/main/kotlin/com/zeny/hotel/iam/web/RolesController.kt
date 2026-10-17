@@ -221,10 +221,9 @@ data class RoleRequest(
     @field:Size(max = ManagementLimits.ROLE_DESCRIPTION_MAX_LENGTH)
     val description: String = "",
     @field:NotNull
-    @field:Valid
     @field:Size(max = MAX_GRANTS)
     @field:Schema(description = "O conjunto completo das concessões da role.")
-    val grants: List<RoleGrantRequest> = emptyList(),
+    val grants: List<@Valid RoleGrantRequest> = emptyList(),
 ) {
     fun toCommand() = RoleCommand(name, description, grants.map(RoleGrantRequest::toCommand))
 }
@@ -238,10 +237,9 @@ data class RoleGrantRequest(
     @field:Schema(description = "Um dos escopos que a permissão suporta.")
     val scope: PermissionScope,
     @field:NotNull
-    @field:Valid
     @field:Size(max = MAX_LIMITS)
     @field:Schema(description = "Limites, só das chaves que a permissão declara; chave omitida vale teto zero.")
-    val limits: List<LimitRequest> = emptyList(),
+    val limits: List<@Valid LimitRequest> = emptyList(),
 ) {
     fun toCommand() = GrantCommand(permission, scope, limits.map(LimitRequest::toCommand))
 }

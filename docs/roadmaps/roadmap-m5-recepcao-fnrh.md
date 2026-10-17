@@ -73,6 +73,12 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 | D1 | **Credencial de homologação da FNRH e Cadastur ativo (SPEC Q-12).** | Sem credencial não há homologação real com o Serpro. | E09 (bloqueada até decidir) |
 | D2 | **Decidido em 2026-10-13 (dono + printing):** cada módulo dono de um documento monta os dados, checa a própria permissão e chama a API pública de `printing` para renderizar (PDF ou ESC/POS) e enfileirar: `frontdesk` → ficha de registro, `billing` → extrato, `reservations` → confirmação. `printing` compõe o cabeçalho do hotel pela API pública de `hotel`. Não há porta em `shared` para documentos. | — | E11 |
 
+**Notas herdadas do M3 E01** (revisão humana de 2026-10-16; conferir na sincronização deste marco):
+
+- **Documentos e data de nascimento opcionais no perfil** (`guests`, SPEC §8.2.4 com `0..*` documentos): a exigência fica para o check-in. O check-in (E02) e o walk-in (E03) conferem que cada hóspede tem CPF ou passaporte (`GuestsApi.fnrhData(id).documents`, ou a busca `GuestsApi.findByDocument`) e que o menor tem data de nascimento (`GuestsApi.isMinorOn(id, data)` devolve `null` sem ela), recusando com `code` estável antes de ocupar a UH.
+- **Auditoria da FNRH:** `GuestsApi.fnrhData` (que decifra os documentos e os dados sensíveis, RN-19) é uma leitura **sem entrada na trilha**; quem registra o acesso é o envio da FNRH (E08): cada `FnrhSubmission` enviada fica na trilha (sem os dados enviados), como o acesso aos dados sensíveis.
+- Busca por documento só pela `GuestsApi.findByDocument` (índice cego), nunca lendo a coluna cifrada.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo de ARCHITECTURE §6.1 numa transação: UH não pronta → `409` `ROOM_NOT_READY`; menor sem comprovação → `422` com `code` estável; sucesso publica `GuestCheckedIn`.
