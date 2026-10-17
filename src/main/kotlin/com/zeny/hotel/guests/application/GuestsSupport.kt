@@ -1,9 +1,13 @@
 package com.zeny.hotel.guests.application
 
+import com.zeny.hotel.files.ModuleFilePurposes
+import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.guests.GuestsErrorCodes
+import com.zeny.hotel.guests.GuestsFilePurposes
 import com.zeny.hotel.guests.GuestsPermissions
 import com.zeny.hotel.guests.domain.Company
 import com.zeny.hotel.guests.domain.Guest
+import com.zeny.hotel.guests.domain.GuestConsent
 import com.zeny.hotel.guests.domain.GuestDocument
 import com.zeny.hotel.shared.Address
 import com.zeny.hotel.shared.FieldViolation
@@ -74,6 +78,7 @@ internal fun Guest.view() =
         vip = vip,
         notes = notes,
         companyId = companyId,
+        dietaryRestrictions = dietaryRestrictions,
         restriction =
             if (restricted) {
                 RestrictionView(checkNotNull(restrictionReason), checkNotNull(restrictedAt), restrictedBy)
@@ -82,9 +87,29 @@ internal fun Guest.view() =
             },
         documents = documents.map { it.view() },
         hasSensitiveData = hasSensitiveData,
+        status = status,
+        mergedInto = mergedInto,
+        mergedAt = mergedAt,
+        anonymizedAt = anonymizedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
         version = checkNotNull(version),
+    )
+
+internal fun GuestConsent.view(guestId: GuestId) =
+    ConsentView(
+        id = id,
+        guestId = guestId,
+        purpose = purpose,
+        active = active,
+        grantedAt = grantedAt,
+        grantedSource = grantedSource,
+        grantedBy = grantedBy,
+        revokedAt = revokedAt,
+        revokedSource = revokedSource,
+        revokedBy = revokedBy,
+        supersededAt = supersededAt,
+        supersededBy = supersededBy,
     )
 
 internal fun Company.view() =
@@ -111,4 +136,7 @@ internal fun Company.view() =
 class GuestsPermissionsConfiguration {
     @Bean
     fun guestsPermissions(): ModulePermissions = GuestsPermissions
+
+    @Bean
+    fun guestsFilePurposes(): ModuleFilePurposes = GuestsFilePurposes
 }

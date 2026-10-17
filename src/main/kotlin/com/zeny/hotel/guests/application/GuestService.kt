@@ -5,6 +5,7 @@ import com.zeny.hotel.guests.GuestDocumentId
 import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.guests.GuestsErrorCodes
 import com.zeny.hotel.guests.GuestsPermissions
+import com.zeny.hotel.guests.domain.ConsentGrant
 import com.zeny.hotel.guests.domain.Guest
 import com.zeny.hotel.guests.domain.GuestDocument
 import com.zeny.hotel.guests.domain.GuestProfile
@@ -94,6 +95,7 @@ class GuestService(
         command: GuestCommand,
         documents: List<DocumentCommand>,
         sensitiveData: SensitiveDataCommand?,
+        consents: List<ConsentCommand> = emptyList(),
     ): GuestView {
         authorization.require(GuestsPermissions.PROFILES_MANAGE)
         val now = clock.instant()
@@ -107,7 +109,13 @@ class GuestService(
                     "documents[$index].issuingCountry",
                 )
             }
-        val guest = Guest.create(profile(command, current = null), now)
+        val guest =
+            Guest.create(
+                profile(command, current = null),
+                now,
+                consents.map { ConsentGrant(it.purpose, it.source) },
+                currentActor.currentOrNull()?.userId,
+            )
         normalizedDocuments.forEach { addTo(guest, it, now) }
         sensitiveData?.let { guest.recordSensitiveData(SensitiveGuestData(it.raceColor, it.disability), now) }
         audit.created(GuestsAudit.GUEST, guest.id.value) { guest.auditState() }
@@ -115,22 +123,34 @@ class GuestService(
         return guest.view()
     }
 
+    /**
+     * Corrige os dados do perfil. [dataSubjectRequest]: a correção foi pedida pelo titular (RF-HOS-07), registrado na
+     * trilha (`origin` `DATA_SUBJECT_REQUEST`). Num perfil mesclado ou anonimizado, `409` antes de conferir a versão
+     * (um `ETag` velho não esconde o motivo).
+     */
     @Audited(GuestsAudit.UPDATE_GUEST)
     @Transactional
     fun update(
         id: GuestId,
         expectedVersion: Long,
         command: GuestCommand,
+        dataSubjectRequest: Boolean = false,
     ): GuestView {
         authorization.require(GuestsPermissions.PROFILES_MANAGE)
         val guest = find(id)
+        guest.requireActive()
         requireCurrentVersion(expectedVersion, checkNotNull(guest.version))
         val before = guest.auditState()
         val changed = guest.update(profile(command, current = guest.companyId), clock.instant())
         if (changed.isEmpty()) {
             audit.noChanges()
         } else {
-            audit.record(GuestsAudit.GUEST, id.value, before, withChangedFields(guest.auditState(), changed))
+            audit.record(
+                GuestsAudit.GUEST,
+                id.value,
+                before,
+                withOrigin(withChangedFields(guest.auditState(), changed), dataSubjectRequest),
+            )
             store.flush()
         }
         return guest.view()
@@ -141,13 +161,16 @@ class GuestService(
     fun addDocument(
         id: GuestId,
         command: DocumentCommand,
+        dataSubjectRequest: Boolean = false,
     ): GuestView {
         authorization.require(GuestsPermissions.PROFILES_MANAGE)
         val document = IdDocuments.normalize(command.type, command.issuingCountry, command.number)
         val guest = find(id)
         val now = clock.instant()
         val added = addTo(guest, document, now)
-        audit.created(GuestsAudit.GUEST_DOCUMENT, added.id.value) { added.auditState() + ("guestId" to id.toString()) }
+        audit.created(GuestsAudit.GUEST_DOCUMENT, added.id.value) {
+            withOrigin(added.auditState() + ("guestId" to id.toString()), dataSubjectRequest)
+        }
         if (!store.tryFlush(GuestsConstraints.DOCUMENT_KIND)) throw documentAlreadyRecorded()
         return guest.view()
     }
@@ -157,6 +180,7 @@ class GuestService(
     fun removeDocument(
         id: GuestId,
         documentId: GuestDocumentId,
+        dataSubjectRequest: Boolean = false,
     ): GuestView {
         authorization.require(GuestsPermissions.PROFILES_MANAGE)
         val guest = find(id)
@@ -165,7 +189,8 @@ class GuestService(
             GuestsAudit.GUEST_DOCUMENT,
             documentId.value,
             removed.auditState() + ("guestId" to id.toString()),
-            null,
+            // A retirada a pedido do titular deixa a origem num retrato "depois" só com ela.
+            if (dataSubjectRequest) withOrigin(mapOf("guestId" to id.toString()), true) else null,
         )
         store.flush()
         return guest.view()
@@ -203,13 +228,19 @@ class GuestService(
     fun recordSensitiveData(
         id: GuestId,
         command: SensitiveDataCommand,
+        dataSubjectRequest: Boolean = false,
     ): GuestView {
         authorization.require(GuestsPermissions.PROFILES_MANAGE)
         val data = SensitiveGuestData(command.raceColor, command.disability)
         val guest = find(id)
         val before = guest.auditState()
         if (guest.recordSensitiveData(data, clock.instant())) {
-            audit.record(GuestsAudit.GUEST, id.value, before, withChangedFields(guest.auditState(), listOf(SENSITIVE)))
+            audit.record(
+                GuestsAudit.GUEST,
+                id.value,
+                before,
+                withOrigin(withChangedFields(guest.auditState(), listOf(SENSITIVE)), dataSubjectRequest),
+            )
             store.flush()
         } else {
             audit.noChanges()
@@ -278,12 +309,6 @@ class GuestService(
         command: GuestCommand,
         current: CompanyId?,
     ): GuestProfile {
-        if (!command.dietaryRestrictions.isNullOrBlank()) {
-            throw BusinessRuleException(
-                GuestsErrorCodes.DIETARY_RESTRICTIONS_REQUIRE_CONSENT,
-                "Restrições alimentares são dado sensível e só se gravam com o consentimento do hóspede.",
-            )
-        }
         if (command.companyId != null && command.companyId != current) requireActiveCompany(command.companyId)
         return GuestProfile(
             fullName = command.fullName,
@@ -299,6 +324,7 @@ class GuestService(
             vip = command.vip,
             notes = command.notes,
             companyId = command.companyId,
+            dietaryRestrictions = command.dietaryRestrictions,
         )
     }
 
@@ -350,3 +376,10 @@ internal fun findGuestsByDocument(
     val hashes = blindIndex.candidates(IdDocuments.INDEX_PURPOSE, normalized.indexInput).map { it.hash }
     return store.guests(directory.guestsWithDocumentIndex(hashes, MAX_DOCUMENT_MATCHES).map { it.id })
 }
+
+/** [state] com a origem "pedido do titular" (RF-HOS-07), quando for o caso. */
+internal fun withOrigin(
+    state: Map<String, Any?>,
+    dataSubjectRequest: Boolean,
+): Map<String, Any?> =
+    if (dataSubjectRequest) state + (GuestsAudit.ORIGIN to GuestsAudit.DATA_SUBJECT_REQUEST) else state

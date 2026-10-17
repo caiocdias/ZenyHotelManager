@@ -15,7 +15,11 @@ import java.util.UUID
  * mas nunca o número de documento nem os dados sensíveis da FNRH; só [fnrhData] os decifra.
  */
 interface GuestsApi {
-    /** O resumo de um perfil; `null` se não existe. */
+    /**
+     * O resumo de um perfil; `null` se não existe. Um perfil mesclado (RF-HOS-05) continua respondendo, com
+     * [GuestSummary.status] `MERGED` e o sobrevivente em [GuestSummary.mergedInto]: quem guarda o id reponta para
+     * ele (e escuta [GuestsMerged]).
+     */
     fun guest(id: GuestId): GuestSummary?
 
     /**
@@ -25,7 +29,8 @@ interface GuestsApi {
      * nos documentos brasileiros (CPF, RG, CNH, RNM) pode ser omitido (vale `BR`), e outro país é recusado.
      * Recusas: número inválido para o tipo, `400 DOCUMENT_NUMBER_INVALID`; país ausente, de outro país num
      * documento brasileiro ou `BR` numa identidade estrangeira, `400 DOCUMENT_COUNTRY_INVALID`; código de país
-     * fora da ISO 3166-1, `400 INVALID_COUNTRY`.
+     * fora da ISO 3166-1, `400 INVALID_COUNTRY`. Só perfis ativos: um perfil mesclado não volta (o sobrevivente
+     * tem os documentos dele).
      */
     fun findByDocument(
         type: DocumentType,
@@ -35,11 +40,15 @@ interface GuestsApi {
 
     /**
      * O alerta da lista de restrição (RF-HOS-04) para a reserva e o check-in: o motivo e desde quando; `null`
-     * se o hóspede não está na lista (ou não existe).
+     * se o hóspede não está na lista (ou não existe). De um perfil mesclado, vale o do sobrevivente (que herdou a
+     * restrição: a mesclagem nunca apaga um alerta), com o id dele em [RestrictionAlert.guestId].
      */
     fun restrictionAlert(id: GuestId): RestrictionAlert?
 
-    /** Se o hóspede é menor de idade na data (RN-24); `null` se não existe ou não tem data de nascimento. */
+    /**
+     * Se o hóspede é menor de idade na data (RN-24); `null` se não existe ou não tem data de nascimento. De um perfil
+     * mesclado, vale o sobrevivente.
+     */
     fun isMinorOn(
         id: GuestId,
         date: LocalDate,
@@ -52,7 +61,8 @@ interface GuestsApi {
      * Os dados do hóspede exigidos pela FNRH, **inclusive o número dos documentos e os dados sensíveis
      * decifrados** (raça/cor e deficiência). **Exclusivo da integração FNRH** (módulo `fnrh`, M5; RN-19: só a
      * integração tem acesso): nenhum outro módulo chama este método, e o resultado nunca vai a resposta,
-     * log, trilha nem evento. `null` se o perfil não existe.
+     * log, trilha nem evento. `null` se o perfil não existe. De um perfil mesclado, devolve os do sobrevivente (que
+     * recebeu os documentos dele).
      */
     fun fnrhData(id: GuestId): FnrhGuestData?
 }
@@ -111,6 +121,44 @@ enum class DocumentType(
     FOREIGN_ID(false),
 }
 
+/**
+ * Situação de um perfil: `ACTIVE`; `MERGED` depois de absorvido por outro numa mesclagem de duplicados (RF-HOS-05);
+ * `ANONYMIZED` depois de anonimizado a pedido do titular (RF-HOS-07; o perfil absorvido por um anonimizado continua
+ * `MERGED`, com a data da anonimização). Nenhum é apagado; o mesclado e o anonimizado não são editados e não voltam
+ * nas buscas.
+ */
+enum class GuestStatus {
+    ACTIVE,
+    MERGED,
+    ANONYMIZED,
+}
+
+/**
+ * Os dados do perfil que o pedido de mesclagem pode trazer do absorvido (decisão do usuário em 2026-10-17). Por
+ * padrão vale o que o sobrevivente tem, e os campos vazios dele são preenchidos com os do absorvido; um campo listado
+ * em `takeFromMerged` vem do absorvido, se ele o tiver (a mesclagem nunca apaga um valor). [RESIDENCE] é o país de
+ * residência com o endereço (o endereço completo é só de quem reside no Brasil) e [PREFERENCES], as três
+ * preferências; [SENSITIVE_DATA], os dados sensíveis da FNRH. VIP, restrição, documentos e consentimentos têm regras
+ * próprias (os consentimentos do absorvido passam todos para o sobrevivente; M3 E03).
+ */
+enum class GuestMergeField {
+    FULL_NAME,
+    SOCIAL_NAME,
+    NATIONALITY,
+    BIRTH_DATE,
+    GENDER,
+    EMAIL,
+    PHONE,
+    RESIDENCE,
+    PREFERENCES,
+    NOTES,
+    COMPANY,
+    SENSITIVE_DATA,
+
+    /** As restrições alimentares: só ficam no sobrevivente se ele terminar com o consentimento delas ativo. */
+    DIETARY_RESTRICTIONS,
+}
+
 /** Gênero informado pelo hóspede (FNRH). */
 enum class Gender {
     FEMALE,
@@ -136,7 +184,10 @@ data class GuestPreferences(
     val pillow: String? = null,
 )
 
-/** O resumo de um perfil para os módulos de cima: sem documento nem dado sensível. */
+/**
+ * O resumo de um perfil para os módulos de cima: sem documento nem dado sensível. [mergedInto]: o sobrevivente, num
+ * perfil mesclado ([status] `MERGED`).
+ */
 data class GuestSummary(
     val id: GuestId,
     val fullName: String,
@@ -146,9 +197,12 @@ data class GuestSummary(
     val vip: Boolean,
     val restricted: Boolean,
     val companyId: CompanyId?,
+    val status: GuestStatus,
+    val mergedInto: GuestId?,
 ) {
     /** Sem dado pessoal (o resumo pode acabar num log). */
-    override fun toString(): String = "GuestSummary(id=$id, vip=$vip, restricted=$restricted)"
+    override fun toString(): String =
+        "GuestSummary(id=$id, status=$status, vip=$vip, restricted=$restricted, mergedInto=$mergedInto)"
 }
 
 /** O alerta da lista de restrição: o motivo registrado e desde quando. */

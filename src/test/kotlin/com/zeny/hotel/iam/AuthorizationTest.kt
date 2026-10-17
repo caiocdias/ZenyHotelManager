@@ -212,8 +212,20 @@ class AuthorizationTest(
                 "guests.profiles.manage:ALL",
                 "guests.documents.reveal:ALL",
                 "guests.restrictions.manage:ALL",
+                "guests.profiles.merge:ALL",
                 "guests.companies.read:ALL",
                 "guests.companies.manage:ALL",
+                "guests.attachments.read:ALL",
+                "guests.attachments.manage:ALL",
+                "guests.data.export:ALL",
+                "guests.data.anonymize:ALL",
+                "billing.codes.read:ALL",
+                "billing.codes.manage:ALL",
+                "billing.folios.read:ALL",
+                "billing.folios.manage:ALL",
+                "billing.postings.create:ALL",
+                "billing.postings.reverse:ALL",
+                "billing.postings.adjust:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

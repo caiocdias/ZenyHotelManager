@@ -23,7 +23,8 @@ import java.util.UUID
  * (`<módulo>/<finalidade>/<id>`). O nome original pode ter dado pessoal e fica cifrado no banco.
  * O conteúdo de um anexo não muda: só o vínculo com o registro dono, que pode ser desfeito (o anexo
  * volta a órfão, desde [detachedAt]), e a exclusão ([deletedAt]): o anexo apagado não volta, e a
- * linha fica porque a trilha de auditoria a referencia.
+ * linha fica porque a trilha de auditoria a referencia, **sem o nome original** (apagado junto: pode
+ * citar o titular, como "rg-maria.jpg"; M3 E03).
  */
 @Entity
 @Table(name = "stored_file", schema = "files")
@@ -51,14 +52,18 @@ class StoredFile private constructor(
     val sensitive: Boolean,
     @Column(name = "encryption_key_id", updatable = false)
     val encryptionKeyId: String?,
-    @Convert(converter = EncryptedStringConverter::class)
-    @Column(name = "original_name", updatable = false)
-    val originalName: String?,
+    originalName: String?,
     @Column(name = "created_by", updatable = false)
     private val createdByValue: UUID?,
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant,
 ) {
+    /** O nome original, cifrado; `null` sem nome ou depois da exclusão. */
+    @Convert(converter = EncryptedStringConverter::class)
+    @Column(name = "original_name")
+    var originalName: String? = originalName
+        protected set
+
     @Column(name = "owner_entity_id")
     var ownerEntityId: String? = null
         protected set
@@ -168,6 +173,7 @@ class StoredFile private constructor(
         requireNotDeleted()
         if (ownerEntityId != null && ownerEntityId != entityId) throw attachedToAnother()
         deletedAt = now
+        originalName = null
     }
 
     /** `true` se é órfão (sem vínculo e não apagado) desde antes de [cutoff]. */
@@ -184,6 +190,7 @@ class StoredFile private constructor(
     ): Boolean {
         if (!isOrphanSince(cutoff)) return false
         deletedAt = now
+        originalName = null
         return true
     }
 

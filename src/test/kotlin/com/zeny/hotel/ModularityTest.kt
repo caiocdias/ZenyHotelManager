@@ -1,5 +1,6 @@
 package com.zeny.hotel
 
+import com.zeny.hotel.billing.BillingModule
 import com.zeny.hotel.checklists.ChecklistsModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
@@ -180,20 +181,47 @@ class ModularityTest {
     }
 
     @Test
-    fun `guests depends only on shared`() {
+    fun `guests depends only on shared and files`() {
         val guests = modules.getModuleByName("guests").orElseThrow()
 
-        // ARCHITECTURE §3.1 (camada Cadastros): files entra com os anexos, na E03 do M3.
+        // ARCHITECTURE §3.1 (camada Cadastros): files com os anexos do hóspede (E03 do M3), só pela FilesApi.
         guests
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
-            .toList() shouldBe
-            listOf("shared")
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared", "files")
         GuestsModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
-            .toSet() shouldBe setOf("shared")
+            .toSet() shouldBe setOf("shared", "files")
+    }
+
+    @Test
+    fun `billing depends only on shared, hotel and guests, and only on their public APIs`() {
+        val billing = modules.getModuleByName("billing").orElseThrow()
+        val allowed = setOf("shared", "hotel", "guests")
+
+        // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
+        // payments (E08) e notifications (E07) entram depois. Nunca iam, reservas nem fiscal.
+        billing
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared", "hotel", "guests")
+        BillingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Só a raiz de hotel e guests (a API pública); verify() também barra os pacotes internos.
+        billing
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.hotel.") || it.startsWith("com.zeny.hotel.guests.") }
+            .filter { it.substringBeforeLast('.') !in setOf("com.zeny.hotel.hotel", "com.zeny.hotel.guests") }
+            .toList() shouldBe emptyList()
     }
 
     @Test

@@ -1,0 +1,132 @@
+package com.zeny.hotel.billing
+
+import com.zeny.hotel.shared.LimitDefinition
+import com.zeny.hotel.shared.LimitUnit
+import com.zeny.hotel.shared.LimitValue
+import com.zeny.hotel.shared.ModulePermissions
+import com.zeny.hotel.shared.PermissionCode
+import com.zeny.hotel.shared.PermissionDefinition
+import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.RoleTemplate
+import com.zeny.hotel.shared.TemplateGrant
+
+/**
+ * Permissões do módulo `billing` (RF-ACS-02, SPEC §5.10; nomes da H16 do M3). Códigos, contas e lançamentos não têm
+ * dono, então só aceitam o escopo `ALL`. São **sensíveis** (RF-ACS-08: sem a permissão, ou acima do limite, pedem a
+ * aprovação de um superior) o estorno ([POSTINGS_REVERSE]) e o ajuste ([POSTINGS_ADJUST]), ambos com o limite
+ * [MAX_AMOUNT] (`MONEY`) sobre o total cumulativo das correções do lançamento original, em valor absoluto: as já
+ * feitas, por qualquer usuário, mais a nova (decisão do usuário em 2026-10-17; cumulativo desde a revisão humana).
+ *
+ * Sugestões aos modelos (SPEC §3.1, decisão do usuário em 2026-10-17): o Gerente e o Financeiro tudo, com as
+ * correções **sem teto**; a Recepcionista consulta códigos, abre e consulta contas e lança (sem estornar nem ajustar:
+ * pede a aprovação de um superior); o Caixa A&B consulta códigos e contas (o PDV lança pela `BillingApi` no M8) e
+ * também pede a aprovação para corrigir.
+ */
+object BillingPermissions : ModulePermissions {
+    override val module = "billing"
+
+    /** Chave do limite das correções: o total das correções de um lançamento (estornos e ajustes), em reais. */
+    const val MAX_AMOUNT = "maxAmount"
+
+    /** Consultar os códigos de lançamento. */
+    val CODES_READ = PermissionCode("billing.codes.read")
+
+    /** Cadastrar, editar, desativar e reativar códigos de lançamento. */
+    val CODES_MANAGE = PermissionCode("billing.codes.manage")
+
+    /** Consultar contas, saldos e lançamentos. */
+    val FOLIOS_READ = PermissionCode("billing.folios.read")
+
+    /** Abrir contas e trocar o pagador e o limite de crédito. */
+    val FOLIOS_MANAGE = PermissionCode("billing.folios.manage")
+
+    /** Lançar numa conta (lançamento manual). */
+    val POSTINGS_CREATE = PermissionCode("billing.postings.create")
+
+    /** Estornar um lançamento (sensível, com limite [MAX_AMOUNT]). */
+    val POSTINGS_REVERSE = PermissionCode("billing.postings.reverse")
+
+    /** Ajustar um lançamento (sensível, com limite [MAX_AMOUNT]). */
+    val POSTINGS_ADJUST = PermissionCode("billing.postings.adjust")
+
+    private val all = TemplateGrant(ALL)
+    private val unlimited = TemplateGrant(ALL, mapOf(MAX_AMOUNT to LimitValue.Unlimited))
+    private val maxAmount =
+        LimitDefinition(
+            MAX_AMOUNT,
+            LimitUnit.MONEY,
+            "Valor máximo do total das correções de um lançamento (estornos e ajustes), em reais",
+        )
+
+    override val permissions =
+        listOf(
+            PermissionDefinition(
+                CODES_READ,
+                "Consultar os códigos de lançamento",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.FINANCE to all,
+                        RoleTemplate.RECEPTIONIST to all,
+                        RoleTemplate.FNB_CASHIER to all,
+                    ),
+            ),
+            PermissionDefinition(
+                CODES_MANAGE,
+                "Cadastrar, editar, desativar e reativar códigos de lançamento",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.FINANCE to all),
+            ),
+            PermissionDefinition(
+                FOLIOS_READ,
+                "Consultar contas, saldos e lançamentos",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.FINANCE to all,
+                        RoleTemplate.RECEPTIONIST to all,
+                        RoleTemplate.FNB_CASHIER to all,
+                    ),
+            ),
+            PermissionDefinition(
+                FOLIOS_MANAGE,
+                "Abrir contas e trocar o pagador e o limite de crédito",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.FINANCE to all,
+                        RoleTemplate.RECEPTIONIST to all,
+                    ),
+            ),
+            PermissionDefinition(
+                POSTINGS_CREATE,
+                "Lançar numa conta",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.FINANCE to all,
+                        RoleTemplate.RECEPTIONIST to all,
+                    ),
+            ),
+            PermissionDefinition(
+                POSTINGS_REVERSE,
+                "Estornar um lançamento (ação sensível, com valor máximo)",
+                setOf(ALL),
+                sensitive = true,
+                limits = listOf(maxAmount),
+                templates = mapOf(RoleTemplate.MANAGER to unlimited, RoleTemplate.FINANCE to unlimited),
+            ),
+            PermissionDefinition(
+                POSTINGS_ADJUST,
+                "Ajustar um lançamento (ação sensível, com valor máximo)",
+                setOf(ALL),
+                sensitive = true,
+                limits = listOf(maxAmount),
+                templates = mapOf(RoleTemplate.MANAGER to unlimited, RoleTemplate.FINANCE to unlimited),
+            ),
+        )
+}

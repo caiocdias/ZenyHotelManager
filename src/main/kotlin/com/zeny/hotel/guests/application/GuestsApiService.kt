@@ -16,7 +16,11 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 
-/** A [GuestsApi]: leituras sem conferir permissão (quem chama já se autorizou). */
+/**
+ * A [GuestsApi]: leituras sem conferir permissão (quem chama já se autorizou). [guest] devolve o perfil pedido, mesmo
+ * mesclado (com o sobrevivente em `mergedInto`); o alerta de restrição, a maioridade e os dados da FNRH de um perfil
+ * mesclado são os do sobrevivente ([current]).
+ */
 @Service
 @Transactional(readOnly = true)
 class GuestsApiService(
@@ -36,14 +40,14 @@ class GuestsApiService(
             .map { it.summary() }
 
     override fun restrictionAlert(id: GuestId): RestrictionAlert? =
-        store.guest(id)?.takeIf { it.restricted }?.let {
+        current(id)?.takeIf { it.restricted }?.let {
             RestrictionAlert(it.id, checkNotNull(it.restrictionReason), checkNotNull(it.restrictedAt))
         }
 
     override fun isMinorOn(
         id: GuestId,
         date: LocalDate,
-    ): Boolean? = store.guest(id)?.isMinorOn(date)
+    ): Boolean? = current(id)?.isMinorOn(date)
 
     override fun company(id: CompanyId): CompanySummary? =
         store.company(id)?.let {
@@ -51,7 +55,7 @@ class GuestsApiService(
         }
 
     override fun fnrhData(id: GuestId): FnrhGuestData? =
-        store.guest(id)?.let { guest ->
+        current(id)?.let { guest ->
             val sensitive = guest.sensitiveData
             FnrhGuestData(
                 id = guest.id,
@@ -77,6 +81,18 @@ class GuestsApiService(
             )
         }
 
+    /**
+     * O perfil com os dados correntes do hóspede: o próprio, ou, num mesclado, o sobrevivente (seguindo a cadeia, se
+     * o sobrevivente também foi absorvido depois).
+     */
+    private fun current(id: GuestId): Guest? {
+        val start = store.guest(id) ?: return null
+        // Uma mesclagem nunca tem como sobrevivente um perfil já mesclado: a cadeia não fecha um ciclo.
+        return generateSequence(start) { guest ->
+            guest.mergedInto?.let { checkNotNull(store.guest(it)) { "Sobrevivente inexistente: ${guest.id}" } }
+        }.last()
+    }
+
     private fun Guest.summary() =
-        GuestSummary(id, fullName, socialName, birthDate, nationality, vip, restricted, companyId)
+        GuestSummary(id, fullName, socialName, birthDate, nationality, vip, restricted, companyId, status, mergedInto)
 }

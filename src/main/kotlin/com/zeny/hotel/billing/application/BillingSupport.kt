@@ -1,0 +1,267 @@
+package com.zeny.hotel.billing.application
+
+import com.zeny.hotel.billing.BillingErrorCodes
+import com.zeny.hotel.billing.BillingPermissions
+import com.zeny.hotel.billing.FolioId
+import com.zeny.hotel.billing.FolioOwner
+import com.zeny.hotel.billing.FolioOwnerType
+import com.zeny.hotel.billing.FolioStatus
+import com.zeny.hotel.billing.FolioSummary
+import com.zeny.hotel.billing.PostingId
+import com.zeny.hotel.billing.PostingSource
+import com.zeny.hotel.billing.PostingSummary
+import com.zeny.hotel.billing.PostingType
+import com.zeny.hotel.billing.RevenueGroup
+import com.zeny.hotel.billing.TransactionCodeId
+import com.zeny.hotel.billing.TransactionCodeKey
+import com.zeny.hotel.billing.TransactionCodeKind
+import com.zeny.hotel.billing.TransactionCodeSummary
+import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.Posting
+import com.zeny.hotel.billing.domain.TransactionCode
+import com.zeny.hotel.guests.CompanyId
+import com.zeny.hotel.shared.DocumentNumber
+import com.zeny.hotel.shared.ModulePermissions
+import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.Percent
+import com.zeny.hotel.shared.UserId
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import java.math.BigDecimal
+import java.time.Instant
+import java.time.LocalDate
+import java.util.UUID
+
+/** As permissões do módulo no catálogo. */
+@Configuration(proxyBeanMethods = false)
+class BillingPermissionsConfiguration {
+    @Bean
+    fun billingPermissions(): ModulePermissions = BillingPermissions
+}
+
+/**
+ * Ações e entidades da trilha do `billing`. Os retratos (H10) não levam texto livre (descrição do lançamento, motivo
+ * da correção): só ids, tipos, valores, datas e a situação. O texto fica no próprio lançamento, imutável.
+ */
+object BillingAudit {
+    const val TRANSACTION_CODE = "billing.transaction-code"
+    const val FOLIO = "billing.folio"
+    const val POSTING = "billing.posting"
+
+    const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
+    const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
+    const val DEACTIVATE_TRANSACTION_CODE = "billing.transaction-code.deactivate"
+    const val REACTIVATE_TRANSACTION_CODE = "billing.transaction-code.reactivate"
+    const val OPEN_FOLIO = "billing.folio.open"
+    const val UPDATE_FOLIO = "billing.folio.update"
+    const val CREATE_POSTING = "billing.posting.create"
+    const val REVERSE_POSTING = "billing.posting.reverse"
+    const val ADJUST_POSTING = "billing.posting.adjust"
+}
+
+/** Um código de lançamento lido. */
+data class TransactionCodeView(
+    val id: TransactionCodeId,
+    val key: TransactionCodeKey?,
+    val code: String,
+    val name: String,
+    val kind: TransactionCodeKind,
+    val revenueGroup: RevenueGroup,
+    val serviceChargeApplies: Boolean,
+    val serviceChargeRate: Percent?,
+    val fiscalClassification: String?,
+    val active: Boolean,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val version: Long,
+) {
+    fun summary() =
+        TransactionCodeSummary(
+            id,
+            key,
+            code,
+            name,
+            kind,
+            revenueGroup,
+            serviceChargeApplies,
+            serviceChargeRate,
+            active,
+        )
+}
+
+/** Uma conta lida, com o saldo. */
+data class FolioView(
+    val id: FolioId,
+    val number: DocumentNumber,
+    val ownerType: FolioOwnerType,
+    val ownerId: UUID,
+    val payerCompanyId: CompanyId?,
+    val creditLimit: Money?,
+    val status: FolioStatus,
+    val balance: Money,
+    val openedOn: LocalDate,
+    val openedAt: Instant,
+    val openedBy: UserId?,
+    val updatedAt: Instant,
+    val version: Long,
+) {
+    /** Saldo acima do limite de crédito (sem limite, nunca). */
+    val creditLimitExceeded: Boolean get() = creditLimit?.let { balance > it } ?: false
+
+    fun summary() =
+        FolioSummary(
+            id,
+            number,
+            FolioOwner(ownerType, ownerId),
+            payerCompanyId,
+            creditLimit,
+            status,
+            openedOn,
+            balance,
+        )
+}
+
+/** Um lançamento lido, com o estorno que o corrigiu e o que ainda resta (só no normal). */
+data class PostingView(
+    val id: PostingId,
+    val folioId: FolioId,
+    val transactionCodeId: TransactionCodeId,
+    val type: PostingType,
+    val quantity: BigDecimal,
+    val unitPrice: Money,
+    val amount: Money,
+    val description: String,
+    val source: PostingSource,
+    val businessDate: LocalDate,
+    val postedAt: Instant,
+    val postedBy: UserId?,
+    val correctsId: PostingId?,
+    val reason: String?,
+    val approvalId: UUID?,
+    val approvedBy: UserId?,
+    val reversedBy: PostingId?,
+    val remaining: Money?,
+)
+
+internal fun TransactionCode.view() =
+    TransactionCodeView(
+        id,
+        key,
+        code,
+        name,
+        kind,
+        revenueGroup,
+        serviceChargeApplies,
+        serviceChargeRate,
+        fiscalClassification,
+        active,
+        createdAt,
+        updatedAt,
+        checkNotNull(version),
+    )
+
+internal fun Folio.view(balance: Money) =
+    FolioView(
+        id,
+        number,
+        ownerType,
+        ownerId,
+        payerCompanyId,
+        creditLimit,
+        status,
+        balance,
+        openedOn,
+        openedAt,
+        openedBy,
+        updatedAt,
+        checkNotNull(version),
+    )
+
+internal fun PostingRow.view() =
+    PostingView(
+        posting.id,
+        posting.folioId,
+        posting.transactionCodeId,
+        posting.type,
+        posting.quantity,
+        posting.unitPrice,
+        posting.amount,
+        posting.description,
+        posting.source,
+        posting.businessDate,
+        posting.postedAt,
+        posting.postedBy,
+        posting.correctsId,
+        posting.reason,
+        posting.approval?.approvalId,
+        posting.approval?.approvedBy,
+        reversedBy,
+        remaining,
+    )
+
+internal fun Posting.summary() =
+    PostingSummary(
+        id,
+        folioId,
+        transactionCodeId,
+        type,
+        quantity,
+        unitPrice,
+        amount,
+        source,
+        businessDate,
+        postedAt,
+        postedBy,
+        correctsId,
+    )
+
+/** Retrato da trilha de um código de lançamento. */
+internal fun TransactionCode.auditState(): Map<String, Any?> =
+    mapOf(
+        "key" to key?.name,
+        "code" to code,
+        "name" to name,
+        "kind" to kind.name,
+        "revenueGroup" to revenueGroup.name,
+        "serviceChargeApplies" to serviceChargeApplies,
+        "serviceChargeRate" to serviceChargeRate?.toString(),
+        "fiscalClassification" to fiscalClassification,
+        "active" to active,
+    )
+
+/** Retrato da trilha de uma conta: só ids, situação e valores (H10). */
+internal fun Folio.auditState(): Map<String, Any?> =
+    mapOf(
+        "number" to number.toString(),
+        "ownerType" to ownerType.name,
+        "ownerId" to ownerId.toString(),
+        "payerCompanyId" to payerCompanyId?.toString(),
+        "creditLimit" to creditLimit?.amount?.toPlainString(),
+        "status" to status.name,
+        "openedOn" to openedOn.toString(),
+    )
+
+/** Retrato da trilha de um lançamento: sem a descrição nem o motivo (texto livre, H10). */
+internal fun Posting.auditState(): Map<String, Any?> =
+    mapOf(
+        "folioId" to folioId.toString(),
+        "transactionCodeId" to transactionCodeId.toString(),
+        "type" to type.name,
+        "quantity" to quantity.toPlainString(),
+        "unitPrice" to unitPrice.amount.toPlainString(),
+        "amount" to amount.amount.toPlainString(),
+        "source" to source.name,
+        "businessDate" to businessDate.toString(),
+        "correctsId" to correctsId?.toString(),
+        "approvalId" to approval?.approvalId?.toString(),
+        "approvedBy" to approval?.approvedBy?.toString(),
+    )
+
+internal fun folioNotFound() = NotFoundException(BillingErrorCodes.FOLIO_NOT_FOUND, "Conta não encontrada.")
+
+internal fun postingNotFound() =
+    NotFoundException(BillingErrorCodes.POSTING_NOT_FOUND, "Lançamento não encontrado nesta conta.")
+
+internal fun transactionCodeNotFound() =
+    NotFoundException(BillingErrorCodes.TRANSACTION_CODE_NOT_FOUND, "Código de lançamento não encontrado.")

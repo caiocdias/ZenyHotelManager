@@ -3,12 +3,16 @@ package com.zeny.hotel.guests.web
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.guests.DocumentType
 import com.zeny.hotel.guests.Gender
+import com.zeny.hotel.guests.GuestMergeField
 import com.zeny.hotel.guests.GuestPreferences
+import com.zeny.hotel.guests.GuestStatus
 import com.zeny.hotel.guests.RaceColor
 import com.zeny.hotel.guests.application.AddressCommand
 import com.zeny.hotel.guests.application.CompanyCommand
 import com.zeny.hotel.guests.application.CompanyView
 import com.zeny.hotel.guests.application.DocumentCommand
+import com.zeny.hotel.guests.application.DuplicateCandidateView
+import com.zeny.hotel.guests.application.DuplicateReason
 import com.zeny.hotel.guests.application.GuestCommand
 import com.zeny.hotel.guests.application.GuestView
 import com.zeny.hotel.guests.application.RevealedDocument
@@ -28,6 +32,7 @@ import java.time.LocalDate
 import java.util.UUID
 
 private const val MAX_DOCUMENTS = 6
+private const val MAX_CONSENTS = 10
 private const val COUNTRY_DESCRIPTION = "País pela ISO 3166-1 alfa-2 (BR, AR, US…)."
 
 @Schema(description = "Endereço no Brasil com o código IBGE do município.")
@@ -165,8 +170,9 @@ data class GuestProfileRequest(
     val companyId: UUID? = null,
     @field:Schema(
         description =
-            "Restrições alimentares: dado sensível, só com o consentimento do hóspede (RF-HOS-02). Até o " +
-                "consentimento existir, qualquer valor é recusado com 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`.",
+            "Restrições alimentares: dado de saúde, gravado cifrado e só com o consentimento ativo do hóspede para a " +
+                "finalidade `DIETARY_RESTRICTIONS` (RF-HOS-02); sem ele, 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`. " +
+                "Revogar o consentimento apaga as restrições.",
     )
     @field:Size(max = 500)
     val dietaryRestrictions: String? = null,
@@ -203,6 +209,15 @@ data class CreateGuestRequest(
     val documents: List<@Valid GuestDocumentRequest> = emptyList(),
     @field:Valid
     val sensitiveData: GuestSensitiveDataRequest? = null,
+    @field:Schema(
+        description =
+            "Consentimentos dados no cadastro (um por finalidade), registrados antes dos dados: o de " +
+                "`DIETARY_RESTRICTIONS` permite gravar as restrições alimentares no mesmo pedido. Opcional.",
+        // Opcional (vazio por padrão): um cliente anterior à E03 do M3 continua válido.
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+    )
+    @field:Size(max = MAX_CONSENTS)
+    val consents: List<@Valid ConsentRequest> = emptyList(),
 )
 
 @Schema(description = "Um termo de busca por documento (o número vai no corpo, nunca na URL).")
@@ -268,11 +283,29 @@ data class GuestResponse(
     val vip: Boolean,
     val notes: String?,
     val companyId: UUID?,
+    @field:Schema(description = "Restrições alimentares (só com o consentimento ativo do hóspede).")
+    val dietaryRestrictions: String?,
     @field:Schema(description = "Preenchido só se o hóspede está na lista de restrição.")
     val restriction: GuestRestrictionResponse?,
     val documents: List<GuestDocumentResponse>,
     @field:Schema(description = "Se os dados sensíveis da FNRH já foram gravados (os valores nunca voltam).")
     val hasSensitiveData: Boolean,
+    @field:Schema(
+        description =
+            "`ACTIVE`; `MERGED` depois de absorvido por outro perfil numa mesclagem de duplicados (use o " +
+                "sobrevivente, `mergedInto`); `ANONYMIZED` depois de anonimizado a pedido do titular (sem dado " +
+                "pessoal: o nome vira \"Hóspede anonimizado\"). Os dois últimos não mudam mais e não voltam nas " +
+                "buscas.",
+    )
+    val status: GuestStatus,
+    @field:Schema(description = "O perfil sobrevivente, num perfil mesclado.")
+    val mergedInto: UUID?,
+    @field:Schema(description = "Quando o perfil foi mesclado.")
+    val mergedAt: Instant?,
+    @field:Schema(
+        description = "Quando o perfil foi anonimizado (também num perfil mesclado absorvido por um anonimizado).",
+    )
+    val anonymizedAt: Instant?,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -295,6 +328,7 @@ data class GuestResponse(
                 vip = view.vip,
                 notes = view.notes,
                 companyId = view.companyId?.value,
+                dietaryRestrictions = view.dietaryRestrictions,
                 restriction =
                     view.restriction?.let { GuestRestrictionResponse(it.reason, it.since, it.restrictedBy?.value) },
                 documents =
@@ -302,8 +336,50 @@ data class GuestResponse(
                         GuestDocumentResponse(it.id.value, it.type, it.issuingCountry, it.maskedNumber, it.createdAt)
                     },
                 hasSensitiveData = view.hasSensitiveData,
+                status = view.status,
+                mergedInto = view.mergedInto?.value,
+                mergedAt = view.mergedAt,
+                anonymizedAt = view.anonymizedAt,
                 createdAt = view.createdAt,
                 updatedAt = view.updatedAt,
+            )
+    }
+}
+
+@Schema(
+    description =
+        "A mesclagem de um perfil duplicado no perfil do caminho (o sobrevivente). Por padrão vale o que o " +
+            "sobrevivente tem e os campos vazios dele recebem os do absorvido; os campos listados em " +
+            "`takeFromMerged` " +
+            "vêm do absorvido, se ele os tiver (nada é apagado). VIP se qualquer um for; restrito se qualquer um " +
+            "estiver (com o motivo do sobrevivente, ou o do absorvido se só ele estava). Documentos: os iguais ficam " +
+            "uma vez só, os que faltam passam para o sobrevivente, e o mesmo tipo e país com outro número é recusado.",
+)
+data class MergeGuestRequest(
+    @field:Schema(description = "O perfil absorvido: fica como mesclado (`MERGED`), nunca é apagado.")
+    @field:NotNull
+    val mergedGuestId: UUID?,
+    @field:Schema(description = "Os dados do perfil que vêm do absorvido (por padrão, nenhum: vale o do sobrevivente).")
+    val takeFromMerged: Set<GuestMergeField> = emptySet(),
+)
+
+@Schema(description = "Dois perfis ativos que parecem o mesmo hóspede (candidatos a duplicado).")
+data class DuplicateCandidateResponse(
+    @field:Schema(description = "O perfil de menor id do par.")
+    val first: GuestResponse,
+    val second: GuestResponse,
+    @field:Schema(description = "O que os dois têm em comum: um documento igual (`DOCUMENT`) e/ou o e-mail (`EMAIL`).")
+    val reasons: List<DuplicateReason>,
+    @field:Schema(description = "Os tipos dos documentos iguais (vazio se só o e-mail é igual).")
+    val documentTypes: List<DocumentType>,
+) {
+    companion object {
+        fun of(view: DuplicateCandidateView) =
+            DuplicateCandidateResponse(
+                GuestResponse.of(view.first),
+                GuestResponse.of(view.second),
+                view.reasons,
+                view.documentTypes,
             )
     }
 }

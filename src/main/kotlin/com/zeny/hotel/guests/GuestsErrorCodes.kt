@@ -44,8 +44,8 @@ object GuestsErrorCodes {
     val SENSITIVE_DATA_INVALID = ErrorCode("SENSITIVE_DATA_INVALID")
 
     /**
-     * 422: restrições alimentares são dado sensível e só se gravam com o consentimento do titular (RF-HOS-02),
-     * que chega na E03 do M3; até lá o campo é recusado.
+     * 422: restrições alimentares são dado sensível (saúde) e só se gravam com o consentimento ativo do titular
+     * para a finalidade `DIETARY_RESTRICTIONS` (RF-HOS-02).
      */
     val DIETARY_RESTRICTIONS_REQUIRE_CONSENT = ErrorCode("DIETARY_RESTRICTIONS_REQUIRE_CONSENT")
 
@@ -57,4 +57,40 @@ object GuestsErrorCodes {
 
     /** 409: já existe uma empresa com este CNPJ (ativa ou desativada: reative-a). */
     val CNPJ_ALREADY_IN_USE = ErrorCode("CNPJ_ALREADY_IN_USE")
+
+    /** 409: mesclar um perfil com ele mesmo (RF-HOS-05). */
+    val GUEST_MERGE_SAME_PROFILE = ErrorCode("GUEST_MERGE_SAME_PROFILE")
+
+    /**
+     * 409: o perfil já foi mesclado em outro: não é mesclado de novo (nem como sobrevivente) nem editado; use o
+     * sobrevivente (`mergedInto`).
+     */
+    val GUEST_ALREADY_MERGED = ErrorCode("GUEST_ALREADY_MERGED")
+
+    /**
+     * 409: os dois perfis têm um documento do mesmo tipo e país com números diferentes; retire o errado antes de
+     * mesclar (decisão do usuário em 2026-10-17).
+     */
+    val GUEST_MERGE_DOCUMENT_CONFLICT = ErrorCode("GUEST_MERGE_DOCUMENT_CONFLICT")
+
+    /**
+     * 409: o perfil foi anonimizado a pedido do titular (RF-HOS-07): não muda mais, não é mesclado e não recebe
+     * documentos, consentimentos nem anexos.
+     */
+    val GUEST_ANONYMIZED = ErrorCode("GUEST_ANONYMIZED")
+
+    /** 409: o hóspede tem estadia ativa (informada pelos módulos de cima): a anonimização espera ela terminar. */
+    val GUEST_HAS_ACTIVE_STAY = ErrorCode("GUEST_HAS_ACTIVE_STAY")
+
+    /** 404: consentimento inexistente (ou de outro perfil). */
+    val CONSENT_NOT_FOUND = ErrorCode("CONSENT_NOT_FOUND")
+
+    /**
+     * 422: o anexo informado não serve ao perfil: não existe (ou foi apagado), é de uma finalidade que não é de
+     * hóspede ou já está vinculado a outro registro.
+     */
+    val GUEST_ATTACHMENT_INVALID = ErrorCode("GUEST_ATTACHMENT_INVALID")
+
+    /** 404: o anexo não está vinculado a este perfil. */
+    val GUEST_ATTACHMENT_NOT_FOUND = ErrorCode("GUEST_ATTACHMENT_NOT_FOUND")
 }

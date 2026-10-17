@@ -20,20 +20,22 @@ servers:
 security:
 - bearerAuth: []
 tags:
+- description: Configuração do hotel e data operacional.
+  name: hotel
+- description: "Modelos de checklist, rascunhos e versões publicadas."
+  name: checklists
+- description: "Códigos de lançamento, contas e lançamentos imutáveis."
+  name: billing
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
 - description: "Tipos de UH, características, UHs e áreas comuns."
   name: rooms
-- description: Configuração do hotel e data operacional.
-  name: hotel
 - description: Informações sobre o servidor e a API.
   name: meta
 - description: Sincronização offline do app operacional.
   name: sync
-- description: "Modelos de checklist, rascunhos e versões publicadas."
-  name: checklists
 - description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
   name: guests
 - description: Trilha de auditoria das escritas.
@@ -2283,14 +2285,491 @@ paths:
       summary: Gerar a URL de download de um anexo
       tags:
       - files
+  /api/v1/folios:
+    get:
+      description: "Da mais nova para a mais antiga, com o saldo. Exige `billing.folios.read`."
+      operationId: listFolios
+      parameters:
+      - in: query
+        name: ownerType
+        required: false
+        schema:
+          type: string
+          enum:
+          - RESERVATION
+          - GROUP
+          - EVENT
+          - COMPANY
+          - WALK_IN
+      - description: Id do dono (com ou sem `ownerType`).
+        in: query
+        name: ownerId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+      - in: query
+        name: payerCompanyId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageFolioResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar contas
+      tags:
+      - billing
+    post:
+      description: "Na data operacional, com número `C-<ano>-<sequência>`. Exige `billing.folios.manage`.\
+        \ Dono sem id (fora da avulsa): 400 `FOLIO_OWNER_INVALID`; empresa (dona ou\
+        \ pagadora) inexistente: 400 `UNKNOWN_COMPANY`; desativada: 422 `COMPANY_INACTIVE`;\
+        \ limite negativo: 400 `BILLING_DATA_INVALID`."
+      operationId: openFolio
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolioOpenRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolioResponse"
+          description: Conta aberta.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Abrir uma conta
+      tags:
+      - billing
+  /api/v1/folios/{id}:
+    get:
+      description: "Com o saldo; o `ETag` muda a cada lançamento. Exige `billing.folios.read`.\
+        \ Inexistente: 404 `FOLIO_NOT_FOUND`."
+      operationId: getFolio
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolioResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma conta
+      tags:
+      - billing
+    put:
+      description: "O dono não muda. Exige `billing.folios.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Pagador novo inexistente: 400 `UNKNOWN_COMPANY`;\
+        \ desativado: 422 `COMPANY_INACTIVE`."
+      operationId: updateFolio
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolioUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolioResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Trocar o pagador e o limite de crédito
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings:
+    get:
+      description: "Em ordem de lançamento, com o estorno e o que ainda resta de cada\
+        \ um. Exige `billing.folios.read`."
+      operationId: listPostings
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePostingResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os lançamentos de uma conta
+      tags:
+      - billing
+    post:
+      description: "Lançamento manual na data operacional do hotel (RN-01): valor\
+        \ = quantidade × valor unitário, arredondado pela regra de `Money`, negativo\
+        \ num código `CREDIT`. Exige `billing.postings.create`. Conta encerrada: 409\
+        \ `FOLIO_CLOSED`; código inexistente: 400 `UNKNOWN_TRANSACTION_CODE`; desativado:\
+        \ 422 `TRANSACTION_CODE_INACTIVE`; quantidade ou valor fora da faixa: 400\
+        \ `POSTING_INVALID`."
+      operationId: createPosting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostingRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostingResponse"
+          description: Lançado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Lançar numa conta
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings/{postingId}:
+    get:
+      description: "Exige `billing.folios.read`. Inexistente nesta conta: 404 `POSTING_NOT_FOUND`."
+      operationId: getPosting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: postingId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostingResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um lançamento
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings/{postingId}/adjust:
+    post:
+      description: "Cria um lançamento vinculado no mesmo código, com o valor informado\
+        \ e o sinal oposto ao do original, e motivo. Parcial: até o que ainda resta\
+        \ (acima: 422 `ADJUSTMENT_EXCEEDS_REMAINING`). Exige `billing.postings.adjust`.\
+        \ Exige antes `billing.folios.read` (sem ela, 403 `PERMISSION_DENIED`, antes\
+        \ de ler a conta). Ação **sensível** com o limite `maxAmount` sobre o total\
+        \ das correções do lançamento (as já feitas mais esta, em valor absoluto):\
+        \ sem a permissão, ou acima do limite, 403 `APPROVAL_REQUIRED` (com `action`,\
+        \ `permission`, `resourceRef` e `limit`); repita com o `X-Approval-Token`\
+        \ de `POST /api/v1/auth/approvals` e **outra** `Idempotency-Key`. Só um lanç\
+        amento normal é corrigido (422 `POSTING_NOT_CORRECTABLE`); lançamento já estornado:\
+        \ 409 `POSTING_ALREADY_REVERSED`; conta encerrada: 409 `FOLIO_CLOSED`. Essas\
+        \ regras são conferidas antes da aprovação de superior."
+      operationId: adjustPosting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: postingId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdjustmentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostingResponse"
+          description: Ajustado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Ajustar um lançamento
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings/{postingId}/reverse:
+    post:
+      description: "Cria o lançamento inverso de tudo o que ainda resta do original\
+        \ (ele menos os ajustes), vinculado e com motivo; um estorno por lançamento.\
+        \ Os ajustes já zerando o original: 422 `POSTING_NOTHING_TO_REVERSE`. Exige\
+        \ `billing.postings.reverse`. Exige antes `billing.folios.read` (sem ela,\
+        \ 403 `PERMISSION_DENIED`, antes de ler a conta). Ação **sensível** com o\
+        \ limite `maxAmount` sobre o total das correções do lançamento (as já feitas\
+        \ mais esta, em valor absoluto): sem a permissão, ou acima do limite, 403\
+        \ `APPROVAL_REQUIRED` (com `action`, `permission`, `resourceRef` e `limit`);\
+        \ repita com o `X-Approval-Token` de `POST /api/v1/auth/approvals` e **outra**\
+        \ `Idempotency-Key`. Só um lançamento normal é corrigido (422 `POSTING_NOT_CORRECTABLE`);\
+        \ lançamento já estornado: 409 `POSTING_ALREADY_REVERSED`; conta encerrada:\
+        \ 409 `FOLIO_CLOSED`. Essas regras são conferidas antes da aprovação de superior."
+      operationId: reversePosting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: postingId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReversalRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostingResponse"
+          description: Estornado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Estornar um lançamento
+      tags:
+      - billing
   /api/v1/guests:
     get:
       description: "Em ordem de nome (sem acento). `name` procura cada palavra como\
         \ trecho do nome ou do nome social, sem diferenciar acento nem maiúsculas;\
         \ `email` é exato. Para buscar por documento, use `POST /api/v1/guests/search-by-document`\
-        \ (o número não vai na URL). Exige `guests.profiles.read`. Os documentos vê\
-        m mascarados (só os últimos caracteres) e os dados sensíveis da FNRH nunca\
-        \ vêm."
+        \ (o número não vai na URL). Só perfis ativos (um mesclado só se lê pelo id).\
+        \ Exige `guests.profiles.read`. Os documentos vêm mascarados (só os últimos\
+        \ caracteres) e os dados sensíveis da FNRH nunca vêm."
       operationId: listGuests
       parameters:
       - description: Trecho do nome ou do nome social (de 2 a 200 caracteres).
@@ -2366,7 +2845,8 @@ paths:
         \ reside no Brasil (400 `ADDRESS_REQUIRES_BRAZIL_RESIDENCE`). CPF com dígito\
         \ verificador errado ou número fora do formato do tipo: 400 `DOCUMENT_NUMBER_INVALID`;\
         \ país emissor incompatível com o tipo: 400 `DOCUMENT_COUNTRY_INVALID`. Restriç\
-        ões alimentares: 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`."
+        ões alimentares sem o consentimento `DIETARY_RESTRICTIONS` (que pode vir em\
+        \ `consents`): 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`."
       operationId: createGuest
       requestBody:
         content:
@@ -2390,14 +2870,65 @@ paths:
       summary: Cadastrar um perfil de hóspede
       tags:
       - guests
+  /api/v1/guests/duplicate-candidates:
+    get:
+      description: "Pares de perfis ativos com um documento igual (pelo índice cego,\
+        \ sem decifrar nada) ou o mesmo e-mail (RF-HOS-05), cada par uma vez, o de\
+        \ menor id primeiro, em ordem dos ids. `guestId`: só os pares desse perfil\
+        \ (inexistente: 404 `GUEST_NOT_FOUND`). Documentos indexados com chaves diferentes\
+        \ do anel (no meio de uma rotação) só se casam depois da reindexação. Exige\
+        \ `guests.profiles.read`. Os documentos vêm mascarados (só os últimos caracteres)\
+        \ e os dados sensíveis da FNRH nunca vêm."
+      operationId: listGuestDuplicateCandidates
+      parameters:
+      - description: Só os pares deste perfil.
+        in: query
+        name: guestId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageDuplicateCandidateResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar candidatos a duplicado
+      tags:
+      - guests
   /api/v1/guests/search-by-document:
     post:
       description: "Pelo índice cego (H8): o número é normalizado como no cadastro\
         \ e comparado só pelo hash, sem decifrar os registros. Vai no corpo, nunca\
-        \ na URL. Até 50 perfis (mais de um: duplicados). Número inválido para o tipo:\
-        \ 400 `DOCUMENT_NUMBER_INVALID`. Exige `guests.profiles.read`. Os documentos\
-        \ vêm mascarados (só os últimos caracteres) e os dados sensíveis da FNRH nunca\
-        \ vêm."
+        \ na URL. Até 50 perfis ativos (mais de um: duplicados). Número inválido para\
+        \ o tipo: 400 `DOCUMENT_NUMBER_INVALID`. Exige `guests.profiles.read`. Os\
+        \ documentos vêm mascarados (só os últimos caracteres) e os dados sensíveis\
+        \ da FNRH nunca vêm."
       operationId: searchGuestsByDocument
       requestBody:
         content:
@@ -2424,8 +2955,9 @@ paths:
   /api/v1/guests/{id}:
     get:
       description: "Exige `guests.profiles.read`. Os documentos vêm mascarados (só\
-        \ os últimos caracteres) e os dados sensíveis da FNRH nunca vêm. Inexistente:\
-        \ 404 `GUEST_NOT_FOUND`."
+        \ os últimos caracteres) e os dados sensíveis da FNRH nunca vêm. Um perfil\
+        \ mesclado continua respondendo, com `status` `MERGED` e o sobrevivente em\
+        \ `mergedInto`. Inexistente: 404 `GUEST_NOT_FOUND`."
       operationId: getGuest
       parameters:
       - in: path
@@ -2453,7 +2985,9 @@ paths:
     put:
       description: "Troca os dados do perfil (não os documentos, os dados sensíveis\
         \ nem a restrição, que têm ações próprias). Exige `guests.profiles.manage`.\
-        \ e o `If-Match` (ausente: 428; versão diferente: 412)."
+        \ e o `If-Match` (ausente: 428; versão diferente: 412). Num perfil mesclado:\
+        \ 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado, 409\
+        \ `GUEST_ANONYMIZED`."
       operationId: updateGuest
       parameters:
       - in: path
@@ -2467,6 +3001,14 @@ paths:
         required: false
         schema:
           type: string
+      - description: "Pedido do titular (RF-HOS-07): a trilha registra a correção\
+          \ com a origem `DATA_SUBJECT_REQUEST`."
+        in: query
+        name: dataSubjectRequest
+        required: false
+        schema:
+          type: boolean
+          default: false
       requestBody:
         content:
           application/json:
@@ -2489,11 +3031,266 @@ paths:
       summary: Corrigir um perfil de hóspede
       tags:
       - guests
+  /api/v1/guests/{id}/anonymize:
+    post:
+      description: "Irreversível (RF-HOS-07). Ficam o id, a situação `ANONYMIZED`,\
+        \ os consentimentos, a nacionalidade, o país de residência, a UF e o municí\
+        pio e o VIP; saem o nome, os contatos, o endereço de rua, a data de nascimento,\
+        \ o gênero, as preferências, as observações, as restrições alimentares, a\
+        \ empresa, a restrição, os dados sensíveis da FNRH, os documentos e os anexos.\
+        \ Ação sensível: sem `guests.data.anonymize`, 403 `APPROVAL_REQUIRED`, e a\
+        \ requisição repetida com o `X-Approval-Token` de um superior é concluída.\
+        \ Com estadia ativa: 409 `GUEST_HAS_ACTIVE_STAY`; já anonimizado: 409 `GUEST_ANONYMIZED`.\
+        \ Vale para o titular inteiro: o perfil e os absorvidos por ele em mesclagens.\
+        \ Num perfil mesclado: 409 `GUEST_ALREADY_MERGED` (faça o pedido no sobrevivente).\
+        \ Inexistente: 404 `GUEST_NOT_FOUND`."
+      operationId: anonymizeGuest
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Anonimizar o perfil a pedido do titular
+      tags:
+      - guests
+  /api/v1/guests/{id}/attachments:
+    get:
+      description: "Documento de identidade e autorização de menor (RF-HOS-08), em\
+        \ ordem de vínculo, com os metadados. O conteúdo sai por `GET /api/v1/files/{fileId}/download-url`\
+        \ (URL de curta duração do servidor; cada URL emitida e cada download ficam\
+        \ na trilha). Exige `guests.attachments.read`."
+      operationId: listGuestAttachments
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestAttachmentListResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os anexos de um perfil
+      tags:
+      - guests
+    post:
+      description: "O anexo já enviado por `POST /api/v1/files` com uma finalidade\
+        \ de hóspede (`guests.id-document-photo`, `guests.minor-authorization-photo`\
+        \ ou `guests.document-pdf`, sensíveis). Já vinculado a este perfil: 200, sem\
+        \ mudar nada. Inexistente, de outra finalidade ou de outro registro: 422 `GUEST_ATTACHMENT_INVALID`.\
+        \ Exige `guests.attachments.manage`. Num perfil mesclado: 409 `GUEST_ALREADY_MERGED`;\
+        \ num anonimizado, 409 `GUEST_ANONYMIZED`."
+      operationId: attachGuestFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachGuestFileRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestAttachmentResponse"
+          description: Anexo vinculado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Vincular um anexo ao perfil
+      tags:
+      - guests
+  /api/v1/guests/{id}/attachments/{fileId}/remove:
+    post:
+      description: "Apaga o anexo (o arquivo sai do armazenamento). Não vinculado\
+        \ a este perfil: 404 `GUEST_ATTACHMENT_NOT_FOUND`. Exige `guests.attachments.manage`."
+      operationId: removeGuestAttachment
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: fileId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: Anexo retirado e apagado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retirar um anexo do perfil
+      tags:
+      - guests
+  /api/v1/guests/{id}/consents:
+    get:
+      description: "Todos, inclusive os revogados, do mais recente ao mais antigo\
+        \ (RF-HOS-07). Exige `guests.profiles.read`."
+      operationId: listGuestConsents
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentListResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os consentimentos de um perfil
+      tags:
+      - guests
+    post:
+      description: "O consentimento do titular para a finalidade, com o meio (a origem)\
+        \ e o instante. Já havendo um ativo da mesma finalidade, devolve-o (200) sem\
+        \ mudar nada. Exige `guests.profiles.manage`. Num perfil mesclado: 409 `GUEST_ALREADY_MERGED`;\
+        \ num anonimizado, 409 `GUEST_ANONYMIZED`."
+      operationId: grantGuestConsent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentResponse"
+          description: Consentimento registrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar um consentimento
+      tags:
+      - guests
+  /api/v1/guests/{id}/consents/{consentId}/revoke:
+    post:
+      description: "Marca a revogação com o meio e o instante (o registro fica, como\
+        \ prova). Revogar o de `DIETARY_RESTRICTIONS` apaga as restrições alimentares\
+        \ gravadas. Já revogado: nada muda. De outro perfil ou inexistente: 404 `CONSENT_NOT_FOUND`.\
+        \ Exige `guests.profiles.manage`. Nunca é recusada pela situação do perfil\
+        \ (LGPD art. 8º §5º): vale num perfil anonimizado e num mesclado, e pelo id\
+        \ de um mesclado o consentimento é procurado também na cadeia até o sobrevivente,\
+        \ para onde a mesclagem o levou."
+      operationId: revokeGuestConsent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: consentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RevokeConsentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Revogar um consentimento
+      tags:
+      - guests
   /api/v1/guests/{id}/documents:
     post:
       description: "Exige `guests.profiles.manage`. Um documento de cada tipo e paí\
         s por perfil (repetido: 409 `DOCUMENT_ALREADY_RECORDED`; para corrigir, retire\
-        \ o anterior). Devolve o perfil."
+        \ o anterior). Devolve o perfil. Num perfil mesclado: 409 `GUEST_ALREADY_MERGED`\
+        \ (altere o sobrevivente); num anonimizado, 409 `GUEST_ANONYMIZED`."
       operationId: addGuestDocument
       parameters:
       - in: path
@@ -2502,6 +3299,14 @@ paths:
         schema:
           type: string
           format: uuid
+      - description: "Pedido do titular (RF-HOS-07): a trilha registra a correção\
+          \ com a origem `DATA_SUBJECT_REQUEST`."
+        in: query
+        name: dataSubjectRequest
+        required: false
+        schema:
+          type: boolean
+          default: false
       requestBody:
         content:
           application/json:
@@ -2527,7 +3332,8 @@ paths:
   /api/v1/guests/{id}/documents/{documentId}/remove:
     post:
       description: "Exige `guests.profiles.manage`. De outro perfil ou inexistente:\
-        \ 404 `GUEST_DOCUMENT_NOT_FOUND`. Devolve o perfil."
+        \ 404 `GUEST_DOCUMENT_NOT_FOUND`. Devolve o perfil. Num perfil mesclado: 409\
+        \ `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado, 409 `GUEST_ANONYMIZED`."
       operationId: removeGuestDocument
       parameters:
       - in: path
@@ -2542,6 +3348,14 @@ paths:
         schema:
           type: string
           format: uuid
+      - description: "Pedido do titular (RF-HOS-07): a trilha registra a correção\
+          \ com a origem `DATA_SUBJECT_REQUEST`."
+        in: query
+        name: dataSubjectRequest
+        required: false
+        schema:
+          type: boolean
+          default: false
       responses:
         "200":
           content:
@@ -2593,9 +3407,57 @@ paths:
       summary: Revelar o número de um documento
       tags:
       - guests
+  /api/v1/guests/{id}/export:
+    post:
+      description: "O pacote completo com os dados pessoais do titular (inclusive\
+        \ o número dos documentos e os dados sensíveis da FNRH), na própria resposta\
+        \ (nada fica guardado; sem cache). Ação sensível: sem `guests.data.export`,\
+        \ 403 `APPROVAL_REQUIRED`, e a requisição repetida com o `X-Approval-Token`\
+        \ de um superior é concluída. O acesso fica na trilha (sem os dados exportados).\
+        \ Vale para o titular inteiro: o perfil e os absorvidos por ele em mesclagens.\
+        \ Num perfil mesclado: 409 `GUEST_ALREADY_MERGED` (faça o pedido no sobrevivente).\
+        \ Inexistente: 404 `GUEST_NOT_FOUND`."
+      operationId: exportGuestData
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestDataExportResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Exportar os dados do titular
+      tags:
+      - guests
   /api/v1/guests/{id}/lift-restriction:
     post:
-      description: "Exige `guests.restrictions.manage`. Fora da lista, não muda nada."
+      description: "Exige `guests.restrictions.manage`. Fora da lista, não muda nada.\
+        \ Num perfil mesclado: 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente);\
+        \ num anonimizado, 409 `GUEST_ANONYMIZED`."
       operationId: liftGuestRestriction
       parameters:
       - in: path
@@ -2620,10 +3482,56 @@ paths:
       summary: Retirar da lista de restrição
       tags:
       - guests
+  /api/v1/guests/{id}/merge:
+    post:
+      description: "O perfil do caminho é o sobrevivente; `mergedGuestId` fica como\
+        \ mesclado (`MERGED`, com `mergedInto`), nunca é apagado, e o evento `GuestsMerged`\
+        \ sai pelo outbox na mesma transação. Exige `guests.profiles.merge` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412) do sobrevivente. O mesmo perfil: 409\
+        \ `GUEST_MERGE_SAME_PROFILE`; algum já mesclado: 409 `GUEST_ALREADY_MERGED`;\
+        \ documento do mesmo tipo e país com números diferentes: 409 `GUEST_MERGE_DOCUMENT_CONFLICT`\
+        \ (retire o errado antes); inexistente: 404 `GUEST_NOT_FOUND`. Devolve o sobrevivente."
+      operationId: mergeGuests
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeGuestRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Mesclar um perfil duplicado neste
+      tags:
+      - guests
   /api/v1/guests/{id}/restrict:
     post:
       description: "Com o motivo, que gera alerta na reserva e no check-in (RF-HOS-04);\
-        \ de novo, troca o motivo. Exige `guests.restrictions.manage`."
+        \ de novo, troca o motivo. Exige `guests.restrictions.manage`. Num perfil\
+        \ mesclado: 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado,\
+        \ 409 `GUEST_ANONYMIZED`."
       operationId: restrictGuest
       parameters:
       - in: path
@@ -2658,7 +3566,8 @@ paths:
     put:
       description: "Raça/cor e deficiência (RN-19): ficam cifrados e nunca voltam\
         \ pela API (só `hasSensitiveData`); os dois nulos apagam. Define o valor,\
-        \ sem `If-Match`. Exige `guests.profiles.manage`."
+        \ sem `If-Match`. Exige `guests.profiles.manage`. Num perfil mesclado: 409\
+        \ `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado, 409 `GUEST_ANONYMIZED`."
       operationId: recordGuestSensitiveData
       parameters:
       - in: path
@@ -2667,6 +3576,14 @@ paths:
         schema:
           type: string
           format: uuid
+      - description: "Pedido do titular (RF-HOS-07): a trilha registra a correção\
+          \ com a origem `DATA_SUBJECT_REQUEST`."
+        in: query
+        name: dataSubjectRequest
+        required: false
+        schema:
+          type: boolean
+          default: false
       requestBody:
         content:
           application/json:
@@ -5308,6 +6225,218 @@ paths:
       summary: Envia um lote de comandos offline
       tags:
       - sync
+  /api/v1/transaction-codes:
+    get:
+      description: Em ordem de código. Exige `billing.codes.read`.
+      operationId: listTransactionCodes
+      parameters:
+      - description: Só os ativos (`true`) ou só os desativados (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - in: query
+        name: revenueGroup
+        required: false
+        schema:
+          type: string
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageTransactionCodeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os códigos de lançamento
+      tags:
+      - billing
+    post:
+      description: "Exige `billing.codes.manage`. O tipo e o grupo de receita não\
+        \ mudam depois. Código curto repetido (inclusive de um desativado): 409 `TRANSACTION_CODE_ALREADY_IN_USE`;\
+        \ taxa de serviço fora de um código `CHARGE`, taxa própria sem a taxa aplicá\
+        vel ou fora de 0 a 100: 400 `TRANSACTION_CODE_INVALID`; texto ou código fora\
+        \ do formato: 400 `BILLING_DATA_INVALID`."
+      operationId: createTransactionCode
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionCodeCreateRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCodeResponse"
+          description: Código cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um código de lançamento
+      tags:
+      - billing
+  /api/v1/transaction-codes/{id}:
+    get:
+      description: "Exige `billing.codes.read`. Inexistente: 404 `TRANSACTION_CODE_NOT_FOUND`."
+      operationId: getTransactionCode
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCodeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um código de lançamento
+      tags:
+      - billing
+    put:
+      description: "Troca código, nome, taxa de serviço e classificação fiscal (o\
+        \ tipo e o grupo de receita são fixos). Exige `billing.codes.manage` e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Código curto repetido (inclusive\
+        \ de um desativado): 409 `TRANSACTION_CODE_ALREADY_IN_USE`; taxa de serviç\
+        o fora de um código `CHARGE`, taxa própria sem a taxa aplicável ou fora de\
+        \ 0 a 100: 400 `TRANSACTION_CODE_INVALID`; texto ou código fora do formato:\
+        \ 400 `BILLING_DATA_INVALID`."
+      operationId: updateTransactionCode
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransactionCodeUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCodeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um código de lançamento
+      tags:
+      - billing
+  /api/v1/transaction-codes/{id}/deactivate:
+    post:
+      description: Exige `billing.codes.manage`. Os lançamentos feitos ficam; um lançamento
+        novo no código é recusado (422 `TRANSACTION_CODE_INACTIVE`).
+      operationId: deactivateTransactionCode
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCodeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um código de lançamento
+      tags:
+      - billing
+  /api/v1/transaction-codes/{id}/reactivate:
+    post:
+      description: Exige `billing.codes.manage`.
+      operationId: reactivateTransactionCode
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionCodeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um código de lançamento
+      tags:
+      - billing
   /api/v1/users:
     get:
       description: "Todos os usuários, ativos e inativos, em ordem de login. Exige\
@@ -5883,6 +7012,26 @@ components:
       - postalCode
       - state
       - street
+    AdjustmentRequest:
+      type: object
+      description: "Um ajuste parcial: o valor (positivo) sai do lançamento, com o\
+        \ sinal oposto ao dele."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 0
+          nullable: true
+      required:
+      - amount
+      - reason
     ApplicabilityRuleDto:
       type: object
       description: "Regra de aplicabilidade: o modelo vale para o sujeito quando cada\
@@ -6080,6 +7229,17 @@ components:
       - kind
       - name
       - updatedAt
+    AttachGuestFileRequest:
+      type: object
+      description: O vínculo de um anexo já enviado (`POST /api/v1/files`) ao perfil.
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: "O id do anexo, de uma finalidade de hóspede (`guests.…`)."
+          nullable: true
+      required:
+      - fileId
     AuditEntryResponse:
       type: object
       description: Uma entrada da trilha de auditoria.
@@ -7004,6 +8164,111 @@ components:
       - id
       - legalName
       - updatedAt
+    ConsentListResponse:
+      type: object
+      description: "Os consentimentos de um perfil, do mais recente ao mais antigo."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConsentResponse"
+      required:
+      - items
+    ConsentRequest:
+      type: object
+      description: "Um consentimento do titular: a finalidade e o meio pelo qual ele\
+        \ o deu."
+      properties:
+        purpose:
+          type: string
+          enum:
+          - MARKETING
+          - DIETARY_RESTRICTIONS
+          nullable: true
+        source:
+          type: string
+          description: Por qual meio o titular deu o consentimento (a origem).
+          enum:
+          - IN_PERSON
+          - PAPER_FORM
+          - PHONE
+          - EMAIL
+          - WEBSITE
+          nullable: true
+      required:
+      - purpose
+      - source
+    ConsentResponse:
+      type: object
+      description: "Um consentimento do titular (RF-HOS-07): quando e por qual meio\
+        \ foi dado e, se for o caso, revogado. Nunca é apagado (prova): um consentimento\
+        \ novo da mesma finalidade é outro registro."
+      properties:
+        active:
+          type: boolean
+          description: Se ainda vale (não foi revogado nem substituído numa mesclagem).
+        grantedAt:
+          type: string
+          format: date-time
+        grantedBy:
+          type: string
+          format: uuid
+          description: "Quem registrou o consentimento (nulo: o sistema)."
+          nullable: true
+        grantedSource:
+          type: string
+          enum:
+          - IN_PERSON
+          - PAPER_FORM
+          - PHONE
+          - EMAIL
+          - WEBSITE
+        guestId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        purpose:
+          type: string
+          enum:
+          - MARKETING
+          - DIETARY_RESTRICTIONS
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedBy:
+          type: string
+          format: uuid
+          nullable: true
+        revokedSource:
+          type: string
+          enum:
+          - IN_PERSON
+          - PAPER_FORM
+          - PHONE
+          - EMAIL
+          - WEBSITE
+          nullable: true
+        supersededAt:
+          type: string
+          format: date-time
+          description: "Quando deixou de valer numa mesclagem de duplicados, por haver\
+            \ no perfil sobrevivente um consentimento ativo da mesma finalidade (`supersededBy`),\
+            \ que prevalece; não é uma revogação do titular."
+          nullable: true
+        supersededBy:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - active
+      - grantedAt
+      - grantedSource
+      - guestId
+      - id
+      - purpose
     CreateChecklistTemplateRequest:
       type: object
       description: "Um modelo de checklist novo: nome, contexto (fixo depois de criado)\
@@ -7048,6 +8313,15 @@ components:
       description: "Um perfil novo: os dados, os documentos e, opcionalmente, os dados\
         \ sensíveis da FNRH."
       properties:
+        consents:
+          type: array
+          description: "Consentimentos dados no cadastro (um por finalidade), registrados\
+            \ antes dos dados: o de `DIETARY_RESTRICTIONS` permite gravar as restriç\
+            ões alimentares no mesmo pedido. Opcional."
+          items:
+            $ref: "#/components/schemas/ConsentRequest"
+          maxItems: 10
+          minItems: 0
         documents:
           type: array
           description: Documentos de identidade (até 6; um de cada tipo e país).
@@ -7288,6 +8562,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageDuplicateCandidateResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DuplicateCandidateResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageEmployeeResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -7296,6 +8584,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EmployeeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageFolioResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FolioResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -7366,6 +8668,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PermissionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPagePostingResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PostingResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -7540,6 +8856,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageTransactionCodeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionCodeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageUserResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -7628,6 +8958,43 @@ components:
       required:
       - expiresAt
       - url
+    DuplicateCandidateResponse:
+      type: object
+      description: Dois perfis ativos que parecem o mesmo hóspede (candidatos a duplicado).
+      properties:
+        documentTypes:
+          type: array
+          description: Os tipos dos documentos iguais (vazio se só o e-mail é igual).
+          items:
+            type: string
+            description: Os tipos dos documentos iguais (vazio se só o e-mail é igual).
+            enum:
+            - CPF
+            - RG
+            - CNH
+            - PASSPORT
+            - RNM
+            - FOREIGN_ID
+        first:
+          $ref: "#/components/schemas/GuestResponse"
+        reasons:
+          type: array
+          description: "O que os dois têm em comum: um documento igual (`DOCUMENT`)\
+            \ e/ou o e-mail (`EMAIL`)."
+          items:
+            type: string
+            description: "O que os dois têm em comum: um documento igual (`DOCUMENT`)\
+              \ e/ou o e-mail (`EMAIL`)."
+            enum:
+            - DOCUMENT
+            - EMAIL
+        second:
+          $ref: "#/components/schemas/GuestResponse"
+      required:
+      - documentTypes
+      - first
+      - reasons
+      - second
     DuplicateRoleRequest:
       type: object
       properties:
@@ -7901,6 +9268,128 @@ components:
       - purpose
       - sensitive
       - sizeBytes
+    FolioOpenRequest:
+      type: object
+      description: Uma conta nova.
+      properties:
+        creditLimit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        owner:
+          allOf:
+          - $ref: "#/components/schemas/FolioOwnerDto"
+          nullable: true
+        payerCompanyId:
+          type: string
+          format: uuid
+          description: Empresa pagadora (opcional).
+          nullable: true
+      required:
+      - owner
+    FolioOwnerDto:
+      type: object
+      description: "O dono de uma conta: tipo e id opaco (o `billing` não conhece\
+        \ reservas)."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id do dono; só a conta avulsa (`WALK_IN`) dispensa (o dono
+            passa a ser a conta).
+          nullable: true
+        type:
+          type: string
+          enum:
+          - RESERVATION
+          - GROUP
+          - EVENT
+          - COMPANY
+          - WALK_IN
+          nullable: true
+      required:
+      - type
+    FolioResponse:
+      type: object
+      description: "Uma conta, com o saldo (a soma dos lançamentos)."
+      properties:
+        balance:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        creditLimit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        creditLimitExceeded:
+          type: boolean
+          description: "Saldo acima do limite de crédito (sem limite, sempre falso)."
+        id:
+          type: string
+          format: uuid
+        number:
+          type: string
+          description: "Número legível: prefixo, ano e sequência."
+          example: R-2026-000123
+          pattern: "^[A-Z]{1,5}-\\d{4}-\\d{6,}$"
+        openedAt:
+          type: string
+          format: date-time
+        openedBy:
+          type: string
+          format: uuid
+          nullable: true
+        openedOn:
+          type: string
+          format: date
+          description: Data operacional da abertura.
+        owner:
+          $ref: "#/components/schemas/FolioOwnerDto"
+        payerCompanyId:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - balance
+      - creditLimitExceeded
+      - id
+      - number
+      - openedAt
+      - openedOn
+      - owner
+      - status
+      - updatedAt
+    FolioUpdateRequest:
+      type: object
+      description: O pagador e o limite de crédito de uma conta (o dono não muda).
+      properties:
+        creditLimit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        payerCompanyId:
+          type: string
+          format: uuid
+          nullable: true
     GenerateScheduleRequest:
       type: object
       description: Período e alcance da geração da escala.
@@ -8027,6 +9516,97 @@ components:
       - postalCode
       - state
       - street
+    GuestAttachmentListResponse:
+      type: object
+      description: "Os anexos de um perfil, em ordem de vínculo."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuestAttachmentResponse"
+      required:
+      - items
+    GuestAttachmentResponse:
+      type: object
+      description: "Um anexo do hóspede (RF-HOS-08), sensível: o conteúdo sai pela\
+        \ URL de `GET /api/v1/files/{fileId}/download-url` (com `guests.attachments.read`),\
+        \ e cada URL emitida e cada download ficam na trilha."
+      properties:
+        attachedAt:
+          type: string
+          format: date-time
+        attachedBy:
+          type: string
+          format: uuid
+          description: Quem vinculou o anexo ao perfil.
+          nullable: true
+        contentType:
+          type: string
+        fileId:
+          type: string
+          format: uuid
+        guestId:
+          type: string
+          format: uuid
+        purpose:
+          type: string
+          description: A finalidade do anexo.
+          example: guests.id-document-photo
+        sizeBytes:
+          type: integer
+          format: int64
+        uploadedAt:
+          type: string
+          format: date-time
+        uploadedBy:
+          type: string
+          format: uuid
+          description: Quem enviou o arquivo.
+          nullable: true
+      required:
+      - attachedAt
+      - contentType
+      - fileId
+      - guestId
+      - purpose
+      - sizeBytes
+      - uploadedAt
+    GuestDataExportResponse:
+      type: object
+      description: "O pacote com os dados pessoais do titular (RF-HOS-07): o perfil\
+        \ pedido e os absorvidos por ele em mesclagens, uma seção por módulo que guarda\
+        \ dados dele e os anexos (o conteúdo de cada um sai pela URL de `GET /api/v1/files/{fileId}/download-url`).\
+        \ É o pacote completo (LGPD art. 18): os documentos com o número inteiro e\
+        \ os dados sensíveis da FNRH (raça/cor e deficiência) decifrados, só para\
+        \ o titular. Não é guardado no servidor nem vai para a trilha."
+      properties:
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuestAttachmentResponse"
+        generatedAt:
+          type: string
+          format: date-time
+        guestId:
+          type: string
+          format: uuid
+        guestIds:
+          type: array
+          description: "Os perfis incluídos: o pedido e os absorvidos por ele."
+          items:
+            type: string
+            format: uuid
+            description: "Os perfis incluídos: o pedido e os absorvidos por ele."
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonalDataSectionResponse"
+      required:
+      - attachments
+      - generatedAt
+      - guestId
+      - guestIds
+      - sections
     GuestDocumentRequest:
       type: object
       description: Um documento de identidade com o número em claro (só na entrada).
@@ -8174,9 +9754,10 @@ components:
           nullable: true
         dietaryRestrictions:
           type: string
-          description: "Restrições alimentares: dado sensível, só com o consentimento\
-            \ do hóspede (RF-HOS-02). Até o consentimento existir, qualquer valor\
-            \ é recusado com 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`."
+          description: "Restrições alimentares: dado de saúde, gravado cifrado e só\
+            \ com o consentimento ativo do hóspede para a finalidade `DIETARY_RESTRICTIONS`\
+            \ (RF-HOS-02); sem ele, 422 `DIETARY_RESTRICTIONS_REQUIRE_CONSENT`. Revogar\
+            \ o consentimento apaga as restrições."
           maxLength: 500
           minLength: 0
           nullable: true
@@ -8248,6 +9829,12 @@ components:
           allOf:
           - $ref: "#/components/schemas/GuestAddressDto"
           nullable: true
+        anonymizedAt:
+          type: string
+          format: date-time
+          description: Quando o perfil foi anonimizado (também num perfil mesclado
+            absorvido por um anonimizado).
+          nullable: true
         birthDate:
           type: string
           format: date
@@ -8259,6 +9846,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        dietaryRestrictions:
+          type: string
+          description: Restrições alimentares (só com o consentimento ativo do hóspede).
+          nullable: true
         documents:
           type: array
           items:
@@ -8283,6 +9874,16 @@ components:
         id:
           type: string
           format: uuid
+        mergedAt:
+          type: string
+          format: date-time
+          description: Quando o perfil foi mesclado.
+          nullable: true
+        mergedInto:
+          type: string
+          format: uuid
+          description: "O perfil sobrevivente, num perfil mesclado."
+          nullable: true
         nationality:
           type: string
           nullable: true
@@ -8304,6 +9905,17 @@ components:
         socialName:
           type: string
           nullable: true
+        status:
+          type: string
+          description: "`ACTIVE`; `MERGED` depois de absorvido por outro perfil numa\
+            \ mesclagem de duplicados (use o sobrevivente, `mergedInto`); `ANONYMIZED`\
+            \ depois de anonimizado a pedido do titular (sem dado pessoal: o nome\
+            \ vira \"Hóspede anonimizado\"). Os dois últimos não mudam mais e não\
+            \ voltam nas buscas."
+          enum:
+          - ACTIVE
+          - MERGED
+          - ANONYMIZED
         updatedAt:
           type: string
           format: date-time
@@ -8316,6 +9928,7 @@ components:
       - hasSensitiveData
       - id
       - preferences
+      - status
       - updatedAt
       - vip
     GuestRestrictionResponse:
@@ -8838,6 +10451,48 @@ components:
       required:
       - id
       - name
+    MergeGuestRequest:
+      type: object
+      description: "A mesclagem de um perfil duplicado no perfil do caminho (o sobrevivente).\
+        \ Por padrão vale o que o sobrevivente tem e os campos vazios dele recebem\
+        \ os do absorvido; os campos listados em `takeFromMerged` vêm do absorvido,\
+        \ se ele os tiver (nada é apagado). VIP se qualquer um for; restrito se qualquer\
+        \ um estiver (com o motivo do sobrevivente, ou o do absorvido se só ele estava).\
+        \ Documentos: os iguais ficam uma vez só, os que faltam passam para o sobrevivente,\
+        \ e o mesmo tipo e país com outro número é recusado."
+      properties:
+        mergedGuestId:
+          type: string
+          format: uuid
+          description: "O perfil absorvido: fica como mesclado (`MERGED`), nunca é\
+            \ apagado."
+          nullable: true
+        takeFromMerged:
+          type: array
+          description: "Os dados do perfil que vêm do absorvido (por padrão, nenhum:\
+            \ vale o do sobrevivente)."
+          items:
+            type: string
+            description: "Os dados do perfil que vêm do absorvido (por padrão, nenhum:\
+              \ vale o do sobrevivente)."
+            enum:
+            - FULL_NAME
+            - SOCIAL_NAME
+            - NATIONALITY
+            - BIRTH_DATE
+            - GENDER
+            - EMAIL
+            - PHONE
+            - RESIDENCE
+            - PREFERENCES
+            - NOTES
+            - COMPANY
+            - SENSITIVE_DATA
+            - DIETARY_RESTRICTIONS
+          uniqueItems: true
+      required:
+      - mergedGuestId
+      - takeFromMerged
     NotificationPreferenceRequest:
       type: object
       description: A preferência para um tipo.
@@ -9182,6 +10837,20 @@ components:
       - module
       - scopes
       - sensitive
+    PersonalDataSectionResponse:
+      type: object
+      description: "Uma seção do pacote: os dados que um módulo guarda do titular."
+      properties:
+        data:
+          type: object
+          description: "Os dados, no formato do módulo."
+        name:
+          type: string
+          description: O módulo (e o assunto) que contribuiu com os dados.
+          example: guests
+      required:
+      - data
+      - name
     PolicySettingsDto:
       type: object
       description: "Políticas operacionais do hotel (RF-CFG-02, Portaria MTur 28/2025)."
@@ -9240,6 +10909,133 @@ components:
       - childMaxAge
       - cleaningWindowMinutes
       - stayPolicyText
+    PostingRequest:
+      type: object
+      description: "Um lançamento manual: valor = quantidade × valor unitário, arredondado\
+        \ pela regra de `Money`."
+      properties:
+        description:
+          type: string
+          description: "Descrição (até 200); vazia: o nome do código."
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        quantity:
+          type: number
+          description: "Quantidade positiva, até 3 casas (padrão 1)."
+          example: 2
+        transactionCodeId:
+          type: string
+          format: uuid
+          nullable: true
+        unitPrice:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - quantity
+      - transactionCodeId
+      - unitPrice
+    PostingResponse:
+      type: object
+      description: Um lançamento (imutável).
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        approvalId:
+          type: string
+          format: uuid
+          description: "A aprovação de superior que autorizou a correção, se houve."
+          nullable: true
+        approvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        businessDate:
+          type: string
+          format: date
+          description: Data operacional do hotel no lançamento (RN-01).
+        correctsId:
+          type: string
+          format: uuid
+          description: O lançamento corrigido (só no estorno e no ajuste).
+          nullable: true
+        description:
+          type: string
+        folioId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        postedAt:
+          type: string
+          format: date-time
+        postedBy:
+          type: string
+          format: uuid
+          description: "Quem lançou; nulo: o sistema."
+          nullable: true
+        quantity:
+          type: number
+        reason:
+          type: string
+          description: Motivo da correção (só no estorno e no ajuste).
+          nullable: true
+        remainingAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reversedBy:
+          type: string
+          format: uuid
+          description: "O estorno deste lançamento, se houve (só no normal)."
+          nullable: true
+        source:
+          type: string
+          enum:
+          - MANUAL
+          - POS
+          - END_OF_DAY
+          - LAUNDRY
+          - EVENT
+        transactionCodeId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+          - REGULAR
+          - REVERSAL
+          - ADJUSTMENT
+        unitPrice:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - amount
+      - businessDate
+      - description
+      - folioId
+      - id
+      - postedAt
+      - quantity
+      - source
+      - transactionCodeId
+      - type
+      - unitPrice
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
@@ -9510,6 +11306,33 @@ components:
       - issuingCountry
       - number
       - type
+    ReversalRequest:
+      type: object
+      description: O motivo do estorno.
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          minLength: 0
+          nullable: true
+      required:
+      - reason
+    RevokeConsentRequest:
+      type: object
+      description: "A revogação de um consentimento: o meio pelo qual o titular a\
+        \ pediu."
+      properties:
+        source:
+          type: string
+          enum:
+          - IN_PERSON
+          - PAPER_FORM
+          - PHONE
+          - EMAIL
+          - WEBSITE
+          nullable: true
+      required:
+      - source
     RoleGrantRequest:
       type: object
       description: O conjunto completo das concessões da role.
@@ -10702,6 +12525,176 @@ components:
       - sessionId
       - tokenType
       - userId
+    TransactionCodeCreateRequest:
+      type: object
+      description: Um código de lançamento novo; o tipo e o grupo de receita não mudam
+        depois.
+      properties:
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: FRIGOBAR
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        fiscalClassification:
+          type: string
+          description: Classificação fiscal em texto livre (até o perfil fiscal do
+            M7).
+          maxLength: 60
+          minLength: 0
+          nullable: true
+        kind:
+          type: string
+          description: Natureza do lançamento; `CREDIT` lança valor negativo.
+          enum:
+          - CHARGE
+          - PENALTY
+          - SERVICE_CHARGE
+          - TAX
+          - CREDIT
+          nullable: true
+        name:
+          type: string
+          example: Frigobar
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        revenueGroup:
+          type: string
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+          nullable: true
+        serviceChargeApplies:
+          type: boolean
+          description: Se a taxa de serviço se aplica (só em `CHARGE`).
+        serviceChargeRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+      required:
+      - code
+      - kind
+      - name
+      - revenueGroup
+      - serviceChargeApplies
+    TransactionCodeResponse:
+      type: object
+      description: Um código de lançamento.
+      properties:
+        active:
+          type: boolean
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        fiscalClassification:
+          type: string
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Chave estável dos oito códigos pré-carregados; nula nos criados
+            pela API.
+          enum:
+          - ROOM_CHARGE
+          - CANCELLATION_FEE
+          - NO_SHOW_FEE
+          - SERVICE_CHARGE
+          - FOOD_BEVERAGE
+          - LAUNDRY
+          - TOURISM_FEE
+          - MISCELLANEOUS
+          nullable: true
+        kind:
+          type: string
+          enum:
+          - CHARGE
+          - PENALTY
+          - SERVICE_CHARGE
+          - TAX
+          - CREDIT
+        name:
+          type: string
+        revenueGroup:
+          type: string
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+        serviceChargeApplies:
+          type: boolean
+        serviceChargeRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - id
+      - kind
+      - name
+      - revenueGroup
+      - serviceChargeApplies
+      - updatedAt
+    TransactionCodeUpdateRequest:
+      type: object
+      description: Os dados editáveis de um código de lançamento (o tipo e o grupo
+        de receita são fixos).
+      properties:
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: FRIGOBAR
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        fiscalClassification:
+          type: string
+          maxLength: 60
+          minLength: 0
+          nullable: true
+        name:
+          type: string
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        serviceChargeApplies:
+          type: boolean
+        serviceChargeRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+      required:
+      - code
+      - name
+      - serviceChargeApplies
     UnreadCountResponse:
       type: object
       description: Quantas notificações do próprio usuário ainda não foram lidas.

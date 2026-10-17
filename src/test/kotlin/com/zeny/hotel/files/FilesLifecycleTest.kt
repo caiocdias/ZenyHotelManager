@@ -229,6 +229,8 @@ class FilesLifecycleTest(
                         filesApi.find(id).shouldBeNull()
                         (files.storedRow(id.value)["deleted_at"] as Timestamp).toInstant().shouldBeNowAtDbPrecision()
                         files.objectExists(objectKeyOf(id)) shouldBe false
+                        // O nome original (pode citar o titular) sai com o anexo (M3 E03).
+                        files.storedRow(id.value)["original_name"].shouldBeNull()
                         val entry = files.auditOf(id.value).last()
                         entry.action shouldBe "files.file.purge-orphan"
                         entry.outcome shouldBe "SUCCEEDED"
@@ -242,6 +244,7 @@ class FilesLifecycleTest(
                     withClue(id) {
                         filesApi.find(id).shouldNotBeNull()
                         files.objectExists(objectKeyOf(id)) shouldBe true
+                        files.storedRow(id.value)["original_name"].shouldNotBeNull()
                         files.auditOf(id.value).map { it.action } shouldNotContain "files.file.purge-orphan"
                     }
                 }

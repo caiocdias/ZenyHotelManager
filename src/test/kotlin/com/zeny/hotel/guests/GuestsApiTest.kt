@@ -653,12 +653,17 @@ class GuestsApiTest(
                 GuestsPermissions.PROFILES_MANAGE,
                 GuestsPermissions.DOCUMENTS_REVEAL,
                 GuestsPermissions.COMPANIES_READ,
+                GuestsPermissions.ATTACHMENTS_READ,
+                GuestsPermissions.ATTACHMENTS_MANAGE,
             )
         GuestsPermissions.permissions.count { RoleTemplate.MANAGER in it.templates } shouldBe
             GuestsPermissions.permissions.size
         GuestsPermissions.permissions.filter { RoleTemplate.FINANCE in it.templates }.map { it.code } shouldContain
             GuestsPermissions.COMPANIES_MANAGE
-        GuestsPermissions.permissions.none { it.sensitive } shouldBe true
+        // Só a exportação e a anonimização dos dados do titular são sensíveis (RF-ACS-08; decisão do usuário em
+        // 2026-10-17 para a anonimização).
+        GuestsPermissions.permissions.filter { it.sensitive }.map { it.code } shouldContainExactlyInAnyOrder
+            listOf(GuestsPermissions.DATA_EXPORT, GuestsPermissions.DATA_ANONYMIZE)
     }
 
     private fun storedSensitiveData(id: UUID): String = storedSensitiveDataOrNull(id).shouldNotBeNull()
