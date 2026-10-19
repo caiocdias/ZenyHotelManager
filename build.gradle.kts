@@ -132,8 +132,10 @@ tasks.withType<Test>().configureEach {
     // MockK/ByteBuddy carregam agente dinamicamente; o JDK 25 avisa sem esta flag.
     jvmArgs("-XX:+EnableDynamicAgentLoading")
     // O cache do Spring guarda um contexto por combinação de configuração de teste (cada um com o seu
-    // pool do Hikari e o seu cliente S3); com os do módulo files, os 512 MB padrão do Gradle acabavam.
-    maxHeapSize = "1g"
+    // pool do Hikari e o seu cliente S3); com os do módulo files, os 512 MB padrão do Gradle acabavam, e com
+    // uns 22 contextos de ~55 MB o 1 GB também (OOM intermitente do executor, M3 E05/E06). O cache é limitado a 16
+    // contextos em src/test/resources/spring.properties.
+    maxHeapSize = "2g"
     // Os testes rodam de propósito num fuso diferente de UTC: assim pegam qualquer código que
     // dependa do fuso da JVM em vez de gravar instantes em UTC (RN-01, ARCHITECTURE §11).
     systemProperty("user.timezone", "America/Sao_Paulo")
