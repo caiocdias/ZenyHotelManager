@@ -96,4 +96,13 @@ object BillingErrorCodes {
 
     /** 422: na divisão por valor, as partes não somam exatamente o que ainda resta do lançamento. */
     val SPLIT_TOTAL_MISMATCH = ErrorCode("SPLIT_TOTAL_MISMATCH")
+
+    /**
+     * 422: a taxa de serviço acompanha o item (M3 E06): não é estornada, ajustada, transferida nem dividida à parte;
+     * corrija ou mova o item, ou remova a taxa a pedido do cliente.
+     */
+    val SERVICE_CHARGE_FOLLOWS_ITEM = ErrorCode("SERVICE_CHARGE_FOLLOWS_ITEM")
+
+    /** 422: a remoção a pedido cita um lançamento que não é taxa de serviço vinculada a um item. */
+    val POSTING_NOT_SERVICE_CHARGE = ErrorCode("POSTING_NOT_SERVICE_CHARGE")
 }

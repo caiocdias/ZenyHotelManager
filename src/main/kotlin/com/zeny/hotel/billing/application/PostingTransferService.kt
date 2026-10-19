@@ -6,10 +6,12 @@ import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PostingId
 import com.zeny.hotel.billing.domain.BillingRules
 import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.FollowedItem
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.PostingCorrections
 import com.zeny.hotel.billing.domain.PostingSplit
 import com.zeny.hotel.billing.domain.PostingStamp
+import com.zeny.hotel.billing.domain.ServiceCharge
 import com.zeny.hotel.billing.domain.SplitShares
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
@@ -18,11 +20,16 @@ import com.zeny.hotel.shared.Percent
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
-/** Uma transferência feita: o lançamento de onde a parte saiu, a saída e a entrada. */
+/**
+ * Uma transferência feita: o lançamento de onde a parte saiu, a saída e a entrada, e, com um item com taxa de serviço
+ * (M3 E06), a saída e a entrada da parte da taxa que foi junto.
+ */
 data class TransferView(
     val originalId: PostingId,
     val outgoing: PostingView,
     val incoming: PostingView,
+    val serviceChargeOutgoing: PostingView? = null,
+    val serviceChargeIncoming: PostingView? = null,
 )
 
 /** Como se reparte uma divisão. */
@@ -53,6 +60,11 @@ data class SplitPartCommand(
  * a conta escolhida (as regras de roteamento do destino não se aplicam). Todas as contas envolvidas são travadas
  * juntas, em ordem de id: duas transferências opostas entre as mesmas contas se enfileiram, sem deadlock. Conta de
  * origem inexistente `404 FOLIO_NOT_FOUND`; de destino `400 UNKNOWN_FOLIO`; encerrada `409 FOLIO_CLOSED`.
+ *
+ * Taxa de serviço (M3 E06; decisão do usuário em 2026-10-19): a taxa vinculada a um item vai junto, na mesma proporção
+ * (na transferência, tudo o que resta dela; na divisão, repartida pelas partes do item com `Money.allocate`), por um
+ * par próprio cuja saída cita a saída do item e cuja entrada cita a entrada do item: item e taxa ficam juntos em cada
+ * conta. A taxa não é transferida nem dividida à parte (`422 SERVICE_CHARGE_FOLLOWS_ITEM`).
  */
 @Service
 class PostingTransferService(
@@ -99,7 +111,9 @@ class PostingTransferService(
         val stamp = operations.stamp()
         return postingIds.map { id ->
             val corrections = load(source, id)
-            move(source, target, corrections, corrections.transferable(source), text, stamp)
+            val part = corrections.transferable(source)
+            val charge = operations.serviceChargeOf(corrections.original)
+            move(source, target, corrections, part, text, stamp, charge to charge?.followable)
         }
     }
 
@@ -140,16 +154,26 @@ class PostingTransferService(
         targets.forEach(Folio::requireOpen)
         val corrections = load(source, postingId)
         val amounts = PostingSplit.amounts(corrections.transferable(source), shares)
+        val charge = operations.serviceChargeOf(corrections.original)
+        val chargeAmounts =
+            charge?.followable?.let { ServiceCharge.alongside(it, amounts) } ?: amounts.map { null }
         val stamp = operations.stamp()
         val moved =
-            targets.zip(amounts).filter { (target, amount) -> target.id != source.id && !amount.isZero() }
+            targets.indices
+                .map { Triple(targets[it], amounts[it], chargeAmounts[it]) }
+                .filter { (target, amount, _) -> target.id != source.id && !amount.isZero() }
         if (moved.isEmpty()) {
             throw splitInvalid("parts", "A divisão não move nada para outra conta.")
         }
         var current = corrections
-        return moved.map { (target, amount) ->
-            move(source, target, current, amount, text, stamp).also {
+        var currentCharge = charge
+        return moved.map { (target, amount, chargeAmount) ->
+            move(source, target, current, amount, text, stamp, currentCharge to chargeAmount).also {
                 current = PostingCorrections(current.original, ledger.correctionsOf(current.original.id))
+                currentCharge =
+                    currentCharge?.let { known ->
+                        PostingCorrections(known.original, ledger.correctionsOf(known.original.id))
+                    }
             }
         }
     }
@@ -176,16 +200,23 @@ class PostingTransferService(
         }
     }
 
-    /** Lê o lançamento da conta já travada, com as correções e saídas dele. */
+    /**
+     * Lê o lançamento da conta já travada, com as correções e saídas dele; a taxa de serviço vinculada não se move à
+     * parte (`422 SERVICE_CHARGE_FOLLOWS_ITEM`).
+     */
     private fun load(
         source: Folio,
         id: PostingId,
     ): PostingCorrections {
         val original = ledger.posting(id)?.takeIf { it.folioId == source.id } ?: throw postingNotFound()
+        original.requireNotServiceCharge()
         return PostingCorrections(original, ledger.correctionsOf(id))
     }
 
-    /** Grava o par (saída e entrada) de uma parte e o descreve na trilha. */
+    /**
+     * Grava o par (saída e entrada) de uma parte e o descreve na trilha; com a taxa do item ([charge]: a taxa e a
+     * parte dela, que vai junto se não for nula nem zero), grava também o par da taxa, vinculado ao do item.
+     */
     @Suppress("LongParameterList") // o par e o contexto
     private fun move(
         source: Folio,
@@ -194,14 +225,29 @@ class PostingTransferService(
         part: Money,
         reason: String?,
         stamp: PostingStamp,
+        charge: Pair<PostingCorrections?, Money?>,
     ): TransferView {
         val (outgoing, incoming) = corrections.transfer(source, part, target, reason, stamp)
         check(operations.record(source, outgoing)) { "Saída ${outgoing.id} recusada pelo banco" }
         check(operations.record(target, incoming)) { "Entrada ${incoming.id} recusada pelo banco" }
+        val (chargeCorrections, chargePart) = charge
+        val chargePair =
+            if (chargeCorrections != null && chargePart != null && !chargePart.isZero()) {
+                chargeCorrections
+                    .transfer(source, chargePart, target, reason, stamp, FollowedItem(outgoing.id, incoming.id))
+                    .also { (out, into) ->
+                        check(operations.record(source, out)) { "Saída da taxa ${out.id} recusada pelo banco" }
+                        check(operations.record(target, into)) { "Entrada da taxa ${into.id} recusada pelo banco" }
+                    }
+            } else {
+                null
+            }
         return TransferView(
             corrections.original.id,
             checkNotNull(ledger.row(outgoing.id)).view(),
             checkNotNull(ledger.row(incoming.id)).view(),
+            chargePair?.let { checkNotNull(ledger.row(it.first.id)).view() },
+            chargePair?.let { checkNotNull(ledger.row(it.second.id)).view() },
         )
     }
 

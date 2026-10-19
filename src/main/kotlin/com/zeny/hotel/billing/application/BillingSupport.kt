@@ -64,6 +64,7 @@ object BillingAudit {
     const val ADJUST_POSTING = "billing.posting.adjust"
     const val TRANSFER_POSTINGS = "billing.posting.transfer"
     const val SPLIT_POSTING = "billing.posting.split"
+    const val REMOVE_SERVICE_CHARGE = "billing.posting.remove-service-charge"
     const val CREATE_ROUTING_RULE = "billing.routing-rule.create"
     const val UPDATE_ROUTING_RULE = "billing.routing-rule.update"
     const val DEACTIVATE_ROUTING_RULE = "billing.routing-rule.deactivate"
@@ -132,7 +133,10 @@ data class FolioView(
         )
 }
 
-/** Um lançamento lido, com o estorno que o corrigiu e o que ainda resta (só no normal). */
+/**
+ * Um lançamento lido, com o estorno que o corrigiu e o que ainda resta (só no normal, na entrada e na taxa); a taxa de
+ * serviço com o item e o percentual, e o item com a taxa dele nesta conta (M3 E06).
+ */
 data class PostingView(
     val id: PostingId,
     val folioId: FolioId,
@@ -158,6 +162,10 @@ data class PostingView(
     val transferredFromFolioId: FolioId? = null,
     val transferredToId: PostingId? = null,
     val transferredToFolioId: FolioId? = null,
+    val serviceChargeForId: PostingId? = null,
+    val serviceChargeRate: Percent? = null,
+    val serviceChargeId: PostingId? = null,
+    val triggeredById: PostingId? = null,
 )
 
 internal fun TransactionCode.view() =
@@ -220,9 +228,13 @@ internal fun PostingRow.view() =
         transferredFromFolioId,
         transferredToId,
         transferredToFolioId,
+        posting.serviceCharge?.itemId,
+        posting.serviceCharge?.rate,
+        serviceChargeId,
+        posting.triggeredById,
     )
 
-internal fun Posting.summary() =
+internal fun Posting.summary(serviceCharge: Posting? = null): PostingSummary =
     PostingSummary(
         id,
         folioId,
@@ -239,6 +251,9 @@ internal fun Posting.summary() =
         routing?.fromFolioId,
         routing?.ruleId,
         transferredFromId,
+        this.serviceCharge?.itemId,
+        this.serviceCharge?.rate,
+        serviceCharge?.summary(),
     )
 
 /** Retrato da trilha de um código de lançamento. */
@@ -284,6 +299,9 @@ internal fun Posting.auditState(): Map<String, Any?> =
         "routedFromFolioId" to routing?.fromFolioId?.toString(),
         "routingRuleId" to routing?.ruleId?.toString(),
         "transferredFromId" to transferredFromId?.toString(),
+        "serviceChargeForId" to serviceCharge?.itemId?.toString(),
+        "serviceChargeRate" to serviceCharge?.rate?.toString(),
+        "triggeredById" to triggeredById?.toString(),
     )
 
 internal fun folioNotFound() = NotFoundException(BillingErrorCodes.FOLIO_NOT_FOUND, "Conta não encontrada.")

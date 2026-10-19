@@ -50,6 +50,12 @@ interface BillingApi {
      * sem regra aplicável; o lançamento devolvido fica na conta final ([PostingSummary.folioId]) com a origem em
      * [PostingSummary.routedFromFolioId] e a regra em [PostingSummary.routingRuleId]. Destino encerrado:
      * `409 ROUTING_TARGET_CLOSED`.
+     *
+     * **Taxa de serviço** (RF-CTA-14, M3 E06): num código com `serviceChargeApplies`, lança junto, à parte, a taxa no
+     * código `TX-SERVICO`, na conta final do item (sem rotear de novo), vinculada a ele, com o percentual informado
+     * ([NewPosting.serviceChargeRate]), senão o do código, senão o padrão do hotel, arredondado pela regra de `Money`
+     * (nada se arredondar a zero); devolvida em [PostingSummary.serviceCharge]. Código `TX-SERVICO` desativado recusa
+     * o item (`422 TRANSACTION_CODE_INACTIVE`), salvo com a taxa zero (percentual zero ou valor que arredonda a zero).
      */
     fun post(
         folioId: FolioId,
@@ -156,13 +162,19 @@ enum class TransactionCodeKind {
 }
 
 /**
- * Grupo de receita do código (relatórios e, na E06, a taxa de serviço como repasse). Lista fixa: um grupo novo exige
+ * Grupo de receita do código (relatórios e a taxa de serviço como repasse). Lista fixa: um grupo novo exige
  * migração e código (decisão do usuário em 2026-10-17). Fixo desde a criação do código.
+ *
+ * [passThrough]: o valor lançado no grupo é **repasse**, não receita do hotel (RN-10, M3 E06): só a taxa de serviço
+ * ([SERVICE_CHARGE]), repassada aos empregados (Lei 13.419/2017); o relatório de arrecadação (M6/M10) a separa da
+ * receita por aqui.
  */
-enum class RevenueGroup {
+enum class RevenueGroup(
+    val passThrough: Boolean = false,
+) {
     ROOM,
     FOOD_BEVERAGE,
-    SERVICE_CHARGE,
+    SERVICE_CHARGE(passThrough = true),
     FEES,
     TAXES,
     LAUNDRY,
@@ -223,9 +235,18 @@ enum class PostingType {
 
     /**
      * Entrada de uma transferência ou divisão: na conta de destino, a parte transferida, vinculada à saída
-     * (`transferredFromId`); é estornada, ajustada e transferida como um lançamento normal.
+     * (`transferredFromId`); é estornada, ajustada e transferida como um lançamento normal. A entrada da taxa de
+     * serviço de um item transferido também cita a entrada do item (`serviceChargeForId`).
      */
     TRANSFER_IN,
+
+    /**
+     * Taxa de serviço (RF-CTA-14, RN-10, M3 E06): lançada pelo `billing` junto de um item cujo código a aceita, no
+     * código `TX-SERVICO` (`TransactionCodeKey.SERVICE_CHARGE`), na mesma conta do item, vinculada a ele
+     * (`serviceChargeForId`) e com o percentual aplicado guardado (`serviceChargeRate`). Acompanha o item no estorno,
+     * no ajuste, na transferência e na divisão; à parte, só sai pela remoção a pedido do cliente (um estorno).
+     */
+    SERVICE_CHARGE,
 }
 
 /** Um código de lançamento para os módulos de cima. [serviceChargeRate] nulo: cai na padrão do hotel (H4). */
@@ -267,6 +288,11 @@ data class NewFolio(
 /**
  * Um lançamento novo: quantidade positiva com até 3 casas (até 9999,999), valor unitário positivo (até
  * 1.000.000,00), descrição opcional (até 200; vazia, o nome do código) e a origem.
+ *
+ * [serviceChargeRate] (M3 E06, H4): o percentual da taxa de serviço informado pelo módulo de origem (o `pos`, no M8,
+ * passa o do ponto de venda), de 0 a 100 (fora, `400 POSTING_INVALID`, campo `serviceChargeRate`). Só vale num código
+ * que aceita a taxa (`serviceChargeApplies`); nulo, vale o do código, senão o padrão do hotel. Num código sem a taxa,
+ * é ignorado.
  */
 data class NewPosting(
     val transactionCodeId: TransactionCodeId,
@@ -274,12 +300,14 @@ data class NewPosting(
     val quantity: BigDecimal = BigDecimal.ONE,
     val description: String? = null,
     val source: PostingSource,
+    val serviceChargeRate: Percent? = null,
 )
 
 /**
  * Um lançamento gravado. Roteado (M3 E05): [folioId] é a conta de destino, [routedFromFolioId] a conta em que foi
  * pedido e [routingRuleId] a regra dela que o desviou. A entrada de uma transferência cita a saída em
- * [transferredFromId].
+ * [transferredFromId]. Taxa de serviço (M3 E06): [serviceChargeForId] é o item, [serviceChargeRate] o percentual
+ * aplicado; no item devolvido por [BillingApi.post], [serviceCharge] é a taxa lançada junto (nula sem taxa).
  */
 data class PostingSummary(
     val id: PostingId,
@@ -297,4 +325,7 @@ data class PostingSummary(
     val routedFromFolioId: FolioId? = null,
     val routingRuleId: RoutingRuleId? = null,
     val transferredFromId: PostingId? = null,
+    val serviceChargeForId: PostingId? = null,
+    val serviceChargeRate: Percent? = null,
+    val serviceCharge: PostingSummary? = null,
 )

@@ -87,6 +87,9 @@ interface PostingLedger {
 
     fun posting(id: PostingId): Posting?
 
+    /** A taxa de serviço vinculada ao item (M3 E06), na conta dele; `null` se não tem. */
+    fun serviceChargeOf(itemId: PostingId): Posting?
+
     /** As correções (estornos e ajustes) do lançamento. */
     fun correctionsOf(id: PostingId): List<Posting>
 
@@ -111,7 +114,8 @@ interface PostingLedger {
 
     /**
      * Os estornos e ajustes de toda a linhagem de [root]: ele e as entradas de transferência que descendem dele,
-     * recursivamente, em qualquer conta.
+     * recursivamente, em qualquer conta, e as taxas de serviço vinculadas a cada um (M3 E06: o item com a taxa
+     * dele, inclusive a remoção a pedido).
      */
     fun lineageCorrections(root: PostingId): List<Posting>
 
@@ -123,8 +127,9 @@ interface PostingLedger {
 }
 
 /**
- * Um lançamento com o que as correções fizeram dele (só no normal e na entrada de transferência): o estorno, se houve,
- * e o que ainda resta; numa saída de transferência, a entrada e a conta dela; numa entrada, a conta da saída.
+ * Um lançamento com o que as correções fizeram dele (só no normal, na entrada de transferência e na taxa de serviço):
+ * o estorno, se houve, e o que ainda resta; numa saída de transferência, a entrada e a conta dela; numa entrada, a
+ * conta da saída; num item, a taxa de serviço dele nesta conta.
  */
 data class PostingRow(
     val posting: Posting,
@@ -133,6 +138,7 @@ data class PostingRow(
     val transferredToId: PostingId? = null,
     val transferredToFolioId: FolioId? = null,
     val transferredFromFolioId: FolioId? = null,
+    val serviceChargeId: PostingId? = null,
 )
 
 /** As listagens de códigos e contas (só ids e chaves do cursor). */

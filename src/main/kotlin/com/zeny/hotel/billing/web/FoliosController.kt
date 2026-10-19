@@ -45,12 +45,18 @@ private const val CORRECTION_RULES =
         "`permission`, `resourceRef` e `limit`); repita com o " +
         "`X-Approval-Token` de `POST /api/v1/auth/approvals` e **outra** `Idempotency-Key`. Só um lançamento normal " +
         "é corrigido (422 `POSTING_NOT_CORRECTABLE`); lançamento já estornado: 409 `POSTING_ALREADY_REVERSED`; " +
-        "conta encerrada: 409 `FOLIO_CLOSED`. Essas regras são conferidas antes da aprovação de superior."
+        "conta encerrada: 409 `FOLIO_CLOSED`. Essas regras são conferidas antes da aprovação de superior. Taxa de " +
+        "serviço (M3 E06): a taxa vinculada ao item acompanha a correção (o estorno a estorna; o ajuste a ajusta " +
+        "na proporção do percentual guardado), com o mesmo motivo e `triggeredByPostingId`, e o limite confere o " +
+        "item com a taxa (inclusive o que já saiu dela); a própria taxa não se corrige aqui (422 " +
+        "`SERVICE_CHARGE_FOLLOWS_ITEM`)."
 
 private const val TRANSFER_RULES =
     "Só um lançamento normal ou a entrada de uma transferência é transferido (422 `POSTING_NOT_TRANSFERABLE`); já " +
         "estornado: 409 `POSTING_ALREADY_REVERSED`; nada restando: 422 `POSTING_NOTHING_TO_TRANSFER`; conta " +
-        "encerrada: 409 `FOLIO_CLOSED`; conta de destino inexistente: 400 `UNKNOWN_FOLIO`."
+        "encerrada: 409 `FOLIO_CLOSED`; conta de destino inexistente: 400 `UNKNOWN_FOLIO`. A taxa de serviço do item " +
+        "vai junto, na mesma proporção (`serviceChargeOutgoing`/`serviceChargeIncoming`); ela não se move à parte " +
+        "(422 `SERVICE_CHARGE_FOLLOWS_ITEM`)."
 
 /**
  * Contas e lançamentos (RF-CTA-01 a 03 e 05). Consultar exige `billing.folios.read`; abrir e trocar o pagador e o
@@ -176,7 +182,12 @@ class FoliosController(
                 "`POSTING_INVALID`. Roteamento (RF-CTA-04): uma regra vigente na data operacional desta conta " +
                 "(por código, que prevalece, ou por grupo de receita) grava o lançamento na conta de destino, " +
                 "seguindo a cadeia, com `routedFromFolioId` = esta conta e `routingRuleId`; a resposta e o " +
-                "`Location` são os da conta final; destino encerrado: 409 `ROUTING_TARGET_CLOSED`.",
+                "`Location` são os da conta final; destino encerrado: 409 `ROUTING_TARGET_CLOSED`. Taxa de " +
+                "serviço (RF-CTA-14): num código com `serviceChargeApplies`, lança junto, à parte, a taxa " +
+                "(`SERVICE_CHARGE`, código `TX-SERVICO`) na conta final do item, vinculada a ele " +
+                "(`serviceChargePostingId`), com o percentual do código, senão o padrão do hotel, arredondado pela " +
+                "regra de `Money`; `TX-SERVICO` desativado: 422 `TRANSACTION_CODE_INACTIVE` (salvo com a taxa zero, " +
+                "em que o item passa sem taxa).",
     )
     @ApiResponse(responseCode = "201", description = "Lançado.")
     fun post(
@@ -238,6 +249,27 @@ class FoliosController(
                 approvalToken,
             ),
         )
+
+    @PostMapping("/{id}/postings/{postingId}/remove-service-charge")
+    @Idempotent
+    @Operation(
+        operationId = "removeServiceCharge",
+        summary = "Remover a taxa de serviço a pedido do cliente",
+        description =
+            "RN-10: estorna tudo o que resta da taxa de serviço (`postingId` é a taxa, ou a entrada dela numa conta " +
+                "para onde o item foi transferido), com o motivo fixo \"Taxa de serviço removida a pedido do " +
+                "cliente.\", registrado e auditado. Exige `billing.servicecharge.remove`; **não** é ação sensível " +
+                "(sem aprovação nem limite). Sem corpo. Não é taxa vinculada: 422 `POSTING_NOT_SERVICE_CHARGE`; já " +
+                "estornada (removida, ou o item estornado): 409 `POSTING_ALREADY_REVERSED`; zerada: 422 " +
+                "`POSTING_NOTHING_TO_REVERSE`; conta encerrada: 409 `FOLIO_CLOSED`. A taxa não é estornada, " +
+                "ajustada, transferida nem dividida à parte pelos outros endpoints (422 " +
+                "`SERVICE_CHARGE_FOLLOWS_ITEM`): ela acompanha o item.",
+    )
+    @ApiResponse(responseCode = "201", description = "Taxa removida.")
+    fun removeServiceCharge(
+        @PathVariable id: UUID,
+        @PathVariable postingId: UUID,
+    ): ResponseEntity<PostingResponse> = created(postings.removeServiceCharge(FolioId(id), PostingId(postingId)))
 
     @PostMapping("/{id}/postings/transfer")
     @Idempotent

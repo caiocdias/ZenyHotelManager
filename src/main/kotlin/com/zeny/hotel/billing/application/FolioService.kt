@@ -11,10 +11,12 @@ import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.PostingApproval
 import com.zeny.hotel.billing.domain.PostingCorrections
+import com.zeny.hotel.billing.domain.ServiceCharge
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.LimitAmount
@@ -146,9 +148,9 @@ class PostingService(
         description: String?,
     ): PostingView {
         authorization.require(BillingPermissions.POSTINGS_CREATE)
-        val posting =
+        val posted =
             operations.post(folioId, transactionCodeId, quantity, unitPrice, description, PostingSource.MANUAL)
-        return checkNotNull(ledger.row(posting.id)).view()
+        return checkNotNull(ledger.row(posted.item.id)).view()
     }
 
     @Audited(BillingAudit.REVERSE_POSTING)
@@ -161,12 +163,19 @@ class PostingService(
     ): PostingView {
         authorization.require(BillingPermissions.FOLIOS_READ)
         val text = Posting.reason(reason)
-        val (folio, corrections) = lockAndLoad(folioId, id)
-        val cumulative = lineageCumulative(id, corrections.reversalAmount(folio))
+        val (folio, corrections) = lockAndLoad(folioId, id, directly = true)
+        val amount = corrections.reversalAmount(folio)
+        val charge = operations.serviceChargeOf(corrections.original)?.takeIf { it.followable != null }
+        val cumulative = lineageCumulative(id, amount.abs() + (charge?.remaining?.abs() ?: Money.ZERO))
         val approval =
             authorize(BillingAudit.REVERSE_POSTING, BillingPermissions.POSTINGS_REVERSE, id, cumulative, approvalToken)
-        val reversal = corrections.reverse(folio, text, operations.stamp(), approval)
+        val stamp = operations.stamp()
+        val reversal = corrections.reverse(folio, text, stamp, approval)
         if (!operations.record(folio, reversal)) throw alreadyReversed()
+        charge?.let {
+            val following = it.reverse(folio, text, stamp, approval, triggeredBy = reversal.id)
+            check(operations.record(folio, following)) { "Estorno da taxa ${it.original.id} recusado pelo banco" }
+        }
         return checkNotNull(ledger.row(reversal.id)).view()
     }
 
@@ -181,28 +190,72 @@ class PostingService(
     ): PostingView {
         authorization.require(BillingPermissions.FOLIOS_READ)
         val text = Posting.reason(reason)
-        val (folio, corrections) = lockAndLoad(folioId, id)
-        val cumulative = lineageCumulative(id, corrections.adjustmentAmount(folio, magnitude))
+        val (folio, corrections) = lockAndLoad(folioId, id, directly = true)
+        val amount = corrections.adjustmentAmount(folio, magnitude)
+        val charge = operations.serviceChargeOf(corrections.original)
+        val chargePart = charge?.let { ServiceCharge.followingAdjustment(it, corrections.remaining + amount) }
+        val cumulative = lineageCumulative(id, magnitude + (chargePart ?: Money.ZERO))
         val approval =
             authorize(BillingAudit.ADJUST_POSTING, BillingPermissions.POSTINGS_ADJUST, id, cumulative, approvalToken)
-        val adjustment = corrections.adjust(folio, magnitude, text, operations.stamp(), approval)
+        val stamp = operations.stamp()
+        val adjustment = corrections.adjust(folio, magnitude, text, stamp, approval)
         check(operations.record(folio, adjustment)) { "Ajuste $id recusado pelo banco" }
+        if (charge != null && chargePart != null && chargePart.isPositive()) {
+            val following = charge.adjust(folio, chargePart, text, stamp, approval, triggeredBy = adjustment.id)
+            check(operations.record(folio, following)) { "Ajuste da taxa ${charge.original.id} recusado pelo banco" }
+        }
         return checkNotNull(ledger.row(adjustment.id)).view()
     }
 
-    /** Trava a conta e lê o original com as correções dele (já com a trava: ninguém corrige ao mesmo tempo). */
+    /**
+     * Remove a taxa de serviço a pedido do cliente (RF-CTA-14, RN-10; M3 E06): o estorno de tudo o que resta da taxa
+     * ([postingId]: a taxa, ou a entrada dela numa conta para onde o item foi transferido), com o motivo fixo
+     * [ServiceCharge.REMOVAL_REASON], registrado e auditado (`serviceChargeRemoval` na trilha). Exige
+     * `billing.servicecharge.remove`, **não sensível** (sem aprovação nem limite). Lançamento que não é taxa vinculada:
+     * `422 POSTING_NOT_SERVICE_CHARGE`; já estornada (removida, ou o item estornado): `409 POSTING_ALREADY_REVERSED`;
+     * zerada pelos ajustes ou transferências do item: `422 POSTING_NOTHING_TO_REVERSE`. A remoção conta, depois, no
+     * total das correções do item ([lineageCumulative]).
+     */
+    @Audited(BillingAudit.REMOVE_SERVICE_CHARGE)
+    @Transactional
+    fun removeServiceCharge(
+        folioId: FolioId,
+        postingId: PostingId,
+    ): PostingView {
+        authorization.require(BillingPermissions.SERVICE_CHARGE_REMOVE)
+        val (folio, charge) = lockAndLoad(folioId, postingId)
+        val link =
+            charge.original.serviceCharge
+                ?: throw BusinessRuleException(
+                    BillingErrorCodes.POSTING_NOT_SERVICE_CHARGE,
+                    "Este lançamento não é uma taxa de serviço vinculada a um item.",
+                )
+        ledger.lockLineage(ledger.lineageRoot(link.itemId))
+        val removal = charge.reverse(folio, ServiceCharge.REMOVAL_REASON, operations.stamp())
+        if (!operations.record(folio, removal) { it + ("serviceChargeRemoval" to true) }) throw alreadyReversed()
+        return checkNotNull(ledger.row(removal.id)).view()
+    }
+
+    /**
+     * Trava a conta e lê o original com as correções dele (já com a trava: ninguém corrige ao mesmo tempo). Uma taxa
+     * de serviço vinculada não é corrigida à parte (`422 SERVICE_CHARGE_FOLLOWS_ITEM`), salvo pela remoção.
+     */
     private fun lockAndLoad(
         folioId: FolioId,
         id: PostingId,
+        directly: Boolean = false,
     ): Pair<Folio, PostingCorrections> {
         val folio = store.folioForUpdate(folioId) ?: throw folioNotFound()
         val original = ledger.posting(id)?.takeIf { it.folioId == folioId } ?: throw postingNotFound()
+        if (directly) original.requireNotServiceCharge()
         return folio to PostingCorrections(original, ledger.correctionsOf(id))
     }
 
     /**
      * O total que o limite `maxAmount` confere: as correções de toda a linhagem do lançamento (o normal de origem e as
-     * entradas de transferência que descendem dele) mais esta, com a linhagem travada.
+     * entradas de transferência que descendem dele) e das taxas de serviço vinculadas a eles (inclusive as remoções a
+     * pedido), mais esta (com a parte da taxa que a acompanha), com a linhagem travada (M3 E06: o item com a taxa é uma
+     * unidade; o total nunca passa do item mais a taxa, em qualquer ordem).
      */
     private fun lineageCumulative(
         id: PostingId,

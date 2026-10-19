@@ -114,6 +114,12 @@ data class TransactionCodeResponse(
     val active: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "Se o grupo de receita é **repasse**, não receita do hotel (RN-10): só `SERVICE_CHARGE`, a taxa de " +
+                "serviço repassada aos empregados.",
+    )
+    val passThrough: Boolean,
 ) {
     companion object {
         fun of(view: TransactionCodeView) =
@@ -130,6 +136,7 @@ data class TransactionCodeResponse(
                 view.active,
                 view.createdAt,
                 view.updatedAt,
+                view.revenueGroup.passThrough,
             )
     }
 }
@@ -238,7 +245,8 @@ data class PostingResponse(
     @field:Schema(
         description =
             "Tipo do lançamento: `REGULAR`, `REVERSAL` (estorno), `ADJUSTMENT` (ajuste), `TRANSFER_OUT` (saída de " +
-                "uma transferência ou divisão) ou `TRANSFER_IN` (entrada). A lista pode crescer " +
+                "uma transferência ou divisão), `TRANSFER_IN` (entrada) ou `SERVICE_CHARGE` (taxa de serviço " +
+                "lançada junto de um item). A lista pode crescer " +
                 "(`x-extensible-enum`): trate um valor desconhecido sem falhar.",
     )
     @field:ExtensibleEnum
@@ -281,6 +289,21 @@ data class PostingResponse(
     val transferredToPostingId: UUID? = null,
     @field:Schema(description = "Saída de transferência: a conta de destino.")
     val transferredToFolioId: UUID? = null,
+    @field:Schema(
+        description =
+            "Taxa de serviço (`SERVICE_CHARGE`, ou a entrada da taxa de um item transferido): o item nesta conta.",
+    )
+    val serviceChargeForPostingId: UUID? = null,
+    @field:Schema(description = "Taxa de serviço: o percentual aplicado, guardado no lançamento.", example = "10.0000")
+    val serviceChargeRate: Percent? = null,
+    @field:Schema(description = "Item com taxa de serviço: a taxa dele nesta conta.")
+    val serviceChargePostingId: UUID? = null,
+    @field:Schema(
+        description =
+            "Correção ou saída da taxa de serviço feita junto da do item: o lançamento do item que a provocou " +
+                "(nula na remoção a pedido do cliente).",
+    )
+    val triggeredByPostingId: UUID? = null,
 ) {
     companion object {
         fun of(view: PostingView) =
@@ -309,6 +332,10 @@ data class PostingResponse(
                 view.transferredFromFolioId?.value,
                 view.transferredToId?.value,
                 view.transferredToFolioId?.value,
+                view.serviceChargeForId?.value,
+                view.serviceChargeRate,
+                view.serviceChargeId?.value,
+                view.triggeredById?.value,
             )
     }
 }
@@ -356,6 +383,10 @@ data class TransferredPostingResponse(
     val originalId: UUID,
     val outgoing: PostingResponse,
     val incoming: PostingResponse,
+    @field:Schema(description = "Item com taxa de serviço: a saída da parte da taxa que foi junto.")
+    val serviceChargeOutgoing: PostingResponse? = null,
+    @field:Schema(description = "Item com taxa de serviço: a entrada da parte da taxa, vinculada à entrada do item.")
+    val serviceChargeIncoming: PostingResponse? = null,
 ) {
     companion object {
         fun of(view: TransferView) =
@@ -363,6 +394,8 @@ data class TransferredPostingResponse(
                 view.originalId.value,
                 PostingResponse.of(view.outgoing),
                 PostingResponse.of(view.incoming),
+                view.serviceChargeOutgoing?.let(PostingResponse::of),
+                view.serviceChargeIncoming?.let(PostingResponse::of),
             )
     }
 }

@@ -66,7 +66,8 @@ class BillingApiService(
                 posting.unitPrice,
                 posting.description,
                 posting.source,
-            ).summary()
+                posting.serviceChargeRate,
+            ).let { it.item.summary(it.serviceCharge) }
 
     private companion object {
         /** Teto da leitura das contas de um dono (uma reserva tem poucas). */

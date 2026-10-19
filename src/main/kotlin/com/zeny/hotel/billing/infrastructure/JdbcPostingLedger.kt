@@ -11,8 +11,10 @@ import com.zeny.hotel.billing.application.PostingRow
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.PostingApproval
 import com.zeny.hotel.billing.domain.PostingRouting
+import com.zeny.hotel.billing.domain.ServiceChargeLink
 import com.zeny.hotel.shared.AppendOnlyTables
 import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.Percent
 import com.zeny.hotel.shared.UserId
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -30,6 +32,7 @@ import java.util.UUID
  * `billing.posting` (bean [billingAppendOnlyTables]); um trigger recusa `UPDATE`/`DELETE` até do dono.
  */
 @Component
+@Suppress("TooManyFunctions") // as leituras do livro de lançamentos (PostingLedger) e o mapeamento das linhas
 class JdbcPostingLedger(
     private val jdbc: JdbcClient,
 ) : PostingLedger {
@@ -40,10 +43,12 @@ class JdbcPostingLedger(
                     """
                     INSERT INTO billing.posting (id, folio_id, transaction_code_id, posting_type, quantity, unit_price,
                         amount, description, source, business_date, posted_at, posted_by, corrects_id, reason,
-                        approval_id, approved_by, routed_from_folio_id, routing_rule_id, transferred_from_id)
+                        approval_id, approved_by, routed_from_folio_id, routing_rule_id, transferred_from_id,
+                        service_charge_for_id, service_charge_rate, triggered_by_id)
                     VALUES (:id, :folioId, :codeId, :type, :quantity, :unitPrice, :amount, :description, :source,
                         :businessDate, :postedAt, :postedBy, :correctsId, :reason, :approvalId, :approvedBy,
-                        :routedFrom, :routingRule, :transferredFrom)
+                        :routedFrom, :routingRule, :transferredFrom, :serviceChargeFor, :serviceChargeRate,
+                        :triggeredBy)
                     """.trimIndent(),
                 ).param("id", posting.id.value)
                 .param("folioId", posting.folioId.value)
@@ -64,6 +69,9 @@ class JdbcPostingLedger(
                 .param("routedFrom", posting.routing?.fromFolioId?.value)
                 .param("routingRule", posting.routing?.ruleId?.value)
                 .param("transferredFrom", posting.transferredFromId?.value)
+                .param("serviceChargeFor", posting.serviceCharge?.itemId?.value)
+                .param("serviceChargeRate", posting.serviceCharge?.rate?.value)
+                .param("triggeredBy", posting.triggeredById?.value)
                 .update()
         }
 
@@ -71,6 +79,14 @@ class JdbcPostingLedger(
         jdbc
             .sql("SELECT * FROM billing.posting WHERE id = :id")
             .param("id", id.value)
+            .query { rs, _ -> posting(rs) }
+            .optional()
+            .orElse(null)
+
+    override fun serviceChargeOf(itemId: PostingId): Posting? =
+        jdbc
+            .sql("SELECT * FROM billing.posting WHERE service_charge_for_id = :id")
+            .param("id", itemId.value)
             .query { rs, _ -> posting(rs) }
             .optional()
             .orElse(null)
@@ -142,7 +158,7 @@ class JdbcPostingLedger(
                     JOIN billing.posting t ON t.id = up.transferred_from_id
                     JOIN billing.posting o ON o.id = t.corrects_id
                 )
-                SELECT id FROM up WHERE posting_type = 'REGULAR'
+                SELECT id FROM up WHERE posting_type IN ('REGULAR', 'SERVICE_CHARGE')
                 """.trimIndent(),
             ).param("id", id.value)
             .query(UUID::class.java)
@@ -161,9 +177,13 @@ class JdbcPostingLedger(
                     FROM down
                     JOIN billing.posting t ON t.corrects_id = down.id AND t.posting_type = 'TRANSFER_OUT'
                     JOIN billing.posting i ON i.transferred_from_id = t.id
+                ),
+                charges (id) AS (
+                    SELECT c.id FROM billing.posting c WHERE c.service_charge_for_id IN (SELECT id FROM down)
                 )
                 SELECT * FROM billing.posting
-                WHERE corrects_id IN (SELECT id FROM down) AND posting_type IN ('REVERSAL', 'ADJUSTMENT')
+                WHERE (corrects_id IN (SELECT id FROM down) OR corrects_id IN (SELECT id FROM charges))
+                  AND posting_type IN ('REVERSAL', 'ADJUSTMENT')
                 ORDER BY posted_at, id
                 """.trimIndent(),
             ).param("root", root.value)
@@ -186,6 +206,7 @@ class JdbcPostingLedger(
             rs.getObject("transferred_to", UUID::class.java)?.let(::PostingId),
             rs.getObject("transferred_to_folio", UUID::class.java)?.let(::FolioId),
             rs.getObject("transferred_from_folio", UUID::class.java)?.let(::FolioId),
+            rs.getObject("service_charge_id", UUID::class.java)?.let(::PostingId),
         )
 
     private fun posting(rs: ResultSet): Posting =
@@ -213,17 +234,23 @@ class JdbcPostingLedger(
                     PostingRouting(FolioId(it), RoutingRuleId(rs.getObject("routing_rule_id", UUID::class.java)))
                 },
             transferredFromId = rs.getObject("transferred_from_id", UUID::class.java)?.let(::PostingId),
+            serviceCharge =
+                rs.getObject("service_charge_for_id", UUID::class.java)?.let {
+                    ServiceChargeLink(PostingId(it), Percent.of(rs.getBigDecimal("service_charge_rate")))
+                },
+            triggeredById = rs.getObject("triggered_by_id", UUID::class.java)?.let(::PostingId),
         )
 
     private companion object {
         /**
          * O lançamento, o estorno dele (se houve), no normal e na entrada de transferência o que ainda resta (ele mais
-         * as correções e saídas), na saída a entrada e a conta dela, e na entrada a conta da saída.
+         * as correções e saídas), na saída a entrada e a conta dela, na entrada a conta da saída, e no item a taxa de
+         * serviço dele nesta conta (M3 E06; a taxa também tem o que resta).
          */
         val ROW_SELECT =
             """
-            SELECT p.*, r.id AS reversed_by,
-                   CASE WHEN p.posting_type IN ('REGULAR', 'TRANSFER_IN')
+            SELECT p.*, r.id AS reversed_by, sc.id AS service_charge_id,
+                   CASE WHEN p.posting_type IN ('REGULAR', 'TRANSFER_IN', 'SERVICE_CHARGE')
                         THEN p.amount + COALESCE((SELECT sum(c.amount) FROM billing.posting c WHERE c.corrects_id = p.id), 0)
                    END AS remaining,
                    t.id AS transferred_to, t.folio_id AS transferred_to_folio, s.folio_id AS transferred_from_folio
@@ -231,6 +258,7 @@ class JdbcPostingLedger(
             LEFT JOIN billing.posting r ON r.corrects_id = p.id AND r.posting_type = 'REVERSAL'
             LEFT JOIN billing.posting t ON t.transferred_from_id = p.id
             LEFT JOIN billing.posting s ON s.id = p.transferred_from_id
+            LEFT JOIN billing.posting sc ON sc.service_charge_for_id = p.id
             """.trimIndent()
     }
 }

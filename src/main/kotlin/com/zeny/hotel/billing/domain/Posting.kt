@@ -34,6 +34,16 @@ data class PostingRouting(
     val ruleId: RoutingRuleId,
 )
 
+/**
+ * O vínculo de uma taxa de serviço com o item (RF-CTA-14, M3 E06): o item da mesma conta ([itemId]: o lançamento
+ * normal, ou a entrada de transferência do item, na conta para onde ele foi) e o percentual aplicado ([rate]), guardado
+ * para o extrato e o relatório não recalcularem com o padrão novo do hotel.
+ */
+data class ServiceChargeLink(
+    val itemId: PostingId,
+    val rate: Percent,
+)
+
 /** A aprovação de superior que autorizou uma correção (step-up). */
 data class PostingApproval(
     val approvalId: UUID,
@@ -47,8 +57,10 @@ data class PostingApproval(
  * conta ([correctsId]), com motivo, quantidade 1 e o valor unitário igual ao valor. A transferência (M3 E05) é um par:
  * a saída ([PostingType.TRANSFER_OUT]) na conta de origem cita o lançamento transferido ([correctsId]) com o inverso
  * da parte, e a entrada ([PostingType.TRANSFER_IN]) na conta de destino cita a saída ([transferredFromId]) com a
- * parte; o lançamento transferido nunca muda. Um normal roteado guarda a origem ([routing]). Classe sem JPA: a
- * persistência só insere.
+ * parte; o lançamento transferido nunca muda. Um normal roteado guarda a origem ([routing]). A taxa de serviço
+ * (M3 E06, [PostingType.SERVICE_CHARGE]) cita o item em [serviceCharge], como a entrada da taxa de um item transferido;
+ * a correção ou a saída da taxa que acompanha a do item cita o lançamento do item que a provocou ([triggeredById]).
+ * Classe sem JPA: a persistência só insere.
  */
 @Suppress("LongParameterList") // os campos do fato
 class Posting(
@@ -69,6 +81,8 @@ class Posting(
     val approval: PostingApproval? = null,
     val routing: PostingRouting? = null,
     val transferredFromId: PostingId? = null,
+    val serviceCharge: ServiceChargeLink? = null,
+    val triggeredById: PostingId? = null,
 ) {
     init {
         require(!amount.isZero()) { "Lançamento com valor zero" }
@@ -76,6 +90,24 @@ class Posting(
         require((type == PostingType.TRANSFER_IN) == (transferredFromId != null)) { "Entrada sem a saída" }
         require(routing == null || (type == PostingType.REGULAR && routing.fromFolioId != folioId)) {
             "Roteamento fora de um lançamento normal ou para a própria conta"
+        }
+        require(type != PostingType.SERVICE_CHARGE || serviceCharge != null) { "Taxa de serviço sem o item" }
+        require(serviceCharge == null || type in LINKED_CHARGE_TYPES) { "Vínculo de taxa fora de uma taxa" }
+        require(serviceCharge == null || serviceCharge.itemId != id) { "Taxa vinculada a si mesma" }
+        require(triggeredById == null || type in FOLLOWING_TYPES) { "Lançamento provocado fora de uma correção" }
+    }
+
+    /**
+     * Recusa corrigir ou mover à parte uma taxa de serviço vinculada (`422 SERVICE_CHARGE_FOLLOWS_ITEM`): ela só
+     * acompanha o item ou sai pela remoção a pedido do cliente.
+     */
+    fun requireNotServiceCharge() {
+        if (serviceCharge != null) {
+            throw BusinessRuleException(
+                BillingErrorCodes.SERVICE_CHARGE_FOLLOWS_ITEM,
+                "A taxa de serviço acompanha o item: estorne, ajuste, transfira ou divida o item, ou remova a taxa a " +
+                    "pedido do cliente.",
+            )
         }
     }
 
@@ -85,8 +117,17 @@ class Posting(
         const val MAX_DESCRIPTION_LENGTH = 200
         const val MAX_REASON_LENGTH = 500
 
-        /** Os tipos que se estornam, ajustam, transferem e dividem: o normal e a entrada de uma transferência. */
-        val CORRECTABLE = setOf(PostingType.REGULAR, PostingType.TRANSFER_IN)
+        /**
+         * Os tipos que se estornam, ajustam, transferem e dividem: o normal, a entrada de uma transferência e a taxa de
+         * serviço (esta só junto do item ou pela remoção a pedido: [requireNotServiceCharge]).
+         */
+        val CORRECTABLE = setOf(PostingType.REGULAR, PostingType.TRANSFER_IN, PostingType.SERVICE_CHARGE)
+
+        /** Os tipos com vínculo de taxa de serviço: a taxa e a entrada da taxa de um item transferido. */
+        private val LINKED_CHARGE_TYPES = setOf(PostingType.SERVICE_CHARGE, PostingType.TRANSFER_IN)
+
+        /** Os tipos que acompanham um lançamento do item ([triggeredById]): correções e saídas da taxa. */
+        private val FOLLOWING_TYPES = setOf(PostingType.REVERSAL, PostingType.ADJUSTMENT, PostingType.TRANSFER_OUT)
         internal const val QUANTITY_SCALE = 3
         private val MAX_QUANTITY = BigDecimal("9999.999")
         private val MAX_UNIT_PRICE = Money.of("1000000.00")
@@ -231,12 +272,14 @@ class PostingCorrections(
      * O par de uma transferência de [part] (com o sinal do original, até o que resta) para [target]: a saída nesta
      * conta, que cita o original, e a entrada no destino, que cita a saída. A conta [target] precisa estar aberta.
      */
+    @Suppress("LongParameterList") // a parte, o destino e os vínculos da taxa de serviço
     fun transfer(
         folio: Folio,
         part: Money,
         target: Folio,
         reason: String?,
         stamp: PostingStamp,
+        follows: FollowedItem? = null,
     ): Pair<Posting, Posting> {
         val left = transferable(folio)
         require(target.id != folio.id) { "Transferência para a própria conta" }
@@ -244,9 +287,30 @@ class PostingCorrections(
             "Parte $part fora do que resta ($left)"
         }
         target.requireOpen()
-        val outgoing = movement(PostingType.TRANSFER_OUT, folio.id, -part, reason, stamp, correctsId = original.id)
+        require((original.serviceCharge != null) == (follows?.incomingItemId != null)) {
+            "A taxa de serviço só se transfere junto da entrada do item"
+        }
+        val outgoing =
+            movement(
+                PostingType.TRANSFER_OUT,
+                folio.id,
+                -part,
+                reason,
+                stamp,
+                correctsId = original.id,
+                triggeredBy = follows?.triggeredById,
+            )
+        val link = original.serviceCharge?.let { ServiceChargeLink(checkNotNull(follows?.incomingItemId), it.rate) }
         val incoming =
-            movement(PostingType.TRANSFER_IN, target.id, part, reason, stamp, transferredFromId = outgoing.id)
+            movement(
+                PostingType.TRANSFER_IN,
+                target.id,
+                part,
+                reason,
+                stamp,
+                transferredFromId = outgoing.id,
+                link = link,
+            )
         return outgoing to incoming
     }
 
@@ -259,6 +323,8 @@ class PostingCorrections(
         stamp: PostingStamp,
         correctsId: PostingId? = null,
         transferredFromId: PostingId? = null,
+        link: ServiceChargeLink? = null,
+        triggeredBy: PostingId? = null,
     ) = Posting(
         id = PostingId.new(),
         folioId = folioId,
@@ -275,18 +341,24 @@ class PostingCorrections(
         correctsId = correctsId,
         reason = reason,
         transferredFromId = transferredFromId,
+        serviceCharge = link,
+        triggeredById = triggeredBy,
     )
 
-    /** O estorno de tudo o que resta. */
+    /** O estorno de tudo o que resta ([triggeredBy]: o estorno do item que este, da taxa, acompanha). */
     fun reverse(
         folio: Folio,
         reason: String,
         stamp: PostingStamp,
         approval: PostingApproval? = null,
+        triggeredBy: PostingId? = null,
     ): Posting {
         val amount = reversalAmount(folio)
-        return correction(PostingType.REVERSAL, amount, Posting.reason(reason), stamp, approval)
+        return correction(PostingType.REVERSAL, amount, Posting.reason(reason), stamp, approval, triggeredBy)
     }
+
+    /** O que ainda resta a acompanhar o item (numa taxa de serviço): nada se já estornada ou zerada. */
+    val followable: Money? get() = remaining.takeUnless { isReversed || it.isZero() }
 
     /** O valor do estorno (para o limite da aprovação), conferindo as regras antes de autorizar. */
     fun reversalAmount(folio: Folio): Money {
@@ -300,16 +372,18 @@ class PostingCorrections(
         return -remaining
     }
 
-    /** Um ajuste de [magnitude] (positivo), com o sinal oposto ao do original. */
+    /** Um ajuste de [magnitude] (positivo), com o sinal oposto ao do original ([triggeredBy]: como no estorno). */
+    @Suppress("LongParameterList") // o ajuste e os vínculos
     fun adjust(
         folio: Folio,
         magnitude: Money,
         reason: String,
         stamp: PostingStamp,
         approval: PostingApproval? = null,
+        triggeredBy: PostingId? = null,
     ): Posting {
         val amount = adjustmentAmount(folio, magnitude)
-        return correction(PostingType.ADJUSTMENT, amount, Posting.reason(reason), stamp, approval)
+        return correction(PostingType.ADJUSTMENT, amount, Posting.reason(reason), stamp, approval, triggeredBy)
     }
 
     /** O valor do ajuste (com sinal), conferindo as regras antes de autorizar. */
@@ -344,12 +418,14 @@ class PostingCorrections(
         folio.requireOpen()
     }
 
+    @Suppress("LongParameterList") // os campos de uma correção
     private fun correction(
         type: PostingType,
         amount: Money,
         reason: String,
         stamp: PostingStamp,
         approval: PostingApproval?,
+        triggeredBy: PostingId?,
     ) = Posting(
         id = PostingId.new(),
         folioId = original.folioId,
@@ -366,8 +442,18 @@ class PostingCorrections(
         correctsId = original.id,
         reason = reason,
         approval = approval,
+        triggeredById = triggeredBy,
     )
 }
+
+/**
+ * O item que a saída da taxa de serviço acompanha numa transferência ou divisão (M3 E06): a saída do item
+ * ([triggeredById]) e a entrada dele no destino ([incomingItemId]), que a entrada da taxa cita.
+ */
+data class FollowedItem(
+    val triggeredById: PostingId,
+    val incomingItemId: PostingId,
+)
 
 /**
  * O valor que o limite `maxAmount` das correções confere (RF-ACS-06; cumulativo contra o fracionamento): o valor

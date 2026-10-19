@@ -167,6 +167,60 @@ class BillingTestSupport(
         )
     }
 
+    /** Cria um código de consumo de A&B com ou sem a taxa de serviço (e o percentual próprio); devolve o id. */
+    fun createCode(
+        serviceCharge: Boolean,
+        rate: String?,
+    ): UUID =
+        run {
+            val code =
+                "SC" +
+                    UuidV7
+                        .generate()
+                        .toString()
+                        .takeLast(8)
+                        .uppercase()
+            UUID.fromString(
+                call(
+                    POST,
+                    "/api/v1/transaction-codes",
+                    admin,
+                    mapOf(
+                        "code" to code,
+                        "name" to "Consumo $code",
+                        "kind" to "CHARGE",
+                        "revenueGroup" to "FOOD_BEVERAGE",
+                        "serviceChargeApplies" to serviceCharge,
+                        "serviceChargeRate" to rate,
+                    ),
+                ).expect(201)["id"].asString(),
+            )
+        }
+
+    /** Estorna o lançamento como [auth]. */
+    fun reverseWithReason(
+        folio: UUID,
+        id: String,
+        auth: RequestPostProcessor = admin,
+    ): MockHttpServletResponse =
+        call(POST, "/api/v1/folios/$folio/postings/$id/reverse", auth, mapOf("reason" to "Não consumiu"))
+
+    /** Remove a taxa de serviço a pedido do cliente como [auth]. */
+    fun removeCharge(
+        folio: UUID,
+        id: String,
+        auth: RequestPostProcessor,
+        idempotencyKey: String? = UuidV7.generate().toString(),
+    ): MockHttpServletResponse =
+        call(
+            POST,
+            "/api/v1/folios/$folio/postings/$id/remove-service-charge",
+            auth,
+            idempotencyKey = idempotencyKey,
+        )
+
+    fun JsonNode.uuid(field: String): UUID = UUID.fromString(this[field].asString())
+
     fun balance(folio: UUID): String = folio(folio)["balance"].asString()
 
     fun postings(folio: UUID): List<JsonNode> = listAll("/api/v1/folios/$folio/postings")

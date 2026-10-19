@@ -22,7 +22,8 @@ import com.zeny.hotel.shared.TemplateGrant
  * pede a aprovação de um superior); o Caixa A&B consulta códigos e contas (o PDV lança pela `BillingApi` no M8) e
  * também pede a aprovação para corrigir. O roteamento ([ROUTING_MANAGE]) e a transferência e divisão
  * ([POSTINGS_TRANSFER]) não são sensíveis e vão ao Gerente, ao Financeiro e à Recepcionista (decisão do usuário em
- * 2026-10-19).
+ * 2026-10-19), como a remoção da taxa de serviço a pedido do cliente ([SERVICE_CHARGE_REMOVE], M3 E06: RN-10 a diz
+ * opcional para o cliente, e não é ação sensível de RF-ACS-08).
  */
 object BillingPermissions : ModulePermissions {
     override val module = "billing"
@@ -56,6 +57,9 @@ object BillingPermissions : ModulePermissions {
 
     /** Transferir e dividir lançamentos entre contas (M3 E05; não sensível). */
     val POSTINGS_TRANSFER = PermissionCode("billing.postings.transfer")
+
+    /** Remover a taxa de serviço a pedido do cliente (RN-10, M3 E06; não sensível). */
+    val SERVICE_CHARGE_REMOVE = PermissionCode("billing.servicecharge.remove")
 
     private val all = TemplateGrant(ALL)
     private val operators =
@@ -147,6 +151,12 @@ object BillingPermissions : ModulePermissions {
             PermissionDefinition(
                 POSTINGS_TRANSFER,
                 "Transferir e dividir lançamentos entre contas",
+                setOf(ALL),
+                templates = operators,
+            ),
+            PermissionDefinition(
+                SERVICE_CHARGE_REMOVE,
+                "Remover a taxa de serviço de um lançamento a pedido do cliente",
                 setOf(ALL),
                 templates = operators,
             ),

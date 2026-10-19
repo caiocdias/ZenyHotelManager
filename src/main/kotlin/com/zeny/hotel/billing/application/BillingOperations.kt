@@ -5,12 +5,16 @@ import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwnerType
 import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.TransactionCodeId
+import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.domain.BillingRules
 import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.Posting
+import com.zeny.hotel.billing.domain.PostingCorrections
 import com.zeny.hotel.billing.domain.PostingRouting
 import com.zeny.hotel.billing.domain.PostingStamp
 import com.zeny.hotel.billing.domain.RoutingNetwork
+import com.zeny.hotel.billing.domain.ServiceCharge
+import com.zeny.hotel.billing.domain.TransactionCode
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.hotel.HotelApi
@@ -20,6 +24,7 @@ import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.DocumentNumberGenerator
 import com.zeny.hotel.shared.DocumentNumberType
 import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.Percent
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.Clock
@@ -31,7 +36,8 @@ import java.time.temporal.ChronoUnit
  * [com.zeny.hotel.billing.BillingApi]): conferem a empresa pela `GuestsApi`, numeram a conta com o ano da data
  * operacional, travam a conta (`SELECT … FOR UPDATE`) antes de lançar, carimbam o lançamento com a data operacional do
  * hotel (RN-01) e o instante do [Clock], e descrevem a mudança na trilha. O lançamento passa pelo roteamento
- * (RF-CTA-04, M3 E05): as regras vigentes na data operacional desviam-no, em cadeia, para a conta final.
+ * (RF-CTA-04, M3 E05): as regras vigentes na data operacional desviam-no, em cadeia, para a conta final; e, num código
+ * que aceita a taxa de serviço (RF-CTA-14, M3 E06), leva junto a taxa, na conta final.
  */
 @Component
 @Suppress("LongParameterList") // as portas que as escritas usam, injetadas pelo Spring
@@ -87,6 +93,12 @@ class BillingOperations(
      * com a trava compartilhada delas (nenhuma escrita de regra no meio, `BillingStore.lockRoutingRulesShared`) e
      * trava a conta pedida e a final juntas, em ordem de id (sem deadlock entre lançamentos roteados opostos). Conta
      * pedida encerrada: `409 FOLIO_CLOSED`; conta final encerrada: `409 ROUTING_TARGET_CLOSED`.
+     *
+     * Taxa de serviço (M3 E06; decisão do usuário em 2026-10-19): num código com `serviceChargeApplies`, lança junto a
+     * taxa ([ServiceCharge.on]) na mesma conta final do item (sem rotear de novo pelas regras do código
+     * `TX-SERVICO`), com o percentual [serviceChargeRate] informado pelo módulo de origem, senão o do código, senão o
+     * padrão do hotel (H4). O código `TX-SERVICO` desativado recusa o item (`422 TRANSACTION_CODE_INACTIVE`), salvo com
+     * a taxa zero (percentual zero ou valor que arredonda a zero), em que o item passa sem taxa.
      */
     @Suppress("LongParameterList", "ThrowsCount") // os dados do lançamento; uma recusa por motivo
     fun post(
@@ -96,7 +108,8 @@ class BillingOperations(
         unitPrice: Money,
         description: String?,
         source: PostingSource,
-    ): Posting {
+        serviceChargeRate: Percent? = null,
+    ): PostedItem {
         store.folio(folioId) ?: throw folioNotFound()
         val code =
             store.transactionCode(transactionCodeId)
@@ -105,6 +118,8 @@ class BillingOperations(
                     "transactionCodeId",
                     "Código de lançamento inexistente.",
                 )
+        val rate = ServiceCharge.rate(code, serviceChargeRate, hotel.taxSettings().serviceChargeRate)
+        val chargeCode = rate?.let { serviceChargeCode() }
         val stamp = stamp()
         store.lockRoutingRulesShared()
         val path =
@@ -118,10 +133,23 @@ class BillingOperations(
         if (path.isNotEmpty()) destination.requireOpenAsRoutingTarget()
         val routing = path.firstOrNull()?.let { PostingRouting(folioId, it.id) }
         val posting = Posting.regular(destination, code, quantity, unitPrice, description, source, stamp, routing)
+        val charge = chargeCode?.let { ServiceCharge.on(posting, it, checkNotNull(rate), stamp) }
         val chain = path.map { it.id.toString() }
-        record(destination, posting) { if (chain.isEmpty()) it else it + ("routingRuleIds" to chain) }
-        return posting
+        record(destination, posting) {
+            val routed = if (chain.isEmpty()) it else it + ("routingRuleIds" to chain)
+            if (charge == null) routed else routed + ("serviceChargePostingId" to charge.id.toString())
+        }
+        if (charge != null) check(record(destination, charge)) { "Taxa de serviço ${charge.id} recusada pelo banco" }
+        return PostedItem(posting, charge)
     }
+
+    /** O código da taxa de serviço (`TX-SERVICO`, pré-carregado). */
+    private fun serviceChargeCode(): TransactionCode =
+        checkNotNull(store.transactionCode(TransactionCodeKey.SERVICE_CHARGE)) { "Código TX-SERVICO ausente" }
+
+    /** A taxa de serviço vinculada ao [item] na conta dele, com as correções e saídas dela; `null` se não tem. */
+    fun serviceChargeOf(item: Posting): PostingCorrections? =
+        ledger.serviceChargeOf(item.id)?.let { PostingCorrections(it, ledger.correctionsOf(it.id)) }
 
     /**
      * Grava um lançamento (normal, correção ou movimento de transferência) na conta já travada e o descreve na
@@ -162,3 +190,9 @@ class BillingOperations(
         val FOLIO_NUMBER = DocumentNumberType("C", "billing.folio_number_seq")
     }
 }
+
+/** Um item lançado e a taxa de serviço lançada junto (nula sem taxa). */
+data class PostedItem(
+    val item: Posting,
+    val serviceCharge: Posting?,
+)
