@@ -4,6 +4,7 @@ import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.Cnpj
 import com.zeny.hotel.shared.Cpf
 import com.zeny.hotel.shared.DocumentNumber
+import com.zeny.hotel.shared.ExtensibleEnum
 import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
 import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.Idempotent
@@ -27,6 +28,7 @@ import io.swagger.v3.oas.models.security.SecurityScheme
 import io.swagger.v3.oas.models.servers.Server
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.customizers.OperationCustomizer
+import org.springdoc.core.customizers.PropertyCustomizer
 import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -45,6 +47,7 @@ import io.swagger.v3.oas.models.media.MediaType as OpenApiMediaType
  * `@SecurityRequirements` vazio (as públicas: login, refresh e versão).
  */
 @Configuration(proxyBeanMethods = false)
+@Suppress("TooManyFunctions") // um bean por personalização do contrato e os componentes comuns que eles usam
 class OpenApiConfiguration {
     @Bean
     fun zenyOpenApi(): OpenAPI =
@@ -81,6 +84,22 @@ class OpenApiConfiguration {
                     "min. Enquanto a troca de senha estiver pendente, só `POST /api/v1/auth/password` e " +
                     "`POST /api/v1/auth/logout` respondem; o resto devolve 403 `PASSWORD_CHANGE_REQUIRED`.",
             )
+
+    /**
+     * Propriedades marcadas com [ExtensibleEnum]: o `enum` vira `x-extensible-enum` (a mesma lista, gerada das
+     * constantes), para um valor novo não ser breaking change.
+     */
+    @Bean
+    fun extensibleEnumCustomizer(): PropertyCustomizer =
+        PropertyCustomizer { property, type ->
+            val values = property.enum
+            if (type.ctxAnnotations.orEmpty().any { it is ExtensibleEnum } && !values.isNullOrEmpty()) {
+                property.addExtension(EXTENSIBLE_ENUM, values.map { it.toString() })
+                @Suppress("UNCHECKED_CAST")
+                (property as Schema<Any?>).enum = null
+            }
+            property
+        }
 
     @Bean
     fun problemResponsesCustomizer(): OpenApiCustomizer =
@@ -293,6 +312,7 @@ class OpenApiConfiguration {
         const val MAX_IDEMPOTENCY_KEY_LENGTH = 255
         const val APPROVAL_TOKEN = "ApprovalToken"
         const val MAX_APPROVAL_TOKEN_LENGTH = 200
+        const val EXTENSIBLE_ENUM = "x-extensible-enum"
 
         fun ref(schema: String) = ref("schemas", schema)
 

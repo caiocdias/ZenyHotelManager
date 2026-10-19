@@ -1,19 +1,27 @@
 package com.zeny.hotel.billing.web
 
+import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwnerType
 import com.zeny.hotel.billing.FolioStatus
 import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.PostingType
 import com.zeny.hotel.billing.RevenueGroup
+import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.TransactionCodeKind
 import com.zeny.hotel.billing.application.FolioOwnerInput
 import com.zeny.hotel.billing.application.FolioView
 import com.zeny.hotel.billing.application.NewTransactionCodeCommand
 import com.zeny.hotel.billing.application.PostingView
+import com.zeny.hotel.billing.application.RoutingRuleCommand
+import com.zeny.hotel.billing.application.RoutingRuleView
+import com.zeny.hotel.billing.application.SplitBy
+import com.zeny.hotel.billing.application.SplitPartCommand
 import com.zeny.hotel.billing.application.TransactionCodeCommand
 import com.zeny.hotel.billing.application.TransactionCodeView
+import com.zeny.hotel.billing.application.TransferView
 import com.zeny.hotel.shared.DocumentNumber
+import com.zeny.hotel.shared.ExtensibleEnum
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import io.swagger.v3.oas.annotations.media.Schema
@@ -227,6 +235,13 @@ data class PostingResponse(
     val id: UUID,
     val folioId: UUID,
     val transactionCodeId: UUID,
+    @field:Schema(
+        description =
+            "Tipo do lançamento: `REGULAR`, `REVERSAL` (estorno), `ADJUSTMENT` (ajuste), `TRANSFER_OUT` (saída de " +
+                "uma transferência ou divisão) ou `TRANSFER_IN` (entrada). A lista pode crescer " +
+                "(`x-extensible-enum`): trate um valor desconhecido sem falhar.",
+    )
+    @field:ExtensibleEnum
     val type: PostingType,
     val quantity: BigDecimal,
     val unitPrice: Money,
@@ -248,8 +263,24 @@ data class PostingResponse(
     val approvedBy: UUID?,
     @field:Schema(description = "O estorno deste lançamento, se houve (só no normal).")
     val reversedBy: UUID?,
-    @field:Schema(description = "O que ainda resta deste lançamento depois das correções (só no normal).")
+    @field:Schema(
+        description =
+            "O que ainda resta deste lançamento depois das correções e transferências (só no normal e na entrada " +
+                "de transferência).",
+    )
     val remainingAmount: Money?,
+    @field:Schema(description = "Roteado: a conta em que o lançamento foi pedido (esta é a conta de destino).")
+    val routedFromFolioId: UUID? = null,
+    @field:Schema(description = "Roteado: a regra da conta de origem que desviou o lançamento.")
+    val routingRuleId: UUID? = null,
+    @field:Schema(description = "Entrada de transferência: a saída correspondente.")
+    val transferredFromPostingId: UUID? = null,
+    @field:Schema(description = "Entrada de transferência: a conta de origem.")
+    val transferredFromFolioId: UUID? = null,
+    @field:Schema(description = "Saída de transferência: a entrada correspondente.")
+    val transferredToPostingId: UUID? = null,
+    @field:Schema(description = "Saída de transferência: a conta de destino.")
+    val transferredToFolioId: UUID? = null,
 ) {
     companion object {
         fun of(view: PostingView) =
@@ -272,6 +303,152 @@ data class PostingResponse(
                 view.approvedBy?.value,
                 view.reversedBy?.value,
                 view.remaining,
+                view.routedFromFolioId?.value,
+                view.routingRuleId?.value,
+                view.transferredFromId?.value,
+                view.transferredFromFolioId?.value,
+                view.transferredToId?.value,
+                view.transferredToFolioId?.value,
+            )
+    }
+}
+
+@Schema(description = "Transferir lançamentos inteiros (o que ainda resta de cada um) para outra conta.")
+data class TransferRequest(
+    @field:NotNull
+    val targetFolioId: UUID?,
+    @field:Schema(description = "Os lançamentos desta conta, de 1 a 100, sem repetir.")
+    @field:NotNull
+    @field:Size(min = 1, max = 100)
+    val postingIds: List<UUID>?,
+    @field:Schema(description = "Motivo (opcional, até 500).")
+    @field:Size(max = 500)
+    val reason: String? = null,
+)
+
+@Schema(description = "Uma parte da divisão: a conta (esta mesma = a parte que fica) e o percentual ou o valor.")
+data class SplitPartDto(
+    @field:NotNull
+    val folioId: UUID?,
+    @field:Schema(description = "Só no modo `PERCENT`: de 0,0001 a 100.", example = "50.0000")
+    val percent: Percent? = null,
+    @field:Schema(description = "Só no modo `AMOUNT`: positivo.", example = "25.00")
+    val amount: Money? = null,
+) {
+    fun toCommand() = SplitPartCommand(FolioId(checkNotNull(folioId)), percent, amount)
+}
+
+@Schema(description = "Dividir o que resta de um lançamento entre contas, por percentual ou por valor.")
+data class SplitRequest(
+    @field:NotNull
+    val by: SplitBy?,
+    @field:Schema(description = "De 2 a 10 partes, uma por conta, sem repetir.")
+    @field:NotNull
+    @field:Size(min = 2, max = 10)
+    val parts: List<@Valid SplitPartDto>?,
+    @field:Schema(description = "Motivo (opcional, até 500).")
+    @field:Size(max = 500)
+    val reason: String? = null,
+)
+
+@Schema(description = "Uma parte movida: o lançamento de onde saiu, a saída (nesta conta) e a entrada (no destino).")
+data class TransferredPostingResponse(
+    val originalId: UUID,
+    val outgoing: PostingResponse,
+    val incoming: PostingResponse,
+) {
+    companion object {
+        fun of(view: TransferView) =
+            TransferredPostingResponse(
+                view.originalId.value,
+                PostingResponse.of(view.outgoing),
+                PostingResponse.of(view.incoming),
+            )
+    }
+}
+
+@Schema(description = "As partes movidas por uma transferência ou divisão.")
+data class TransferResponse(
+    val transfers: List<TransferredPostingResponse>,
+)
+
+@Schema(
+    description =
+        "Uma regra de roteamento: os códigos (`transactionCodeIds`) **ou** o grupo de receita (`revenueGroup`) e o " +
+            "período em datas de negócio.",
+)
+data class RoutingRuleRequest(
+    @field:NotNull
+    val targetFolioId: UUID?,
+    @field:Schema(description = "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`.")
+    val transactionCodeIds: List<UUID>? = null,
+    @field:Schema(description = "Grupo de receita coberto; com ele, sem `transactionCodeIds`.")
+    val revenueGroup: RevenueGroup? = null,
+    @field:Schema(description = "Primeira data operacional da regra.")
+    @field:NotNull
+    val startsOn: LocalDate?,
+    @field:Schema(description = "Última data operacional (inclusive); nula: sem fim.")
+    val endsOn: LocalDate? = null,
+) {
+    fun toCommand() =
+        RoutingRuleCommand(
+            FolioId(checkNotNull(targetFolioId)),
+            transactionCodeIds?.map(::TransactionCodeId),
+            revenueGroup,
+            checkNotNull(startsOn),
+            endsOn,
+        )
+}
+
+@Schema(description = "Uma regra de roteamento nova: a conta de origem (fixa depois) e os dados da regra.")
+data class RoutingRuleCreateRequest(
+    @field:NotNull
+    val sourceFolioId: UUID?,
+    @field:NotNull
+    val targetFolioId: UUID?,
+    @field:Schema(description = "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`.")
+    val transactionCodeIds: List<UUID>? = null,
+    @field:Schema(description = "Grupo de receita coberto; com ele, sem `transactionCodeIds`.")
+    val revenueGroup: RevenueGroup? = null,
+    @field:Schema(description = "Primeira data operacional da regra.")
+    @field:NotNull
+    val startsOn: LocalDate?,
+    @field:Schema(description = "Última data operacional (inclusive); nula: sem fim.")
+    val endsOn: LocalDate? = null,
+) {
+    fun toCommand() = RoutingRuleRequest(targetFolioId, transactionCodeIds, revenueGroup, startsOn, endsOn).toCommand()
+}
+
+@Schema(description = "Uma regra de roteamento.")
+data class RoutingRuleResponse(
+    val id: UUID,
+    val sourceFolioId: UUID,
+    val targetFolioId: UUID,
+    @field:Schema(description = "Os códigos cobertos (vazio numa regra por grupo).")
+    val transactionCodeIds: List<UUID>,
+    @field:Schema(description = "O grupo de receita coberto (nulo numa regra por código).")
+    val revenueGroup: RevenueGroup?,
+    val startsOn: LocalDate,
+    val endsOn: LocalDate?,
+    val active: Boolean,
+    val createdAt: Instant,
+    val createdBy: UUID?,
+    val updatedAt: Instant,
+) {
+    companion object {
+        fun of(view: RoutingRuleView) =
+            RoutingRuleResponse(
+                view.id.value,
+                view.sourceFolioId.value,
+                view.targetFolioId.value,
+                view.transactionCodeIds.map { it.value },
+                view.revenueGroup,
+                view.startsOn,
+                view.endsOn,
+                view.active,
+                view.createdAt,
+                view.createdBy?.value,
+                view.updatedAt,
             )
     }
 }

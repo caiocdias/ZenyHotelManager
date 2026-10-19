@@ -342,6 +342,7 @@ sequenceDiagram
 | Idempotência | Header `Idempotency-Key` obrigatório em POSTs com efeito financeiro ou externo (pagamentos, lançamentos, emissão fiscal). A resposta fica guardada por 24h. |
 | Concorrência | `ETag` com a versão do agregado; `If-Match` nas alterações; `412` em conflito |
 | Paginação | Por cursor: `?cursor=…&limit=…` |
+| Enums de resposta que crescem | Decisão do usuário em 2026-10-19 (M3 E05): uma propriedade de resposta cujo conjunto de valores vai crescer (tipos de lançamento, origens, situações que ganham valores a cada marco) sai no contrato como `string` com a lista em `x-extensible-enum`, não como `enum`, porque acrescentar um valor a um `enum` de resposta é *breaking change* (o `oasdiff` o barra: um cliente gerado do contrato anterior falharia no valor novo). Declara-se marcando a propriedade do DTO com `@field:ExtensibleEnum` (`shared`); a lista é gerada das constantes do `enum` Kotlin. O cliente **precisa tolerar valores desconhecidos** (tratá-los como "outro", sem falhar). Um `enum` fechado e estável (dias da semana, `OPEN`/`CLOSED`) continua `enum`; trocar um `enum` já publicado para `x-extensible-enum` muda o tipo gerado nos clientes e precisa de decisão registrada. Primeiro uso: `type` do lançamento (`PostingResponse`). |
 | Datas e valores | ISO-8601. Instantes em UTC (`Z`), datas de negócio como `YYYY-MM-DD`. Dinheiro como string decimal (`"123.45"`), sempre em BRL. |
 | Documentação | Swagger UI só fora de produção |
 

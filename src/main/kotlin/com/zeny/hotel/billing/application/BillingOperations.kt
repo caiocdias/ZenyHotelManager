@@ -8,7 +8,9 @@ import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.domain.BillingRules
 import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.Posting
+import com.zeny.hotel.billing.domain.PostingRouting
 import com.zeny.hotel.billing.domain.PostingStamp
+import com.zeny.hotel.billing.domain.RoutingNetwork
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.hotel.HotelApi
@@ -28,7 +30,8 @@ import java.time.temporal.ChronoUnit
  * As escritas de contas e lançamentos sem conferir permissão, na transação de um caso de uso auditado (a API HTTP ou a
  * [com.zeny.hotel.billing.BillingApi]): conferem a empresa pela `GuestsApi`, numeram a conta com o ano da data
  * operacional, travam a conta (`SELECT … FOR UPDATE`) antes de lançar, carimbam o lançamento com a data operacional do
- * hotel (RN-01) e o instante do [Clock], e descrevem a mudança na trilha.
+ * hotel (RN-01) e o instante do [Clock], e descrevem a mudança na trilha. O lançamento passa pelo roteamento
+ * (RF-CTA-04, M3 E05): as regras vigentes na data operacional desviam-no, em cadeia, para a conta final.
  */
 @Component
 @Suppress("LongParameterList") // as portas que as escritas usam, injetadas pelo Spring
@@ -78,7 +81,14 @@ class BillingOperations(
         }
     }
 
-    @Suppress("LongParameterList") // os dados do lançamento
+    /**
+     * Lança na conta pedida ou, se uma regra vigente na data operacional cobre o código, na conta final da cadeia de
+     * roteamento, com a origem registrada (a conta pedida e a regra dela; a cadeia inteira na trilha). Lê as regras
+     * com a trava compartilhada delas (nenhuma escrita de regra no meio, `BillingStore.lockRoutingRulesShared`) e
+     * trava a conta pedida e a final juntas, em ordem de id (sem deadlock entre lançamentos roteados opostos). Conta
+     * pedida encerrada: `409 FOLIO_CLOSED`; conta final encerrada: `409 ROUTING_TARGET_CLOSED`.
+     */
+    @Suppress("LongParameterList", "ThrowsCount") // os dados do lançamento; uma recusa por motivo
     fun post(
         folioId: FolioId,
         transactionCodeId: TransactionCodeId,
@@ -87,7 +97,7 @@ class BillingOperations(
         description: String?,
         source: PostingSource,
     ): Posting {
-        val folio = store.folioForUpdate(folioId) ?: throw folioNotFound()
+        store.folio(folioId) ?: throw folioNotFound()
         val code =
             store.transactionCode(transactionCodeId)
                 ?: throw BillingRules.invalid(
@@ -95,17 +105,34 @@ class BillingOperations(
                     "transactionCodeId",
                     "Código de lançamento inexistente.",
                 )
-        val posting = Posting.regular(folio, code, quantity, unitPrice, description, source, stamp())
-        record(folio, posting)
+        val stamp = stamp()
+        store.lockRoutingRulesShared()
+        val path =
+            RoutingNetwork(store.routingRulesOn(stamp.businessDate)) { null }
+                .route(folioId, code.id, code.revenueGroup, stamp.businessDate)
+        val destinationId = path.lastOrNull()?.targetFolioId ?: folioId
+        val locked = store.foliosForUpdate(setOf(folioId, destinationId))
+        val requested = locked[folioId] ?: throw folioNotFound()
+        requested.requireOpen()
+        val destination = checkNotNull(locked[destinationId]) { "Conta de destino $destinationId ausente" }
+        if (path.isNotEmpty()) destination.requireOpenAsRoutingTarget()
+        val routing = path.firstOrNull()?.let { PostingRouting(folioId, it.id) }
+        val posting = Posting.regular(destination, code, quantity, unitPrice, description, source, stamp, routing)
+        val chain = path.map { it.id.toString() }
+        record(destination, posting) { if (chain.isEmpty()) it else it + ("routingRuleIds" to chain) }
         return posting
     }
 
-    /** Grava um lançamento (normal ou correção) na conta já travada e o descreve na trilha. */
+    /**
+     * Grava um lançamento (normal, correção ou movimento de transferência) na conta já travada e o descreve na
+     * trilha ([extra] acrescenta ao retrato).
+     */
     fun record(
         folio: Folio,
         posting: Posting,
+        extra: (Map<String, Any?>) -> Map<String, Any?> = { it },
     ): Boolean {
-        audit.created(BillingAudit.POSTING, posting.id.value) { posting.auditState() }
+        audit.created(BillingAudit.POSTING, posting.id.value) { extra(posting.auditState()) }
         if (!ledger.tryAdd(posting)) return false
         store.markChanged(folio)
         return true

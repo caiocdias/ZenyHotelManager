@@ -12,12 +12,15 @@ import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.PostingSummary
 import com.zeny.hotel.billing.PostingType
 import com.zeny.hotel.billing.RevenueGroup
+import com.zeny.hotel.billing.RoutingRuleId
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.TransactionCodeKind
 import com.zeny.hotel.billing.TransactionCodeSummary
 import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.Posting
+import com.zeny.hotel.billing.domain.RoutingCriteria
+import com.zeny.hotel.billing.domain.RoutingRule
 import com.zeny.hotel.billing.domain.TransactionCode
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.shared.DocumentNumber
@@ -48,6 +51,7 @@ object BillingAudit {
     const val TRANSACTION_CODE = "billing.transaction-code"
     const val FOLIO = "billing.folio"
     const val POSTING = "billing.posting"
+    const val ROUTING_RULE = "billing.routing-rule"
 
     const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
     const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
@@ -58,6 +62,12 @@ object BillingAudit {
     const val CREATE_POSTING = "billing.posting.create"
     const val REVERSE_POSTING = "billing.posting.reverse"
     const val ADJUST_POSTING = "billing.posting.adjust"
+    const val TRANSFER_POSTINGS = "billing.posting.transfer"
+    const val SPLIT_POSTING = "billing.posting.split"
+    const val CREATE_ROUTING_RULE = "billing.routing-rule.create"
+    const val UPDATE_ROUTING_RULE = "billing.routing-rule.update"
+    const val DEACTIVATE_ROUTING_RULE = "billing.routing-rule.deactivate"
+    const val REACTIVATE_ROUTING_RULE = "billing.routing-rule.reactivate"
 }
 
 /** Um código de lançamento lido. */
@@ -142,6 +152,12 @@ data class PostingView(
     val approvedBy: UserId?,
     val reversedBy: PostingId?,
     val remaining: Money?,
+    val routedFromFolioId: FolioId? = null,
+    val routingRuleId: RoutingRuleId? = null,
+    val transferredFromId: PostingId? = null,
+    val transferredFromFolioId: FolioId? = null,
+    val transferredToId: PostingId? = null,
+    val transferredToFolioId: FolioId? = null,
 )
 
 internal fun TransactionCode.view() =
@@ -198,6 +214,12 @@ internal fun PostingRow.view() =
         posting.approval?.approvedBy,
         reversedBy,
         remaining,
+        posting.routing?.fromFolioId,
+        posting.routing?.ruleId,
+        posting.transferredFromId,
+        transferredFromFolioId,
+        transferredToId,
+        transferredToFolioId,
     )
 
 internal fun Posting.summary() =
@@ -214,6 +236,9 @@ internal fun Posting.summary() =
         postedAt,
         postedBy,
         correctsId,
+        routing?.fromFolioId,
+        routing?.ruleId,
+        transferredFromId,
     )
 
 /** Retrato da trilha de um código de lançamento. */
@@ -256,6 +281,9 @@ internal fun Posting.auditState(): Map<String, Any?> =
         "correctsId" to correctsId?.toString(),
         "approvalId" to approval?.approvalId?.toString(),
         "approvedBy" to approval?.approvedBy?.toString(),
+        "routedFromFolioId" to routing?.fromFolioId?.toString(),
+        "routingRuleId" to routing?.ruleId?.toString(),
+        "transferredFromId" to transferredFromId?.toString(),
     )
 
 internal fun folioNotFound() = NotFoundException(BillingErrorCodes.FOLIO_NOT_FOUND, "Conta não encontrada.")

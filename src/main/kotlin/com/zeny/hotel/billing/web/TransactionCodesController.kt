@@ -28,7 +28,8 @@ import java.net.URI
 import java.util.UUID
 
 internal const val BILLING_TAG = "billing"
-internal const val BILLING_TAG_DESCRIPTION = "Códigos de lançamento, contas e lançamentos imutáveis."
+internal const val BILLING_TAG_DESCRIPTION =
+    "Códigos de lançamento, contas, lançamentos imutáveis, roteamento, transferência e divisão."
 
 private const val CODE_RULES =
     "Código curto repetido (inclusive de um desativado): 409 `TRANSACTION_CODE_ALREADY_IN_USE`; taxa de serviço " +

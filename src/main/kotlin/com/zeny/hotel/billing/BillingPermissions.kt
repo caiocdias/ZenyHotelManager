@@ -20,7 +20,9 @@ import com.zeny.hotel.shared.TemplateGrant
  * Sugestões aos modelos (SPEC §3.1, decisão do usuário em 2026-10-17): o Gerente e o Financeiro tudo, com as
  * correções **sem teto**; a Recepcionista consulta códigos, abre e consulta contas e lança (sem estornar nem ajustar:
  * pede a aprovação de um superior); o Caixa A&B consulta códigos e contas (o PDV lança pela `BillingApi` no M8) e
- * também pede a aprovação para corrigir.
+ * também pede a aprovação para corrigir. O roteamento ([ROUTING_MANAGE]) e a transferência e divisão
+ * ([POSTINGS_TRANSFER]) não são sensíveis e vão ao Gerente, ao Financeiro e à Recepcionista (decisão do usuário em
+ * 2026-10-19).
  */
 object BillingPermissions : ModulePermissions {
     override val module = "billing"
@@ -49,7 +51,15 @@ object BillingPermissions : ModulePermissions {
     /** Ajustar um lançamento (sensível, com limite [MAX_AMOUNT]). */
     val POSTINGS_ADJUST = PermissionCode("billing.postings.adjust")
 
+    /** Cadastrar, editar, desativar e reativar regras de roteamento (M3 E05; não sensível). */
+    val ROUTING_MANAGE = PermissionCode("billing.routing.manage")
+
+    /** Transferir e dividir lançamentos entre contas (M3 E05; não sensível). */
+    val POSTINGS_TRANSFER = PermissionCode("billing.postings.transfer")
+
     private val all = TemplateGrant(ALL)
+    private val operators =
+        mapOf(RoleTemplate.MANAGER to all, RoleTemplate.FINANCE to all, RoleTemplate.RECEPTIONIST to all)
     private val unlimited = TemplateGrant(ALL, mapOf(MAX_AMOUNT to LimitValue.Unlimited))
     private val maxAmount =
         LimitDefinition(
@@ -127,6 +137,18 @@ object BillingPermissions : ModulePermissions {
                 sensitive = true,
                 limits = listOf(maxAmount),
                 templates = mapOf(RoleTemplate.MANAGER to unlimited, RoleTemplate.FINANCE to unlimited),
+            ),
+            PermissionDefinition(
+                ROUTING_MANAGE,
+                "Cadastrar, editar, desativar e reativar regras de roteamento entre contas",
+                setOf(ALL),
+                templates = operators,
+            ),
+            PermissionDefinition(
+                POSTINGS_TRANSFER,
+                "Transferir e dividir lançamentos entre contas",
+                setOf(ALL),
+                templates = operators,
             ),
         )
 }

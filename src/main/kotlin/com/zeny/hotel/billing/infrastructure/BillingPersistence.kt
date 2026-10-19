@@ -1,32 +1,45 @@
 package com.zeny.hotel.billing.infrastructure
 
 import com.zeny.hotel.billing.FolioId
+import com.zeny.hotel.billing.RoutingRuleId
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.application.BillingDirectory
 import com.zeny.hotel.billing.application.BillingStore
 import com.zeny.hotel.billing.application.FolioFilter
+import com.zeny.hotel.billing.application.RoutingRuleFilter
 import com.zeny.hotel.billing.application.TransactionCodeFilter
 import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.RoutingRule
 import com.zeny.hotel.billing.domain.TransactionCode
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
 import org.postgresql.util.PSQLException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
-import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
+import java.time.LocalDate
 import java.util.UUID
 
 interface TransactionCodeJpaRepository : JpaRepository<TransactionCode, UUID>
 
-interface FolioJpaRepository : JpaRepository<Folio, UUID> {
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT f FROM Folio f WHERE f.id = :id")
-    fun findForUpdate(id: UUID): Folio?
+interface RoutingRuleJpaRepository : JpaRepository<RoutingRule, UUID> {
+    @Query("SELECT r FROM RoutingRule r WHERE r.active = true")
+    fun findActive(): List<RoutingRule>
+
+    @Query(
+        "SELECT r FROM RoutingRule r WHERE r.active = true AND r.startsOnValue <= :date " +
+            "AND (r.endsOnValue IS NULL OR r.endsOnValue >= :date)",
+    )
+    fun findActiveOn(date: LocalDate): List<RoutingRule>
 }
+
+interface FolioJpaRepository : JpaRepository<Folio, UUID>
+
+/** Chave da trava consultiva das regras de roteamento (exclusiva nas escritas, compartilhada nos lançamentos). */
+private const val ROUTING_RULES_LOCK = "billing.routing-rules"
 
 /** Restrições do schema `billing` que a aplicação reconhece pelo nome. */
 internal object BillingConstraints {
@@ -34,11 +47,13 @@ internal object BillingConstraints {
     const val POSTING_REVERSAL = "posting_reversal_uk"
 }
 
-/** Os códigos e as contas por JPA, na transação corrente. */
+/** Os códigos, as contas e as regras de roteamento por JPA, na transação corrente. */
 @Component
+@Suppress("TooManyFunctions") // os três agregados mutáveis do módulo (BillingStore)
 class JpaBillingStore(
     private val codes: TransactionCodeJpaRepository,
     private val folios: FolioJpaRepository,
+    private val rules: RoutingRuleJpaRepository,
     private val entityManager: EntityManager,
     private val jdbc: JdbcClient,
 ) : BillingStore {
@@ -67,10 +82,11 @@ class JpaBillingStore(
     override fun folio(id: FolioId): Folio? = folios.findById(id.value).orElse(null)
 
     override fun folioForUpdate(id: FolioId): Folio? =
-        folios.findForUpdate(id.value)?.also {
-            // Já carregada nesta transação (por uma leitura anterior), a entidade traria o estado lido antes da
-            // trava: relê, agora com a linha travada.
-            entityManager.refresh(it)
+        entityManager.find(Folio::class.java, id.value)?.also {
+            // Relê com a linha travada (`SELECT … FOR UPDATE`): já carregada nesta transação (por uma leitura
+            // anterior), a entidade traria o estado lido antes da trava, e uma consulta com trava que trouxesse outra
+            // versão seria recusada pelo Hibernate como conflito.
+            entityManager.refresh(it, LockModeType.PESSIMISTIC_WRITE)
         }
 
     override fun folios(ids: List<UUID>): List<Folio> {
@@ -79,6 +95,13 @@ class JpaBillingStore(
         return ids.mapNotNull(found::get)
     }
 
+    override fun foliosForUpdate(ids: Collection<FolioId>): Map<FolioId, Folio> =
+        ids
+            .distinct()
+            .sortedBy { it.value.toString() }
+            .mapNotNull { id -> folioForUpdate(id)?.let { id to it } }
+            .toMap()
+
     override fun add(folio: Folio) {
         folios.saveAndFlush(folio)
     }
@@ -86,6 +109,30 @@ class JpaBillingStore(
     override fun markChanged(folio: Folio) = entityManager.lock(folio, LockModeType.PESSIMISTIC_FORCE_INCREMENT)
 
     override fun flush() = folios.flush()
+
+    override fun lockRoutingRules() {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtext('$ROUTING_RULES_LOCK'))").query().singleRow()
+    }
+
+    override fun lockRoutingRulesShared() {
+        jdbc.sql("SELECT pg_advisory_xact_lock_shared(hashtext('$ROUTING_RULES_LOCK'))").query().singleRow()
+    }
+
+    override fun routingRule(id: RoutingRuleId): RoutingRule? = rules.findById(id.value).orElse(null)
+
+    override fun routingRules(ids: List<UUID>): List<RoutingRule> {
+        if (ids.isEmpty()) return emptyList()
+        val found = rules.findAllById(ids).associateBy { it.id.value }
+        return ids.mapNotNull(found::get)
+    }
+
+    override fun activeRoutingRules(): List<RoutingRule> = rules.findActive()
+
+    override fun routingRulesOn(date: LocalDate): List<RoutingRule> = rules.findActiveOn(date)
+
+    override fun add(rule: RoutingRule) {
+        rules.saveAndFlush(rule)
+    }
 }
 
 /** As listagens de códigos e contas por SQL: só as chaves do cursor e os ids, na ordem da página. */
@@ -137,6 +184,30 @@ class JdbcBillingDirectory(
             .param("ownerId", filter.ownerId)
             .param("status", filter.status?.name)
             .param("payer", filter.payerCompanyId?.value)
+            .param("afterId", afterId)
+            .param("limit", limit)
+            .query { rs, _ -> rs.getObject("id", UUID::class.java) }
+            .list()
+
+    override fun routingRules(
+        filter: RoutingRuleFilter,
+        afterId: UUID?,
+        limit: Int,
+    ): List<UUID> =
+        jdbc
+            .sql(
+                """
+                SELECT id FROM billing.routing_rule
+                WHERE (CAST(:source AS uuid) IS NULL OR source_folio_id = CAST(:source AS uuid))
+                  AND (CAST(:target AS uuid) IS NULL OR target_folio_id = CAST(:target AS uuid))
+                  AND (CAST(:active AS boolean) IS NULL OR active = CAST(:active AS boolean))
+                  AND (CAST(:afterId AS uuid) IS NULL OR id > CAST(:afterId AS uuid))
+                ORDER BY id
+                LIMIT :limit
+                """.trimIndent(),
+            ).param("source", filter.sourceFolioId?.value)
+            .param("target", filter.targetFolioId?.value)
+            .param("active", filter.active)
             .param("afterId", afterId)
             .param("limit", limit)
             .query { rs, _ -> rs.getObject("id", UUID::class.java) }

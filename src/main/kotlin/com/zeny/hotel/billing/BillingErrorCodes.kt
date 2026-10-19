@@ -54,4 +54,46 @@ object BillingErrorCodes {
 
     /** 422: o ajuste passa do que ainda resta do lançamento. */
     val ADJUSTMENT_EXCEEDS_REMAINING = ErrorCode("ADJUSTMENT_EXCEEDS_REMAINING")
+
+    /** 400: a requisição cita uma conta inexistente (destino, origem de regra ou parte da divisão; com o campo). */
+    val UNKNOWN_FOLIO = ErrorCode("UNKNOWN_FOLIO")
+
+    /** 404: regra de roteamento inexistente. */
+    val ROUTING_RULE_NOT_FOUND = ErrorCode("ROUTING_RULE_NOT_FOUND")
+
+    /**
+     * 400: regra sem critério ou com os dois (códigos e grupo de receita), com código repetido ou mais de 50, ou
+     * período com o fim antes do início (com o campo).
+     */
+    val ROUTING_RULE_INVALID = ErrorCode("ROUTING_RULE_INVALID")
+
+    /**
+     * 409: outra regra ativa da mesma conta de origem e do mesmo nível (as duas por código, com algum código em
+     * comum, ou as duas pelo mesmo grupo de receita) tem período que se cruza com o desta.
+     */
+    val ROUTING_RULE_OVERLAP = ErrorCode("ROUTING_RULE_OVERLAP")
+
+    /** 422: a regra formaria um ciclo de roteamento (a cadeia voltaria à origem), inclusive origem = destino. */
+    val ROUTING_RULE_CYCLE = ErrorCode("ROUTING_RULE_CYCLE")
+
+    /** 409: a conta de destino de uma regra (na criação ou no lançamento roteado) está encerrada. */
+    val ROUTING_TARGET_CLOSED = ErrorCode("ROUTING_TARGET_CLOSED")
+
+    /** 400: transferência sem lançamentos, com lançamento repetido ou para a própria conta (com o campo). */
+    val TRANSFER_INVALID = ErrorCode("TRANSFER_INVALID")
+
+    /** 422: só um lançamento normal ou a entrada de uma transferência é transferido ou dividido. */
+    val POSTING_NOT_TRANSFERABLE = ErrorCode("POSTING_NOT_TRANSFERABLE")
+
+    /** 422: os ajustes ou transferências já zeraram o lançamento; não resta nada a transferir. */
+    val POSTING_NOTHING_TO_TRANSFER = ErrorCode("POSTING_NOTHING_TO_TRANSFER")
+
+    /**
+     * 400: divisão com menos de 2 ou mais de 10 partes, conta repetida, parte sem o valor do modo (`percent` ou
+     * `amount`) ou com valor não positivo, ou percentuais que não somam exatamente 100 (com o campo).
+     */
+    val SPLIT_INVALID = ErrorCode("SPLIT_INVALID")
+
+    /** 422: na divisão por valor, as partes não somam exatamente o que ainda resta do lançamento. */
+    val SPLIT_TOTAL_MISMATCH = ErrorCode("SPLIT_TOTAL_MISMATCH")
 }

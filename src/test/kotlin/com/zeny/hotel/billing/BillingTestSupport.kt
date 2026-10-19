@@ -20,6 +20,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -108,6 +109,65 @@ class BillingTestSupport(
         ).expect(201)
 
     fun folio(id: UUID): JsonNode = call(GET, "/api/v1/folios/$id", admin).expect(200)
+
+    /** Cria uma regra de roteamento como [auth] (por códigos ou por grupo); devolve a resposta. */
+    @Suppress("LongParameterList") // os campos da regra
+    fun createRule(
+        source: UUID,
+        target: UUID,
+        startsOn: LocalDate,
+        endsOn: LocalDate? = null,
+        codes: List<UUID>? = null,
+        group: String? = null,
+        auth: RequestPostProcessor = admin,
+    ): MockHttpServletResponse =
+        call(
+            POST,
+            "/api/v1/routing-rules",
+            auth,
+            mapOf(
+                "sourceFolioId" to source,
+                "targetFolioId" to target,
+                "transactionCodeIds" to codes,
+                "revenueGroup" to group,
+                "startsOn" to startsOn.toString(),
+                "endsOn" to endsOn?.toString(),
+            ),
+        )
+
+    /** Transfere os lançamentos de [source] para [target] como [auth]. */
+    fun transfer(
+        source: UUID,
+        target: UUID,
+        postings: List<String>,
+        auth: RequestPostProcessor = admin,
+        reason: String? = null,
+    ): MockHttpServletResponse =
+        call(
+            POST,
+            "/api/v1/folios/$source/postings/transfer",
+            auth,
+            mapOf("targetFolioId" to target, "postingIds" to postings, "reason" to reason),
+        )
+
+    /** Divide o lançamento entre as partes (conta → percentual ou valor) como [auth]. */
+    fun split(
+        source: UUID,
+        posting: String,
+        by: String,
+        parts: List<Pair<UUID, String>>,
+        auth: RequestPostProcessor = admin,
+    ): MockHttpServletResponse {
+        val field = if (by == "PERCENT") "percent" else "amount"
+        return call(
+            POST,
+            "/api/v1/folios/$source/postings/$posting/split",
+            auth,
+            mapOf("by" to by, "parts" to parts.map { (folio, value) -> mapOf("folioId" to folio, field to value) }),
+        )
+    }
+
+    fun balance(folio: UUID): String = folio(folio)["balance"].asString()
 
     fun postings(folio: UUID): List<JsonNode> = listAll("/api/v1/folios/$folio/postings")
 

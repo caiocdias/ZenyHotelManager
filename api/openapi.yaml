@@ -22,10 +22,11 @@ security:
 tags:
 - description: Configuração do hotel e data operacional.
   name: hotel
+- description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
+    \ transferência e divisão."
+  name: billing
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
-- description: "Códigos de lançamento, contas e lançamentos imutáveis."
-  name: billing
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -2520,7 +2521,11 @@ paths:
         \ num código `CREDIT`. Exige `billing.postings.create`. Conta encerrada: 409\
         \ `FOLIO_CLOSED`; código inexistente: 400 `UNKNOWN_TRANSACTION_CODE`; desativado:\
         \ 422 `TRANSACTION_CODE_INACTIVE`; quantidade ou valor fora da faixa: 400\
-        \ `POSTING_INVALID`."
+        \ `POSTING_INVALID`. Roteamento (RF-CTA-04): uma regra vigente na data operacional\
+        \ desta conta (por código, que prevalece, ou por grupo de receita) grava o\
+        \ lançamento na conta de destino, seguindo a cadeia, com `routedFromFolioId`\
+        \ = esta conta e `routingRuleId`; a resposta e o `Location` são os da conta\
+        \ final; destino encerrado: 409 `ROUTING_TARGET_CLOSED`."
       operationId: createPosting
       parameters:
       - in: path
@@ -2567,6 +2572,64 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Lançar numa conta
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings/transfer:
+    post:
+      description: "Transfere tudo o que ainda resta de cada lançamento para a conta\
+        \ de destino (RF-CTA-05), sem mudar o lançamento: cada um ganha uma saída\
+        \ nesta conta (`TRANSFER_OUT`, o inverso) e uma entrada no destino (`TRANSFER_IN`),\
+        \ vinculadas, na data operacional. Vai exatamente para o destino (o roteamento\
+        \ não se aplica). Exige `billing.postings.transfer`. Só um lançamento normal\
+        \ ou a entrada de uma transferência é transferido (422 `POSTING_NOT_TRANSFERABLE`);\
+        \ já estornado: 409 `POSTING_ALREADY_REVERSED`; nada restando: 422 `POSTING_NOTHING_TO_TRANSFER`;\
+        \ conta encerrada: 409 `FOLIO_CLOSED`; conta de destino inexistente: 400 `UNKNOWN_FOLIO`."
+      operationId: transferPostings
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TransferRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+          description: Transferidos.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Transferir lançamentos para outra conta
       tags:
       - billing
   /api/v1/folios/{id}/postings/{postingId}:
@@ -2760,6 +2823,72 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Estornar um lançamento
+      tags:
+      - billing
+  /api/v1/folios/{id}/postings/{postingId}/split:
+    post:
+      description: "Reparte o que ainda resta do lançamento entre 2 e 10 contas (esta\
+        \ mesma = a parte que fica), por percentual (`PERCENT`, somando exatamente\
+        \ 100, repartido sem perder centavos) ou por valor (`AMOUNT`, somando exatamente\
+        \ o que resta, senão 422 `SPLIT_TOTAL_MISMATCH`); cada parte movida é um par\
+        \ saída/entrada como na transferência. Partes fora do formato: 400 `SPLIT_INVALID`;\
+        \ conta de uma parte inexistente: 400 `UNKNOWN_FOLIO`. Exige `billing.postings.transfer`.\
+        \ Só um lançamento normal ou a entrada de uma transferência é transferido\
+        \ (422 `POSTING_NOT_TRANSFERABLE`); já estornado: 409 `POSTING_ALREADY_REVERSED`;\
+        \ nada restando: 422 `POSTING_NOTHING_TO_TRANSFER`; conta encerrada: 409 `FOLIO_CLOSED`;\
+        \ conta de destino inexistente: 400 `UNKNOWN_FOLIO`."
+      operationId: splitPosting
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: postingId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SplitRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferResponse"
+          description: Dividido.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Dividir um lançamento entre contas
       tags:
       - billing
   /api/v1/guests:
@@ -5644,6 +5773,256 @@ paths:
       summary: Histórico de status de uma UH
       tags:
       - rooms
+  /api/v1/routing-rules:
+    get:
+      description: Em ordem de criação. Exige `billing.folios.read`.
+      operationId: listRoutingRules
+      parameters:
+      - description: Só as da conta de origem.
+        in: query
+        name: sourceFolioId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as que levam à conta de destino.
+        in: query
+        name: targetFolioId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as ativas (`true`) ou só as desativadas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoutingRuleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as regras de roteamento
+      tags:
+      - billing
+    post:
+      description: "Os lançamentos pedidos na conta de origem, nos códigos ou no grupo\
+        \ de receita da regra e na data operacional dentro do período, vão para a\
+        \ conta de destino; com A → B e B → C, o lançamento em A vai a C. Na mesma\
+        \ conta, a regra por código prevalece sobre a por grupo. Exige `billing.routing.manage`.\
+        \ Com a regra ativa: origem encerrada: 409 `FOLIO_CLOSED`; destino encerrado:\
+        \ 409 `ROUTING_TARGET_CLOSED`; outra regra ativa da mesma origem e do mesmo\
+        \ nível (por código, com algum código em comum, ou pelo mesmo grupo) em perí\
+        odo que se cruza: 409 `ROUTING_RULE_OVERLAP`; regra que formaria um ciclo\
+        \ (a cadeia voltaria à origem, inclusive origem = destino): 422 `ROUTING_RULE_CYCLE`.\
+        \ Códigos e grupo juntos, nenhum dos dois, código repetido ou fim antes do\
+        \ início: 400 `ROUTING_RULE_INVALID`; código inexistente: 400 `UNKNOWN_TRANSACTION_CODE`;\
+        \ conta inexistente: 400 `UNKNOWN_FOLIO`."
+      operationId: createRoutingRule
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleCreateRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRuleResponse"
+          description: Regra criada.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar uma regra de roteamento
+      tags:
+      - billing
+  /api/v1/routing-rules/{id}:
+    get:
+      description: "Exige `billing.folios.read`. Inexistente: 404 `ROUTING_RULE_NOT_FOUND`."
+      operationId: getRoutingRule
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRuleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma regra de roteamento
+      tags:
+      - billing
+    put:
+      description: "Troca o destino, o critério e o período (a origem não muda). Exige\
+        \ `billing.routing.manage` e o `If-Match` (ausente: 428; versão diferente:\
+        \ 412). Lançamentos já feitos não mudam. Com a regra ativa: origem encerrada:\
+        \ 409 `FOLIO_CLOSED`; destino encerrado: 409 `ROUTING_TARGET_CLOSED`; outra\
+        \ regra ativa da mesma origem e do mesmo nível (por código, com algum código\
+        \ em comum, ou pelo mesmo grupo) em período que se cruza: 409 `ROUTING_RULE_OVERLAP`;\
+        \ regra que formaria um ciclo (a cadeia voltaria à origem, inclusive origem\
+        \ = destino): 422 `ROUTING_RULE_CYCLE`. Códigos e grupo juntos, nenhum dos\
+        \ dois, código repetido ou fim antes do início: 400 `ROUTING_RULE_INVALID`;\
+        \ código inexistente: 400 `UNKNOWN_TRANSACTION_CODE`; conta inexistente: 400\
+        \ `UNKNOWN_FOLIO`."
+      operationId: updateRoutingRule
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRuleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma regra de roteamento
+      tags:
+      - billing
+  /api/v1/routing-rules/{id}/deactivate:
+    post:
+      description: Os lançamentos seguintes ficam na origem. Exige `billing.routing.manage`.
+      operationId: deactivateRoutingRule
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRuleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma regra de roteamento
+      tags:
+      - billing
+  /api/v1/routing-rules/{id}/reactivate:
+    post:
+      description: "Exige `billing.routing.manage`. Com a regra ativa: origem encerrada:\
+        \ 409 `FOLIO_CLOSED`; destino encerrado: 409 `ROUTING_TARGET_CLOSED`; outra\
+        \ regra ativa da mesma origem e do mesmo nível (por código, com algum código\
+        \ em comum, ou pelo mesmo grupo) em período que se cruza: 409 `ROUTING_RULE_OVERLAP`;\
+        \ regra que formaria um ciclo (a cadeia voltaria à origem, inclusive origem\
+        \ = destino): 422 `ROUTING_RULE_CYCLE`. Códigos e grupo juntos, nenhum dos\
+        \ dois, código repetido ou fim antes do início: 400 `ROUTING_RULE_INVALID`;\
+        \ código inexistente: 400 `UNKNOWN_TRANSACTION_CODE`; conta inexistente: 400\
+        \ `UNKNOWN_FOLIO`."
+      operationId: reactivateRoutingRule
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRuleResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma regra de roteamento
+      tags:
+      - billing
   /api/v1/schedule:
     get:
       description: "As entradas de `from` a `to` (no máximo 92 dias; sem `from`, a\
@@ -8800,6 +9179,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageRoutingRuleResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoutingRuleResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageScheduleEntryResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -11001,6 +11394,17 @@ components:
           format: uuid
           description: "O estorno deste lançamento, se houve (só no normal)."
           nullable: true
+        routedFromFolioId:
+          type: string
+          format: uuid
+          description: "Roteado: a conta em que o lançamento foi pedido (esta é a\
+            \ conta de destino)."
+          nullable: true
+        routingRuleId:
+          type: string
+          format: uuid
+          description: "Roteado: a regra da conta de origem que desviou o lançamento."
+          nullable: true
         source:
           type: string
           enum:
@@ -11012,12 +11416,38 @@ components:
         transactionCodeId:
           type: string
           format: uuid
+        transferredFromFolioId:
+          type: string
+          format: uuid
+          description: "Entrada de transferência: a conta de origem."
+          nullable: true
+        transferredFromPostingId:
+          type: string
+          format: uuid
+          description: "Entrada de transferência: a saída correspondente."
+          nullable: true
+        transferredToFolioId:
+          type: string
+          format: uuid
+          description: "Saída de transferência: a conta de destino."
+          nullable: true
+        transferredToPostingId:
+          type: string
+          format: uuid
+          description: "Saída de transferência: a entrada correspondente."
+          nullable: true
         type:
           type: string
-          enum:
+          description: "Tipo do lançamento: `REGULAR`, `REVERSAL` (estorno), `ADJUSTMENT`\
+            \ (ajuste), `TRANSFER_OUT` (saída de uma transferência ou divisão) ou\
+            \ `TRANSFER_IN` (entrada). A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
           - REGULAR
           - REVERSAL
           - ADJUSTMENT
+          - TRANSFER_OUT
+          - TRANSFER_IN
         unitPrice:
           type: string
           format: decimal
@@ -11910,6 +12340,155 @@ components:
       - standardAdults
       - standardChildren
       - updatedAt
+    RoutingRuleCreateRequest:
+      type: object
+      description: "Uma regra de roteamento nova: a conta de origem (fixa depois)\
+        \ e os dados da regra."
+      properties:
+        endsOn:
+          type: string
+          format: date
+          description: "Última data operacional (inclusive); nula: sem fim."
+          nullable: true
+        revenueGroup:
+          type: string
+          description: "Grupo de receita coberto; com ele, sem `transactionCodeIds`."
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+          nullable: true
+        sourceFolioId:
+          type: string
+          format: uuid
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+          description: Primeira data operacional da regra.
+          nullable: true
+        targetFolioId:
+          type: string
+          format: uuid
+          nullable: true
+        transactionCodeIds:
+          type: array
+          description: "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`."
+          items:
+            type: string
+            format: uuid
+            description: "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`."
+          nullable: true
+      required:
+      - sourceFolioId
+      - startsOn
+      - targetFolioId
+    RoutingRuleRequest:
+      type: object
+      description: "Uma regra de roteamento: os códigos (`transactionCodeIds`) **ou**\
+        \ o grupo de receita (`revenueGroup`) e o período em datas de negócio."
+      properties:
+        endsOn:
+          type: string
+          format: date
+          description: "Última data operacional (inclusive); nula: sem fim."
+          nullable: true
+        revenueGroup:
+          type: string
+          description: "Grupo de receita coberto; com ele, sem `transactionCodeIds`."
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+          description: Primeira data operacional da regra.
+          nullable: true
+        targetFolioId:
+          type: string
+          format: uuid
+          nullable: true
+        transactionCodeIds:
+          type: array
+          description: "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`."
+          items:
+            type: string
+            format: uuid
+            description: "Códigos cobertos (de 1 a 50); com eles, sem `revenueGroup`."
+          nullable: true
+      required:
+      - startsOn
+      - targetFolioId
+    RoutingRuleResponse:
+      type: object
+      description: Uma regra de roteamento.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        endsOn:
+          type: string
+          format: date
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        revenueGroup:
+          type: string
+          description: O grupo de receita coberto (nulo numa regra por código).
+          enum:
+          - ROOM
+          - FOOD_BEVERAGE
+          - SERVICE_CHARGE
+          - FEES
+          - TAXES
+          - LAUNDRY
+          - OTHER
+          nullable: true
+        sourceFolioId:
+          type: string
+          format: uuid
+        startsOn:
+          type: string
+          format: date
+        targetFolioId:
+          type: string
+          format: uuid
+        transactionCodeIds:
+          type: array
+          description: Os códigos cobertos (vazio numa regra por grupo).
+          items:
+            type: string
+            format: uuid
+            description: Os códigos cobertos (vazio numa regra por grupo).
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - id
+      - sourceFolioId
+      - startsOn
+      - targetFolioId
+      - transactionCodeIds
+      - updatedAt
     ScheduleEntriesResponse:
       type: object
       description: "As entradas lançadas, uma por data."
@@ -12193,6 +12772,59 @@ components:
       - name
       - start
       - updatedAt
+    SplitPartDto:
+      type: object
+      description: "Uma parte da divisão: a conta (esta mesma = a parte que fica)\
+        \ e o percentual ou o valor."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        folioId:
+          type: string
+          format: uuid
+          nullable: true
+        percent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+      required:
+      - folioId
+    SplitRequest:
+      type: object
+      description: "Dividir o que resta de um lançamento entre contas, por percentual\
+        \ ou por valor."
+      properties:
+        by:
+          type: string
+          enum:
+          - PERCENT
+          - AMOUNT
+          nullable: true
+        parts:
+          type: array
+          description: "De 2 a 10 partes, uma por conta, sem repetir."
+          items:
+            $ref: "#/components/schemas/SplitPartDto"
+          maxItems: 10
+          minItems: 2
+          nullable: true
+        reason:
+          type: string
+          description: "Motivo (opcional, até 500)."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+      required:
+      - by
+      - parts
     StartChecklistExecutionRequest:
       type: object
       description: "Iniciar uma execução avulsa: pelo modelo (`templateId`, a última\
@@ -12695,6 +13327,60 @@ components:
       - code
       - name
       - serviceChargeApplies
+    TransferRequest:
+      type: object
+      description: Transferir lançamentos inteiros (o que ainda resta de cada um)
+        para outra conta.
+      properties:
+        postingIds:
+          type: array
+          description: "Os lançamentos desta conta, de 1 a 100, sem repetir."
+          items:
+            type: string
+            format: uuid
+            description: "Os lançamentos desta conta, de 1 a 100, sem repetir."
+          maxItems: 100
+          minItems: 1
+          nullable: true
+        reason:
+          type: string
+          description: "Motivo (opcional, até 500)."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        targetFolioId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - postingIds
+      - targetFolioId
+    TransferResponse:
+      type: object
+      description: As partes movidas por uma transferência ou divisão.
+      properties:
+        transfers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransferredPostingResponse"
+      required:
+      - transfers
+    TransferredPostingResponse:
+      type: object
+      description: "Uma parte movida: o lançamento de onde saiu, a saída (nesta conta)\
+        \ e a entrada (no destino)."
+      properties:
+        incoming:
+          $ref: "#/components/schemas/PostingResponse"
+        originalId:
+          type: string
+          format: uuid
+        outgoing:
+          $ref: "#/components/schemas/PostingResponse"
+      required:
+      - incoming
+      - originalId
+      - outgoing
     UnreadCountResponse:
       type: object
       description: Quantas notificações do próprio usuário ainda não foram lidas.

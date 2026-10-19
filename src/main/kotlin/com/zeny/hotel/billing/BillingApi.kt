@@ -44,6 +44,12 @@ interface BillingApi {
      * `404 FOLIO_NOT_FOUND`, encerrada `409 FOLIO_CLOSED`; código inexistente `400 UNKNOWN_TRANSACTION_CODE`,
      * desativado `422 TRANSACTION_CODE_INACTIVE`; quantidade, valor ou descrição fora da faixa
      * `400 POSTING_INVALID`. O lançamento nunca muda depois (RN-03).
+     *
+     * **Roteamento** (RF-CTA-04, M3 E05): uma regra vigente na data operacional da conta pedida (por código, que
+     * prevalece, ou por grupo de receita) desvia o lançamento para a conta de destino, seguindo a cadeia até a conta
+     * sem regra aplicável; o lançamento devolvido fica na conta final ([PostingSummary.folioId]) com a origem em
+     * [PostingSummary.routedFromFolioId] e a regra em [PostingSummary.routingRuleId]. Destino encerrado:
+     * `409 ROUTING_TARGET_CLOSED`.
      */
     fun post(
         folioId: FolioId,
@@ -72,6 +78,18 @@ value class FolioId(
 
     companion object {
         fun new(): FolioId = FolioId(UuidV7.generate())
+    }
+}
+
+/** Id de uma regra de roteamento (M3 E05). */
+@JvmInline
+value class RoutingRuleId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): RoutingRuleId = RoutingRuleId(UuidV7.generate())
     }
 }
 
@@ -196,6 +214,18 @@ enum class PostingType {
 
     /** Ajuste parcial: sinal oposto ao do original, até o que ainda resta dele. */
     ADJUSTMENT,
+
+    /**
+     * Saída de uma transferência ou divisão (RF-CTA-05, M3 E05): na conta de origem, o inverso da parte transferida
+     * do lançamento citado (`correctsId`), que continua intacto.
+     */
+    TRANSFER_OUT,
+
+    /**
+     * Entrada de uma transferência ou divisão: na conta de destino, a parte transferida, vinculada à saída
+     * (`transferredFromId`); é estornada, ajustada e transferida como um lançamento normal.
+     */
+    TRANSFER_IN,
 }
 
 /** Um código de lançamento para os módulos de cima. [serviceChargeRate] nulo: cai na padrão do hotel (H4). */
@@ -246,7 +276,11 @@ data class NewPosting(
     val source: PostingSource,
 )
 
-/** Um lançamento gravado. */
+/**
+ * Um lançamento gravado. Roteado (M3 E05): [folioId] é a conta de destino, [routedFromFolioId] a conta em que foi
+ * pedido e [routingRuleId] a regra dela que o desviou. A entrada de uma transferência cita a saída em
+ * [transferredFromId].
+ */
 data class PostingSummary(
     val id: PostingId,
     val folioId: FolioId,
@@ -260,4 +294,7 @@ data class PostingSummary(
     val postedAt: Instant,
     val postedBy: UserId?,
     val correctsId: PostingId?,
+    val routedFromFolioId: FolioId? = null,
+    val routingRuleId: RoutingRuleId? = null,
+    val transferredFromId: PostingId? = null,
 )

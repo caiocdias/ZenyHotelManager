@@ -6,6 +6,7 @@ import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PostingId
 import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.TransactionCodeId
+import com.zeny.hotel.billing.domain.CorrectionLimit
 import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.PostingApproval
@@ -98,7 +99,9 @@ class FolioService(
  * antes de travar ou ler a conta: quem não tem acesso ao `billing` não descobre nada dela) e são **sensíveis**, com o
  * limite `maxAmount` sobre o **total das correções do lançamento** (as já feitas, por qualquer usuário, mais esta, em
  * valor absoluto), para o fracionamento não passar o teto: sem a permissão, ou acima do limite, pedem a aprovação de
- * um superior (`403 APPROVAL_REQUIRED`, concluída com `X-Approval-Token`). As regras da correção (lançamento
+ * um superior (`403 APPROVAL_REQUIRED`, concluída com `X-Approval-Token`). Desde a E05, o total soma toda a linhagem do
+ * lançamento (o normal de origem e as entradas de transferência que descendem dele): dividir ou transferir antes de
+ * estornar não passa o teto. As regras da correção (lançamento
  * corrigível, ainda não estornado, ajuste até o que resta) são conferidas com a conta travada e antes do step-up,
  * porque o total depende delas.
  */
@@ -159,7 +162,7 @@ class PostingService(
         authorization.require(BillingPermissions.FOLIOS_READ)
         val text = Posting.reason(reason)
         val (folio, corrections) = lockAndLoad(folioId, id)
-        val cumulative = corrections.cumulativeWith(corrections.reversalAmount(folio))
+        val cumulative = lineageCumulative(id, corrections.reversalAmount(folio))
         val approval =
             authorize(BillingAudit.REVERSE_POSTING, BillingPermissions.POSTINGS_REVERSE, id, cumulative, approvalToken)
         val reversal = corrections.reverse(folio, text, operations.stamp(), approval)
@@ -179,7 +182,7 @@ class PostingService(
         authorization.require(BillingPermissions.FOLIOS_READ)
         val text = Posting.reason(reason)
         val (folio, corrections) = lockAndLoad(folioId, id)
-        val cumulative = corrections.cumulativeWith(corrections.adjustmentAmount(folio, magnitude))
+        val cumulative = lineageCumulative(id, corrections.adjustmentAmount(folio, magnitude))
         val approval =
             authorize(BillingAudit.ADJUST_POSTING, BillingPermissions.POSTINGS_ADJUST, id, cumulative, approvalToken)
         val adjustment = corrections.adjust(folio, magnitude, text, operations.stamp(), approval)
@@ -195,6 +198,19 @@ class PostingService(
         val folio = store.folioForUpdate(folioId) ?: throw folioNotFound()
         val original = ledger.posting(id)?.takeIf { it.folioId == folioId } ?: throw postingNotFound()
         return folio to PostingCorrections(original, ledger.correctionsOf(id))
+    }
+
+    /**
+     * O total que o limite `maxAmount` confere: as correções de toda a linhagem do lançamento (o normal de origem e as
+     * entradas de transferência que descendem dele) mais esta, com a linhagem travada.
+     */
+    private fun lineageCumulative(
+        id: PostingId,
+        amount: Money,
+    ): Money {
+        val root = ledger.lineageRoot(id)
+        ledger.lockLineage(root)
+        return CorrectionLimit.cumulative(ledger.lineageCorrections(root), amount)
     }
 
     /** A ação sensível com o limite `maxAmount` = o total cumulativo das correções; a aprovação usada, se houve. */

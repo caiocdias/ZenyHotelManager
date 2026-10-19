@@ -98,6 +98,16 @@ class Folio private constructor(
         }
     }
 
+    /** Exige a conta aberta como destino de roteamento (de uma regra nova ou de um lançamento roteado). */
+    fun requireOpenAsRoutingTarget() {
+        if (status != FolioStatus.OPEN) {
+            throw ConflictException(
+                BillingErrorCodes.ROUTING_TARGET_CLOSED,
+                "A conta de destino $number do roteamento está encerrada.",
+            )
+        }
+    }
+
     override fun toString(): String = "Folio(id=$id, number=$number)"
 
     companion object {

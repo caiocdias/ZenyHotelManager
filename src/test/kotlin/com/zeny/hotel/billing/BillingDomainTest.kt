@@ -1,5 +1,6 @@
 package com.zeny.hotel.billing
 
+import com.zeny.hotel.billing.domain.CorrectionLimit
 import com.zeny.hotel.billing.domain.Folio
 import com.zeny.hotel.billing.domain.FolioBalance
 import com.zeny.hotel.billing.domain.Posting
@@ -113,10 +114,10 @@ class BillingDomainTest {
             PostingCorrections(first, emptyList()).adjust(folio, Money.of("1.00"), "ajuste do ajuste", stamp)
         }
         // O limite é cumulativo: as correções já feitas mais a nova.
-        adjusted.cumulativeWith(Money.of("-20.00")) shouldBe Money.of("50.00")
+        CorrectionLimit.cumulative(listOf(first), Money.of("-20.00")) shouldBe Money.of("50.00")
         val reversal = adjusted.reverse(folio, "Cancelado", stamp)
         reversal.amount shouldBe Money.of("-70.00")
-        adjusted.cumulativeWith(reversal.amount) shouldBe Money.of("100.00")
+        CorrectionLimit.cumulative(listOf(first), reversal.amount) shouldBe Money.of("100.00")
         PostingCorrections(dinner, listOf(first, reversal)).remaining shouldBe Money.ZERO
 
         // Ajustado até zerar: nada a estornar.
