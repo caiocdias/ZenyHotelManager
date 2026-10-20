@@ -75,6 +75,16 @@ data class PriceTarget(
     val to: LocalDate?,
     val seasonId: SeasonId?,
     val weekdays: Set<DayOfWeek>,
+) {
+    val dates: DateTarget get() = DateTarget(from, to, seasonId, weekdays)
+}
+
+/** As datas de uma edição em massa: o período explícito ([from] e [to]) **ou** a temporada, nos [weekdays]. */
+data class DateTarget(
+    val from: LocalDate?,
+    val to: LocalDate?,
+    val seasonId: SeasonId?,
+    val weekdays: Set<DayOfWeek>,
 )
 
 /** Um preço de criança numa faixa (idades em anos completos, inclusive). */

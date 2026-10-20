@@ -7,6 +7,7 @@ import com.zeny.hotel.rates.domain.PriceSelection
 import com.zeny.hotel.rates.domain.RatesRules
 import com.zeny.hotel.rates.domain.Season
 import com.zeny.hotel.rates.domain.SeasonDetails
+import com.zeny.hotel.rates.domain.SelectionErrors
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
@@ -114,43 +115,58 @@ class SeasonService(
 }
 
 /**
- * A seleção de datas de uma edição em massa (RF-TAR-04): o período explícito ou a temporada (um dos dois, `400
- * RATE_PRICE_SELECTION_INVALID`), com os dias da semana. A edição nunca começa antes da data operacional: o período
- * explícito que começa antes é recusado (`422 RATE_PRICE_PERIOD_IN_PAST`); a temporada é cortada nela (e a que já
- * terminou é recusada do mesmo modo).
+ * A seleção de datas de uma edição em massa (RF-TAR-04 e 05): o período explícito ou a temporada (um dos dois, `400`
+ * [SelectionErrors.selectionInvalid]), com os dias da semana. A edição nunca começa antes da data operacional: o
+ * período explícito que começa antes é recusado (`422` [SelectionErrors.periodInPast]); a temporada é cortada nela (e a
+ * que já terminou é recusada do mesmo modo). Os códigos são os dos preços ([SelectionErrors.PRICES]) ou os das
+ * restrições ([SelectionErrors.RESTRICTIONS]).
  */
 @Component
 class PriceSelections(
     private val store: RatesStore,
 ) {
+    /** O formato da seleção de preços (antes de ler o plano). */
+    fun requireWellFormed(target: PriceTarget) = requireWellFormed(target.dates, SelectionErrors.PRICES)
+
+    /** As datas da seleção de preços a partir de [businessDate]. */
+    fun resolve(
+        target: PriceTarget,
+        businessDate: LocalDate,
+    ): PriceSelection = resolve(target.dates, businessDate, SelectionErrors.PRICES)
+
     /** O formato da seleção (antes de ler o plano): um dos dois modos e, no explícito, o período válido. */
-    fun requireWellFormed(target: PriceTarget) {
+    fun requireWellFormed(
+        target: DateTarget,
+        errors: SelectionErrors,
+    ) {
         val from = target.from
         val to = target.to
         val explicit = from != null && to != null
         val partial = (from == null) != (to == null)
         if (partial || explicit == (target.seasonId != null)) {
             throw RatesRules.invalid(
-                RatesErrorCodes.RATE_PRICE_SELECTION_INVALID,
+                errors.selectionInvalid,
                 "seasonId",
                 "Informe o período (início e fim) ou a temporada, não os dois.",
             )
         }
-        if (explicit) PriceSelection.of(checkNotNull(from), checkNotNull(to), target.weekdays)
+        if (explicit) PriceSelection.of(checkNotNull(from), checkNotNull(to), target.weekdays, errors)
     }
 
     /** As datas da seleção a partir de [businessDate]. */
     fun resolve(
-        target: PriceTarget,
+        target: DateTarget,
         businessDate: LocalDate,
+        errors: SelectionErrors,
     ): PriceSelection {
         val seasonId = target.seasonId
         if (seasonId == null) {
-            val selection = PriceSelection.of(checkNotNull(target.from), checkNotNull(target.to), target.weekdays)
-            if (selection.from.isBefore(businessDate)) throw inPast()
+            val selection =
+                PriceSelection.of(checkNotNull(target.from), checkNotNull(target.to), target.weekdays, errors)
+            if (selection.from.isBefore(businessDate)) throw inPast(errors)
             return selection
         }
-        return activeSeason(seasonId).selection(target.weekdays).startingAt(businessDate) ?: throw inPast()
+        return activeSeason(seasonId).selection(target.weekdays).startingAt(businessDate) ?: throw inPast(errors)
     }
 
     /** A temporada citada: inexistente `400 UNKNOWN_SEASON` (campo `seasonId`); desativada `422 SEASON_INACTIVE`. */
@@ -168,9 +184,9 @@ class PriceSelections(
         return season
     }
 
-    private fun inPast() =
+    private fun inPast(errors: SelectionErrors) =
         BusinessRuleException(
-            RatesErrorCodes.RATE_PRICE_PERIOD_IN_PAST,
-            "Os preços só são editados a partir da data operacional.",
+            errors.periodInPast,
+            "${errors.subject} só são editados a partir da data operacional.",
         )
 }

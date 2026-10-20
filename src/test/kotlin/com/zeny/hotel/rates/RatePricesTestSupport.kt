@@ -31,10 +31,17 @@ open class RatesChangedProbeListener {
     }
 }
 
+/**
+ * Os listeners de teste dos eventos do `rates` (`RatesChanged` e, desde a E03, `RestrictionsChanged`): com eles, as
+ * publicações passam pelo outbox. Um só contexto para os testes de preços e de restrições.
+ */
 @TestConfiguration(proxyBeanMethods = false)
 class RatesChangedListenerConfiguration {
     @Bean
     fun ratesChangedProbeListener() = RatesChangedProbeListener()
+
+    @Bean
+    fun restrictionsChangedProbeListener() = RestrictionsChangedProbeListener()
 }
 
 /** Apoio dos testes de preços do `rates` (M4 E02): edição em massa, leitura, derivação e as faixas do hotel. */

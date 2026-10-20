@@ -590,6 +590,7 @@ class RatesApiTest(
                     "rates.discounts.apply",
                     "rates.prices.manage",
                     "rates.prices.override",
+                    "rates.restrictions.manage",
                 )
 
             val templateLimits =
@@ -624,7 +625,7 @@ class RatesApiTest(
         }
 
     @Test
-    fun `rates exposes no DELETE, only list, detail, create, update, actions and the price and derivation routes`() {
+    fun `rates exposes no DELETE, only list, detail, create, update, actions and the price and restriction routes`() {
         val ratesMappings =
             handlerMapping.handlerMethods.filter { (_, method) ->
                 method.beanType.packageName.startsWith("com.zeny.hotel.rates")
@@ -641,8 +642,15 @@ class RatesApiTest(
                 "/api/v1/packages",
                 "/api/v1/seasons",
             ).flatMap { listOf(it, "$it/{id}", "$it/{id}/deactivate", "$it/{id}/reactivate") } +
-            listOf("prices", "prices/bulk-update", "prices/bulk-remove", "derivation", "derivation/remove")
-                .map { "/api/v1/rate-plans/{id}/$it" }
+            listOf(
+                "prices",
+                "prices/bulk-update",
+                "prices/bulk-remove",
+                "derivation",
+                "derivation/remove",
+                "restrictions",
+                "restrictions/bulk-update",
+            ).map { "/api/v1/rate-plans/{id}/$it" }
     }
 
     // --- Apoio ------------------------------------------------------------------------------------------------------

@@ -13,7 +13,7 @@ import java.math.BigDecimal
 
 /**
  * Permissões do módulo `rates` (RF-ACS-02, SPEC §5.6, H7, H9 e H16 do roadmap do M4). Planos, políticas, pacotes,
- * preços e temporadas não têm dono, então só aceitam o escopo `ALL`. As restrições (E03) acrescentam as suas.
+ * preços, temporadas e restrições não têm dono, então só aceitam o escopo `ALL`.
  *
  * Preços (E02, H9, decisão do usuário em 2026-10-20): [PRICES_MANAGE] grava preços onde não havia, ou num plano
  * inativo, mantém as temporadas e a derivação de um plano que ainda não deriva; [PRICES_OVERRIDE] é **sensível**:
@@ -26,6 +26,9 @@ import java.math.BigDecimal
  * com o limite [MAX_PERCENT] (`PERCENT`, o desconto sobre o preço calculado da noite); o `reservations` a confere ao
  * gravar uma noite abaixo do preço calculado (M4 E07): acima do teto, pede a aprovação de um superior. Modelos: o
  * Gerente sem teto e a Recepcionista com teto de 10%.
+ *
+ * Restrições de venda (E03): [RESTRICTIONS_MANAGE] grava e retira as restrições por data, plano e tipo de UH (não
+ * sensível: a H9 vale só para a tarifa); só o Gerente a recebe no modelo. Consultar exige [PLANS_READ].
  *
  * Sugestões aos modelos (SPEC §3.1, H16): o Gerente consulta e mantém planos, políticas e pacotes; a Recepcionista, o
  * Comercial/Eventos e o Financeiro os consultam.
@@ -53,6 +56,9 @@ object RatesPermissions : ModulePermissions {
 
     /** Alterar ou retirar uma tarifa publicada e trocar a derivação de um plano publicado (sensível, H9; E02). */
     val PRICES_OVERRIDE = PermissionCode("rates.prices.override")
+
+    /** Gravar e retirar as restrições de venda por data, plano e tipo de UH (E03). */
+    val RESTRICTIONS_MANAGE = PermissionCode("rates.restrictions.manage")
 
     private val all = TemplateGrant(ALL)
 
@@ -107,6 +113,12 @@ object RatesPermissions : ModulePermissions {
                 "Alterar ou retirar tarifa publicada e trocar a derivação de plano publicado (ação sensível)",
                 setOf(ALL),
                 sensitive = true,
+                templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                RESTRICTIONS_MANAGE,
+                "Gravar e retirar restrições de venda (fechado, CTA, CTD, estadia e antecedência) por data e tipo",
+                setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all),
             ),
         )

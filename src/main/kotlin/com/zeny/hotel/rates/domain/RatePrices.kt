@@ -6,6 +6,7 @@ import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.RatesErrorCodes
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import java.time.DayOfWeek
@@ -318,8 +319,45 @@ object Derivations {
 }
 
 /**
- * As datas de uma edição ou leitura de preços (RF-TAR-04): de [from] a [to], inclusive, até [MAX_DAYS] dias (decisão do
- * usuário na E02: períodos maiores em duas requisições), só nos [weekdays] (vazio = todos os dias da semana).
+ * Os códigos de erro de uma seleção de datas: os dos preços (E02, [PRICES]) ou os das restrições (E03,
+ * [RESTRICTIONS]); a regra é a mesma, só o código e o assunto da mensagem mudam.
+ */
+data class SelectionErrors(
+    /** 400: fim antes do início, ou nenhuma data nos dias da semana. */
+    val periodInvalid: ErrorCode,
+    /** 400: mais de [PriceSelection.MAX_DAYS] dias. */
+    val periodTooLong: ErrorCode,
+    /** 400: período e temporada juntos, ou nenhum dos dois. */
+    val selectionInvalid: ErrorCode,
+    /** 422: começa antes da data operacional (ou a temporada já terminou). */
+    val periodInPast: ErrorCode,
+    /** O que se edita, na mensagem ("Os preços", "As restrições"). */
+    val subject: String,
+) {
+    companion object {
+        val PRICES =
+            SelectionErrors(
+                RatesErrorCodes.RATE_PRICE_PERIOD_INVALID,
+                RatesErrorCodes.RATE_PRICE_PERIOD_TOO_LONG,
+                RatesErrorCodes.RATE_PRICE_SELECTION_INVALID,
+                RatesErrorCodes.RATE_PRICE_PERIOD_IN_PAST,
+                "Os preços",
+            )
+        val RESTRICTIONS =
+            SelectionErrors(
+                RatesErrorCodes.RESTRICTION_PERIOD_INVALID,
+                RatesErrorCodes.RESTRICTION_PERIOD_TOO_LONG,
+                RatesErrorCodes.RESTRICTION_SELECTION_INVALID,
+                RatesErrorCodes.RESTRICTION_PERIOD_IN_PAST,
+                "As restrições",
+            )
+    }
+}
+
+/**
+ * As datas de uma edição ou leitura de preços (RF-TAR-04) ou de restrições (RF-TAR-05): de [from] a [to], inclusive,
+ * até [MAX_DAYS] dias (decisão do usuário na E02: períodos maiores em duas requisições), só nos [weekdays] (vazio =
+ * todos os dias da semana).
  */
 class PriceSelection private constructor(
     val from: LocalDate,
@@ -344,22 +382,26 @@ class PriceSelection private constructor(
     companion object {
         const val MAX_DAYS = 366L
 
-        /** Confere o período: fim antes do início `400 RATE_PRICE_PERIOD_INVALID`; mais de [MAX_DAYS] dias, `400`. */
+        /**
+         * Confere o período: fim antes do início `400` [SelectionErrors.periodInvalid]; mais de [MAX_DAYS] dias, `400`
+         * [SelectionErrors.periodTooLong] (os códigos dos preços, salvo [errors]).
+         */
         fun of(
             from: LocalDate,
             to: LocalDate,
             weekdays: Set<DayOfWeek> = emptySet(),
+            errors: SelectionErrors = SelectionErrors.PRICES,
         ): PriceSelection {
             if (to.isBefore(from)) {
                 throw RatesRules.invalid(
-                    RatesErrorCodes.RATE_PRICE_PERIOD_INVALID,
+                    errors.periodInvalid,
                     "to",
                     "O fim do período não pode ser antes do início.",
                 )
             }
             if (ChronoUnit.DAYS.between(from, to) + 1 > MAX_DAYS) {
                 throw RatesRules.invalid(
-                    RatesErrorCodes.RATE_PRICE_PERIOD_TOO_LONG,
+                    errors.periodTooLong,
                     "to",
                     "Edite até $MAX_DAYS dias por vez; divida períodos maiores.",
                 )

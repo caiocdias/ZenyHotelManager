@@ -39,3 +39,29 @@ enum class RatesChangeKind {
     PRICES_REMOVED,
     DERIVATION_CHANGED,
 }
+
+/**
+ * As restrições de venda do plano [ratePlanId] mudaram (RF-TAR-05 e 10, SPEC §8.3; M4 E03). Publicado pelo `rates` pelo
+ * outbox, na transação da mudança (desfeita, não publica), **só quando algo mudou**, numa gravação de uma data ou em
+ * massa:
+ *
+ * - [general]: a restrição **geral** do plano (que vale para todos os tipos de UH dele) mudou; [roomTypeIds] traz então
+ *   todos os tipos do plano (a restrição efetiva de cada um pode ter mudado, salvo onde a do tipo prevalece);
+ * - senão, mudaram as restrições **específicas** dos tipos [roomTypeIds].
+ *
+ * As datas mudadas ficam entre [from] e [to] (inclusive; dentro do intervalo, só as datas dos dias da semana pedidos);
+ * [fields] lista os campos que mudaram em alguma delas. As restrições são de cada plano: um plano derivado tem as
+ * próprias (a derivação é só de preço), então o evento não lista derivados. Quem escuta (o `distribution`, M8, para o
+ * ARI) relê as restrições efetivas pela API.
+ *
+ * Só ids, datas, os campos e o instante; nada do autor (fica na trilha) nem dos valores (lidos pela API).
+ */
+data class RestrictionsChanged(
+    val ratePlanId: UUID,
+    val general: Boolean,
+    val roomTypeIds: List<UUID>,
+    val fields: List<RestrictionField>,
+    val from: LocalDate,
+    val to: LocalDate,
+    val changedAt: Instant,
+)

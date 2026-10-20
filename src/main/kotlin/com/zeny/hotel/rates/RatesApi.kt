@@ -182,6 +182,26 @@ enum class RateAdjustmentType {
 }
 
 /**
+ * Os campos de uma restrição de venda (RF-TAR-05, SPEC §8.2.5; M4 E03), na ordem da SPEC. A semântica, registrada para
+ * o channel manager do M8 (decisões do usuário em 2026-10-20), é a da avaliação da E04:
+ *
+ * - [CLOSED]: fechado para venda; vale em **cada noite** da estadia (da chegada à véspera da saída);
+ * - [CLOSED_TO_ARRIVAL] (CTA): impede **chegar** naquela data (só a data de chegada; as noites do meio não importam);
+ * - [CLOSED_TO_DEPARTURE] (CTD): impede **sair** naquela data (só a data de saída, que não é noite da estadia);
+ * - [MIN_STAY] e [MAX_STAY]: noites, valem as da **data de chegada** ("on arrival"), não as de cada noite;
+ * - [MIN_ADVANCE_DAYS] e [MAX_ADVANCE_DAYS]: dias da data operacional até a chegada (H15), valem as da data de chegada.
+ */
+enum class RestrictionField {
+    CLOSED,
+    CLOSED_TO_ARRIVAL,
+    CLOSED_TO_DEPARTURE,
+    MIN_STAY,
+    MAX_STAY,
+    MIN_ADVANCE_DAYS,
+    MAX_ADVANCE_DAYS,
+}
+
+/**
  * A regra de um plano derivado (RF-TAR-03, H1): os preços dele são os do plano [basePlanId] ajustados, calculados na
  * leitura (nunca gravados). Só um dos dois vem preenchido, conforme o [type]: [percent] no `PERCENT`; [amount] e
  * [perPerson] no `AMOUNT`.

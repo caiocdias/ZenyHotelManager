@@ -6739,6 +6739,119 @@ paths:
       summary: Reativar um plano tarifário
       tags:
       - rates
+  /api/v1/rate-plans/{id}/restrictions:
+    get:
+      description: "Um período de até 366 dias, inclusive o passado (fim antes do\
+        \ início: 400 `RESTRICTION_PERIOD_INVALID`; mais: 400 `RESTRICTION_PERIOD_TOO_LONG`).\
+        \ Por data com alguma restrição gravada: a geral do plano e, por tipo de UH,\
+        \ a do tipo e a efetiva (com os campos que vieram do tipo em `fromRoomType`).\
+        \ Semântica (avaliada na cotação e na reserva): `closed` fecha a venda de\
+        \ **qualquer noite** da estadia; `closedToArrival` (CTA) impede **chegar**\
+        \ nesta data e `closedToDeparture` (CTD) impede **sair** nesta data (só a\
+        \ data exata; as noites do meio não importam); `minStay`/`maxStay` (noites)\
+        \ e `minAdvanceDays`/`maxAdvanceDays` (dias da data operacional até a chegada)\
+        \ valem os da **data de chegada**. Precedência: a restrição do tipo de UH\
+        \ substitui a geral do plano **campo a campo** (o campo não informado herda\
+        \ o da geral; `false` num booleano do tipo abre uma exceção sobre a geral\
+        \ `true`). Exige `rates.plans.read`."
+      operationId: listRatePlanRestrictions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: Só este tipo de UH.
+        in: query
+        name: roomTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestrictionsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar as restrições de um plano num período
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/restrictions/bulk-update:
+    post:
+      description: "As linhas são a restrição geral do plano (`roomTypeIds` vazio)\
+        \ ou as dos tipos de UH pedidos (do plano; senão 422 `ROOM_TYPE_NOT_IN_PLAN`)\
+        \ × as datas do período (`from` e `to`, até 366 dias, a partir da data operacional)\
+        \ **ou** da temporada (`seasonId`, cortada na data operacional), só nos `weekdays`\
+        \ (vazio = todos). Os campos de `set` passam a valer, os de `clear` voltam\
+        \ a não informado, os demais ficam. Período e temporada juntos, ou nenhum:\
+        \ 400 `RESTRICTION_SELECTION_INVALID`; fim antes do início ou nenhuma data\
+        \ nos dias da semana: 400 `RESTRICTION_PERIOD_INVALID`; mais de 366 dias:\
+        \ 400 `RESTRICTION_PERIOD_TOO_LONG`; começo antes da data operacional: 422\
+        \ `RESTRICTION_PERIOD_IN_PAST`; temporada inexistente 400 `UNKNOWN_SEASON`,\
+        \ desativada 422 `SEASON_INACTIVE`. Valor fora da faixa (inclusive negativo),\
+        \ campo em `set` e `clear` ou nada a mudar: 400 `RESTRICTION_INVALID`; mí\
+        nimo maior que o máximo no pedido: 400 `RESTRICTION_RANGE_INVALID`; com o\
+        \ que já está gravado (na mesma linha ou na efetiva de um tipo): 422 `RESTRICTION_RANGE_CONFLICT`.\
+        \ Semântica (avaliada na cotação e na reserva): `closed` fecha a venda de\
+        \ **qualquer noite** da estadia; `closedToArrival` (CTA) impede **chegar**\
+        \ nesta data e `closedToDeparture` (CTD) impede **sair** nesta data (só a\
+        \ data exata; as noites do meio não importam); `minStay`/`maxStay` (noites)\
+        \ e `minAdvanceDays`/`maxAdvanceDays` (dias da data operacional até a chegada)\
+        \ valem os da **data de chegada**. Precedência: a restrição do tipo de UH\
+        \ substitui a geral do plano **campo a campo** (o campo não informado herda\
+        \ o da geral; `false` num booleano do tipo abre uma exceção sobre a geral\
+        \ `true`). Exige `rates.restrictions.manage`; publica `RestrictionsChanged`."
+      operationId: updateRatePlanRestrictions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RestrictionUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestrictionChangeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Gravar restrições em massa
+      tags:
+      - rates
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -12845,6 +12958,55 @@ components:
       - code
       - limits
       - scope
+    EffectiveRestrictionResponse:
+      type: object
+      description: "A restrição efetiva de um tipo de UH numa data: a do tipo sobre\
+        \ a geral do plano, campo a campo; o que nenhuma informa não restringe (booleanos\
+        \ falsos, mínimos e máximos nulos)."
+      properties:
+        closed:
+          type: boolean
+        closedToArrival:
+          type: boolean
+        closedToDeparture:
+          type: boolean
+        fromRoomType:
+          type: array
+          description: "Os campos que vieram da restrição do tipo de UH (os demais\
+            \ vêm da geral, ou de nenhuma)."
+          items:
+            type: string
+            description: "Os campos que vieram da restrição do tipo de UH (os demais\
+              \ vêm da geral, ou de nenhuma)."
+            enum:
+            - CLOSED
+            - CLOSED_TO_ARRIVAL
+            - CLOSED_TO_DEPARTURE
+            - MIN_STAY
+            - MAX_STAY
+            - MIN_ADVANCE_DAYS
+            - MAX_ADVANCE_DAYS
+        maxAdvanceDays:
+          type: integer
+          format: int32
+          nullable: true
+        maxStay:
+          type: integer
+          format: int32
+          nullable: true
+        minAdvanceDays:
+          type: integer
+          format: int32
+          nullable: true
+        minStay:
+          type: integer
+          format: int32
+          nullable: true
+      required:
+      - closed
+      - closedToArrival
+      - closedToDeparture
+      - fromRoomType
     EmployeeRequest:
       type: object
       description: Dados de um colaborador.
@@ -16385,6 +16547,227 @@ components:
           nullable: true
       required:
       - reason
+    RestrictionChangeResponse:
+      type: object
+      description: O resultado de uma edição de restrições.
+      properties:
+        changed:
+          type: integer
+          format: int32
+          description: Linhas que já existiam e mudaram.
+        created:
+          type: integer
+          format: int32
+          description: Linhas (tipo de UH ou geral × data) novas.
+        fields:
+          type: array
+          description: Os campos que mudaram em alguma linha.
+          items:
+            type: string
+            description: Os campos que mudaram em alguma linha.
+            enum:
+            - CLOSED
+            - CLOSED_TO_ARRIVAL
+            - CLOSED_TO_DEPARTURE
+            - MIN_STAY
+            - MAX_STAY
+            - MIN_ADVANCE_DAYS
+            - MAX_ADVANCE_DAYS
+        from:
+          type: string
+          format: date
+          description: Primeira data mudada; nula se nada mudou.
+          nullable: true
+        general:
+          type: boolean
+          description: Se a edição foi na restrição geral do plano.
+        matchedDates:
+          type: integer
+          format: int32
+          description: "Datas selecionadas (do período, nos dias da semana pedidos)."
+        ratePlanId:
+          type: string
+          format: uuid
+        removed:
+          type: integer
+          format: int32
+          description: Linhas que ficaram sem nenhum campo e saíram.
+        roomTypeIds:
+          type: array
+          description: "Os tipos de UH afetados (na geral, todos os do plano); vazio\
+            \ se nada mudou."
+          items:
+            type: string
+            format: uuid
+            description: "Os tipos de UH afetados (na geral, todos os do plano); vazio\
+              \ se nada mudou."
+        to:
+          type: string
+          format: date
+          description: Última data mudada; nula se nada mudou.
+          nullable: true
+      required:
+      - changed
+      - created
+      - fields
+      - general
+      - matchedDates
+      - ratePlanId
+      - removed
+      - roomTypeIds
+    RestrictionDayResponse:
+      type: object
+      description: Uma data com alguma restrição gravada.
+      properties:
+        date:
+          type: string
+          format: date
+        general:
+          allOf:
+          - $ref: "#/components/schemas/RestrictionValuesDto"
+          nullable: true
+        roomTypes:
+          type: array
+          description: "Cada tipo de UH do plano (ou o pedido), em ordem de id."
+          items:
+            $ref: "#/components/schemas/RoomTypeRestrictionResponse"
+      required:
+      - date
+      - roomTypes
+    RestrictionUpdateRequest:
+      type: object
+      description: "Edição em massa de restrições (RF-TAR-05): os campos de `set`\
+        \ passam a valer e os de `clear` voltam a \"não informado\" em todas as linhas\
+        \ selecionadas; os demais campos de cada linha ficam como estão."
+      properties:
+        clear:
+          type: array
+          description: Os campos a retirar (voltam a não informado; a linha sem nenhum
+            campo sai).
+          items:
+            type: string
+            description: Os campos a retirar (voltam a não informado; a linha sem
+              nenhum campo sai).
+            enum:
+            - CLOSED
+            - CLOSED_TO_ARRIVAL
+            - CLOSED_TO_DEPARTURE
+            - MIN_STAY
+            - MAX_STAY
+            - MIN_ADVANCE_DAYS
+            - MAX_ADVANCE_DAYS
+          maxItems: 7
+          minItems: 0
+        from:
+          type: string
+          format: date
+          description: "Início do período (com `to`), ou use `seasonId`."
+          nullable: true
+        roomTypeIds:
+          type: array
+          description: Tipos de UH do plano (até 50); vazio = a restrição geral do
+            plano (todos os tipos).
+          items:
+            type: string
+            format: uuid
+            description: Tipos de UH do plano (até 50); vazio = a restrição geral
+              do plano (todos os tipos).
+          maxItems: 50
+          minItems: 0
+        seasonId:
+          type: string
+          format: uuid
+          description: "A temporada como período, em vez de `from` e `to`."
+          nullable: true
+        set:
+          $ref: "#/components/schemas/RestrictionValuesDto"
+        to:
+          type: string
+          format: date
+          description: "Fim do período, inclusive."
+          nullable: true
+        weekdays:
+          type: array
+          description: Só estes dias da semana; vazio = todos.
+          items:
+            type: string
+            description: Só estes dias da semana; vazio = todos.
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+      required:
+      - clear
+      - roomTypeIds
+      - set
+      - weekdays
+    RestrictionValuesDto:
+      type: object
+      description: Os campos de uma restrição; nulo = não informado. Estadia de 1
+        a 365 noites; antecedência de 0 a 730 dias.
+      properties:
+        closed:
+          type: boolean
+          description: Fechado para venda.
+          nullable: true
+        closedToArrival:
+          type: boolean
+          description: "CTA: fechado para chegada nesta data."
+          nullable: true
+        closedToDeparture:
+          type: boolean
+          description: "CTD: fechado para saída nesta data."
+          nullable: true
+        maxAdvanceDays:
+          type: integer
+          format: int32
+          description: Antecedência máxima (dias) para chegar nesta data.
+          nullable: true
+        maxStay:
+          type: integer
+          format: int32
+          description: "Estadia máxima (noites), para chegadas nesta data."
+          nullable: true
+        minAdvanceDays:
+          type: integer
+          format: int32
+          description: Antecedência mínima (dias) para chegar nesta data.
+          nullable: true
+        minStay:
+          type: integer
+          format: int32
+          description: "Estadia mínima (noites), para chegadas nesta data."
+          nullable: true
+    RestrictionsResponse:
+      type: object
+      description: As restrições de um plano num período.
+      properties:
+        from:
+          type: string
+          format: date
+        items:
+          type: array
+          description: Uma linha por data com alguma restrição gravada; as demais
+            datas não têm restrição.
+          items:
+            $ref: "#/components/schemas/RestrictionDayResponse"
+        ratePlanId:
+          type: string
+          format: uuid
+        to:
+          type: string
+          format: date
+      required:
+      - from
+      - items
+      - ratePlanId
+      - to
     RevealedDocumentResponse:
       type: object
       description: O número inteiro de um documento (cada acesso fica na trilha de
@@ -17019,6 +17402,22 @@ components:
       - standardAdults
       - standardChildren
       - updatedAt
+    RoomTypeRestrictionResponse:
+      type: object
+      description: "Um tipo de UH numa data: a restrição gravada do tipo e a efetiva."
+      properties:
+        effective:
+          $ref: "#/components/schemas/EffectiveRestrictionResponse"
+        roomTypeId:
+          type: string
+          format: uuid
+        specific:
+          allOf:
+          - $ref: "#/components/schemas/RestrictionValuesDto"
+          nullable: true
+      required:
+      - effective
+      - roomTypeId
     RoutingRuleCreateRequest:
       type: object
       description: "Uma regra de roteamento nova: a conta de origem (fixa depois)\

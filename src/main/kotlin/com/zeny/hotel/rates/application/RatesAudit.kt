@@ -6,6 +6,7 @@ import com.zeny.hotel.rates.domain.GuaranteePolicy
 import com.zeny.hotel.rates.domain.PriceSet
 import com.zeny.hotel.rates.domain.RatePackage
 import com.zeny.hotel.rates.domain.RatePlan
+import com.zeny.hotel.rates.domain.RestrictionValues
 import com.zeny.hotel.rates.domain.Season
 
 /**
@@ -20,6 +21,7 @@ internal object RatesAudit {
     const val PACKAGE = "rates.package"
     const val RATE_PRICES = "rates.rate-price"
     const val SEASON = "rates.season"
+    const val RESTRICTIONS = "rates.restriction"
 
     const val CREATE_RATE_PLAN = "rates.rate-plan.create"
     const val UPDATE_RATE_PLAN = "rates.rate-plan.update"
@@ -45,6 +47,7 @@ internal object RatesAudit {
     const val UPDATE_SEASON = "rates.season.update"
     const val DEACTIVATE_SEASON = "rates.season.deactivate"
     const val REACTIVATE_SEASON = "rates.season.reactivate"
+    const val UPDATE_RESTRICTIONS = "rates.restriction.bulk-update"
 }
 
 internal fun RatePlan.auditState(): Map<String, Any?> =
@@ -121,4 +124,15 @@ internal fun RatePackage.auditState(): Map<String, Any?> =
         "includedInRate" to includedInRate,
         "transactionCodeId" to transactionCodeId.toString(),
         "active" to active,
+    )
+
+internal fun RestrictionValues.auditState(): Map<String, Any?> =
+    mapOf(
+        "closed" to closed,
+        "closedToArrival" to closedToArrival,
+        "closedToDeparture" to closedToDeparture,
+        "minStay" to minStay,
+        "maxStay" to maxStay,
+        "minAdvanceDays" to minAdvanceDays,
+        "maxAdvanceDays" to maxAdvanceDays,
     )

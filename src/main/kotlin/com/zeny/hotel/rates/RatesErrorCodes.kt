@@ -145,4 +145,36 @@ object RatesErrorCodes {
 
     /** 422: a temporada citada está desativada. */
     val SEASON_INACTIVE = ErrorCode("SEASON_INACTIVE")
+
+    // --- Restrições (M4 E03) -------------------------------------------------------------------------------------
+
+    /**
+     * 400: valor de restrição fora da faixa (estadia de 1 a 365 noites, antecedência de 0 a 730 dias; negativo
+     * também), o mesmo campo em `set` e em `clear`, ou nada a mudar; com o campo em `errors[]`.
+     */
+    val RESTRICTION_INVALID = ErrorCode("RESTRICTION_INVALID")
+
+    /**
+     * 400: o pedido traz o mínimo maior que o máximo (estadia ou antecedência); campo `set.maxStay` ou
+     * `set.maxAdvanceDays`.
+     */
+    val RESTRICTION_RANGE_INVALID = ErrorCode("RESTRICTION_RANGE_INVALID")
+
+    /**
+     * 422: o mínimo ficaria maior que o máximo com o que já está gravado: na mesma restrição (o pedido muda só um dos
+     * dois) ou na restrição efetiva de algum tipo de UH (a do tipo sobre a geral do plano).
+     */
+    val RESTRICTION_RANGE_CONFLICT = ErrorCode("RESTRICTION_RANGE_CONFLICT")
+
+    /** 400: período sem datas (fim antes do início, ou nenhuma data nos dias da semana); campo `to` ou `weekdays`. */
+    val RESTRICTION_PERIOD_INVALID = ErrorCode("RESTRICTION_PERIOD_INVALID")
+
+    /** 400: período acima de 366 dias numa só requisição; campo `to`. */
+    val RESTRICTION_PERIOD_TOO_LONG = ErrorCode("RESTRICTION_PERIOD_TOO_LONG")
+
+    /** 400: a seleção informa a temporada e o período juntos, ou nenhum dos dois; campo `seasonId`. */
+    val RESTRICTION_SELECTION_INVALID = ErrorCode("RESTRICTION_SELECTION_INVALID")
+
+    /** 422: a edição começa antes da data operacional (ou a temporada já terminou). */
+    val RESTRICTION_PERIOD_IN_PAST = ErrorCode("RESTRICTION_PERIOD_IN_PAST")
 }
