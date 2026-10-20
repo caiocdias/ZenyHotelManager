@@ -5,6 +5,7 @@ import com.zeny.hotel.checklists.ChecklistsModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
+import com.zeny.hotel.rates.RatesModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -242,6 +243,33 @@ class ModularityTest {
                 "com.zeny.hotel.payments",
             )
         billing
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { name -> publicApis.any { name.startsWith("$it.") } }
+            .filter { it.substringBeforeLast('.') !in publicApis }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `rates depends only on shared, rooms and billing, and only on their public APIs`() {
+        val rates = modules.getModuleByName("rates").orElseThrow()
+        val allowed = setOf("shared", "rooms", "billing")
+
+        // ARCHITECTURE §3.1 (camada Hospedagem), M4 E01: rooms (tipos de UH pela RoomsApi) e billing (códigos de
+        // lançamento dos pacotes pela BillingApi). O hotel entra na E02 (faixas etárias); nunca iam nem reservations.
+        rates
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            allowed.toList()
+        RatesModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        val publicApis = setOf("com.zeny.hotel.rooms", "com.zeny.hotel.billing")
+        rates
             .getDirectDependencies(modules)
             .stream()
             .map { it.targetType.name }

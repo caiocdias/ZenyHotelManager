@@ -87,16 +87,18 @@ class OpenApiConfiguration {
 
     /**
      * Propriedades marcadas com [ExtensibleEnum]: o `enum` vira `x-extensible-enum` (a mesma lista, gerada das
-     * constantes), para um valor novo não ser breaking change.
+     * constantes), para um valor novo não ser breaking change. Numa lista de `enum` (M4 E01, os canais do plano
+     * tarifário), a troca vale para os itens.
      */
     @Bean
     fun extensibleEnumCustomizer(): PropertyCustomizer =
         PropertyCustomizer { property, type ->
-            val values = property.enum
+            val target = if (property is ArraySchema) property.items else property
+            val values = target?.enum
             if (type.ctxAnnotations.orEmpty().any { it is ExtensibleEnum } && !values.isNullOrEmpty()) {
-                property.addExtension(EXTENSIBLE_ENUM, values.map { it.toString() })
+                target.addExtension(EXTENSIBLE_ENUM, values.map { it.toString() })
                 @Suppress("UNCHECKED_CAST")
-                (property as Schema<Any?>).enum = null
+                (target as Schema<Any?>).enum = null
             }
             property
         }

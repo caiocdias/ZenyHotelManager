@@ -115,7 +115,7 @@ Entregar os módulos `rates` e `reservations`. Ao fim do marco, a API permite ma
 
 **Decisões abertas para a entrevista de cada etapa** (dependem da investigação; a sessão da etapa devolve os pontos ao orquestrador, que entrevista o usuário):
 
-- **E01:** canais como lista fixa (`enum`) ou códigos cadastráveis (o M8 mapeia para o channel manager); regime de alimentação (`enum` de três valores da RF-TAR-01); se a política editada vale para reservas novas na hora (a reserva copia, RN-15) ou é versionada.
+- **E01:** ~~canais como lista fixa (`enum`) ou códigos cadastráveis; regime de alimentação; política editada na hora ou versionada~~ — **decididas pelo usuário em 2026-10-20** (todas pela opção recomendada): canais `enum` fixo `DIRECT`/`WEBSITE`/`OTA` com `x-extensible-enum` na resposta (a OTA específica é a origem da reserva, mapeada no M8); regime `ROOM_ONLY`/`BREAKFAST`/`HALF_BOARD` com `x-extensible-enum`; políticas não versionadas (a edição vale para as reservas novas; a reserva copia os termos, RN-15). Pontos novos da E01 no handoff dela.
 - **E02:** o que acontece com preços por faixa quando as faixas do hotel mudam; limite de período da edição em massa.
 - **E03:** semântica de CTA, CTD e estadia mínima (pela restrição da data de chegada ou de cada noite), registrada para o M8 mapear.
 - **E07:** segmentos (lista fixa ou cadastrável); se a reserva agrupadora tem conta própria além das contas das reservas.
@@ -213,7 +213,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Planos tarifários, políticas e pacotes | #pendente | — | Módulo `rates` com planos, políticas de cancelamento e garantia, pacotes e o catálogo de permissões |
+| E01 | Planos tarifários, políticas e pacotes | #concluida | — | Módulo `rates` com planos, políticas de cancelamento e garantia, pacotes e o catálogo de permissões |
 | E02 | Preços por data e ocupação, derivação e edição em massa | #pendente | E01 | `RatePrice` por faixa etária do hotel, planos derivados, temporadas e alteração de tarifa publicada com step-up |
 | E03 | Restrições de venda | #pendente | E01 | Fechado, CTA, CTD, estadia e antecedência mín./máx. por data, plano e tipo |
 | E04 | Cálculo de preço e vendabilidade | #pendente | E02, E03 | API pública `priceFor` e `isSellable` com pacotes e faixas etárias |
@@ -234,7 +234,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 ---
 
-## E01 — Planos tarifários, políticas e pacotes — #pendente
+## E01 — Planos tarifários, políticas e pacotes — #concluida
 
 **Objetivo:** criar o módulo `rates` com planos tarifários (código, nome, descrição, regime de alimentação, canais, tipos de UH, categoria normal/cortesia/uso da casa, políticas, ativo), políticas de cancelamento e de garantia, pacotes ligados a códigos de lançamento e o catálogo de permissões do módulo, inclusive a do desconto (RF-TAR-01, RF-TAR-06, RF-TAR-07, H7).
 
@@ -312,12 +312,27 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `9e46946e3e720ec0e8e90ead5e8a3e4448b4801f` (recebido do orquestrador). Pré-requisitos conferidos: E11 do M3 `#concluida`; `RoomsApi.roomType(id)` (`RoomTypeSummary.active`) e `BillingApi.transactionCode(id)` (`TransactionCodeSummary.kind`/`active`) batem com o "Contexto confirmado"; a aresta `rates` → `shared`, `rooms`, `billing` já estava na ARCHITECTURE §3.1.
+- Arquivos alterados:
+  - novos: `src/main/kotlin/com/zeny/hotel/rates/` (`RatesModule.kt`, `RatesApi.kt` com ids, enums e resumos, `RatesErrorCodes.kt`, `RatesPermissions.kt`; `domain/RatesRecord.kt`, `Policies.kt`, `RatePackage.kt`, `RatePlan.kt`; `application/RatesPorts.kt`, `RatesAudit.kt`, `PolicyServices.kt`, `PackageService.kt`, `RatePlanService.kt`, `RatesApiService.kt`; `infrastructure/RatesPersistence.kt`, `JdbcRatesDirectory.kt`; `web/RatesDtos.kt`, `RatesControllers.kt`), `src/main/resources/db/migration/rates/V2026_10_20_1740__create_rates.sql` e `V2026_10_20_1741__grant_rates_to_app_role.sql`, `src/test/kotlin/com/zeny/hotel/rates/RatesApiTest.kt` e `RatesTestSupport.kt`;
+  - alterados: `src/main/kotlin/com/zeny/hotel/shared/web/OpenApiConfiguration.kt` (`@ExtensibleEnum` também numa lista de `enum`, nos itens), `src/test/kotlin/com/zeny/hotel/shared/web/ExtensibleEnumContractTest.kt` (confere a lista), `src/test/kotlin/com/zeny/hotel/ModularityTest.kt` (teste do `rates`), `src/test/kotlin/com/zeny/hotel/iam/AuthorizationTest.kt` (o modelo Gerente com as permissões do `rates`), `api/openapi.yaml` (só acréscimos: 16 caminhos e 13 schemas do `rates`; a ordem das tags mudou), `CLAUDE.md` (estado atual, seção do módulo, convenção do `x-extensible-enum` em lista), `README.md` (API e árvore de módulos) e este roadmap.
+- Decisões:
+  - **do usuário (entrevista da E01, 2026-10-20, todas pela opção recomendada):** canais `SalesChannel` fixo `DIRECT`/`WEBSITE`/`OTA` com `x-extensible-enum` nos itens da resposta (a OTA específica é a origem da reserva, M8); regime `MealPlan` `ROOM_ONLY`/`BREAKFAST`/`HALF_BOARD` com `x-extensible-enum`; políticas de cancelamento e garantia **não versionadas** (a edição com `If-Match` vale na hora para as reservas criadas depois; a reserva copia os termos na criação, RN-15, E07). H7 aplicada: `rates.discounts.apply` sensível, limite `maxPercent` (`PERCENT`), Gerente sem teto e Recepcionista 10% no modelo.
+  - **do implementador (pontos para a entrevista, todas pela opção mais conservadora):** (1) categoria do plano **fixa desde a criação** (como o tipo do código de lançamento; o `PUT` não a recebe); (2) política ou pacote em uso por plano **ativo** não é desativado (`422 …_IN_USE`) e o plano só é reativado com as políticas e os pacotes ativos — invariante "plano ativo nunca tem política ou pacote desativado", com trava de linha (o tipo de UH desativado no `rooms` continua no plano: o `rooms` não o impede, a E04 o descarta); (3) pacote só num código de lançamento de consumo `CHARGE` (`422 TRANSACTION_CODE_KIND_NOT_ALLOWED`); (4) preço por estadia (`PER_STAY`) só com o ritmo `ON_ARRIVAL` (`400 PACKAGE_INVALID`, também em `CHECK`); (5) preço do pacote de 0,01 a 1.000.000,00 (incluso também tem preço, a parte da diária); (6) nome das políticas único sem diferenciar maiúsculas (`409 …_NAME_ALREADY_IN_USE`); multa zero permitida (política sem multa); (7) `penaltyNights` até 365 e `deadlineHours` até 8760; depósito de mais de 0 a 100% e prazo de 0 a 365 dias; (8) plano com ao menos um canal e um tipo de UH, até 50 tipos e 20 pacotes; (9) `GuaranteeType` com `x-extensible-enum` na resposta (o M7 integra cartão/Pix); `category`, `penaltyType`, `pricing` e `postingRhythm` ficam `enum` fechados; (10) os códigos de erro do tipo de UH e do código de lançamento são os dos módulos donos (`UNKNOWN_ROOM_TYPE`, `ROOM_TYPE_INACTIVE`, `UNKNOWN_TRANSACTION_CODE`, `TRANSACTION_CODE_INACTIVE`), reexportados em `RatesErrorCodes`; (11) só as permissões usadas agora entram no catálogo (`rates.plans.read`, `rates.plans.manage`, `rates.discounts.apply`); `rates.prices.*` e `rates.restrictions.manage` ficam para E02/E03; (12) o vínculo plano → pacotes (SPEC §8.2.5) entrou no plano já nesta etapa (`packageIds`), porque nenhuma etapa seguinte o previa.
+- Validações executadas:
+  - `./gradlew test --tests 'com.zeny.hotel.rates.*'` → 17 testes, 0 falhas (`RatesApiTest`); `ModularityTest` (15), `ExtensibleEnumContractTest`, `LayerArchitectureTest`, `MigrationConventionTest`, `DatabaseRolesTest` e `DatabaseMigrationsTest` passaram;
+  - verificação de que o teste da corrida detecta o erro: trocando `cancellationPolicyForUpdate` por `cancellationPolicy` (sem trava) em `RatePlanService`, o teste "deactivating a policy while a plan links it…" falhou; o código foi restaurado;
+  - `./gradlew updateOpenApi` → contrato regenerado; diff semântico só com acréscimos;
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1";
+  - `./gradlew lint` → sucesso;
+  - `./gradlew build` → BUILD SUCCESSFUL (881 testes, 0 falhas; detekt, ktlint, `checkOpenApi` e `koverVerify`). As duas primeiras rodadas falharam e foram corrigidas: detekt (linhas longas, `ThrowsCount`, `TooManyFunctions` e testes longos, divididos) e o `AuthorizationTest` (o modelo Gerente passou a ter as três permissões do `rates`; a expectativa foi atualizada).
+- Parecer do verificador: **APROVADO** (verificador independente, 2026-10-20; snapshot de verificação `7daf6d6e2dd2d2fb05a715362432d0cdac643c36`): os cinco critérios aprovados com evidência (`RatesApiTest` 17/17, `ModularityTest` 15/15, `ExtensibleEnumContractTest` 2/2, `./gradlew build` com 881 testes e 0 falhas, oasdiff sem `ERR`, contrato só com acréscimos); nenhum acesso a tabelas de `rooms`/`billing`, pacote sem código barrado no DTO, no banco e por SQL direto, exclusão recusada pelo trigger nas quatro tabelas, toda escrita auditada, a extensão de `@ExtensibleEnum` para lista correta e coberta. Problemas menores, sem impedir o aceite: 403 não testado no `PUT`/`reactivate` de pacote e de garantia (o código confere); sem teste do 409 de nome/código repetido numa edição; `version` só no `ETag`, não no corpo; o teste do `x-extensible-enum` trata só `List` (não `Set`); descrição de `channels` repetida em `items`; ordem das tags do contrato mudou.
+- Entrevista dos pontos do implementador (usuário, 2026-10-20): todos aceitos pela opção recomendada, que é a implementada — categoria fixa; política/pacote em uso por plano ativo não se desativa (`422 …_IN_USE`); `GuaranteeType` extensível e os demais `enum` fechados; vínculo plano → pacotes já na E01; pacote só em código `CHARGE`; `PER_STAY` só com `ON_ARRIVAL` e preço ≥ 0,01; nome de política único e multa zero permitida; permissões de preços e restrições declaradas na etapa que as usa (limites como implementados).
+- Notas para a próxima etapa:
+  - E02: acrescentar `rates` → `hotel` no `RatesModule`, no `ModularityTest` (o teste do `rates` lista as dependências exatas) e na ARCHITECTURE §3.1; as permissões de preço (`rates.prices.manage`, `rates.prices.override` sensível) vão no `RatesPermissions`; a migração nova precisa de timestamp posterior a `V2026_10_20_1741`. `RatePlan` é JPA com coleções `@ElementCollection` (`@BatchSize`); a derivação (plano base) é um campo novo do plano.
+  - E04: a vendabilidade descarta tipo de UH desativado no `rooms` (pode estar no plano) e pacote nunca desativado num plano ativo; o preço por estadia é sempre `ON_ARRIVAL`.
+  - E07: a reserva copia os termos das políticas pela `RatesApi.cancellationPolicy`/`guaranteePolicy` (com a `version`) e confere o desconto com `RatesPermissions.DISCOUNTS_APPLY` e `LimitAmount(RatesPermissions.MAX_PERCENT, desconto)`.
+  - `@field:ExtensibleEnum` agora vale numa `List<E>` (itens); o `ExtensibleEnumContractTest` cobre os dois casos.
 
 ---
 

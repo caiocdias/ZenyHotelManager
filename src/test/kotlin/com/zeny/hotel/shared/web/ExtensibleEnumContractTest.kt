@@ -13,6 +13,7 @@ import io.kotest.matchers.shouldBe
 import io.swagger.v3.core.util.Yaml
 import io.swagger.v3.oas.models.OpenAPI
 import org.junit.jupiter.api.Test
+import java.lang.reflect.ParameterizedType
 import java.nio.file.Path
 
 /**
@@ -34,15 +35,26 @@ class ExtensibleEnumContractTest {
         withClue("o lançamento é o primeiro uso") {
             marked.map { "${it.owner.simpleName}.${it.name}" } shouldContain "PostingResponse.type"
         }
+        withClue("a lista de canais do plano tarifário (M4 E01) é o primeiro uso numa lista") {
+            marked.map { "${it.owner.simpleName}.${it.name}" } shouldContain "RatePlanResponse.channels"
+        }
         marked.forEach { field ->
             withClue("${field.owner.simpleName}.${field.name}") {
-                val type = field.rawType.reflect()
-                type.isEnum shouldBe true
-                val property =
+                val declared =
                     contract.components.schemas[field.owner.simpleName]
                         .shouldNotBeNull()
                         .properties[field.name]
                         .shouldNotBeNull()
+                // Numa lista de enum, a marca vale para os itens.
+                val (type, property) =
+                    if (List::class.java.isAssignableFrom(field.rawType.reflect())) {
+                        declared.type shouldBe "array"
+                        val argument = (field.reflect().genericType as ParameterizedType).actualTypeArguments.single()
+                        (argument as Class<*>) to declared.items.shouldNotBeNull()
+                    } else {
+                        field.rawType.reflect() to declared
+                    }
+                type.isEnum shouldBe true
                 property.enum.shouldBeNull()
                 property.type shouldBe "string"
                 @Suppress("UNCHECKED_CAST")

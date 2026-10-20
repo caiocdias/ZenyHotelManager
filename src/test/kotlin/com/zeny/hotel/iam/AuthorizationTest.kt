@@ -236,6 +236,9 @@ class AuthorizationTest(
                 "billing.shifts.review:ALL",
                 "billing.payments.receive:ALL",
                 "billing.payments.refund:ALL",
+                "rates.plans.read:ALL",
+                "rates.plans.manage:ALL",
+                "rates.discounts.apply:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

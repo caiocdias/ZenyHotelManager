@@ -1,0 +1,82 @@
+package com.zeny.hotel.rates.application
+
+import com.zeny.hotel.rates.domain.CancellationPolicy
+import com.zeny.hotel.rates.domain.GuaranteePolicy
+import com.zeny.hotel.rates.domain.RatePackage
+import com.zeny.hotel.rates.domain.RatePlan
+
+/**
+ * Tipos de entidade, ações e retratos do `rates` na trilha de auditoria (RF-ACS-11). Os retratos levam ids, códigos,
+ * nomes de configuração, situações e valores; **nunca texto livre** (a descrição do plano entra só como
+ * `hasDescription`).
+ */
+internal object RatesAudit {
+    const val RATE_PLAN = "rates.rate-plan"
+    const val CANCELLATION_POLICY = "rates.cancellation-policy"
+    const val GUARANTEE_POLICY = "rates.guarantee-policy"
+    const val PACKAGE = "rates.package"
+
+    const val CREATE_RATE_PLAN = "rates.rate-plan.create"
+    const val UPDATE_RATE_PLAN = "rates.rate-plan.update"
+    const val DEACTIVATE_RATE_PLAN = "rates.rate-plan.deactivate"
+    const val REACTIVATE_RATE_PLAN = "rates.rate-plan.reactivate"
+    const val CREATE_CANCELLATION_POLICY = "rates.cancellation-policy.create"
+    const val UPDATE_CANCELLATION_POLICY = "rates.cancellation-policy.update"
+    const val DEACTIVATE_CANCELLATION_POLICY = "rates.cancellation-policy.deactivate"
+    const val REACTIVATE_CANCELLATION_POLICY = "rates.cancellation-policy.reactivate"
+    const val CREATE_GUARANTEE_POLICY = "rates.guarantee-policy.create"
+    const val UPDATE_GUARANTEE_POLICY = "rates.guarantee-policy.update"
+    const val DEACTIVATE_GUARANTEE_POLICY = "rates.guarantee-policy.deactivate"
+    const val REACTIVATE_GUARANTEE_POLICY = "rates.guarantee-policy.reactivate"
+    const val CREATE_PACKAGE = "rates.package.create"
+    const val UPDATE_PACKAGE = "rates.package.update"
+    const val DEACTIVATE_PACKAGE = "rates.package.deactivate"
+    const val REACTIVATE_PACKAGE = "rates.package.reactivate"
+}
+
+internal fun RatePlan.auditState(): Map<String, Any?> =
+    mapOf(
+        "code" to code,
+        "name" to name,
+        "hasDescription" to (description != null),
+        "mealPlan" to mealPlan.name,
+        "category" to category.name,
+        "channels" to channels.map { it.name }.sorted(),
+        "roomTypeIds" to roomTypeIds.map { it.toString() }.sorted(),
+        "packageIds" to packageIds.map { it.toString() }.sorted(),
+        "cancellationPolicyId" to cancellationPolicyId.toString(),
+        "guaranteePolicyId" to guaranteePolicyId.toString(),
+        "active" to active,
+    )
+
+internal fun CancellationPolicy.auditState(): Map<String, Any?> =
+    mapOf(
+        "name" to name,
+        "deadlineHours" to deadlineHours,
+        "penaltyType" to penaltyType.name,
+        "penaltyPercent" to penaltyPercent?.toString(),
+        "penaltyNights" to penaltyNights,
+        "penaltyAmount" to penaltyAmount?.toString(),
+        "active" to active,
+    )
+
+internal fun GuaranteePolicy.auditState(): Map<String, Any?> =
+    mapOf(
+        "name" to name,
+        "type" to type.name,
+        "depositPercent" to depositPercent?.toString(),
+        "dueDaysBefore" to dueDaysBefore,
+        "active" to active,
+    )
+
+internal fun RatePackage.auditState(): Map<String, Any?> =
+    mapOf(
+        "code" to code,
+        "name" to name,
+        "price" to price.toString(),
+        "pricing" to pricing.name,
+        "postingRhythm" to postingRhythm.name,
+        "includedInRate" to includedInRate,
+        "transactionCodeId" to transactionCodeId.toString(),
+        "active" to active,
+    )

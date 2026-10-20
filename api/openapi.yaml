@@ -27,6 +27,8 @@ tags:
   name: billing
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
+- description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
+  name: rates
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -570,6 +572,203 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/cancellation-policies:
+    get:
+      description: Em ordem de nome. Exige `rates.plans.read`.
+      operationId: listCancellationPolicies
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCancellationPolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar políticas de cancelamento
+      tags:
+      - rates
+    post:
+      description: "Exige `rates.plans.manage`. Nome repetido (sem diferenciar maiú\
+        sculas, inclusive de uma desativada): 409 `CANCELLATION_POLICY_NAME_ALREADY_IN_USE`;\
+        \ valor da multa faltando, de outro tipo ou fora da faixa: 400 `CANCELLATION_POLICY_INVALID`\
+        \ (com o campo)."
+      operationId: createCancellationPolicy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancellationPolicyRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationPolicyResponse"
+          description: Política cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma política de cancelamento
+      tags:
+      - rates
+  /api/v1/cancellation-policies/{id}:
+    get:
+      description: "Exige `rates.plans.read`. Inexistente: 404 `CANCELLATION_POLICY_NOT_FOUND`."
+      operationId: getCancellationPolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationPolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma política de cancelamento
+      tags:
+      - rates
+    put:
+      description: "Troca os termos; vale na hora para as reservas criadas depois,\
+        \ sem mudar as existentes. Exige `rates.plans.manage`. e o `If-Match` (ausente:\
+        \ 428; versão diferente: 412). Nome repetido (sem diferenciar maiúsculas,\
+        \ inclusive de uma desativada): 409 `CANCELLATION_POLICY_NAME_ALREADY_IN_USE`;\
+        \ valor da multa faltando, de outro tipo ou fora da faixa: 400 `CANCELLATION_POLICY_INVALID`\
+        \ (com o campo)."
+      operationId: updateCancellationPolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CancellationPolicyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationPolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma política de cancelamento
+      tags:
+      - rates
+  /api/v1/cancellation-policies/{id}/deactivate:
+    post:
+      description: "Exige `rates.plans.manage`. Usada por um plano ativo: 422 `CANCELLATION_POLICY_IN_USE`.\
+        \ Nada é apagado."
+      operationId: deactivateCancellationPolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationPolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma política de cancelamento
+      tags:
+      - rates
+  /api/v1/cancellation-policies/{id}/reactivate:
+    post:
+      description: Exige `rates.plans.manage`.
+      operationId: reactivateCancellationPolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CancellationPolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma política de cancelamento
+      tags:
+      - rates
   /api/v1/card-pre-authorizations/expiring:
     get:
       description: "As cauções ainda não encerradas (nem capturadas por inteiro nem\
@@ -4129,6 +4328,203 @@ paths:
       summary: Extrato da conta
       tags:
       - billing
+  /api/v1/guarantee-policies:
+    get:
+      description: Em ordem de nome. Exige `rates.plans.read`.
+      operationId: listGuaranteePolicies
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageGuaranteePolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar políticas de garantia
+      tags:
+      - rates
+    post:
+      description: "Exige `rates.plans.manage`. Nome repetido (sem diferenciar maiú\
+        sculas, inclusive de uma desativada): 409 `GUARANTEE_POLICY_NAME_ALREADY_IN_USE`;\
+        \ depósito sem percentual ou prazo, ou eles noutro tipo: 400 `GUARANTEE_POLICY_INVALID`\
+        \ (com o campo)."
+      operationId: createGuaranteePolicy
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuaranteePolicyRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuaranteePolicyResponse"
+          description: Política cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma política de garantia
+      tags:
+      - rates
+  /api/v1/guarantee-policies/{id}:
+    get:
+      description: "Exige `rates.plans.read`. Inexistente: 404 `GUARANTEE_POLICY_NOT_FOUND`."
+      operationId: getGuaranteePolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuaranteePolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma política de garantia
+      tags:
+      - rates
+    put:
+      description: "Troca os termos; vale na hora para as reservas criadas depois,\
+        \ sem mudar as existentes. Exige `rates.plans.manage`. e o `If-Match` (ausente:\
+        \ 428; versão diferente: 412). Nome repetido (sem diferenciar maiúsculas,\
+        \ inclusive de uma desativada): 409 `GUARANTEE_POLICY_NAME_ALREADY_IN_USE`;\
+        \ depósito sem percentual ou prazo, ou eles noutro tipo: 400 `GUARANTEE_POLICY_INVALID`\
+        \ (com o campo)."
+      operationId: updateGuaranteePolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuaranteePolicyRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuaranteePolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma política de garantia
+      tags:
+      - rates
+  /api/v1/guarantee-policies/{id}/deactivate:
+    post:
+      description: "Exige `rates.plans.manage`. Usada por um plano ativo: 422 `GUARANTEE_POLICY_IN_USE`.\
+        \ Nada é apagado."
+      operationId: deactivateGuaranteePolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuaranteePolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma política de garantia
+      tags:
+      - rates
+  /api/v1/guarantee-policies/{id}/reactivate:
+    post:
+      description: Exige `rates.plans.manage`.
+      operationId: reactivateGuaranteePolicy
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuaranteePolicyResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma política de garantia
+      tags:
+      - rates
   /api/v1/guests:
     get:
       description: "Em ordem de nome (sem acento). `name` procura cada palavra como\
@@ -5500,6 +5896,204 @@ paths:
       summary: Listar períodos OOO e OOS
       tags:
       - rooms
+  /api/v1/packages:
+    get:
+      description: Em ordem de código. Exige `rates.plans.read`.
+      operationId: listPackages
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePackageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar pacotes
+      tags:
+      - rates
+    post:
+      description: "Exige `rates.plans.manage`. Código repetido: 409 `PACKAGE_CODE_ALREADY_IN_USE`;\
+        \ preço fora da faixa ou preço por estadia sem o ritmo `ON_ARRIVAL`: 400 `PACKAGE_INVALID`;\
+        \ código de lançamento inexistente: 400 `UNKNOWN_TRANSACTION_CODE` (campo\
+        \ `transactionCodeId`), desativado: 422 `TRANSACTION_CODE_INACTIVE`, de outro\
+        \ tipo que não consumo: 422 `TRANSACTION_CODE_KIND_NOT_ALLOWED`."
+      operationId: createPackage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackageRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageResponse"
+          description: Pacote cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um pacote
+      tags:
+      - rates
+  /api/v1/packages/{id}:
+    get:
+      description: "Exige `rates.plans.read`. Inexistente: 404 `PACKAGE_NOT_FOUND`."
+      operationId: getPackage
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um pacote
+      tags:
+      - rates
+    put:
+      description: "Exige `rates.plans.manage`. e o `If-Match` (ausente: 428; versã\
+        o diferente: 412). Só um código de lançamento novo é conferido. Código repetido:\
+        \ 409 `PACKAGE_CODE_ALREADY_IN_USE`; preço fora da faixa ou preço por estadia\
+        \ sem o ritmo `ON_ARRIVAL`: 400 `PACKAGE_INVALID`; código de lançamento inexistente:\
+        \ 400 `UNKNOWN_TRANSACTION_CODE` (campo `transactionCodeId`), desativado:\
+        \ 422 `TRANSACTION_CODE_INACTIVE`, de outro tipo que não consumo: 422 `TRANSACTION_CODE_KIND_NOT_ALLOWED`."
+      operationId: updatePackage
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackageRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um pacote
+      tags:
+      - rates
+  /api/v1/packages/{id}/deactivate:
+    post:
+      description: "Exige `rates.plans.manage`. Num plano ativo: 422 `PACKAGE_IN_USE`.\
+        \ Nada é apagado."
+      operationId: deactivatePackage
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um pacote
+      tags:
+      - rates
+  /api/v1/packages/{id}/reactivate:
+    post:
+      description: Exige `rates.plans.manage`.
+      operationId: reactivatePackage
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um pacote
+      tags:
+      - rates
   /api/v1/permissions:
     get:
       description: "Permissões vigentes do catálogo, definido pelo sistema e não editá\
@@ -5641,6 +6235,236 @@ paths:
       summary: Desativar um dispositivo de push próprio
       tags:
       - notifications
+  /api/v1/rate-plans:
+    get:
+      description: Em ordem de código. Exige `rates.plans.read`.
+      operationId: listRatePlans
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - in: query
+        name: category
+        required: false
+        schema:
+          type: string
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+      - description: Só os vendidos no canal.
+        in: query
+        name: channel
+        required: false
+        schema:
+          type: string
+          enum:
+          - DIRECT
+          - WEBSITE
+          - OTA
+      - description: Só os que se aplicam ao tipo de UH.
+        in: query
+        name: roomTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRatePlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar planos tarifários
+      tags:
+      - rates
+    post:
+      description: "Exige `rates.plans.manage`. A categoria não muda depois. Código\
+        \ repetido (inclusive de um desativado): 409 `RATE_PLAN_CODE_ALREADY_IN_USE`.\
+        \ Tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE` (campo `roomTypeIds`), desativado:\
+        \ 422 `ROOM_TYPE_INACTIVE`; política inexistente: 400 `UNKNOWN_CANCELLATION_POLICY`\
+        \ ou `UNKNOWN_GUARANTEE_POLICY` (com o campo), desativada: 422 `CANCELLATION_POLICY_INACTIVE`\
+        \ ou `GUARANTEE_POLICY_INACTIVE`; pacote inexistente: 400 `UNKNOWN_PACKAGE`\
+        \ (campo `packageIds`), desativado: 422 `PACKAGE_INACTIVE`."
+      operationId: createRatePlan
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatePlanCreateRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: Plano cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um plano tarifário
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}:
+    get:
+      description: "Exige `rates.plans.read`. Inexistente: 404 `RATE_PLAN_NOT_FOUND`."
+      operationId: getRatePlan
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um plano tarifário
+      tags:
+      - rates
+    put:
+      description: "Troca tudo menos a categoria (os conjuntos inteiros). Exige `rates.plans.manage`.\
+        \ e o `If-Match` (ausente: 428; versão diferente: 412). Só as referências\
+        \ novas são conferidas. Tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE` (campo\
+        \ `roomTypeIds`), desativado: 422 `ROOM_TYPE_INACTIVE`; política inexistente:\
+        \ 400 `UNKNOWN_CANCELLATION_POLICY` ou `UNKNOWN_GUARANTEE_POLICY` (com o campo),\
+        \ desativada: 422 `CANCELLATION_POLICY_INACTIVE` ou `GUARANTEE_POLICY_INACTIVE`;\
+        \ pacote inexistente: 400 `UNKNOWN_PACKAGE` (campo `packageIds`), desativado:\
+        \ 422 `PACKAGE_INACTIVE`."
+      operationId: updateRatePlan
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatePlanUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um plano tarifário
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/deactivate:
+    post:
+      description: Exige `rates.plans.manage`. Nada é apagado; desativar de novo não
+        muda nada.
+      operationId: deactivateRatePlan
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um plano tarifário
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/reactivate:
+    post:
+      description: "Exige `rates.plans.manage`. Exige as políticas e os pacotes do\
+        \ plano ativos (422 `CANCELLATION_POLICY_INACTIVE`, `GUARANTEE_POLICY_INACTIVE`\
+        \ ou `PACKAGE_INACTIVE`)."
+      operationId: reactivateRatePlan
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um plano tarifário
+      tags:
+      - rates
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -8938,6 +9762,109 @@ components:
       required:
       - businessDate
       - timezone
+    CancellationPolicyRequest:
+      type: object
+      description: "Os termos de uma política de cancelamento: o prazo e a multa (só\
+        \ o valor do tipo)."
+      properties:
+        deadlineHours:
+          type: integer
+          format: int32
+          description: "Prazo em horas antes do horário de check-in da data de chegada\
+            \ (no fuso do hotel): o cancelamento feito depois dele paga a multa."
+          maximum: 8760
+          minimum: 0
+          nullable: true
+        name:
+          type: string
+          example: Flexível 48 h
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        penaltyAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        penaltyNights:
+          type: integer
+          format: int32
+          description: "Só em `NIGHTS`: número de diárias, de 0 a 365."
+          maximum: 365
+          minimum: 0
+          nullable: true
+        penaltyPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        penaltyType:
+          type: string
+          enum:
+          - PERCENT_OF_STAY
+          - NIGHTS
+          - FIXED_AMOUNT
+          nullable: true
+      required:
+      - deadlineHours
+      - name
+      - penaltyType
+    CancellationPolicyResponse:
+      type: object
+      description: Uma política de cancelamento.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        deadlineHours:
+          type: integer
+          format: int32
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        penaltyAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        penaltyNights:
+          type: integer
+          format: int32
+          nullable: true
+        penaltyPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        penaltyType:
+          type: string
+          enum:
+          - PERCENT_OF_STAY
+          - NIGHTS
+          - FIXED_AMOUNT
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - deadlineHours
+      - id
+      - name
+      - penaltyType
+      - updatedAt
     CapturePreAuthorizationRequest:
       type: object
       description: "A captura de uma caução (total ou parcial): gera um recebimento\
@@ -10618,6 +11545,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageCancellationPolicyResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CancellationPolicyResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageCardPreAuthorizationResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -10786,6 +11727,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageGuaranteePolicyResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GuaranteePolicyResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageGuestResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -10842,6 +11797,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPagePackageResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackageResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePaymentResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -10892,6 +11861,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PushDeviceResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRatePlanResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RatePlanResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -11851,6 +12834,83 @@ components:
       - removed
       - to
       - updated
+    GuaranteePolicyRequest:
+      type: object
+      description: Os termos de uma política de garantia.
+      properties:
+        depositPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        dueDaysBefore:
+          type: integer
+          format: int32
+          description: "Só em `DEPOSIT`: até quantos dias antes da chegada, de 0 a\
+            \ 365."
+          maximum: 365
+          minimum: 0
+          nullable: true
+        name:
+          type: string
+          example: Depósito de 30%
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        type:
+          type: string
+          enum:
+          - NONE
+          - CARD
+          - DEPOSIT
+          nullable: true
+      required:
+      - name
+      - type
+    GuaranteePolicyResponse:
+      type: object
+      description: Uma política de garantia.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        depositPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        dueDaysBefore:
+          type: integer
+          format: int32
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          description: Tipo de garantia (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - NONE
+          - CARD
+          - DEPOSIT
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - id
+      - name
+      - type
+      - updatedAt
     GuestAddressDto:
       type: object
       description: Endereço no Brasil com o código IBGE do município.
@@ -13203,6 +14263,113 @@ components:
       - startsOn
       - updatedAt
       - version
+    PackageRequest:
+      type: object
+      description: Os dados de um pacote.
+      properties:
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: CAFE
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        includedInRate:
+          type: boolean
+          description: Se é incluso na diária (`true`) ou adicional (`false`).
+        name:
+          type: string
+          example: Café da manhã
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        postingRhythm:
+          type: string
+          description: '`DAILY` ou `ON_ARRIVAL`; o preço por estadia só na chegada.'
+          enum:
+          - DAILY
+          - ON_ARRIVAL
+          nullable: true
+        price:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        pricing:
+          type: string
+          enum:
+          - PER_NIGHT
+          - PER_STAY
+          - PER_PERSON_PER_NIGHT
+          nullable: true
+        transactionCodeId:
+          type: string
+          format: uuid
+          description: "Código de lançamento de consumo (`CHARGE`) do `billing`, ativo."
+          nullable: true
+      required:
+      - code
+      - includedInRate
+      - name
+      - postingRhythm
+      - price
+      - pricing
+      - transactionCodeId
+    PackageResponse:
+      type: object
+      description: Um pacote.
+      properties:
+        active:
+          type: boolean
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        includedInRate:
+          type: boolean
+        name:
+          type: string
+        postingRhythm:
+          type: string
+          enum:
+          - DAILY
+          - ON_ARRIVAL
+        price:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        pricing:
+          type: string
+          enum:
+          - PER_NIGHT
+          - PER_STAY
+          - PER_PERSON_PER_NIGHT
+        transactionCodeId:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - id
+      - includedInRate
+      - name
+      - postingRhythm
+      - price
+      - pricing
+      - transactionCodeId
+      - updatedAt
     PaymentResponse:
       type: object
       description: Um recebimento ou um reembolso na conta (imutável).
@@ -13792,6 +14959,250 @@ components:
       - currentSession
       - id
       - platform
+    RatePlanCreateRequest:
+      type: object
+      description: Um plano tarifário novo; a categoria não muda depois.
+      properties:
+        cancellationPolicyId:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+          description: "Categoria (Q-15), fixa: `COURTESY` conta na ocupação e nã\
+            o no ADR; `HOUSE_USE` não conta em nenhum dos dois."
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+          nullable: true
+        channels:
+          type: array
+          description: Canais em que o plano é vendido (ao menos um).
+          items:
+            type: string
+            description: Canais em que o plano é vendido (ao menos um).
+            enum:
+            - DIRECT
+            - WEBSITE
+            - OTA
+          maxItems: 3
+          minItems: 0
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: BAR
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        description:
+          type: string
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+        guaranteePolicyId:
+          type: string
+          format: uuid
+          nullable: true
+        mealPlan:
+          type: string
+          enum:
+          - ROOM_ONLY
+          - BREAKFAST
+          - HALF_BOARD
+          nullable: true
+        name:
+          type: string
+          example: Tarifa balcão
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        packageIds:
+          type: array
+          description: Pacotes do plano.
+          items:
+            type: string
+            format: uuid
+            description: Pacotes do plano.
+          maxItems: 20
+          minItems: 0
+        roomTypeIds:
+          type: array
+          description: Tipos de UH a que o plano se aplica (ao menos um).
+          items:
+            type: string
+            format: uuid
+            description: Tipos de UH a que o plano se aplica (ao menos um).
+          maxItems: 50
+          minItems: 0
+      required:
+      - cancellationPolicyId
+      - category
+      - channels
+      - code
+      - guaranteePolicyId
+      - mealPlan
+      - name
+      - packageIds
+      - roomTypeIds
+    RatePlanResponse:
+      type: object
+      description: Um plano tarifário.
+      properties:
+        active:
+          type: boolean
+        cancellationPolicyId:
+          type: string
+          format: uuid
+        category:
+          type: string
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+        channels:
+          type: array
+          description: Canais em que o plano é vendido (trate um valor desconhecido
+            sem falhar).
+          items:
+            type: string
+            description: Canais em que o plano é vendido (trate um valor desconhecido
+              sem falhar).
+            x-extensible-enum:
+            - DIRECT
+            - WEBSITE
+            - OTA
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        guaranteePolicyId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        mealPlan:
+          type: string
+          description: Regime de alimentação (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - ROOM_ONLY
+          - BREAKFAST
+          - HALF_BOARD
+        name:
+          type: string
+        packageIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        roomTypeIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - cancellationPolicyId
+      - category
+      - channels
+      - code
+      - createdAt
+      - guaranteePolicyId
+      - id
+      - mealPlan
+      - name
+      - packageIds
+      - roomTypeIds
+      - updatedAt
+    RatePlanUpdateRequest:
+      type: object
+      description: Os dados editáveis de um plano tarifário (a categoria é fixa desde
+        a criação).
+      properties:
+        cancellationPolicyId:
+          type: string
+          format: uuid
+          nullable: true
+        channels:
+          type: array
+          description: "Canais em que o plano é vendido (o conjunto inteiro, ao menos\
+            \ um)."
+          items:
+            type: string
+            description: "Canais em que o plano é vendido (o conjunto inteiro, ao\
+              \ menos um)."
+            enum:
+            - DIRECT
+            - WEBSITE
+            - OTA
+          maxItems: 3
+          minItems: 0
+        code:
+          type: string
+          description: "Letras, dígitos, `_` e `-`, até 20; guardado em maiúsculas."
+          example: BAR
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        description:
+          type: string
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+        guaranteePolicyId:
+          type: string
+          format: uuid
+          nullable: true
+        mealPlan:
+          type: string
+          enum:
+          - ROOM_ONLY
+          - BREAKFAST
+          - HALF_BOARD
+          nullable: true
+        name:
+          type: string
+          example: Tarifa balcão
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        packageIds:
+          type: array
+          description: Pacotes do plano (o conjunto inteiro).
+          items:
+            type: string
+            format: uuid
+            description: Pacotes do plano (o conjunto inteiro).
+          maxItems: 20
+          minItems: 0
+        roomTypeIds:
+          type: array
+          description: "Tipos de UH a que o plano se aplica (o conjunto inteiro, ao\
+            \ menos um)."
+          items:
+            type: string
+            format: uuid
+            description: "Tipos de UH a que o plano se aplica (o conjunto inteiro,\
+              \ ao menos um)."
+          maxItems: 50
+          minItems: 0
+      required:
+      - cancellationPolicyId
+      - channels
+      - code
+      - guaranteePolicyId
+      - mealPlan
+      - name
+      - packageIds
+      - roomTypeIds
     ReadAllResponse:
       type: object
       description: Quantas notificações foram marcadas como lidas agora.
