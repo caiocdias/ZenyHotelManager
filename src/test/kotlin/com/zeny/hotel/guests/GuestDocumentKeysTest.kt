@@ -76,7 +76,7 @@ class GuestDocumentKeysTest(
     @Test
     fun `the rekey job moves a document from the previous key to the active one, still found only by it`(): Unit =
         with(iam) {
-            val passport = "RK${guests.suffix(8)}".uppercase()
+            val passport = guests.passport("RK", 8)
             val created =
                 guests.createGuest(
                     guests.createBody(documents = listOf(guests.document("PASSPORT", passport, "CL"))),

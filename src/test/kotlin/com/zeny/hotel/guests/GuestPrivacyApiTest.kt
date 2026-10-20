@@ -652,7 +652,7 @@ class GuestPrivacyApiTest(
             val name = guests.uniqueName("Titular")
             val email = guests.uniqueEmail()
             val absorbedEmail = guests.uniqueEmail()
-            val passport = "PX${guests.suffix(7)}".uppercase()
+            val passport = guests.passport("PX")
             val profile =
                 guests.profileBody(fullName = name, email = email, extra = mapOf("dietaryRestrictions" to DIETARY)) +
                     mapOf(

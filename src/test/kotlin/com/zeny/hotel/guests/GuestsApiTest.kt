@@ -136,7 +136,7 @@ class GuestsApiTest(
                 .createGuest(
                     guests.createBody(
                         profile = onlyCountry,
-                        documents = listOf(guests.document("PASSPORT", "AA${guests.suffix(7)}", "AR")),
+                        documents = listOf(guests.document("PASSPORT", guests.passport("AA"), "AR")),
                     ),
                 )["residenceCountry"]
                 .asString() shouldBe "AR"
@@ -299,7 +299,7 @@ class GuestsApiTest(
     @Suppress("LongMethod") // o índice gravado, a rotação, o registro ilegível e a restauração
     fun `the document search uses the blind index of every key of the ring and never decrypts other records`(): Unit =
         with(iam) {
-            val passport = "RT${guests.suffix(8)}".uppercase()
+            val passport = guests.passport("RT", 8)
             val guest =
                 guests.createGuest(
                     guests.createBody(documents = listOf(guests.document("PASSPORT", passport.lowercase(), "UY"))),
@@ -376,7 +376,7 @@ class GuestsApiTest(
             val revealer = createUserWith(read, reveal)
             val guest = guests.createGuest(guests.createBody(documents = emptyList()))
             val id = guest["id"].asString()
-            val passport = "PX${guests.suffix(7)}".uppercase()
+            val passport = guests.passport("PX")
 
             call(
                 POST,

@@ -26,6 +26,16 @@ class GuestsTestSupport(
 
     fun suffix(length: Int = SUFFIX_LENGTH): String = UuidV7.generate().toString().takeLast(length)
 
+    /**
+     * Um número de passaporte único: [prefix], um dígito e [length] − 1 caracteres hexadecimais em maiúsculas. O
+     * dígito fixo garante a regra "com algum dígito" do domínio (um sufixo hexadecimal sozinho às vezes sai só com
+     * letras; ajuste do gate do M3, E11).
+     */
+    fun passport(
+        prefix: String,
+        length: Int = PASSPORT_SUFFIX_LENGTH,
+    ): String = prefix + random.nextInt(DIGITS) + suffix(length - 1).uppercase()
+
     /** Um nome único com acento, para provar a busca sem acento. */
     fun uniqueName(prefix: String = "José"): String = "$prefix Conceição ${suffix()}"
 
@@ -114,6 +124,8 @@ class GuestsTestSupport(
 
     companion object {
         private const val SUFFIX_LENGTH = 12
+        private const val PASSPORT_SUFFIX_LENGTH = 7
+        private const val DIGITS = 10
         private val random = SecureRandom()
 
         fun definition(code: PermissionCode) = GuestsPermissions.permissions.single { it.code == code }

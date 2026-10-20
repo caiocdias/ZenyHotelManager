@@ -103,7 +103,7 @@ class GuestMergeApiTest(
             val c = create(email = email.uppercase())
             val unrelated = create()
             // O mesmo número noutro país não é o mesmo documento.
-            val passport = "AB${guests.suffix(7)}"
+            val passport = guests.passport("AB")
             val d = create(documents = listOf(guests.document("PASSPORT", passport, "AR")))
             val e = create(documents = listOf(guests.document("PASSPORT", passport, "PY")))
 
@@ -155,7 +155,7 @@ class GuestMergeApiTest(
             val merger = createUserWith(read, merge)
             val cpf = newCpf()
             val email = guests.uniqueEmail()
-            val passport = "AB${guests.suffix(7)}"
+            val passport = guests.passport("AB")
             val survivor =
                 create(
                     email = null,
@@ -338,7 +338,7 @@ class GuestMergeApiTest(
                 create(
                     name = name,
                     email = email,
-                    documents = listOf(guests.document("PASSPORT", "ZX${guests.suffix(7)}", "AR")),
+                    documents = listOf(guests.document("PASSPORT", guests.passport("ZX"), "AR")),
                 )
             call(POST, "/api/v1/guests/$survivor/documents", asAdmin(), guests.document("CPF", cpf)).ok()
             call(POST, "/api/v1/guests/$merged/restrict", asAdmin(), mapOf("reason" to "Motivo sigiloso")).ok()
