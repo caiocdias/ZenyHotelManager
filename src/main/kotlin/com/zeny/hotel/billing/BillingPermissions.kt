@@ -32,11 +32,20 @@ import com.zeny.hotel.shared.TemplateGrant
  * Recepcionista e Caixa A&B só os próprios, Gerente e Financeiro todos); e a conferência ([SHIFTS_REVIEW], só `ALL`,
  * Gerente e Financeiro): vê o valor esperado de qualquer turno, mesmo cego e aberto, e recebe a notificação de
  * diferença no fechamento (H14).
+ *
+ * Pagamentos (RF-CTA-06, 07, 10 e 15, M3 E08; decisões do usuário em 2026-10-19): receber pagamentos e depósitos
+ * ([PAYMENTS_RECEIVE], não sensível; Gerente, Financeiro e Recepcionista, sempre no próprio turno de caixa aberto) e
+ * reembolsar ([PAYMENTS_REFUND], **sensível**, com o limite [MAX_AMOUNT] sobre o total reembolsado do pagamento: os
+ * reembolsos já feitos dele, por qualquer usuário, mais o novo; Gerente e Financeiro sem teto, Recepcionista e Caixa
+ * A&B sem ela, sempre pedem a aprovação de um superior).
  */
 object BillingPermissions : ModulePermissions {
     override val module = "billing"
 
-    /** Chave do limite das correções: o total das correções de um lançamento (estornos e ajustes), em reais. */
+    /**
+     * Chave do limite das correções (o total das correções de um lançamento, estornos e ajustes) e, desde a E08, do
+     * reembolso (o total reembolsado de um pagamento), em reais.
+     */
     const val MAX_AMOUNT = "maxAmount"
 
     /** Consultar os códigos de lançamento. */
@@ -81,6 +90,12 @@ object BillingPermissions : ModulePermissions {
     /** Conferir turnos de caixa: o esperado sempre visível e a notificação de diferença (M3 E07, H14; só `ALL`). */
     val SHIFTS_REVIEW = PermissionCode("billing.shifts.review")
 
+    /** Receber pagamentos e depósitos na conta, no próprio turno de caixa aberto (M3 E08; não sensível). */
+    val PAYMENTS_RECEIVE = PermissionCode("billing.payments.receive")
+
+    /** Reembolsar um pagamento (sensível, com limite [MAX_AMOUNT] sobre o total reembolsado do pagamento; M3 E08). */
+    val PAYMENTS_REFUND = PermissionCode("billing.payments.refund")
+
     private val all = TemplateGrant(ALL)
     private val own = TemplateGrant(OWN)
     private val supervisors = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.FINANCE to all)
@@ -92,6 +107,13 @@ object BillingPermissions : ModulePermissions {
             MAX_AMOUNT,
             LimitUnit.MONEY,
             "Valor máximo do total das correções de um lançamento (estornos e ajustes), em reais",
+        )
+
+    private val maxRefund =
+        LimitDefinition(
+            MAX_AMOUNT,
+            LimitUnit.MONEY,
+            "Valor máximo do total dos reembolsos de um pagamento, em reais",
         )
 
     override val permissions =
@@ -205,6 +227,20 @@ object BillingPermissions : ModulePermissions {
                 "Conferir turnos de caixa: ver o valor esperado e receber a notificação de diferença",
                 setOf(ALL),
                 templates = supervisors,
+            ),
+            PermissionDefinition(
+                PAYMENTS_RECEIVE,
+                "Receber pagamentos e depósitos numa conta, no próprio turno de caixa",
+                setOf(ALL),
+                templates = operators,
+            ),
+            PermissionDefinition(
+                PAYMENTS_REFUND,
+                "Reembolsar um pagamento (ação sensível, com valor máximo)",
+                setOf(ALL),
+                sensitive = true,
+                limits = listOf(maxRefund),
+                templates = mapOf(RoleTemplate.MANAGER to unlimited, RoleTemplate.FINANCE to unlimited),
             ),
         )
 }

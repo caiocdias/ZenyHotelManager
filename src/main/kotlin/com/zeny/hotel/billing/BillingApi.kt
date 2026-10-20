@@ -277,7 +277,7 @@ data class TransactionCodeSummary(
     val active: Boolean,
 )
 
-/** Uma conta com o saldo (a soma dos lançamentos; os pagamentos entram na E08). */
+/** Uma conta com o saldo: a soma dos lançamentos menos o recebido (pagamentos menos reembolsos, desde a E08). */
 data class FolioSummary(
     val id: FolioId,
     val number: DocumentNumber,

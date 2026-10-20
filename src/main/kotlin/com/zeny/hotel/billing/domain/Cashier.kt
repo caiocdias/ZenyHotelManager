@@ -389,8 +389,11 @@ data class CashierClosing(
 
     companion object {
         /**
-         * Confere a contagem declarada (uma entrada por forma, valor de 0,00 a 1.000.000,00): forma repetida ou valor
-         * fora da faixa, `400 CASHIER_COUNT_INVALID` com o campo (`counts[1].method`, `counts[0].amount`).
+         * Confere a contagem declarada (uma entrada por forma): no dinheiro, de 0,00 a 1.000.000,00 (a gaveta não tem
+         * valor negativo); nas demais formas, de −1.000.000,00 a 1.000.000,00, porque o relatório da maquininha ou do
+         * banco mostra o líquido, e um reembolso sem recebimento no turno deixa a forma negativa (decisão do usuário em
+         * 2026-10-19, revisão da E08). Forma repetida ou valor fora da faixa: `400 CASHIER_COUNT_INVALID` com o campo
+         * (`counts[1].method`, `counts[0].amount`).
          */
         fun declared(entries: List<Pair<PaymentMethod, Money>>): Map<PaymentMethod, Money> {
             val violations =
@@ -399,8 +402,15 @@ data class CashierClosing(
                         if (entries.take(index).any { it.first == method }) {
                             add(violation("counts[$index].method", "A forma $method aparece mais de uma vez."))
                         }
-                        if (amount.isNegative() || amount > CashierShift.MAX_AMOUNT) {
-                            add(violation("counts[$index].amount", "O valor declarado vai de 0,00 a 1.000.000,00."))
+                        if (method == PaymentMethod.CASH && amount.isNegative()) {
+                            add(violation("counts[$index].amount", "O dinheiro declarado vai de 0,00 a 1.000.000,00."))
+                        } else if (amount.abs() > CashierShift.MAX_AMOUNT) {
+                            add(
+                                violation(
+                                    "counts[$index].amount",
+                                    "O valor declarado vai de −1.000.000,00 a 1.000.000,00 (no dinheiro, de 0,00).",
+                                ),
+                            )
                         }
                     }
                 }

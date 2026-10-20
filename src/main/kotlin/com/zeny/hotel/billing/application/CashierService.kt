@@ -24,6 +24,7 @@ import com.zeny.hotel.notifications.NotificationsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.CursorPage
@@ -259,6 +260,8 @@ class CashPointService(
  * - **Consultar** (`billing.shifts.read`): com `OWN`, só os próprios turnos (filtro na SQL; o de outro, `404`).
  * - **Fechamento cego** ([CashierShift.expectedVisible]): num turno cego aberto, o esperado não sai a ninguém além de
  *   quem tem `billing.shifts.review`; depois do fechamento, sai a todos que leem o turno, com a diferença por forma.
+ * - **Pagamentos** (E08): o esperado soma, por forma, os recebimentos do turno menos os reembolsos registrados nele
+ *   (`PaymentLedger.shiftTotals`); num turno cego aberto, também eles ficam escondidos de quem não confere.
  * - **Diferença** (H14): o fechamento com alguma diferença notifica, no mesmo caso de uso (a transação desfeita não
  *   notifica), quem tem `billing.shifts.review`, menos o próprio operador, com o tipo
  *   `billing.cashier-shift-difference` e um texto sem dado pessoal ([CashierDifferenceNotice]).
@@ -268,6 +271,7 @@ class CashPointService(
 class CashierShiftService(
     private val store: CashierStore,
     private val ledger: CashierLedger,
+    private val payments: PaymentLedger,
     private val directory: CashierDirectory,
     private val numbers: DocumentNumberGenerator,
     private val hotel: HotelApi,
@@ -388,8 +392,9 @@ class CashierShiftService(
         shift.requireOpen()
         var closing: CashierClosing? = null
         audit.track(BillingAudit.CASHIER_SHIFT, id.value) { shift.auditState(closing) }
-        // Os pagamentos do turno entram no esperado na E08; até lá, só o fundo de troco e os movimentos.
-        val expectation = ShiftExpectation.of(shift.openingFloat, ledger.movementsOf(id))
+        // O esperado com o fundo de troco, os movimentos e os pagamentos do turno (os reembolsos tiram; E08), lidos
+        // com o turno travado: nenhum recebimento entra no meio.
+        val expectation = ShiftExpectation.of(shift.openingFloat, ledger.movementsOf(id), payments.shiftTotals(id))
         val closedOn = hotel.currentBusinessDate()
         val result = shift.close(declared, expectation, closedOn, now())
         closing = result
@@ -431,7 +436,9 @@ class CashierShiftService(
         val visible = shift.expectedVisible(reviewer != null)
         val movements = ledger.movementsOf(shift.id)
         val closing = ledger.countsOf(shift.id).takeIf { it.isNotEmpty() }?.let(::CashierClosing)
-        val expectation = if (visible) ShiftExpectation.of(shift.openingFloat, movements) else null
+        // Num turno cego aberto, nem os pagamentos por forma saem a quem não confere (decisão do usuário, 2026-10-19).
+        val expectation =
+            if (visible) ShiftExpectation.of(shift.openingFloat, movements, payments.shiftTotals(shift.id)) else null
         return CashierShiftView(
             shift.id,
             shift.number,
@@ -471,6 +478,17 @@ class CashierShiftService(
         val SHIFT_NUMBER = DocumentNumberType("CX", "billing.cashier_shift_number_seq")
     }
 }
+
+/**
+ * O turno aberto do [user] com a linha travada até o fim da transação (H13, RF-CTA-10): todo recebimento e devolução
+ * passa por aqui antes de travar a conta. Sem turno aberto: `422 CASHIER_SHIFT_REQUIRED`.
+ */
+internal fun CashierStore.requireOpenShiftOf(user: UserId): CashierShift =
+    openShiftOfForUpdate(user)
+        ?: throw BusinessRuleException(
+            BillingErrorCodes.CASHIER_SHIFT_REQUIRED,
+            "Abra um turno de caixa antes de receber ou devolver.",
+        )
 
 internal fun shiftNotFound() =
     NotFoundException(BillingErrorCodes.CASHIER_SHIFT_NOT_FOUND, "Turno de caixa não encontrado.")

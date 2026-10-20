@@ -4,6 +4,7 @@ import com.zeny.hotel.billing.BillingModule
 import com.zeny.hotel.checklists.ChecklistsModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
+import com.zeny.hotel.payments.PaymentsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -198,13 +199,30 @@ class ModularityTest {
     }
 
     @Test
-    fun `billing depends only on shared, hotel, guests and notifications, and only on their public APIs`() {
+    fun `payments depends only on shared, never on billing`() {
+        val payments = modules.getModuleByName("payments").orElseThrow()
+
+        // ARCHITECTURE §3.1 (camada Financeiro), M3 E08 (H1): a intenção de pagamento neutra e os provedores; o
+        // notifications entra no M7. Nunca billing: quem é dono do destino escuta PaymentSucceeded.
+        payments
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldBe listOf("shared")
+        PaymentsModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toList() shouldBe listOf("shared")
+    }
+
+    @Test
+    fun `billing depends only on shared, hotel, guests, notifications and payments, and only on their public APIs`() {
         val billing = modules.getModuleByName("billing").orElseThrow()
-        val allowed = setOf("shared", "hotel", "guests", "notifications")
+        val allowed = setOf("shared", "hotel", "guests", "notifications", "payments")
 
         // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
-        // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments entra na E08. Nunca
-        // iam, reservas nem fiscal.
+        // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments (a intenção de pagamento
+        // de todo recebimento e o PaymentSucceeded, H1), M3 E08. Nunca iam, reservas nem fiscal.
         billing
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -215,8 +233,14 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz de hotel, guests e notifications (a API pública); verify() também barra os pacotes internos.
-        val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.guests", "com.zeny.hotel.notifications")
+        // Só a raiz de hotel, guests, notifications e payments (a API pública); verify() também barra os internos.
+        val publicApis =
+            setOf(
+                "com.zeny.hotel.hotel",
+                "com.zeny.hotel.guests",
+                "com.zeny.hotel.notifications",
+                "com.zeny.hotel.payments",
+            )
         billing
             .getDirectDependencies(modules)
             .stream()

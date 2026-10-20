@@ -93,7 +93,10 @@ interface PostingLedger {
     /** As correções (estornos e ajustes) do lançamento. */
     fun correctionsOf(id: PostingId): List<Posting>
 
-    /** O saldo de cada conta (a soma dos lançamentos; zero sem lançamento). */
+    /**
+     * O saldo de cada conta: a soma dos lançamentos menos o que a conta recebeu (os pagamentos menos os reembolsos,
+     * desde a E08); zero sem nada. Negativo: a conta é credora (depósito, adiantamento, pagamento acima do devido).
+     */
     fun balances(folioIds: Collection<FolioId>): Map<FolioId, Money>
 
     /** Os lançamentos da conta em ordem de lançamento, depois da posição, com o resumo das correções. */

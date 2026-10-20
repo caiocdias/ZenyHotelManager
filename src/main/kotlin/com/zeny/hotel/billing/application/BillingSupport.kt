@@ -55,6 +55,7 @@ object BillingAudit {
     const val CASH_POINT = "billing.cash-point"
     const val CASHIER_SHIFT = "billing.cashier-shift"
     const val CASH_MOVEMENT = "billing.cash-movement"
+    const val PAYMENT = "billing.payment"
 
     const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
     const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
@@ -79,6 +80,8 @@ object BillingAudit {
     const val OPEN_CASHIER_SHIFT = "billing.cashier-shift.open"
     const val CLOSE_CASHIER_SHIFT = "billing.cashier-shift.close"
     const val RECORD_CASH_MOVEMENT = "billing.cash-movement.record"
+    const val RECEIVE_PAYMENT = "billing.payment.receive"
+    const val REFUND_PAYMENT = "billing.payment.refund"
 }
 
 /** Um código de lançamento lido. */

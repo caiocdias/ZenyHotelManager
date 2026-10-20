@@ -248,7 +248,8 @@ class CashierShiftsController(
             "Com a contagem declarada por forma de pagamento (a omitida vale zero); devolve o relatório de " +
                 "fechamento, com o esperado e a diferença por forma (declarado − esperado). Exige " +
                 "`billing.cashier.operate`, e só o operador fecha (403 `CASHIER_SHIFT_OPERATOR_REQUIRED`). Já " +
-                "fechado: 409 `CASHIER_SHIFT_CLOSED`; forma repetida ou valor fora de 0,00 a 1.000.000,00: 400 " +
+                "fechado: 409 `CASHIER_SHIFT_CLOSED`; forma repetida, dinheiro fora de 0,00 a 1.000.000,00 ou " +
+                "outra forma fora de -1.000.000,00 a 1.000.000,00 (o líquido do relatório pode ser negativo): 400 " +
                 "`CASHIER_COUNT_INVALID`. Com alguma diferença, quem tem `billing.shifts.review` (menos o operador) " +
                 "recebe a notificação `billing.cashier-shift-difference`.",
     )

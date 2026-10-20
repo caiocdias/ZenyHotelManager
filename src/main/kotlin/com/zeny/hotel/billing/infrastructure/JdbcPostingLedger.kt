@@ -104,8 +104,12 @@ class JdbcPostingLedger(
             jdbc
                 .sql(
                     """
-                    SELECT folio_id, sum(amount) AS total FROM billing.posting
-                    WHERE folio_id IN (:ids) GROUP BY folio_id
+                    SELECT f.id AS folio_id,
+                        COALESCE((SELECT sum(amount) FROM billing.posting p WHERE p.folio_id = f.id), 0)
+                        - COALESCE((SELECT sum(CASE WHEN y.payment_type = 'PAYMENT' THEN y.amount ELSE -y.amount END)
+                                    FROM billing.payment y WHERE y.folio_id = f.id), 0) AS total
+                    FROM billing.folio f
+                    WHERE f.id IN (:ids)
                     """.trimIndent(),
                 ).param("ids", folioIds.map { it.value })
                 .query { rs, _ ->
@@ -265,17 +269,18 @@ class JdbcPostingLedger(
 
 /**
  * As tabelas *append-only* do módulo (RN-03), que a partida confere ([AppendOnlyTables]): os lançamentos e, desde a
- * E07, os movimentos de caixa e as contagens do fechamento.
+ * E07, os movimentos de caixa e as contagens do fechamento e, desde a E08, os pagamentos e reembolsos.
  */
 @Configuration(proxyBeanMethods = false)
 class BillingTablesConfiguration {
     @Bean
     fun billingAppendOnlyTables(): AppendOnlyTables =
-        AppendOnlyTables { setOf(POSTING_TABLE, CASH_MOVEMENT_TABLE, CASHIER_SHIFT_COUNT_TABLE) }
+        AppendOnlyTables { setOf(POSTING_TABLE, CASH_MOVEMENT_TABLE, CASHIER_SHIFT_COUNT_TABLE, PAYMENT_TABLE) }
 
     companion object {
         const val POSTING_TABLE = "billing.posting"
         const val CASH_MOVEMENT_TABLE = "billing.cash_movement"
         const val CASHIER_SHIFT_COUNT_TABLE = "billing.cashier_shift_count"
+        const val PAYMENT_TABLE = "billing.payment"
     }
 }

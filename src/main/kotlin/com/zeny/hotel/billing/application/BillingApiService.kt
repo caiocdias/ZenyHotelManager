@@ -1,7 +1,6 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingApi
-import com.zeny.hotel.billing.BillingErrorCodes
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.CashierShiftSummary
 import com.zeny.hotel.billing.FolioId
@@ -14,7 +13,6 @@ import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.TransactionCodeSummary
 import com.zeny.hotel.shared.Audited
-import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
@@ -85,13 +83,7 @@ class BillingApiService(
             TransactionSynchronizationManager.isActualTransactionActive() &&
                 !TransactionSynchronizationManager.isCurrentTransactionReadOnly(),
         ) { "requireOpenShift precisa da transação de escrita de quem recebe (trava o turno até o commit)" }
-        val shift =
-            cashier.openShiftOfForUpdate(user)
-                ?: throw BusinessRuleException(
-                    BillingErrorCodes.CASHIER_SHIFT_REQUIRED,
-                    "Abra um turno de caixa antes de receber ou devolver.",
-                )
-        return shift.summary()
+        return cashier.requireOpenShiftOf(user).summary()
     }
 
     @Transactional(readOnly = true)

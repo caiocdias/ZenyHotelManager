@@ -77,7 +77,13 @@ data class CashMovementRequest(
 data class CashCountRequest(
     @field:NotNull
     val method: PaymentMethod?,
-    @field:Schema(description = "Valor contado (0,00 a 1.000.000,00).", example = "350.00")
+    @field:Schema(
+        description =
+            "Valor contado: no dinheiro, de 0,00 a 1.000.000,00; nas demais formas, o líquido do relatório da " +
+                "maquininha ou do banco, de -1.000.000,00 a 1.000.000,00 (negativo quando o turno devolveu mais " +
+                "do que recebeu na forma).",
+        example = "350.00",
+    )
     @field:NotNull
     val amount: Money?,
 ) {

@@ -934,9 +934,10 @@ paths:
         \ zero); devolve o relatório de fechamento, com o esperado e a diferença por\
         \ forma (declarado − esperado). Exige `billing.cashier.operate`, e só o operador\
         \ fecha (403 `CASHIER_SHIFT_OPERATOR_REQUIRED`). Já fechado: 409 `CASHIER_SHIFT_CLOSED`;\
-        \ forma repetida ou valor fora de 0,00 a 1.000.000,00: 400 `CASHIER_COUNT_INVALID`.\
-        \ Com alguma diferença, quem tem `billing.shifts.review` (menos o operador)\
-        \ recebe a notificação `billing.cashier-shift-difference`."
+        \ forma repetida, dinheiro fora de 0,00 a 1.000.000,00 ou outra forma fora\
+        \ de -1.000.000,00 a 1.000.000,00 (o líquido do relatório pode ser negativo):\
+        \ 400 `CASHIER_COUNT_INVALID`. Com alguma diferença, quem tem `billing.shifts.review`\
+        \ (menos o operador) recebe a notificação `billing.cashier-shift-difference`."
       operationId: closeCashierShift
       parameters:
       - in: path
@@ -2901,6 +2902,224 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Abrir uma conta
+      tags:
+      - billing
+  /api/v1/folios/{folioId}/payments:
+    get:
+      description: "Em ordem de registro, com o total reembolsado e o reembolsável\
+        \ de cada recebimento. Exige `billing.folios.read`. Conta inexistente: 404\
+        \ `FOLIO_NOT_FOUND`."
+      operationId: listPayments
+      parameters:
+      - in: path
+        name: folioId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePaymentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os pagamentos e reembolsos de uma conta
+      tags:
+      - billing
+    post:
+      description: "Registro manual (maquininha não integrada, Pix conferido, dinheiro,\
+        \ transferência) na data operacional, no turno de caixa aberto do próprio\
+        \ usuário (sem turno: 422 `CASHIER_SHIFT_REQUIRED`), que entra no esperado\
+        \ do turno na forma. Passa por uma intenção de pagamento do provedor `MANUAL`,\
+        \ confirmada na hora (`paymentIntentId`). Vários pagamentos por conta; o valor\
+        \ pode passar do saldo devedor (a conta fica credora). Troco só no dinheiro\
+        \ (`tendered` − `amount`). `deposit` marca o depósito. Exige `billing.payments.receive`.\
+        \ Conta inexistente: 404 `FOLIO_NOT_FOUND`; encerrada: 409 `FOLIO_CLOSED`;\
+        \ `CITY_LEDGER`: 422 `PAYMENT_METHOD_NOT_AVAILABLE`; formato: 400 `PAYMENT_INVALID`\
+        \ (com o campo). Nunca envie o número do cartão nem o CVV."
+      operationId: receivePayment
+      parameters:
+      - in: path
+        name: folioId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReceivePaymentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+          description: Recebido.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Receber um pagamento na conta
+      tags:
+      - billing
+  /api/v1/folios/{folioId}/payments/{paymentId}:
+    get:
+      description: "Exige `billing.folios.read`. Inexistente nesta conta: 404 `PAYMENT_NOT_FOUND`."
+      operationId: getPayment
+      parameters:
+      - in: path
+        name: folioId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: paymentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um pagamento ou reembolso
+      tags:
+      - billing
+  /api/v1/folios/{folioId}/payments/{paymentId}/refund:
+    post:
+      description: "Devolução vinculada ao recebimento, na mesma forma (no dinheiro,\
+        \ sai da gaveta), com motivo, no turno de caixa aberto do próprio usuário\
+        \ (sem turno: 422 `CASHIER_SHIFT_REQUIRED`), que a tira do esperado do turno.\
+        \ Exige antes `billing.folios.read` (sem ela, 403 `PERMISSION_DENIED`). Até\
+        \ o reembolsável (o pago menos os reembolsos anteriores; acima: 422 `REFUND_EXCEEDS_REFUNDABLE`);\
+        \ reembolso de um reembolso: 422 `PAYMENT_NOT_REFUNDABLE`; inexistente nesta\
+        \ conta: 404 `PAYMENT_NOT_FOUND`; conta encerrada: 409 `FOLIO_CLOSED`. Essas\
+        \ regras vêm antes da aprovação. Ação **sensível** com o limite `maxAmount`\
+        \ sobre o total reembolsado do pagamento (os anteriores mais este): sem `billing.payments.refund`,\
+        \ ou acima do limite, 403 `APPROVAL_REQUIRED` (com `action`, `permission`,\
+        \ `resourceRef` e `limit`); repita com o `X-Approval-Token` de `POST /api/v1/auth/approvals`\
+        \ e **outra** `Idempotency-Key`."
+      operationId: refundPayment
+      parameters:
+      - in: path
+        name: folioId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: paymentId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundPaymentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResponse"
+          description: Reembolsado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reembolsar um pagamento
       tags:
       - billing
   /api/v1/folios/{id}:
@@ -10035,6 +10254,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPagePaymentResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePermissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -12236,6 +12469,135 @@ components:
       - startsOn
       - updatedAt
       - version
+    PaymentResponse:
+      type: object
+      description: Um recebimento ou um reembolso na conta (imutável).
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        approvalId:
+          type: string
+          format: uuid
+          description: "A aprovação de superior que autorizou o reembolso, se houve."
+          nullable: true
+        approvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        authorizationCode:
+          type: string
+          nullable: true
+        businessDate:
+          type: string
+          format: date
+          description: Data operacional do registro (RN-01).
+        cardBrand:
+          type: string
+          nullable: true
+        cardLast4:
+          type: string
+          description: Os 4 últimos dígitos do cartão (nunca o número completo).
+          nullable: true
+        cashierShiftId:
+          type: string
+          format: uuid
+          description: O turno de caixa de quem recebeu ou devolveu.
+        change:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        deposit:
+          type: boolean
+          description: Depósito (sinal antes da chegada); o reembolso de um depósito
+            também é.
+        folioId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        method:
+          type: string
+          description: Forma de pagamento (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - CASH
+          - DEBIT_CARD
+          - CREDIT_CARD
+          - PIX
+          - BANK_TRANSFER
+          - OTHER
+        nsu:
+          type: string
+          nullable: true
+        paymentIntentId:
+          type: string
+          format: uuid
+          description: A intenção de pagamento confirmada que originou o recebimento
+            (só no recebimento).
+          nullable: true
+        reason:
+          type: string
+          description: Motivo do reembolso.
+          nullable: true
+        receivedAt:
+          type: string
+          format: date-time
+        receivedBy:
+          type: string
+          format: uuid
+          description: Quem recebeu ou devolveu.
+        refundOfPaymentId:
+          type: string
+          format: uuid
+          description: O recebimento reembolsado (só no reembolso).
+          nullable: true
+        refundableAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        refundedAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        tendered:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        type:
+          type: string
+          description: "`PAYMENT` (recebimento) ou `REFUND` (reembolso de um recebimento).\
+            \ A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido\
+            \ sem falhar."
+          x-extensible-enum:
+          - PAYMENT
+          - REFUND
+      required:
+      - amount
+      - businessDate
+      - cashierShiftId
+      - deposit
+      - folioId
+      - id
+      - method
+      - receivedAt
+      - receivedBy
+      - type
     PermissionResponse:
       type: object
       description: Uma permissão do catálogo.
@@ -12687,6 +13049,77 @@ components:
           format: int32
       required:
       - read
+    ReceivePaymentRequest:
+      type: object
+      description: "Um recebimento na conta, registrado manualmente (RF-PAG-03). **Nunca**\
+        \ envie o número do cartão nem o CVV (PCI-DSS, RNF-10): só a bandeira e os\
+        \ 4 últimos dígitos, além do NSU e da autorização da maquininha."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        authorizationCode:
+          type: string
+          description: "Código de autorização. Até 20 letras e dígitos (guardado em\
+            \ maiúsculas), com no máximo 12 dígitos: uma sequência de 13 a 19 dígitos\
+            \ tem cara de número de cartão e é recusada (400 `PAYMENT_INVALID`). Nã\
+            o existe no dinheiro."
+          example: A1B2C3
+          maxLength: 20
+          nullable: true
+        cardBrand:
+          type: string
+          description: "Só no cartão: a bandeira (só letras e espaços, até 20)."
+          example: VISA
+          maxLength: 20
+          nullable: true
+        cardLast4:
+          type: string
+          description: "Só no cartão: exatamente os 4 últimos dígitos (nunca o nú\
+            mero completo)."
+          example: "1234"
+          nullable: true
+          pattern: "^[0-9]{4}$"
+        deposit:
+          type: boolean
+          description: "Marca o pagamento como depósito (sinal antes da chegada, RF-CTA-07)."
+        method:
+          type: string
+          description: "Forma de pagamento. `CITY_LEDGER` (faturado) ainda não está\
+            \ disponível: 422 `PAYMENT_METHOD_NOT_AVAILABLE`."
+          enum:
+          - CASH
+          - DEBIT_CARD
+          - CREDIT_CARD
+          - PIX
+          - BANK_TRANSFER
+          - OTHER
+          - CITY_LEDGER
+          nullable: true
+        nsu:
+          type: string
+          description: "NSU da transação. Até 20 letras e dígitos (guardado em maiú\
+            sculas), com no máximo 12 dígitos: uma sequência de 13 a 19 dígitos tem\
+            \ cara de número de cartão e é recusada (400 `PAYMENT_INVALID`). Não existe\
+            \ no dinheiro."
+          example: "004512"
+          maxLength: 20
+          nullable: true
+        tendered:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - amount
+      - deposit
+      - method
     RecordScheduleEntriesRequest:
       type: object
       description: Atribuição ou exceção a lançar em cada data do período.
@@ -12734,6 +13167,45 @@ components:
           minLength: 0
       required:
       - refreshToken
+    RefundPaymentRequest:
+      type: object
+      description: "O reembolso de um recebimento (RF-CTA-15), sempre na mesma forma\
+        \ dele: no dinheiro, sai da gaveta do turno de quem devolve; nas outras formas,\
+        \ registra a devolução feita fora (Pix, estorno na maquininha, transferência)."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        authorizationCode:
+          type: string
+          description: "Autorização da devolução. Até 20 letras e dígitos (guardado\
+            \ em maiúsculas), com no máximo 12 dígitos: uma sequência de 13 a 19 dí\
+            gitos tem cara de número de cartão e é recusada (400 `PAYMENT_INVALID`).\
+            \ Não existe no dinheiro."
+          maxLength: 20
+          nullable: true
+        nsu:
+          type: string
+          description: "NSU da devolução. Até 20 letras e dígitos (guardado em maiú\
+            sculas), com no máximo 12 dígitos: uma sequência de 13 a 19 dígitos tem\
+            \ cara de número de cartão e é recusada (400 `PAYMENT_INVALID`). Não existe\
+            \ no dinheiro."
+          maxLength: 20
+          nullable: true
+        reason:
+          type: string
+          description: Motivo (até 200 caracteres).
+          example: Cancelamento dentro da política
+          maxLength: 200
+          minLength: 0
+          nullable: true
+      required:
+      - amount
+      - reason
     ReplaceChecklistAnswersRequest:
       type: object
       description: "Todas as respostas da execução: a lista substitui a gravada."

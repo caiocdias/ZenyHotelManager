@@ -373,7 +373,10 @@ class CashierShiftsApiTest(
                     mapOf("counts" to listOf(count("CASH", "1.00"), count("CASH", "2.00"))),
                 ).problem(400, "CASHIER_COUNT_INVALID")
             repeated["errors"][0]["field"].asString() shouldBe "counts[1].method"
-            call(POST, "$path/close", auth, mapOf("counts" to listOf(count("PIX", "-1.00"))))
+            call(POST, "$path/close", auth, mapOf("counts" to listOf(count("CASH", "-1.00"))))
+                .problem(400, "CASHIER_COUNT_INVALID")["errors"][0]["field"]
+                .asString() shouldBe "counts[0].amount"
+            call(POST, "$path/close", auth, mapOf("counts" to listOf(count("PIX", "-1000000.01"))))
                 .problem(400, "CASHIER_COUNT_INVALID")["errors"][0]["field"]
                 .asString() shouldBe "counts[0].amount"
             close(path, iam.asTestUser(operator()), mapOf("CASH" to "0.00"))

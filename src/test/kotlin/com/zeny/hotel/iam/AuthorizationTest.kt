@@ -233,6 +233,8 @@ class AuthorizationTest(
                 "billing.cashier.operate:ALL",
                 "billing.shifts.read:ALL",
                 "billing.shifts.review:ALL",
+                "billing.payments.receive:ALL",
+                "billing.payments.refund:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

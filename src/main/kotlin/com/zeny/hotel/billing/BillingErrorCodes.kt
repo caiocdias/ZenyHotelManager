@@ -139,6 +139,29 @@ object BillingErrorCodes {
     /** 400: fundo de troco ou valor de movimento fora da faixa, ou motivo vazio (com o campo). */
     val CASHIER_SHIFT_INVALID = ErrorCode("CASHIER_SHIFT_INVALID")
 
-    /** 400: contagem com forma de pagamento repetida ou valor negativo ou fora da faixa (com o campo). */
+    /**
+     * 400: contagem com forma de pagamento repetida, dinheiro negativo ou valor fora da faixa (de −1.000.000,00 a
+     * 1.000.000,00 nas formas que não são dinheiro; com o campo).
+     */
     val CASHIER_COUNT_INVALID = ErrorCode("CASHIER_COUNT_INVALID")
+
+    /**
+     * 400: pagamento ou reembolso fora do formato (com o campo): valor fora de 0,01 a 1.000.000,00, valor entregue
+     * (`tendered`) fora do dinheiro ou menor que o valor, NSU ou autorização no dinheiro ou fora do formato (até 20
+     * letras e dígitos, com no máximo 12 dígitos: uma sequência de 13 a 19 dígitos tem cara de número de cartão e é
+     * recusada), bandeira ou últimos dígitos fora do cartão, últimos dígitos que não são exatamente 4, motivo vazio.
+     */
+    val PAYMENT_INVALID = ErrorCode("PAYMENT_INVALID")
+
+    /** 422: forma de pagamento ainda não disponível (`CITY_LEDGER`, faturado para contas a receber, entra no M10). */
+    val PAYMENT_METHOD_NOT_AVAILABLE = ErrorCode("PAYMENT_METHOD_NOT_AVAILABLE")
+
+    /** 404: pagamento inexistente nesta conta. */
+    val PAYMENT_NOT_FOUND = ErrorCode("PAYMENT_NOT_FOUND")
+
+    /** 422: só um recebimento é reembolsado (nunca um reembolso). */
+    val PAYMENT_NOT_REFUNDABLE = ErrorCode("PAYMENT_NOT_REFUNDABLE")
+
+    /** 422: o reembolso passa do que ainda é reembolsável (o valor pago menos os reembolsos anteriores). */
+    val REFUND_EXCEEDS_REFUNDABLE = ErrorCode("REFUND_EXCEEDS_REFUNDABLE")
 }

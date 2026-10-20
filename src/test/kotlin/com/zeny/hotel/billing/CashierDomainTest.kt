@@ -107,7 +107,7 @@ class CashierDomainTest {
     }
 
     @Test
-    fun `the declared count refuses a repeated method and a negative or too large amount, with the field`() {
+    fun `the declared count refuses a repeated method, negative cash and a too large amount, with the field`() {
         val repeated =
             shouldThrow<InvalidInputException> {
                 CashierClosing.declared(
@@ -118,9 +118,36 @@ class CashierDomainTest {
         repeated.violations.map { it.field } shouldContainExactly listOf("counts[1].method")
         shouldThrow<InvalidInputException> {
             CashierClosing.declared(
-                listOf(PaymentMethod.PIX to Money.of("-0.01"), PaymentMethod.CASH to Money.of("1000000.01")),
+                listOf(
+                    PaymentMethod.CASH to Money.of("-0.01"),
+                    PaymentMethod.PIX to Money.of("-1000000.01"),
+                    PaymentMethod.DEBIT_CARD to Money.of("1000000.01"),
+                ),
             )
-        }.violations.map { it.field } shouldContainExactly listOf("counts[0].amount", "counts[1].amount")
+        }.violations.map { it.field } shouldContainExactly
+            listOf("counts[0].amount", "counts[1].amount", "counts[2].amount")
+    }
+
+    @Test
+    fun `a refund without receipts in a method closes with a negative declared amount and no difference`() {
+        // Revisão humana da E08: fora do dinheiro, o líquido do relatório da maquininha ou do banco pode ser negativo.
+        val declared =
+            CashierClosing.declared(
+                listOf(PaymentMethod.CREDIT_CARD to Money.of("-50.00"), PaymentMethod.PIX to Money.of("-1000000.00")),
+            )
+        declared[PaymentMethod.CREDIT_CARD] shouldBe Money.of("-50.00")
+        val shift = open(blind = true)
+        val expectation =
+            ShiftExpectation.of(Money.ZERO, emptyList(), mapOf(PaymentMethod.CREDIT_CARD to Money.of("-50.00")))
+        val closing =
+            shift.close(
+                CashierClosing.declared(listOf(PaymentMethod.CREDIT_CARD to Money.of("-50.00"))),
+                expectation,
+                day,
+                now,
+            )
+        closing.hasDifference shouldBe false
+        closing.counts.single { it.method == PaymentMethod.CREDIT_CARD }.declared shouldBe Money.of("-50.00")
     }
 
     @Test
