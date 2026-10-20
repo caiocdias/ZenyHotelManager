@@ -10,8 +10,10 @@ import com.zeny.hotel.rates.PackageId
 import com.zeny.hotel.rates.PackagePostingRhythm
 import com.zeny.hotel.rates.PackagePricing
 import com.zeny.hotel.rates.RatePlanCategory
+import com.zeny.hotel.rates.RatePlanDerivation
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
+import com.zeny.hotel.rates.SeasonId
 import com.zeny.hotel.rates.domain.CancellationPolicy
 import com.zeny.hotel.rates.domain.CancellationTerms
 import com.zeny.hotel.rates.domain.GuaranteePolicy
@@ -20,6 +22,7 @@ import com.zeny.hotel.rates.domain.PackageDetails
 import com.zeny.hotel.rates.domain.RatePackage
 import com.zeny.hotel.rates.domain.RatePlan
 import com.zeny.hotel.rates.domain.RatePlanDetails
+import com.zeny.hotel.rates.domain.Season
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
@@ -75,10 +78,20 @@ interface RatesStore {
 
     fun ratePlan(id: RatePlanId): RatePlan?
 
+    /** O plano travado (`SELECT … FOR UPDATE`) e relido: preços e derivação dele se escrevem um de cada vez. */
+    fun ratePlanForUpdate(id: RatePlanId): RatePlan?
+
     fun ratePlans(ids: List<UUID>): List<RatePlan>
 
     /** `false` se o código já existe. */
     fun tryAdd(plan: RatePlan): Boolean
+
+    fun season(id: SeasonId): Season?
+
+    fun seasons(ids: List<UUID>): List<Season>
+
+    /** `false` se o nome já existe (sem diferenciar maiúsculas). */
+    fun tryAdd(season: Season): Boolean
 
     /** Grava já as mudanças pendentes (conferindo a versão: lock otimista). */
     fun flush()
@@ -93,6 +106,7 @@ object RatesConstraints {
     const val PACKAGE_CODE = "rate_package_code_uk"
     const val CANCELLATION_POLICY_NAME = "cancellation_policy_name_uk"
     const val GUARANTEE_POLICY_NAME = "guarantee_policy_name_uk"
+    const val SEASON_NAME = "season_name_uk"
 }
 
 /** Filtros da lista de planos. */
@@ -135,6 +149,13 @@ interface RatesDirectory {
         after: Pair<String, UUID>?,
         limit: Int,
     ): List<Pair<String, UUID>>
+
+    /** Temporadas em ordem de início (`YYYY-MM-DD`) e id. */
+    fun seasons(
+        active: Boolean?,
+        after: Pair<String, UUID>?,
+        limit: Int,
+    ): List<Pair<String, UUID>>
 }
 
 data class RatePlanView(
@@ -153,6 +174,7 @@ data class RatePlanView(
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
+    val derivation: RatePlanDerivation? = null,
 )
 
 data class CancellationPolicyView(
@@ -213,6 +235,7 @@ internal fun RatePlan.view() =
         createdAt,
         updatedAt,
         checkNotNull(version),
+        derivation?.toPublic(),
     )
 
 internal fun CancellationPolicy.view() =

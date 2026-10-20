@@ -86,4 +86,63 @@ object RatesErrorCodes {
 
     /** 422: o pacote está num plano ativo e não é desativado. */
     val PACKAGE_IN_USE = ErrorCode("PACKAGE_IN_USE")
+
+    // --- Preços, derivação e temporadas (M4 E02) ---------------------------------------------------------------
+
+    /** 400: valor de preço fora da faixa (de 0,00 a 1.000.000,00), com o campo em `errors[]`. */
+    val RATE_PRICE_INVALID = ErrorCode("RATE_PRICE_INVALID")
+
+    /**
+     * 400: período sem datas (fim antes do início, ou nenhuma data nos dias da semana informados); campo `to` ou
+     * `weekdays`.
+     */
+    val RATE_PRICE_PERIOD_INVALID = ErrorCode("RATE_PRICE_PERIOD_INVALID")
+
+    /** 400: período acima de 366 dias numa só requisição (decisão do usuário na E02); campo `to`. */
+    val RATE_PRICE_PERIOD_TOO_LONG = ErrorCode("RATE_PRICE_PERIOD_TOO_LONG")
+
+    /** 400: a seleção informa a temporada e o período juntos, ou nenhum dos dois; campo `seasonId`. */
+    val RATE_PRICE_SELECTION_INVALID = ErrorCode("RATE_PRICE_SELECTION_INVALID")
+
+    /** 422: a edição começa antes da data operacional (ou a temporada já terminou). */
+    val RATE_PRICE_PERIOD_IN_PAST = ErrorCode("RATE_PRICE_PERIOD_IN_PAST")
+
+    /** 400: preço de criança fora das faixas atuais do hotel, ou faixa repetida; campo `prices.children[i]`. */
+    val RATE_PRICE_CHILD_BANDS_INVALID = ErrorCode("RATE_PRICE_CHILD_BANDS_INVALID")
+
+    /** 422: o tipo de UH informado não está no plano. */
+    val ROOM_TYPE_NOT_IN_PLAN = ErrorCode("ROOM_TYPE_NOT_IN_PLAN")
+
+    /** 422: o plano é derivado: os preços vêm do plano base e não são gravados nele. */
+    val RATE_PLAN_DERIVED = ErrorCode("RATE_PLAN_DERIVED")
+
+    /** 422: o plano tem preços próprios a partir da data operacional; retire-os antes de torná-lo derivado. */
+    val RATE_PLAN_HAS_PRICES = ErrorCode("RATE_PLAN_HAS_PRICES")
+
+    /** 422: a derivação levaria o plano a derivar de si mesmo (direta ou indiretamente). */
+    val RATE_PLAN_DERIVATION_CYCLE = ErrorCode("RATE_PLAN_DERIVATION_CYCLE")
+
+    /** 422: a derivação passaria de 5 níveis (contando os planos que derivam deste). */
+    val RATE_PLAN_DERIVATION_TOO_DEEP = ErrorCode("RATE_PLAN_DERIVATION_TOO_DEEP")
+
+    /** 400: regra de derivação incoerente (percentual e valor juntos, faltando ou fora da faixa), com o campo. */
+    val RATE_PLAN_DERIVATION_INVALID = ErrorCode("RATE_PLAN_DERIVATION_INVALID")
+
+    /** 400: o plano base citado não existe (campo `basePlanId`). */
+    val UNKNOWN_RATE_PLAN = ErrorCode("UNKNOWN_RATE_PLAN")
+
+    /** 404: temporada inexistente. */
+    val SEASON_NOT_FOUND = ErrorCode("SEASON_NOT_FOUND")
+
+    /** 409: outra temporada já usa o nome (sem diferenciar maiúsculas, inclusive desativada). */
+    val SEASON_NAME_ALREADY_IN_USE = ErrorCode("SEASON_NAME_ALREADY_IN_USE")
+
+    /** 400: temporada com o fim antes do início ou mais de 366 dias; campo `endsOn`. */
+    val SEASON_INVALID = ErrorCode("SEASON_INVALID")
+
+    /** 400: a temporada citada não existe (campo `seasonId`). */
+    val UNKNOWN_SEASON = ErrorCode("UNKNOWN_SEASON")
+
+    /** 422: a temporada citada está desativada. */
+    val SEASON_INACTIVE = ErrorCode("SEASON_INACTIVE")
 }

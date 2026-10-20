@@ -134,6 +134,10 @@ class RatesTestSupport(
         return RatePlanFixture(plan, roomType, cancellation, guarantee, pkg)
     }
 
+    /** Um plano novo, sem pacotes, com os tipos de UH [roomTypeIds] (novos, por padrão um) e políticas novas. */
+    fun createPlanFor(roomTypeIds: List<UUID> = listOf(rooms.createRoomType())): UUID =
+        id(post("/api/v1/rate-plans", planBody(roomTypeIds, createCancellationPolicy(), createGuaranteePolicy())))
+
     fun etagOf(path: String): String {
         val response: MockHttpServletResponse = iam.call(GET, path, admin)
         withClue(response.getContentAsString(Charsets.UTF_8)) { response.status shouldBe 200 }

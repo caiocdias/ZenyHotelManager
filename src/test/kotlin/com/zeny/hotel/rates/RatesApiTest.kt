@@ -584,7 +584,13 @@ class RatesApiTest(
             listed["limits"].values().map { it["key"].asString() to it["unit"].asString() } shouldContainExactly
                 listOf("maxPercent" to "PERCENT")
             catalog.map { it["code"].asString() }.filter { it.startsWith("rates.") } shouldContainExactlyInAnyOrder
-                listOf("rates.plans.read", "rates.plans.manage", "rates.discounts.apply")
+                listOf(
+                    "rates.plans.read",
+                    "rates.plans.manage",
+                    "rates.discounts.apply",
+                    "rates.prices.manage",
+                    "rates.prices.override",
+                )
 
             val templateLimits =
                 jdbc
@@ -618,7 +624,7 @@ class RatesApiTest(
         }
 
     @Test
-    fun `rates exposes no DELETE, only list, detail, create, update, deactivate and reactivate`() {
+    fun `rates exposes no DELETE, only list, detail, create, update, actions and the price and derivation routes`() {
         val ratesMappings =
             handlerMapping.handlerMethods.filter { (_, method) ->
                 method.beanType.packageName.startsWith("com.zeny.hotel.rates")
@@ -633,7 +639,10 @@ class RatesApiTest(
                 "/api/v1/cancellation-policies",
                 "/api/v1/guarantee-policies",
                 "/api/v1/packages",
-            ).flatMap { listOf(it, "$it/{id}", "$it/{id}/deactivate", "$it/{id}/reactivate") }
+                "/api/v1/seasons",
+            ).flatMap { listOf(it, "$it/{id}", "$it/{id}/deactivate", "$it/{id}/reactivate") } +
+            listOf("prices", "prices/bulk-update", "prices/bulk-remove", "derivation", "derivation/remove")
+                .map { "/api/v1/rate-plans/{id}/$it" }
     }
 
     // --- Apoio ------------------------------------------------------------------------------------------------------

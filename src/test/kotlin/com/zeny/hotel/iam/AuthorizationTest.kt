@@ -239,6 +239,8 @@ class AuthorizationTest(
                 "rates.plans.read:ALL",
                 "rates.plans.manage:ALL",
                 "rates.discounts.apply:ALL",
+                "rates.prices.manage:ALL",
+                "rates.prices.override:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

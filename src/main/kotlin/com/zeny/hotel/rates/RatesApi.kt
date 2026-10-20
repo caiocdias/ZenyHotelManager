@@ -42,6 +42,18 @@ value class RatePlanId(
     }
 }
 
+/** Id de uma temporada (atalho de período para a edição em massa de preços, RF-TAR-04). */
+@JvmInline
+value class SeasonId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): SeasonId = SeasonId(UuidV7.generate())
+    }
+}
+
 /** Id de uma política de cancelamento. */
 @JvmInline
 value class CancellationPolicyId(
@@ -160,6 +172,28 @@ enum class PackagePostingRhythm {
     ON_ARRIVAL,
 }
 
+/** Como um plano derivado ajusta o preço do plano base (RF-TAR-03). */
+enum class RateAdjustmentType {
+    /** Percentual sobre cada valor do base (`percent`, de -99,9999 a 999,9999; negativo = desconto). */
+    PERCENT,
+
+    /** Valor somado (negativo = desconto), por UH ou por pessoa (`amount`, `perPerson`). */
+    AMOUNT,
+}
+
+/**
+ * A regra de um plano derivado (RF-TAR-03, H1): os preços dele são os do plano [basePlanId] ajustados, calculados na
+ * leitura (nunca gravados). Só um dos dois vem preenchido, conforme o [type]: [percent] no `PERCENT`; [amount] e
+ * [perPerson] no `AMOUNT`.
+ */
+data class RatePlanDerivation(
+    val basePlanId: RatePlanId,
+    val type: RateAdjustmentType,
+    val percent: Percent?,
+    val amount: Money?,
+    val perPerson: Boolean?,
+)
+
 /** Um plano tarifário para os módulos de cima. */
 data class RatePlanSummary(
     val id: RatePlanId,
@@ -174,6 +208,8 @@ data class RatePlanSummary(
     val guaranteePolicyId: GuaranteePolicyId,
     val active: Boolean,
     val version: Long,
+    /** A regra de derivação (E02); nula num plano com preços próprios. */
+    val derivation: RatePlanDerivation? = null,
 )
 
 /**

@@ -37,6 +37,7 @@ class RatesApiService(
                 it.guaranteePolicyId,
                 it.active,
                 checkNotNull(it.version),
+                it.derivation?.toPublic(),
             )
         }
 

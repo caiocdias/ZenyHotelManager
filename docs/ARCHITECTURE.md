@@ -114,7 +114,7 @@ flowchart LR
 | `payments` | PAG | `PaymentIntent`, Pix, cartão, tokens e conciliação | shared, notifications |
 | `fiscal` | FIS | Perfis fiscais, documentos e provedor fiscal | shared, hotel, files, notifications |
 | `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, notifications, payments, fiscal, printing |
-| `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, rooms, billing |
+| `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, hotel, rooms, billing |
 | `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, printing |
 | `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, reservations, rooms, guests, billing, payments, fiscal, printing |
 | `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |

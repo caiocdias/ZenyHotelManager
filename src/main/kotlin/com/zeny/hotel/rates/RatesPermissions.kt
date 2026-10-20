@@ -12,8 +12,15 @@ import com.zeny.hotel.shared.TemplateGrant
 import java.math.BigDecimal
 
 /**
- * Permissões do módulo `rates` (RF-ACS-02, SPEC §5.6, H7 e H16 do roadmap do M4). Planos, políticas e pacotes não têm
- * dono, então só aceitam o escopo `ALL`. Os preços (E02) e as restrições (E03) acrescentam as suas.
+ * Permissões do módulo `rates` (RF-ACS-02, SPEC §5.6, H7, H9 e H16 do roadmap do M4). Planos, políticas, pacotes,
+ * preços e temporadas não têm dono, então só aceitam o escopo `ALL`. As restrições (E03) acrescentam as suas.
+ *
+ * Preços (E02, H9, decisão do usuário em 2026-10-20): [PRICES_MANAGE] grava preços onde não havia, ou num plano
+ * inativo, mantém as temporadas e a derivação de um plano que ainda não deriva; [PRICES_OVERRIDE] é **sensível**:
+ * alterar ou retirar uma **tarifa publicada** (um preço já gravado, a partir da data operacional, de um plano ativo ou
+ * que é base de um plano ativo) e trocar ou retirar a derivação de um plano publicado pedem a permissão ou a aprovação
+ * de um superior. Quem altera precisa também de [PRICES_MANAGE] (sem ela, `403 PERMISSION_DENIED`). Só o Gerente as
+ * recebe no modelo.
  *
  * [DISCOUNTS_APPLY] é a permissão do desconto (ARCHITECTURE §8.2, H7, decisão do usuário em 2026-10-20): **sensível**,
  * com o limite [MAX_PERCENT] (`PERCENT`, o desconto sobre o preço calculado da noite); o `reservations` a confere ao
@@ -40,6 +47,12 @@ object RatesPermissions : ModulePermissions {
 
     /** Dar desconto sobre o preço calculado de uma noite (sensível, com limite [MAX_PERCENT]; aplicado na E07). */
     val DISCOUNTS_APPLY = PermissionCode("rates.discounts.apply")
+
+    /** Gravar preços onde não havia (ou num plano inativo), manter temporadas e derivar um plano (E02). */
+    val PRICES_MANAGE = PermissionCode("rates.prices.manage")
+
+    /** Alterar ou retirar uma tarifa publicada e trocar a derivação de um plano publicado (sensível, H9; E02). */
+    val PRICES_OVERRIDE = PermissionCode("rates.prices.override")
 
     private val all = TemplateGrant(ALL)
 
@@ -82,6 +95,19 @@ object RatesPermissions : ModulePermissions {
                         RoleTemplate.RECEPTIONIST to
                             TemplateGrant(ALL, mapOf(MAX_PERCENT to LimitValue.Max(RECEPTIONIST_DISCOUNT_CEILING))),
                     ),
+            ),
+            PermissionDefinition(
+                PRICES_MANAGE,
+                "Gravar preços por data e ocupação onde não havia, manter temporadas e derivar planos",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                PRICES_OVERRIDE,
+                "Alterar ou retirar tarifa publicada e trocar a derivação de plano publicado (ação sensível)",
+                setOf(ALL),
+                sensitive = true,
+                templates = mapOf(RoleTemplate.MANAGER to all),
             ),
         )
 }

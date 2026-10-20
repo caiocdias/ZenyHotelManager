@@ -164,6 +164,13 @@ data class RatePlanResponse(
     val active: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "A regra de derivação (RF-TAR-03); nula num plano com preços próprios. Os preços do derivado são os do " +
+                "base ajustados, calculados na leitura.",
+        nullable = true,
+    )
+    val derivation: RatePlanDerivationDto? = null,
 ) {
     companion object {
         fun of(view: RatePlanView) =
@@ -182,6 +189,7 @@ data class RatePlanResponse(
                 view.active,
                 view.createdAt,
                 view.updatedAt,
+                view.derivation?.let(RatePlanDerivationDto::of),
             )
     }
 }

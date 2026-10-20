@@ -1,9 +1,12 @@
 package com.zeny.hotel.rates.application
 
 import com.zeny.hotel.rates.domain.CancellationPolicy
+import com.zeny.hotel.rates.domain.DerivationRule
 import com.zeny.hotel.rates.domain.GuaranteePolicy
+import com.zeny.hotel.rates.domain.PriceSet
 import com.zeny.hotel.rates.domain.RatePackage
 import com.zeny.hotel.rates.domain.RatePlan
+import com.zeny.hotel.rates.domain.Season
 
 /**
  * Tipos de entidade, ações e retratos do `rates` na trilha de auditoria (RF-ACS-11). Os retratos levam ids, códigos,
@@ -15,6 +18,8 @@ internal object RatesAudit {
     const val CANCELLATION_POLICY = "rates.cancellation-policy"
     const val GUARANTEE_POLICY = "rates.guarantee-policy"
     const val PACKAGE = "rates.package"
+    const val RATE_PRICES = "rates.rate-price"
+    const val SEASON = "rates.season"
 
     const val CREATE_RATE_PLAN = "rates.rate-plan.create"
     const val UPDATE_RATE_PLAN = "rates.rate-plan.update"
@@ -32,6 +37,14 @@ internal object RatesAudit {
     const val UPDATE_PACKAGE = "rates.package.update"
     const val DEACTIVATE_PACKAGE = "rates.package.deactivate"
     const val REACTIVATE_PACKAGE = "rates.package.reactivate"
+    const val UPDATE_PRICES = "rates.rate-price.bulk-update"
+    const val REMOVE_PRICES = "rates.rate-price.bulk-remove"
+    const val SET_DERIVATION = "rates.rate-plan.set-derivation"
+    const val REMOVE_DERIVATION = "rates.rate-plan.remove-derivation"
+    const val CREATE_SEASON = "rates.season.create"
+    const val UPDATE_SEASON = "rates.season.update"
+    const val DEACTIVATE_SEASON = "rates.season.deactivate"
+    const val REACTIVATE_SEASON = "rates.season.reactivate"
 }
 
 internal fun RatePlan.auditState(): Map<String, Any?> =
@@ -46,6 +59,35 @@ internal fun RatePlan.auditState(): Map<String, Any?> =
         "packageIds" to packageIds.map { it.toString() }.sorted(),
         "cancellationPolicyId" to cancellationPolicyId.toString(),
         "guaranteePolicyId" to guaranteePolicyId.toString(),
+        "derivation" to derivation?.auditState(),
+        "active" to active,
+    )
+
+internal fun DerivationRule.auditState(): Map<String, Any?> {
+    val public = toPublic()
+    return mapOf(
+        "basePlanId" to public.basePlanId.toString(),
+        "type" to public.type.name,
+        "percent" to public.percent?.toString(),
+        "amount" to public.amount?.toString(),
+        "perPerson" to public.perPerson,
+    )
+}
+
+internal fun PriceSet.auditState(): Map<String, Any?> =
+    mapOf(
+        "oneAdult" to oneAdult?.toString(),
+        "twoAdults" to twoAdults?.toString(),
+        "extraAdult" to extraAdult?.toString(),
+        "children" to
+            children.map { mapOf("minAge" to it.minAge, "maxAge" to it.maxAge, "amount" to it.amount.toString()) },
+    )
+
+internal fun Season.auditState(): Map<String, Any?> =
+    mapOf(
+        "name" to name,
+        "startsOn" to startsOn.toString(),
+        "endsOn" to endsOn.toString(),
         "active" to active,
     )
 

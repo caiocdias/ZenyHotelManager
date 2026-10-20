@@ -4,10 +4,13 @@ import com.zeny.hotel.rates.CancellationPolicyId
 import com.zeny.hotel.rates.GuaranteePolicyId
 import com.zeny.hotel.rates.MealPlan
 import com.zeny.hotel.rates.PackageId
+import com.zeny.hotel.rates.RateAdjustmentType
 import com.zeny.hotel.rates.RatePlanCategory
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.rooms.RoomTypeId
+import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.Percent
 import jakarta.persistence.CollectionTable
 import jakarta.persistence.Column
 import jakarta.persistence.Convert
@@ -21,6 +24,7 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.Table
 import org.hibernate.annotations.BatchSize
 import java.time.Instant
+import java.util.UUID
 
 /** Os dados editáveis de um plano tarifário (a categoria é fixa desde a criação). */
 data class RatePlanDetails(
@@ -40,7 +44,11 @@ data class RatePlanDetails(
  * canais em que é vendido (ao menos um), os tipos de UH a que se aplica (ao menos um), os pacotes, a política de
  * cancelamento e a de garantia e a [category] (normal, cortesia, uso da casa; Q-15), fixa desde a criação. As
  * referências são conferidas pelo caso de uso: tipos de UH pela `RoomsApi`; políticas e pacotes no próprio módulo. Os
- * preços (E02) e as restrições (E03) ficam à parte. Nunca é apagado, só desativado.
+ * preços (E02, tabela `rates.rate_price`) e as restrições (E03) ficam à parte. Nunca é apagado, só desativado.
+ *
+ * Um plano **derivado** (RF-TAR-03, H1; E02) tem a [derivation]: os preços dele são os do plano base ajustados,
+ * calculados na leitura, e nunca são gravados nele. A derivação muda só pelos casos de uso próprios (com as regras de
+ * ciclo e de profundidade, [Derivations]), nunca pelo `PUT` do plano.
  */
 @Entity
 @Table(name = "rate_plan", schema = "rates")
@@ -98,8 +106,69 @@ class RatePlan private constructor(
     @BatchSize(size = BATCH)
     private val packageIdSet: MutableSet<PackageId> = mutableSetOf()
 
+    @Column(name = "base_rate_plan_id")
+    private var baseRatePlanValue: UUID? = null
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "derivation_type")
+    private var derivationType: RateAdjustmentType? = null
+
+    @Column(name = "derivation_percent")
+    private var derivationPercent: Percent? = null
+
+    @Column(name = "derivation_amount")
+    private var derivationAmount: Money? = null
+
+    @Column(name = "derivation_per_person")
+    private var derivationPerPerson: Boolean? = null
+
     init {
         apply(details)
+    }
+
+    /** A regra de derivação; nula num plano com preços próprios. */
+    val derivation: DerivationRule?
+        get() {
+            val base = baseRatePlanValue ?: return null
+            val adjustment =
+                PriceAdjustment.of(
+                    checkNotNull(derivationType),
+                    derivationPercent,
+                    derivationAmount,
+                    derivationPerPerson,
+                )
+            return DerivationRule(RatePlanId(base), adjustment)
+        }
+
+    /** Define ou retira ([rule] nulo) a derivação; devolve se mudou. As regras da árvore são do caso de uso. */
+    fun derive(
+        rule: DerivationRule?,
+        now: Instant,
+    ): Boolean {
+        if (rule == derivation) return false
+        require(rule?.basePlanId != id) { "Um plano não deriva de si mesmo" }
+        baseRatePlanValue = rule?.basePlanId?.value
+        derivationType = null
+        derivationPercent = null
+        derivationAmount = null
+        derivationPerPerson = null
+        when (val adjustment = rule?.adjustment) {
+            is PriceAdjustment.ByPercent -> {
+                derivationType = RateAdjustmentType.PERCENT
+                derivationPercent = adjustment.percent
+            }
+
+            is PriceAdjustment.ByAmount -> {
+                derivationType = RateAdjustmentType.AMOUNT
+                derivationAmount = adjustment.amount
+                derivationPerPerson = adjustment.perPerson
+            }
+
+            null -> {
+                Unit
+            }
+        }
+        return touched(true, now)
     }
 
     val channels: Set<SalesChannel> get() = channelSet.toSet()

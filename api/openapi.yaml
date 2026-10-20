@@ -6436,6 +6436,280 @@ paths:
       summary: Desativar um plano tarifário
       tags:
       - rates
+  /api/v1/rate-plans/{id}/derivation:
+    put:
+      description: "O plano passa a derivar do `basePlanId`; os preços dele são calculados\
+        \ na leitura. Exige `rates.prices.manage` e o `If-Match` do plano. Base inexistente:\
+        \ 400 `UNKNOWN_RATE_PLAN`; o próprio plano ou um que deriva dele: 422 `RATE_PLAN_DERIVATION_CYCLE`;\
+        \ mais de 5 níveis: 422 `RATE_PLAN_DERIVATION_TOO_DEEP`; plano com preços\
+        \ próprios a partir da data operacional: 422 `RATE_PLAN_HAS_PRICES`; regra\
+        \ incoerente: 400 `RATE_PLAN_DERIVATION_INVALID`. Trocar a regra de um plano\
+        \ publicado (ativo ou base de um ativo) é ação sensível (`rates.prices.override`)."
+      operationId: setRatePlanDerivation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatePlanDerivationRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir a derivação de um plano
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/derivation/remove:
+    post:
+      description: "O plano deixa de derivar e fica sem preços até ganhar os próprios.\
+        \ Exige `rates.prices.manage` e o `If-Match` do plano; num plano publicado,\
+        \ é ação sensível (`rates.prices.override`). Sem derivação, nada muda."
+      operationId: removeRatePlanDerivation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePlanResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retirar a derivação de um plano
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/prices:
+    get:
+      description: "Um período de até 366 dias (fim antes do início: 400 `RATE_PRICE_PERIOD_INVALID`;\
+        \ mais: 400 `RATE_PRICE_PERIOD_TOO_LONG`). Num plano derivado, os preços sã\
+        o os do base com a regra aplicada na leitura; a ocupação cujo ajuste deu zero\
+        \ ou menos fica sem preço e vem em `unpricedByDerivation`. Os preços de crianç\
+        a gravados em faixas que o hotel não usa mais vêm em `obsoleteChildren` e\
+        \ não valem. Exige `rates.plans.read`."
+      operationId: listRatePlanPrices
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: Só este tipo de UH.
+        in: query
+        name: roomTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePricesResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar os preços de um plano num período
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/prices/bulk-remove:
+    post:
+      description: "As linhas selecionadas ficam sem preço. As linhas são os tipos\
+        \ de UH (do plano; senão 422 `ROOM_TYPE_NOT_IN_PLAN`) × as datas do período\
+        \ (`from` e `to`, até 366 dias, a partir da data operacional) **ou** da temporada\
+        \ (`seasonId`, cortada na data operacional), só nos `weekdays` (vazio = todos).\
+        \ Período e temporada juntos, ou nenhum: 400 `RATE_PRICE_SELECTION_INVALID`;\
+        \ fim antes do início ou nenhuma data nos dias da semana: 400 `RATE_PRICE_PERIOD_INVALID`;\
+        \ mais de 366 dias: 400 `RATE_PRICE_PERIOD_TOO_LONG` (campo `to`); começo\
+        \ antes da data operacional (ou temporada já terminada): 422 `RATE_PRICE_PERIOD_IN_PAST`;\
+        \ temporada inexistente 400 `UNKNOWN_SEASON`, desativada 422 `SEASON_INACTIVE`;\
+        \ plano derivado: 422 `RATE_PLAN_DERIVED`. Exige `rates.prices.manage`. Alterar\
+        \ ou retirar uma **tarifa publicada** (preço já gravado, a partir da data\
+        \ operacional, de um plano ativo ou base de um plano ativo) é ação sensível\
+        \ (`rates.prices.override`): sem ela, 403 `APPROVAL_REQUIRED`; repita com\
+        \ o `X-Approval-Token`. Gravar onde não havia, regravar os mesmos valores\
+        \ ou mexer num plano não publicado não pede aprovação."
+      operationId: removeRatePlanPrices
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatePriceRemovalRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePriceChangeResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retirar preços em massa
+      tags:
+      - rates
+  /api/v1/rate-plans/{id}/prices/bulk-update:
+    post:
+      description: "Grava os mesmos valores em todas as linhas selecionadas (regravar\
+        \ uma data troca todas as faixas de criança dela). As linhas são os tipos\
+        \ de UH (do plano; senão 422 `ROOM_TYPE_NOT_IN_PLAN`) × as datas do período\
+        \ (`from` e `to`, até 366 dias, a partir da data operacional) **ou** da temporada\
+        \ (`seasonId`, cortada na data operacional), só nos `weekdays` (vazio = todos).\
+        \ Período e temporada juntos, ou nenhum: 400 `RATE_PRICE_SELECTION_INVALID`;\
+        \ fim antes do início ou nenhuma data nos dias da semana: 400 `RATE_PRICE_PERIOD_INVALID`;\
+        \ mais de 366 dias: 400 `RATE_PRICE_PERIOD_TOO_LONG` (campo `to`); começo\
+        \ antes da data operacional (ou temporada já terminada): 422 `RATE_PRICE_PERIOD_IN_PAST`;\
+        \ temporada inexistente 400 `UNKNOWN_SEASON`, desativada 422 `SEASON_INACTIVE`;\
+        \ plano derivado: 422 `RATE_PLAN_DERIVED`. Criança fora das faixas atuais\
+        \ do hotel, ou repetida: 400 `RATE_PRICE_CHILD_BANDS_INVALID`; valor fora\
+        \ da faixa: 400 `RATE_PRICE_INVALID`. Exige `rates.prices.manage`. Alterar\
+        \ ou retirar uma **tarifa publicada** (preço já gravado, a partir da data\
+        \ operacional, de um plano ativo ou base de um plano ativo) é ação sensível\
+        \ (`rates.prices.override`): sem ela, 403 `APPROVAL_REQUIRED`; repita com\
+        \ o `X-Approval-Token`. Gravar onde não havia, regravar os mesmos valores\
+        \ ou mexer num plano não publicado não pede aprovação."
+      operationId: updateRatePlanPrices
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RatePriceUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatePriceChangeResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Gravar preços em massa
+      tags:
+      - rates
   /api/v1/rate-plans/{id}/reactivate:
     post:
       description: "Exige `rates.plans.manage`. Exige as políticas e os pacotes do\
@@ -8393,6 +8667,200 @@ paths:
       summary: Gerar a escala a partir dos padrões
       tags:
       - staff
+  /api/v1/seasons:
+    get:
+      description: Em ordem de início. Exige `rates.plans.read`.
+      operationId: listSeasons
+      parameters:
+      - description: Só as ativas (`true`) ou só as inativas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageSeasonResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar temporadas
+      tags:
+      - rates
+    post:
+      description: "Exige `rates.prices.manage`. Nome repetido (sem diferenciar maiú\
+        sculas, inclusive de uma desativada): 409 `SEASON_NAME_ALREADY_IN_USE`; fim\
+        \ antes do início ou mais de 366 dias: 400 `SEASON_INVALID` (campo `endsOn`)."
+      operationId: createSeason
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeasonRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonResponse"
+          description: Temporada cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma temporada
+      tags:
+      - rates
+  /api/v1/seasons/{id}:
+    get:
+      description: "Exige `rates.plans.read`. Inexistente: 404 `SEASON_NOT_FOUND`."
+      operationId: getSeason
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma temporada
+      tags:
+      - rates
+    put:
+      description: "Exige `rates.prices.manage` e o `If-Match` (ausente: 428; versã\
+        o diferente: 412). Os preços já gravados com ela não mudam. Nome repetido\
+        \ (sem diferenciar maiúsculas, inclusive de uma desativada): 409 `SEASON_NAME_ALREADY_IN_USE`;\
+        \ fim antes do início ou mais de 366 dias: 400 `SEASON_INVALID` (campo `endsOn`)."
+      operationId: updateSeason
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeasonRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma temporada
+      tags:
+      - rates
+  /api/v1/seasons/{id}/deactivate:
+    post:
+      description: Exige `rates.prices.manage`. Nada é apagado; a desativada não serve
+        à edição em massa.
+      operationId: deactivateSeason
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma temporada
+      tags:
+      - rates
+  /api/v1/seasons/{id}/reactivate:
+    post:
+      description: Exige `rates.prices.manage`.
+      operationId: reactivateSeason
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma temporada
+      tags:
+      - rates
   /api/v1/shifts:
     get:
       description: "Em ordem de criação, opcionalmente de um setor. Exige `staff.employees.read`."
@@ -9473,6 +9941,19 @@ components:
       required:
       - amount
       - reason
+    AgeRangeResponse:
+      type: object
+      description: "Uma faixa etária de criança (idades em anos completos, inclusive)."
+      properties:
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - maxAge
+      - minAge
     ApplicabilityRuleDto:
       type: object
       description: "Regra de aplicabilidade: o modelo vale para o sujeito quando cada\
@@ -11085,6 +11566,57 @@ components:
       - label
       - maxAge
       - minAge
+    ChildPriceRequest:
+      type: object
+      description: "Preço de criança numa faixa etária (idades em anos completos,\
+        \ inclusive)."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        maxAge:
+          type: integer
+          format: int32
+          maximum: 17
+          minimum: 0
+          nullable: true
+        minAge:
+          type: integer
+          format: int32
+          maximum: 17
+          minimum: 0
+          nullable: true
+      required:
+      - amount
+      - maxAge
+      - minAge
+    ChildRatePriceResponse:
+      type: object
+      description: Preço de criança numa faixa etária atual do hotel.
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        label:
+          type: string
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - amount
+      - label
+      - maxAge
+      - minAge
     ChoiceOptionDto:
       type: object
       description: Uma opção de um item de escolha.
@@ -12021,6 +12553,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageSeasonResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SeasonResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageSessionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -12077,6 +12623,58 @@ components:
           nullable: true
       required:
       - items
+    DailyRatePriceResponse:
+      type: object
+      description: Os preços de um tipo de UH numa data.
+      properties:
+        children:
+          type: array
+          description: "Um por faixa atual que tem preço, em ordem de idade."
+          items:
+            $ref: "#/components/schemas/ChildRatePriceResponse"
+        date:
+          type: string
+          format: date
+        extraAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        obsoleteChildren:
+          type: array
+          description: "Faixas obsoletas (gravadas com faixas etárias que o hotel\
+            \ não usa mais): não valem; a data fica sem preço de criança nessas idades\
+            \ até o gestor regravar."
+          items:
+            $ref: "#/components/schemas/ObsoleteChildPriceResponse"
+        oneAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomTypeId:
+          type: string
+          format: uuid
+        twoAdults:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        unpricedByDerivation:
+          allOf:
+          - $ref: "#/components/schemas/UnpricedByDerivationResponse"
+          nullable: true
+      required:
+      - children
+      - date
+      - obsoleteChildren
+      - roomTypeId
     DepartmentRequest:
       type: object
       description: Nome de um setor.
@@ -14060,6 +14658,27 @@ components:
       - title
       - type
       - version
+    ObsoleteChildPriceResponse:
+      type: object
+      description: "Preço de criança gravado numa faixa que o hotel não usa mais:\
+        \ ignorado até regravar a data."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - amount
+      - maxAge
+      - minAge
     OpenOutOfOrderRequest:
       type: object
       description: Um período OOO/OOS para abrir.
@@ -14821,6 +15440,45 @@ components:
       required:
       - payment
       - preAuthorization
+    PriceValuesRequest:
+      type: object
+      description: "Os preços de uma data (RF-TAR-02), de 0,00 a 1.000.000,00: diá\
+        ria de 1 e de 2 adultos, por adulto extra (além do segundo) e por criança,\
+        \ numa das faixas etárias atuais do hotel (a faixa única de 0 à idade limite\
+        \ de criança, se o hotel não diferencia)."
+      properties:
+        children:
+          type: array
+          description: "Um por faixa atual, no máximo; a faixa omitida fica sem preç\
+            o de criança."
+          items:
+            $ref: "#/components/schemas/ChildPriceRequest"
+          maxItems: 10
+          minItems: 0
+        extraAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        oneAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        twoAdults:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - children
+      - oneAdult
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
@@ -15045,6 +15703,79 @@ components:
       - name
       - packageIds
       - roomTypeIds
+    RatePlanDerivationDto:
+      type: object
+      description: A regra de um plano derivado (RF-TAR-03).
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        basePlanId:
+          type: string
+          format: uuid
+        perPerson:
+          type: boolean
+          description: "Só no `AMOUNT`: por pessoa (`true`) ou por UH (`false`)."
+          nullable: true
+        percent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        type:
+          type: string
+          enum:
+          - PERCENT
+          - AMOUNT
+      required:
+      - basePlanId
+      - type
+    RatePlanDerivationRequest:
+      type: object
+      description: "A derivação de um plano (RF-TAR-03): `PERCENT` com `percent` (acima\
+        \ de -100; negativo = desconto) ou `AMOUNT` com `amount` (de -1.000.000,00\
+        \ a 1.000.000,00) e `perPerson` (por pessoa: uma vez por pessoa que o valor\
+        \ cobre; por UH: só nas diárias de 1 e 2 adultos). Um valor calculado igual\
+        \ ou abaixo de zero deixa a ocupação sem preço naquela data (não vendável,\
+        \ sinalizada em `unpricedByDerivation` na leitura)."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        basePlanId:
+          type: string
+          format: uuid
+          nullable: true
+        perPerson:
+          type: boolean
+          nullable: true
+        percent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        type:
+          type: string
+          enum:
+          - PERCENT
+          - AMOUNT
+          nullable: true
+      required:
+      - basePlanId
+      - type
     RatePlanResponse:
       type: object
       description: Um plano tarifário.
@@ -15077,6 +15808,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        derivation:
+          allOf:
+          - $ref: "#/components/schemas/RatePlanDerivationDto"
+          nullable: true
         description:
           type: string
           nullable: true
@@ -15203,6 +15938,186 @@ components:
       - name
       - packageIds
       - roomTypeIds
+    RatePriceChangeResponse:
+      type: object
+      description: O resultado de uma edição em massa de preços.
+      properties:
+        changed:
+          type: integer
+          format: int32
+          description: Linhas que já tinham preço e mudaram.
+        created:
+          type: integer
+          format: int32
+          description: Linhas (tipo de UH × data) com preço novo.
+        derivedRatePlanIds:
+          type: array
+          description: Planos que derivam deste (os preços deles mudaram junto); vazio
+            se nada mudou.
+          items:
+            type: string
+            format: uuid
+            description: Planos que derivam deste (os preços deles mudaram junto);
+              vazio se nada mudou.
+        from:
+          type: string
+          format: date
+          description: Primeira data mudada; nula se nada mudou.
+          nullable: true
+        matchedDates:
+          type: integer
+          format: int32
+          description: "Datas selecionadas (do período, nos dias da semana pedidos)."
+        ratePlanId:
+          type: string
+          format: uuid
+        removed:
+          type: integer
+          format: int32
+          description: Linhas retiradas.
+        to:
+          type: string
+          format: date
+          description: Última data mudada; nula se nada mudou.
+          nullable: true
+      required:
+      - changed
+      - created
+      - derivedRatePlanIds
+      - matchedDates
+      - ratePlanId
+      - removed
+    RatePriceRemovalRequest:
+      type: object
+      description: "Retirada em massa de preços: as linhas selecionadas ficam sem\
+        \ preço (não vendáveis)."
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+        roomTypeIds:
+          type: array
+          description: Tipos de UH do plano (1 a 50).
+          items:
+            type: string
+            format: uuid
+            description: Tipos de UH do plano (1 a 50).
+          maxItems: 50
+          minItems: 0
+        seasonId:
+          type: string
+          format: uuid
+          nullable: true
+        to:
+          type: string
+          format: date
+          nullable: true
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+      required:
+      - roomTypeIds
+      - weekdays
+    RatePriceUpdateRequest:
+      type: object
+      description: "Edição em massa de preços (RF-TAR-04): os valores gravados em\
+        \ todas as linhas selecionadas."
+      properties:
+        from:
+          type: string
+          format: date
+          description: "Início do período (com `to`), ou use `seasonId`."
+          nullable: true
+        prices:
+          allOf:
+          - $ref: "#/components/schemas/PriceValuesRequest"
+          nullable: true
+        roomTypeIds:
+          type: array
+          description: Tipos de UH do plano (1 a 50).
+          items:
+            type: string
+            format: uuid
+            description: Tipos de UH do plano (1 a 50).
+          maxItems: 50
+          minItems: 0
+        seasonId:
+          type: string
+          format: uuid
+          description: "A temporada como período, em vez de `from` e `to`."
+          nullable: true
+        to:
+          type: string
+          format: date
+          description: "Fim do período, inclusive."
+          nullable: true
+        weekdays:
+          type: array
+          description: Só estes dias da semana; vazio = todos.
+          items:
+            type: string
+            description: Só estes dias da semana; vazio = todos.
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+      required:
+      - prices
+      - roomTypeIds
+      - weekdays
+    RatePricesResponse:
+      type: object
+      description: "Os preços de um plano num período (calculados na leitura, num\
+        \ plano derivado)."
+      properties:
+        derived:
+          type: boolean
+          description: "Se o plano é derivado (os preços vêm do base, ajustados)."
+        from:
+          type: string
+          format: date
+        items:
+          type: array
+          description: "Uma linha por tipo de UH e data com preço, em ordem de data;\
+            \ datas sem preço ficam fora."
+          items:
+            $ref: "#/components/schemas/DailyRatePriceResponse"
+        pricedBy:
+          type: string
+          format: uuid
+          description: "O plano cujos preços gravados são a origem (o próprio, se\
+            \ não é derivado)."
+        ratePlanId:
+          type: string
+          format: uuid
+        to:
+          type: string
+          format: date
+      required:
+      - derived
+      - from
+      - items
+      - pricedBy
+      - ratePlanId
+      - to
     ReadAllResponse:
       type: object
       description: Quantas notificações foram marcadas como lidas agora.
@@ -16422,6 +17337,60 @@ components:
       - startsOn
       - updatedAt
       - weekdays
+    SeasonRequest:
+      type: object
+      description: "Uma temporada nomeada: atalho de período (até 366 dias) para a\
+        \ edição em massa de preços."
+      properties:
+        endsOn:
+          type: string
+          format: date
+          nullable: true
+        name:
+          type: string
+          example: Alta temporada 2026/27
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - endsOn
+      - name
+      - startsOn
+    SeasonResponse:
+      type: object
+      description: Uma temporada.
+      properties:
+        active:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        endsOn:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        startsOn:
+          type: string
+          format: date
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - createdAt
+      - endsOn
+      - id
+      - name
+      - startsOn
+      - updatedAt
     ServerVersionResponse:
       type: object
       properties:
@@ -17537,6 +18506,30 @@ components:
       - incoming
       - originalId
       - outgoing
+    UnpricedByDerivationResponse:
+      type: object
+      description: "O que a derivação deixou sem preço nesta data: o ajuste do plano\
+        \ derivado deu zero ou menos (o valor do base em 0,00 continua 0,00 sob percentual;\
+        \ um valor negativo somado a ele o deixa sem preço). A ocupação fica não vendá\
+        vel, como uma sem preço gravado; a regra vale nas outras datas."
+      nullable: true
+      properties:
+        children:
+          type: array
+          description: As faixas de criança sem preço.
+          items:
+            $ref: "#/components/schemas/AgeRangeResponse"
+        extraAdult:
+          type: boolean
+        oneAdult:
+          type: boolean
+        twoAdults:
+          type: boolean
+      required:
+      - children
+      - extraAdult
+      - oneAdult
+      - twoAdults
     UnreadCountResponse:
       type: object
       description: Quantas notificações do próprio usuário ainda não foram lidas.

@@ -60,6 +60,12 @@ class JdbcRatesDirectory(
         limit: Int,
     ): List<Pair<String, UUID>> = page("rates.rate_package", "code", active, after, limit)
 
+    override fun seasons(
+        active: Boolean?,
+        after: Pair<String, UUID>?,
+        limit: Int,
+    ): List<Pair<String, UUID>> = page("rates.season", "to_char(starts_on, 'YYYY-MM-DD')", active, after, limit)
+
     private fun byName(
         table: String,
         active: Boolean?,

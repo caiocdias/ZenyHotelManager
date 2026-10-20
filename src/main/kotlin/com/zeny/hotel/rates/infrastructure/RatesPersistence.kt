@@ -4,12 +4,14 @@ import com.zeny.hotel.rates.CancellationPolicyId
 import com.zeny.hotel.rates.GuaranteePolicyId
 import com.zeny.hotel.rates.PackageId
 import com.zeny.hotel.rates.RatePlanId
+import com.zeny.hotel.rates.SeasonId
 import com.zeny.hotel.rates.application.RatesConstraints
 import com.zeny.hotel.rates.application.RatesStore
 import com.zeny.hotel.rates.domain.CancellationPolicy
 import com.zeny.hotel.rates.domain.GuaranteePolicy
 import com.zeny.hotel.rates.domain.RatePackage
 import com.zeny.hotel.rates.domain.RatePlan
+import com.zeny.hotel.rates.domain.Season
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
 import org.postgresql.util.PSQLException
@@ -27,9 +29,11 @@ interface GuaranteePolicyJpaRepository : JpaRepository<GuaranteePolicy, UUID>
 
 interface RatePackageJpaRepository : JpaRepository<RatePackage, UUID>
 
+interface SeasonJpaRepository : JpaRepository<Season, UUID>
+
 /** Os agregados do `rates` por JPA, na transação corrente; as conferências de uso por `JdbcClient`, só no schema. */
 @Component
-@Suppress("TooManyFunctions") // um repositório e os acessos de cada agregado
+@Suppress("TooManyFunctions", "LongParameterList") // um repositório e os acessos de cada agregado
 class JpaRatesStore(
     private val entityManager: EntityManager,
     private val jdbc: JdbcClient,
@@ -37,6 +41,7 @@ class JpaRatesStore(
     private val cancellationPolicies: CancellationPolicyJpaRepository,
     private val guaranteePolicies: GuaranteePolicyJpaRepository,
     private val packages: RatePackageJpaRepository,
+    private val seasonRepository: SeasonJpaRepository,
 ) : RatesStore {
     override fun cancellationPolicy(id: CancellationPolicyId): CancellationPolicy? =
         cancellationPolicies.findById(id.value).orElse(null)
@@ -94,7 +99,17 @@ class JpaRatesStore(
 
     override fun ratePlan(id: RatePlanId): RatePlan? = plans.findById(id.value).orElse(null)
 
+    override fun ratePlanForUpdate(id: RatePlanId): RatePlan? = forUpdate(RatePlan::class.java, id.value)
+
     override fun ratePlans(ids: List<UUID>): List<RatePlan> = inOrder(ids, plans.findAllById(ids)) { it.id.value }
+
+    override fun season(id: SeasonId): Season? = seasonRepository.findById(id.value).orElse(null)
+
+    override fun seasons(ids: List<UUID>): List<Season> =
+        inOrder(ids, seasonRepository.findAllById(ids)) { it.id.value }
+
+    override fun tryAdd(season: Season): Boolean =
+        unlessViolated(RatesConstraints.SEASON_NAME) { seasonRepository.saveAndFlush(season) }
 
     override fun tryAdd(plan: RatePlan): Boolean =
         unlessViolated(RatesConstraints.RATE_PLAN_CODE) {

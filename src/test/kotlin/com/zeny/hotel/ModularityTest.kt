@@ -252,12 +252,13 @@ class ModularityTest {
     }
 
     @Test
-    fun `rates depends only on shared, rooms and billing, and only on their public APIs`() {
+    fun `rates depends only on shared, hotel, rooms and billing, and only on their public APIs`() {
         val rates = modules.getModuleByName("rates").orElseThrow()
-        val allowed = setOf("shared", "rooms", "billing")
+        val allowed = setOf("shared", "hotel", "rooms", "billing")
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M4 E01: rooms (tipos de UH pela RoomsApi) e billing (códigos de
-        // lançamento dos pacotes pela BillingApi). O hotel entra na E02 (faixas etárias); nunca iam nem reservations.
+        // lançamento dos pacotes pela BillingApi); E02: hotel (faixas etárias de criança e data operacional pela
+        // HotelApi). Nunca iam nem reservations.
         rates
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -268,7 +269,7 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        val publicApis = setOf("com.zeny.hotel.rooms", "com.zeny.hotel.billing")
+        val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.rooms", "com.zeny.hotel.billing")
         rates
             .getDirectDependencies(modules)
             .stream()
