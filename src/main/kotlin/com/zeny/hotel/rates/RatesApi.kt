@@ -10,8 +10,8 @@ import java.util.UUID
 
 /**
  * API pública do `rates` para os módulos de cima (`reservations` no M4, `distribution` no M8): leituras de planos,
- * políticas e pacotes, ativos ou não. **Não confere permissão** (quem chama já se autorizou). O preço e a
- * vendabilidade (`priceFor`, `isSellable`) entram na E04.
+ * políticas e pacotes, ativos ou não, e, desde a E04, o preço e a vendabilidade de uma estadia ([priceFor],
+ * [isSellable]). **Não confere permissão** (quem chama já se autorizou).
  *
  * A reserva **copia** os termos das políticas na criação (RN-15, M4 E07): a política editada depois (que vale na hora
  * para as reservas novas; decisão do usuário em 2026-10-20) não muda as reservas existentes.
@@ -28,6 +28,35 @@ interface RatesApi {
 
     /** O pacote, ativo ou não; `null` se não existe. */
     fun ratePackage(id: PackageId): PackageSummary?
+
+    /**
+     * O preço da estadia [query] no plano (M4 E04, RF-TAR-02, 03 e 06, RN-02): o detalhe de cada noite e os totais,
+     * cuja soma é sempre a das noites (`StayPrice`). Usa os preços **efetivos** do tipo de UH (num derivado, os do
+     * base ajustados na leitura, H1), as faixas de criança **atuais** do hotel (H2) e os pacotes do plano (o incluso é
+     * parte da diária e separado da hospedagem; o adicional soma ao total; o por estadia entra uma vez, na noite da
+     * chegada). Não confere se o plano está ativo, o canal, as restrições nem a ocupação máxima ([isSellable]).
+     *
+     * Sem preço, devolve `StayPriceResult.NotPriced` com os motivos (`SaleRefusal`): `UNKNOWN_RATE_PLAN`,
+     * `ROOM_TYPE_NOT_IN_PLAN`, `RATE_NOT_PRICED`, `OCCUPANCY_NOT_PRICED`, `CHILD_AGE_NOT_PRICED`,
+     * `INCLUDED_PACKAGES_EXCEED_RATE`. Estadia fora do formato: lança `400 STAY_INVALID` com os campos.
+     */
+    fun priceFor(query: StayQuery): StayPriceResult
+
+    /**
+     * Se a estadia [query] pode ser vendida no [channel] (M4 E04, RF-TAR-01 e 05, H15), na data operacional do hotel
+     * (`HotelApi.currentBusinessDate()`, nunca a do relógio). Devolve **todos** os motivos de recusa (`Sellability`),
+     * nesta ordem: `UNKNOWN_RATE_PLAN` ou `UNKNOWN_ROOM_TYPE` (sozinhos); `RATE_PLAN_INACTIVE`,
+     * `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE` (desativado no `rooms`),
+     * `OCCUPANCY_EXCEEDS_ROOM_TYPE` (mais adultos ou crianças que a ocupação máxima do tipo);
+     * `ARRIVAL_BEFORE_BUSINESS_DATE` ou `MIN_ADVANCE_NOT_MET`/`MAX_ADVANCE_EXCEEDED`; `CLOSED_TO_ARRIVAL`,
+     * `CLOSED_TO_DEPARTURE`, `MIN_STAY_NOT_MET`, `MAX_STAY_EXCEEDED`, `STAY_DATE_CLOSED`; e, com o tipo no plano, os
+     * motivos de [priceFor] (vendável implica ter preço). As restrições seguem a semântica de [RestrictionField].
+     * Estadia fora do formato: `400 STAY_INVALID`. Não confere disponibilidade (inventário, `reservations`).
+     */
+    fun isSellable(
+        query: StayQuery,
+        channel: SalesChannel,
+    ): Sellability
 }
 
 /** Id de um plano tarifário. */

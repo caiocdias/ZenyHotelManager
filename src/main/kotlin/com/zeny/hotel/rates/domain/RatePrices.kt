@@ -157,6 +157,12 @@ class ChildBands private constructor(
         return current to obsolete
     }
 
+    /** A idade limite de criança (a maior idade da última faixa; as faixas vão de 0 até ela, contíguas). */
+    val maxAge: Int get() = bands.maxOf { it.maxAge }
+
+    /** A faixa atual em que cai a idade [age] (anos completos); `null` fora de 0 a [maxAge]. */
+    fun bandOf(age: Int): AgeBand? = bands.firstOrNull { age in it.minAge..it.maxAge }
+
     /** Cada preço de criança numa faixa atual, sem repetir a faixa; senão `400` com o campo do item. */
     fun requireCurrent(children: List<ChildPrice>) {
         children.forEachIndexed { index, child ->

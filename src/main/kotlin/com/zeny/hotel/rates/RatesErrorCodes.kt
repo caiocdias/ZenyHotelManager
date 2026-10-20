@@ -177,4 +177,64 @@ object RatesErrorCodes {
 
     /** 422: a edição começa antes da data operacional (ou a temporada já terminou). */
     val RESTRICTION_PERIOD_IN_PAST = ErrorCode("RESTRICTION_PERIOD_IN_PAST")
+
+    // --- Preço e vendabilidade de uma estadia (M4 E04) ---------------------------------------------------------------
+    // Os motivos de recusa de `RatesApi.priceFor` e `isSellable` (`SaleRefusal.code`), além de `UNKNOWN_RATE_PLAN`,
+    // `UNKNOWN_ROOM_TYPE`, `ROOM_TYPE_NOT_IN_PLAN` e `ROOM_TYPE_INACTIVE`, acima; quem chama recusa com `422` (ou
+    // `400`, nos dois `UNKNOWN_…`, com o campo). Só `STAY_INVALID` é lançado.
+
+    /**
+     * 400 (lançado): estadia fora do formato: saída que não é depois da chegada (campo `departure`), mais de 365
+     * noites, nenhum adulto (campo `adults`) ou idade de criança negativa ou acima da idade limite de criança do hotel
+     * (campo `childAges[i]`; acima dela, a pessoa conta como adulto).
+     */
+    val STAY_INVALID = ErrorCode("STAY_INVALID")
+
+    /** O plano está desativado. */
+    val RATE_PLAN_INACTIVE = ErrorCode("RATE_PLAN_INACTIVE")
+
+    /** O plano não é vendido no canal da consulta. */
+    val SALES_CHANNEL_NOT_ALLOWED = ErrorCode("SALES_CHANNEL_NOT_ALLOWED")
+
+    /** Mais adultos ou mais crianças que a ocupação máxima do tipo de UH (`RoomsApi`). */
+    val OCCUPANCY_EXCEEDS_ROOM_TYPE = ErrorCode("OCCUPANCY_EXCEEDS_ROOM_TYPE")
+
+    /** A chegada é antes da data operacional do hotel (RN-01). */
+    val ARRIVAL_BEFORE_BUSINESS_DATE = ErrorCode("ARRIVAL_BEFORE_BUSINESS_DATE")
+
+    /** Antecedência (dias da data operacional até a chegada) abaixo da mínima da data de chegada. */
+    val MIN_ADVANCE_NOT_MET = ErrorCode("MIN_ADVANCE_NOT_MET")
+
+    /** Antecedência acima da máxima da data de chegada. */
+    val MAX_ADVANCE_EXCEEDED = ErrorCode("MAX_ADVANCE_EXCEEDED")
+
+    /** A data de chegada está fechada para chegada (CTA). */
+    val CLOSED_TO_ARRIVAL = ErrorCode("CLOSED_TO_ARRIVAL")
+
+    /** A data de saída está fechada para saída (CTD). */
+    val CLOSED_TO_DEPARTURE = ErrorCode("CLOSED_TO_DEPARTURE")
+
+    /** Menos noites que a estadia mínima da data de chegada. */
+    val MIN_STAY_NOT_MET = ErrorCode("MIN_STAY_NOT_MET")
+
+    /** Mais noites que a estadia máxima da data de chegada. */
+    val MAX_STAY_EXCEEDED = ErrorCode("MAX_STAY_EXCEEDED")
+
+    /** Alguma noite da estadia está fechada para venda (as datas em `dates`). */
+    val STAY_DATE_CLOSED = ErrorCode("STAY_DATE_CLOSED")
+
+    /** Alguma noite não tem preço gravado para o tipo de UH no plano (ou no plano raiz de um derivado). */
+    val RATE_NOT_PRICED = ErrorCode("RATE_NOT_PRICED")
+
+    /**
+     * Alguma noite não tem preço para o número de adultos (dois adultos ou adulto extra sem preço, ou a lacuna que a
+     * derivação deixou).
+     */
+    val OCCUPANCY_NOT_PRICED = ErrorCode("OCCUPANCY_NOT_PRICED")
+
+    /** Alguma noite não tem preço na faixa etária atual de uma criança (sem preço, ou só com o preço obsoleto). */
+    val CHILD_AGE_NOT_PRICED = ErrorCode("CHILD_AGE_NOT_PRICED")
+
+    /** Os pacotes inclusos passam da diária numa noite (a hospedagem ficaria negativa). */
+    val INCLUDED_PACKAGES_EXCEED_RATE = ErrorCode("INCLUDED_PACKAGES_EXCEED_RATE")
 }

@@ -10,6 +10,11 @@ import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.RatePlanSummary
 import com.zeny.hotel.rates.RatesApi
 import com.zeny.hotel.rates.RatesPermissions
+import com.zeny.hotel.rates.SalesChannel
+import com.zeny.hotel.rates.Sellability
+import com.zeny.hotel.rates.StayPriceResult
+import com.zeny.hotel.rates.StayQuery
+import com.zeny.hotel.rates.domain.RatePackage
 import com.zeny.hotel.shared.ModulePermissions
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -20,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class RatesApiService(
     private val store: RatesStore,
+    private val stays: StayEvaluator,
 ) : RatesApi {
     @Transactional(readOnly = true)
     override fun ratePlan(id: RatePlanId): RatePlanSummary? =
@@ -72,22 +78,32 @@ class RatesApiService(
         }
 
     @Transactional(readOnly = true)
-    override fun ratePackage(id: PackageId): PackageSummary? =
-        store.ratePackage(id)?.let {
-            PackageSummary(
-                it.id,
-                it.code,
-                it.name,
-                it.price,
-                it.pricing,
-                it.postingRhythm,
-                it.includedInRate,
-                it.transactionCodeId,
-                it.active,
-                checkNotNull(it.version),
-            )
-        }
+    override fun ratePackage(id: PackageId): PackageSummary? = store.ratePackage(id)?.summary()
+
+    @Transactional(readOnly = true)
+    override fun priceFor(query: StayQuery): StayPriceResult = stays.priceFor(query)
+
+    @Transactional(readOnly = true)
+    override fun isSellable(
+        query: StayQuery,
+        channel: SalesChannel,
+    ): Sellability = stays.isSellable(query, channel)
 }
+
+/** O pacote para os outros módulos (e para o preço de uma estadia). */
+internal fun RatePackage.summary() =
+    PackageSummary(
+        id,
+        code,
+        name,
+        price,
+        pricing,
+        postingRhythm,
+        includedInRate,
+        transactionCodeId,
+        active,
+        checkNotNull(version),
+    )
 
 @Configuration(proxyBeanMethods = false)
 class RatesPermissionsConfiguration {
