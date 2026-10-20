@@ -16,7 +16,11 @@ ARG JRE_IMAGE=eclipse-temurin:25-jre-alpine
 
 FROM ${JDK_IMAGE} AS build
 WORKDIR /workspace
-ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.welcome=never -Dkotlin.compiler.execution.strategy=in-process"
+# Sem daemon, o Gradle roda o build num processo de uso único com o heap de
+# org.gradle.jvmargs (padrão 512 MB), e o compilador Kotlin roda dentro dele (in-process).
+# Com o código do M4 os 512 MB deram OutOfMemoryError no compileKotlin; 2 GB cabem com folga
+# no runner da CI (16 GB).
+ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.welcome=never -Dorg.gradle.jvmargs=-Xmx2g -Dkotlin.compiler.execution.strategy=in-process"
 
 # Wrapper e scripts do build primeiro: a distribuição do Gradle e as dependências ficam no
 # cache do BuildKit (/root/.gradle) e só são baixadas de novo quando o catálogo muda.
