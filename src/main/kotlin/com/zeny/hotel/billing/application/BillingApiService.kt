@@ -1,6 +1,9 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingApi
+import com.zeny.hotel.billing.BillingErrorCodes
+import com.zeny.hotel.billing.CashierShiftId
+import com.zeny.hotel.billing.CashierShiftSummary
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwner
 import com.zeny.hotel.billing.FolioSummary
@@ -11,9 +14,12 @@ import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.TransactionCodeSummary
 import com.zeny.hotel.shared.Audited
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronizationManager
 
 /**
  * A [BillingApi]: sem conferir permissão (quem chama já se autorizou), com as mesmas regras, trava, data operacional
@@ -25,6 +31,7 @@ class BillingApiService(
     private val store: BillingStore,
     private val ledger: PostingLedger,
     private val directory: BillingDirectory,
+    private val cashier: CashierStore,
 ) : BillingApi {
     @Transactional(readOnly = true)
     override fun transactionCode(id: TransactionCodeId): TransactionCodeSummary? =
@@ -68,6 +75,27 @@ class BillingApiService(
                 posting.source,
                 posting.serviceChargeRate,
             ).let { it.item.summary(it.serviceCharge) }
+
+    /**
+     * Sem `@Transactional`: roda na transação de escrita de quem chama, que segura a trava do turno até o commit
+     * (fora de uma, `IllegalStateException`).
+     */
+    override fun requireOpenShift(user: UserId): CashierShiftSummary {
+        check(
+            TransactionSynchronizationManager.isActualTransactionActive() &&
+                !TransactionSynchronizationManager.isCurrentTransactionReadOnly(),
+        ) { "requireOpenShift precisa da transação de escrita de quem recebe (trava o turno até o commit)" }
+        val shift =
+            cashier.openShiftOfForUpdate(user)
+                ?: throw BusinessRuleException(
+                    BillingErrorCodes.CASHIER_SHIFT_REQUIRED,
+                    "Abra um turno de caixa antes de receber ou devolver.",
+                )
+        return shift.summary()
+    }
+
+    @Transactional(readOnly = true)
+    override fun cashierShift(id: CashierShiftId): CashierShiftSummary? = cashier.shift(id)?.summary()
 
     private companion object {
         /** Teto da leitura das contas de um dono (uma reserva tem poucas). */

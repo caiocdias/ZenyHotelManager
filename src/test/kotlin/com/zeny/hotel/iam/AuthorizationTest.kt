@@ -229,6 +229,10 @@ class AuthorizationTest(
                 "billing.routing.manage:ALL",
                 "billing.postings.transfer:ALL",
                 "billing.servicecharge.remove:ALL",
+                "billing.cashpoints.manage:ALL",
+                "billing.cashier.operate:ALL",
+                "billing.shifts.read:ALL",
+                "billing.shifts.review:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

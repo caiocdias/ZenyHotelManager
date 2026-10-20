@@ -570,6 +570,506 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/cash-points:
+    get:
+      description: Em ordem de nome. Exige `billing.shifts.read` (qualquer escopo)
+        ou `billing.cashpoints.manage`.
+      operationId: listCashPoints
+      parameters:
+      - description: Só os ativos (`true`) ou só os desativados (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCashPointResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os pontos de caixa
+      tags:
+      - billing
+    post:
+      description: "Exige `billing.cashpoints.manage`. Nome repetido (sem diferenciar\
+        \ maiúsculas, inclusive de um desativado): 409 `CASH_POINT_NAME_ALREADY_IN_USE`."
+      operationId: createCashPoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashPointRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashPointResponse"
+          description: Ponto de caixa cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um ponto de caixa
+      tags:
+      - billing
+  /api/v1/cash-points/{id}:
+    get:
+      description: "Exige `billing.shifts.read` (qualquer escopo) ou `billing.cashpoints.manage`.\
+        \ Inexistente: 404 `CASH_POINT_NOT_FOUND`."
+      operationId: getCashPoint
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashPointResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um ponto de caixa
+      tags:
+      - billing
+    put:
+      description: "Troca o nome e o fechamento cego (vale para os turnos abertos\
+        \ depois). Exige `billing.cashpoints.manage` e o `If-Match` (ausente: 428;\
+        \ versão diferente: 412). Nome repetido: 409 `CASH_POINT_NAME_ALREADY_IN_USE`."
+      operationId: updateCashPoint
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashPointRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashPointResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um ponto de caixa
+      tags:
+      - billing
+  /api/v1/cash-points/{id}/deactivate:
+    post:
+      description: Exige `billing.cashpoints.manage`. Os turnos abertos seguem até
+        o fechamento; abrir um turno novo no ponto é recusado (422 `CASH_POINT_INACTIVE`).
+      operationId: deactivateCashPoint
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashPointResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um ponto de caixa
+      tags:
+      - billing
+  /api/v1/cash-points/{id}/reactivate:
+    post:
+      description: Exige `billing.cashpoints.manage`.
+      operationId: reactivateCashPoint
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashPointResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um ponto de caixa
+      tags:
+      - billing
+  /api/v1/cashier-shifts:
+    get:
+      description: "Do mais novo para o mais antigo. Exige `billing.shifts.read`;\
+        \ com `OWN`, só os turnos do próprio usuário. Sem o esperado (veja o turno)."
+      operationId: listCashierShifts
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+      - in: query
+        name: cashPointId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: operatorId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCashierShiftListItem"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os turnos de caixa
+      tags:
+      - billing
+    post:
+      description: "Com o fundo de troco, na data operacional, com número `CX-<ano>-<sequê\
+        ncia>`. Exige `billing.cashier.operate`. O usuário já tem um turno aberto\
+        \ (em qualquer ponto): 409 `CASHIER_SHIFT_ALREADY_OPEN`; ponto inexistente:\
+        \ 400 `UNKNOWN_CASH_POINT`; desativado: 422 `CASH_POINT_INACTIVE`; fundo fora\
+        \ de 0,00 a 1.000.000,00: 400 `CASHIER_SHIFT_INVALID`. Fechamento cego: num\
+        \ turno cego aberto, `expected` sai nulo (e `expectedVisible` falso) a quem\
+        \ não tem `billing.shifts.review`; depois do fechamento, sai a todos que leem\
+        \ o turno."
+      operationId: openCashierShift
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashierShiftOpenRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashierShiftResponse"
+          description: Turno aberto.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Abrir o próprio turno de caixa
+      tags:
+      - billing
+  /api/v1/cashier-shifts/current:
+    get:
+      description: "Exige `billing.cashier.operate`. Sem turno aberto: 404 `CASHIER_SHIFT_NOT_FOUND`.\
+        \ Fechamento cego: num turno cego aberto, `expected` sai nulo (e `expectedVisible`\
+        \ falso) a quem não tem `billing.shifts.review`; depois do fechamento, sai\
+        \ a todos que leem o turno."
+      operationId: getCurrentCashierShift
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashierShiftResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o próprio turno aberto
+      tags:
+      - billing
+  /api/v1/cashier-shifts/{id}:
+    get:
+      description: "Com os movimentos; o `ETag` muda a cada movimento. Exige `billing.shifts.read`;\
+        \ com `OWN`, o turno de outro usuário responde 404 `CASHIER_SHIFT_NOT_FOUND`.\
+        \ Fechamento cego: num turno cego aberto, `expected` sai nulo (e `expectedVisible`\
+        \ falso) a quem não tem `billing.shifts.review`; depois do fechamento, sai\
+        \ a todos que leem o turno."
+      operationId: getCashierShift
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashierShiftResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um turno de caixa
+      tags:
+      - billing
+  /api/v1/cashier-shifts/{id}/close:
+    post:
+      description: "Com a contagem declarada por forma de pagamento (a omitida vale\
+        \ zero); devolve o relatório de fechamento, com o esperado e a diferença por\
+        \ forma (declarado − esperado). Exige `billing.cashier.operate`, e só o operador\
+        \ fecha (403 `CASHIER_SHIFT_OPERATOR_REQUIRED`). Já fechado: 409 `CASHIER_SHIFT_CLOSED`;\
+        \ forma repetida ou valor fora de 0,00 a 1.000.000,00: 400 `CASHIER_COUNT_INVALID`.\
+        \ Com alguma diferença, quem tem `billing.shifts.review` (menos o operador)\
+        \ recebe a notificação `billing.cashier-shift-difference`."
+      operationId: closeCashierShift
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashierShiftCloseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashierShiftReportResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Fechar o próprio turno de caixa
+      tags:
+      - billing
+  /api/v1/cashier-shifts/{id}/movements:
+    post:
+      description: "Em dinheiro, com motivo; imutável. Exige `billing.cashier.operate`,\
+        \ e só o operador do turno registra (403 `CASHIER_SHIFT_OPERATOR_REQUIRED`).\
+        \ Turno fechado: 409 `CASHIER_SHIFT_CLOSED`; valor fora de 0,01 a 1.000.000,00\
+        \ ou motivo vazio: 400 `CASHIER_SHIFT_INVALID`. A sangria não é conferida\
+        \ contra o dinheiro esperado (o fechamento cego não o revela); a falta aparece\
+        \ como diferença."
+      operationId: recordCashMovement
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CashMovementRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashMovementResponse"
+          description: Movimento registrado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar uma sangria ou um suprimento
+      tags:
+      - billing
+  /api/v1/cashier-shifts/{id}/report:
+    get:
+      description: "Em JSON (o PDF é do M5). Exige `billing.shifts.read`; com `OWN`,\
+        \ só o dos próprios turnos (o de outro: 404 `CASHIER_SHIFT_NOT_FOUND`). Turno\
+        \ aberto: 409 `CASHIER_SHIFT_NOT_CLOSED`."
+      operationId: getCashierShiftReport
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CashierShiftReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o relatório de fechamento de um turno
+      tags:
+      - billing
   /api/v1/checklist-executions:
     get:
       description: "Da mais nova para a mais antiga, sem as respostas. Exige `checklists.executions.read`.\
@@ -7777,6 +8277,397 @@ components:
       required:
       - businessDate
       - timezone
+    CashCountRequest:
+      type: object
+      description: O valor declarado de uma forma de pagamento na contagem do fechamento.
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        method:
+          type: string
+          enum:
+          - CASH
+          - DEBIT_CARD
+          - CREDIT_CARD
+          - PIX
+          - BANK_TRANSFER
+          - OTHER
+          nullable: true
+      required:
+      - amount
+      - method
+    CashCountResponse:
+      type: object
+      description: A contagem do fechamento de uma forma de pagamento.
+      properties:
+        declared:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        difference:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        expected:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        method:
+          type: string
+          description: Forma de pagamento (trate um valor desconhecido).
+          x-extensible-enum:
+          - CASH
+          - DEBIT_CARD
+          - CREDIT_CARD
+          - PIX
+          - BANK_TRANSFER
+          - OTHER
+      required:
+      - declared
+      - difference
+      - expected
+      - method
+    CashMovementRequest:
+      type: object
+      description: "Uma sangria ou um suprimento, em dinheiro."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reason:
+          type: string
+          description: Motivo (até 200 caracteres).
+          example: Recolhimento ao cofre
+          maxLength: 200
+          minLength: 0
+          nullable: true
+        type:
+          type: string
+          description: '`WITHDRAWAL` (sangria) ou `SUPPLY` (suprimento).'
+          enum:
+          - WITHDRAWAL
+          - SUPPLY
+          nullable: true
+      required:
+      - amount
+      - reason
+      - type
+    CashMovementResponse:
+      type: object
+      description: Uma sangria ou um suprimento registrado (imutável).
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        businessDate:
+          type: string
+          format: date
+          description: Data operacional do registro.
+        id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+        recordedBy:
+          type: string
+          format: uuid
+        shiftId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+          - WITHDRAWAL
+          - SUPPLY
+      required:
+      - amount
+      - businessDate
+      - id
+      - reason
+      - recordedAt
+      - recordedBy
+      - shiftId
+      - type
+    CashPointRequest:
+      type: object
+      description: Os dados de um ponto de caixa.
+      properties:
+        blindClose:
+          type: boolean
+          description: "Fechamento cego (padrão): o operador só vê o valor esperado\
+            \ depois de declarar a contagem. Vale para os turnos abertos depois da\
+            \ mudança."
+        name:
+          type: string
+          description: "Nome único, sem diferenciar maiúsculas."
+          example: Recepção
+          maxLength: 80
+          minLength: 0
+          nullable: true
+      required:
+      - blindClose
+      - name
+    CashPointResponse:
+      type: object
+      description: Um ponto de caixa.
+      properties:
+        active:
+          type: boolean
+        blindClose:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - blindClose
+      - createdAt
+      - id
+      - name
+      - updatedAt
+    CashierShiftCloseRequest:
+      type: object
+      description: A contagem declarada no fechamento; a forma omitida vale zero.
+      properties:
+        counts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CashCountRequest"
+          maxItems: 20
+          minItems: 0
+          nullable: true
+      required:
+      - counts
+    CashierShiftListItem:
+      type: object
+      description: Um turno de caixa numa listagem.
+      properties:
+        blindClose:
+          type: boolean
+        cashPointId:
+          type: string
+          format: uuid
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedOn:
+          type: string
+          format: date
+          nullable: true
+        differenceTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        id:
+          type: string
+          format: uuid
+        number:
+          type: string
+          description: "Número legível: prefixo, ano e sequência."
+          example: R-2026-000123
+          pattern: "^[A-Z]{1,5}-\\d{4}-\\d{6,}$"
+        openedAt:
+          type: string
+          format: date-time
+        openedOn:
+          type: string
+          format: date
+        openingFloat:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        operatorId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+      required:
+      - blindClose
+      - cashPointId
+      - id
+      - number
+      - openedAt
+      - openedOn
+      - openingFloat
+      - operatorId
+      - status
+    CashierShiftOpenRequest:
+      type: object
+      description: A abertura de um turno de caixa do próprio usuário.
+      properties:
+        cashPointId:
+          type: string
+          format: uuid
+          nullable: true
+        openingFloat:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - cashPointId
+      - openingFloat
+    CashierShiftReportResponse:
+      type: object
+      description: O relatório de fechamento de um turno de caixa (em JSON; o PDF
+        é do M5).
+      properties:
+        generatedAt:
+          type: string
+          format: date-time
+        shift:
+          $ref: "#/components/schemas/CashierShiftResponse"
+      required:
+      - generatedAt
+      - shift
+    CashierShiftResponse:
+      type: object
+      description: "Um turno de caixa, com os movimentos e, quando visível, o esperado."
+      properties:
+        blindClose:
+          type: boolean
+          description: Fechamento cego (o do ponto de caixa na abertura).
+        cashPointId:
+          type: string
+          format: uuid
+        cashPointName:
+          type: string
+        closedAt:
+          type: string
+          format: date-time
+          nullable: true
+        closedOn:
+          type: string
+          format: date
+          description: Data operacional do fechamento.
+          nullable: true
+        counts:
+          type: array
+          description: A contagem do fechamento por forma; nula num turno aberto.
+          items:
+            $ref: "#/components/schemas/CashCountResponse"
+          nullable: true
+        declaredTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        differenceTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        expected:
+          type: array
+          description: O esperado por forma de pagamento; nulo quando não é visível.
+          items:
+            $ref: "#/components/schemas/ExpectedAmountResponse"
+          nullable: true
+        expectedTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        expectedVisible:
+          type: boolean
+          description: "Se o valor esperado é visível a quem consulta: falso num turno\
+            \ cego aberto, salvo para quem tem `billing.shifts.review`."
+        hasDifference:
+          type: boolean
+          description: Alguma forma com diferença (só depois do fechamento).
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        movements:
+          type: array
+          items:
+            $ref: "#/components/schemas/CashMovementResponse"
+        number:
+          type: string
+          description: "Número legível: prefixo, ano e sequência."
+          example: R-2026-000123
+          pattern: "^[A-Z]{1,5}-\\d{4}-\\d{6,}$"
+        openedAt:
+          type: string
+          format: date-time
+        openedOn:
+          type: string
+          format: date
+          description: Data operacional da abertura.
+        openingFloat:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        operatorId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+      required:
+      - blindClose
+      - cashPointId
+      - cashPointName
+      - expectedVisible
+      - id
+      - movements
+      - number
+      - openedAt
+      - openedOn
+      - openingFloat
+      - operatorId
+      - status
     ChangePasswordRequest:
       type: object
       properties:
@@ -8934,6 +9825,34 @@ components:
           nullable: true
       required:
       - items
+    CursorPageCashPointResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CashPointResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageCashierShiftListItem:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CashierShiftListItem"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageChecklistExecutionSummaryResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -9633,6 +10552,58 @@ components:
       - id
       - name
       - start
+    ExpectedAmountResponse:
+      type: object
+      description: "O valor esperado de uma forma de pagamento: no dinheiro, fundo\
+        \ + suprimentos − sangrias + pagamentos; nas demais, os pagamentos."
+      properties:
+        expected:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        method:
+          type: string
+          description: Forma de pagamento (trate um valor desconhecido).
+          x-extensible-enum:
+          - CASH
+          - DEBIT_CARD
+          - CREDIT_CARD
+          - PIX
+          - BANK_TRANSFER
+          - OTHER
+        openingFloat:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        payments:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        supplies:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        withdrawals:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - expected
+      - method
+      - openingFloat
+      - payments
+      - supplies
+      - withdrawals
     FailedItemResponse:
       type: object
       description: Um item de marcação com reprovações no filtro.

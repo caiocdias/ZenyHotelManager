@@ -7,6 +7,7 @@ import com.zeny.hotel.shared.ModulePermissions
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionDefinition
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.shared.TemplateGrant
 
@@ -24,6 +25,13 @@ import com.zeny.hotel.shared.TemplateGrant
  * ([POSTINGS_TRANSFER]) não são sensíveis e vão ao Gerente, ao Financeiro e à Recepcionista (decisão do usuário em
  * 2026-10-19), como a remoção da taxa de serviço a pedido do cliente ([SERVICE_CHARGE_REMOVE], M3 E06: RN-10 a diz
  * opcional para o cliente, e não é ação sensível de RF-ACS-08).
+ *
+ * Caixa (RF-CTA-09 e 10, M3 E07; nenhuma sensível): o cadastro dos pontos de caixa ([CASH_POINTS_MANAGE], Gerente e
+ * Financeiro); operar o próprio turno ([CASHIER_OPERATE]: abrir, sangria, suprimento e fechar; Gerente, Financeiro,
+ * Recepcionista e Caixa A&B); consultar turnos ([SHIFTS_READ], a única do módulo com `OWN`: o dono é o operador;
+ * Recepcionista e Caixa A&B só os próprios, Gerente e Financeiro todos); e a conferência ([SHIFTS_REVIEW], só `ALL`,
+ * Gerente e Financeiro): vê o valor esperado de qualquer turno, mesmo cego e aberto, e recebe a notificação de
+ * diferença no fechamento (H14).
  */
 object BillingPermissions : ModulePermissions {
     override val module = "billing"
@@ -61,7 +69,21 @@ object BillingPermissions : ModulePermissions {
     /** Remover a taxa de serviço a pedido do cliente (RN-10, M3 E06; não sensível). */
     val SERVICE_CHARGE_REMOVE = PermissionCode("billing.servicecharge.remove")
 
+    /** Cadastrar, editar, desativar e reativar pontos de caixa (M3 E07). */
+    val CASH_POINTS_MANAGE = PermissionCode("billing.cashpoints.manage")
+
+    /** Operar o próprio turno de caixa: abrir, sangria, suprimento e fechar (M3 E07). */
+    val CASHIER_OPERATE = PermissionCode("billing.cashier.operate")
+
+    /** Consultar turnos de caixa (`OWN`: só os próprios; `ALL`: todos) e os pontos de caixa (M3 E07). */
+    val SHIFTS_READ = PermissionCode("billing.shifts.read")
+
+    /** Conferir turnos de caixa: o esperado sempre visível e a notificação de diferença (M3 E07, H14; só `ALL`). */
+    val SHIFTS_REVIEW = PermissionCode("billing.shifts.review")
+
     private val all = TemplateGrant(ALL)
+    private val own = TemplateGrant(OWN)
+    private val supervisors = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.FINANCE to all)
     private val operators =
         mapOf(RoleTemplate.MANAGER to all, RoleTemplate.FINANCE to all, RoleTemplate.RECEPTIONIST to all)
     private val unlimited = TemplateGrant(ALL, mapOf(MAX_AMOUNT to LimitValue.Unlimited))
@@ -159,6 +181,30 @@ object BillingPermissions : ModulePermissions {
                 "Remover a taxa de serviço de um lançamento a pedido do cliente",
                 setOf(ALL),
                 templates = operators,
+            ),
+            PermissionDefinition(
+                CASH_POINTS_MANAGE,
+                "Cadastrar, editar, desativar e reativar pontos de caixa",
+                setOf(ALL),
+                templates = supervisors,
+            ),
+            PermissionDefinition(
+                CASHIER_OPERATE,
+                "Operar o próprio turno de caixa (abrir, sangria, suprimento e fechar)",
+                setOf(ALL),
+                templates = operators + (RoleTemplate.FNB_CASHIER to all),
+            ),
+            PermissionDefinition(
+                SHIFTS_READ,
+                "Consultar turnos de caixa (só os próprios ou todos) e os pontos de caixa",
+                setOf(OWN, ALL),
+                templates = supervisors + mapOf(RoleTemplate.RECEPTIONIST to own, RoleTemplate.FNB_CASHIER to own),
+            ),
+            PermissionDefinition(
+                SHIFTS_REVIEW,
+                "Conferir turnos de caixa: ver o valor esperado e receber a notificação de diferença",
+                setOf(ALL),
+                templates = supervisors,
             ),
         )
 }

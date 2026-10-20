@@ -198,29 +198,31 @@ class ModularityTest {
     }
 
     @Test
-    fun `billing depends only on shared, hotel and guests, and only on their public APIs`() {
+    fun `billing depends only on shared, hotel, guests and notifications, and only on their public APIs`() {
         val billing = modules.getModuleByName("billing").orElseThrow()
-        val allowed = setOf("shared", "hotel", "guests")
+        val allowed = setOf("shared", "hotel", "guests", "notifications")
 
         // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
-        // payments (E08) e notifications (E07) entram depois. Nunca iam, reservas nem fiscal.
+        // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments entra na E08. Nunca
+        // iam, reservas nem fiscal.
         billing
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
             .toList() shouldContainExactlyInAnyOrder
-            listOf("shared", "hotel", "guests")
+            allowed.toList()
         BillingModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz de hotel e guests (a API pública); verify() também barra os pacotes internos.
+        // Só a raiz de hotel, guests e notifications (a API pública); verify() também barra os pacotes internos.
+        val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.guests", "com.zeny.hotel.notifications")
         billing
             .getDirectDependencies(modules)
             .stream()
             .map { it.targetType.name }
-            .filter { it.startsWith("com.zeny.hotel.hotel.") || it.startsWith("com.zeny.hotel.guests.") }
-            .filter { it.substringBeforeLast('.') !in setOf("com.zeny.hotel.hotel", "com.zeny.hotel.guests") }
+            .filter { name -> publicApis.any { name.startsWith("$it.") } }
+            .filter { it.substringBeforeLast('.') !in publicApis }
             .toList() shouldBe emptyList()
     }
 

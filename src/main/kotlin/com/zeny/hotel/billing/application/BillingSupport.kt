@@ -52,6 +52,9 @@ object BillingAudit {
     const val FOLIO = "billing.folio"
     const val POSTING = "billing.posting"
     const val ROUTING_RULE = "billing.routing-rule"
+    const val CASH_POINT = "billing.cash-point"
+    const val CASHIER_SHIFT = "billing.cashier-shift"
+    const val CASH_MOVEMENT = "billing.cash-movement"
 
     const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
     const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
@@ -69,6 +72,13 @@ object BillingAudit {
     const val UPDATE_ROUTING_RULE = "billing.routing-rule.update"
     const val DEACTIVATE_ROUTING_RULE = "billing.routing-rule.deactivate"
     const val REACTIVATE_ROUTING_RULE = "billing.routing-rule.reactivate"
+    const val CREATE_CASH_POINT = "billing.cash-point.create"
+    const val UPDATE_CASH_POINT = "billing.cash-point.update"
+    const val DEACTIVATE_CASH_POINT = "billing.cash-point.deactivate"
+    const val REACTIVATE_CASH_POINT = "billing.cash-point.reactivate"
+    const val OPEN_CASHIER_SHIFT = "billing.cashier-shift.open"
+    const val CLOSE_CASHIER_SHIFT = "billing.cashier-shift.close"
+    const val RECORD_CASH_MOVEMENT = "billing.cash-movement.record"
 }
 
 /** Um código de lançamento lido. */

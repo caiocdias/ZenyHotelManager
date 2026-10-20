@@ -105,4 +105,40 @@ object BillingErrorCodes {
 
     /** 422: a remoção a pedido cita um lançamento que não é taxa de serviço vinculada a um item. */
     val POSTING_NOT_SERVICE_CHARGE = ErrorCode("POSTING_NOT_SERVICE_CHARGE")
+
+    /** 404: ponto de caixa inexistente (M3 E07). */
+    val CASH_POINT_NOT_FOUND = ErrorCode("CASH_POINT_NOT_FOUND")
+
+    /** 400: a abertura do turno cita um ponto de caixa inexistente (campo `cashPointId`). */
+    val UNKNOWN_CASH_POINT = ErrorCode("UNKNOWN_CASH_POINT")
+
+    /** 409: outro ponto de caixa já usa o nome (sem diferenciar maiúsculas; inclusive um desativado). */
+    val CASH_POINT_NAME_ALREADY_IN_USE = ErrorCode("CASH_POINT_NAME_ALREADY_IN_USE")
+
+    /** 422: ponto de caixa desativado não abre turno. */
+    val CASH_POINT_INACTIVE = ErrorCode("CASH_POINT_INACTIVE")
+
+    /** 404: turno de caixa inexistente (ou fora do escopo `OWN` de quem consulta). */
+    val CASHIER_SHIFT_NOT_FOUND = ErrorCode("CASHIER_SHIFT_NOT_FOUND")
+
+    /** 409: o usuário já tem um turno de caixa aberto (H13: no máximo um, em qualquer ponto de caixa). */
+    val CASHIER_SHIFT_ALREADY_OPEN = ErrorCode("CASHIER_SHIFT_ALREADY_OPEN")
+
+    /** 422: recebimento ou devolução sem turno de caixa aberto do usuário (RF-CTA-10). */
+    val CASHIER_SHIFT_REQUIRED = ErrorCode("CASHIER_SHIFT_REQUIRED")
+
+    /** 409: turno já fechado (não recebe movimento nem outro fechamento). */
+    val CASHIER_SHIFT_CLOSED = ErrorCode("CASHIER_SHIFT_CLOSED")
+
+    /** 409: o relatório de fechamento só existe depois do fechamento. */
+    val CASHIER_SHIFT_NOT_CLOSED = ErrorCode("CASHIER_SHIFT_NOT_CLOSED")
+
+    /** 403: só o operador do turno registra movimentos e o fecha. */
+    val CASHIER_SHIFT_OPERATOR_REQUIRED = ErrorCode("CASHIER_SHIFT_OPERATOR_REQUIRED")
+
+    /** 400: fundo de troco ou valor de movimento fora da faixa, ou motivo vazio (com o campo). */
+    val CASHIER_SHIFT_INVALID = ErrorCode("CASHIER_SHIFT_INVALID")
+
+    /** 400: contagem com forma de pagamento repetida ou valor negativo ou fora da faixa (com o campo). */
+    val CASHIER_COUNT_INVALID = ErrorCode("CASHIER_COUNT_INVALID")
 }

@@ -16,7 +16,8 @@ import java.util.UUID
  * API pública do `billing` para os módulos de cima (reservas no M4, recepção no M5, PDV no M8…): abrir contas e
  * lançar nelas, e ler códigos e contas. **Não confere permissão** (quem chama já se autorizou); as escritas são
  * auditadas (`billing.folio.open`, `billing.posting.create`) em nome do ator da requisição corrente, ou do sistema
- * fora de uma requisição. Estorno e ajuste não estão aqui: são ações sensíveis de quem opera, pela API HTTP.
+ * fora de uma requisição. Estorno e ajuste não estão aqui: são ações sensíveis de quem opera, pela API HTTP. Desde a
+ * E07, também o turno de caixa aberto do usuário ([requireOpenShift]), que os recebimentos exigem.
  */
 interface BillingApi {
     /** O código de lançamento, ativo ou não; `null` se não existe. */
@@ -61,6 +62,20 @@ interface BillingApi {
         folioId: FolioId,
         posting: NewPosting,
     ): PostingSummary
+
+    /**
+     * O turno de caixa aberto do [user] (RF-CTA-10, H13 do M3, M3 E07): todo recebimento, devolução ou captura (os
+     * pagamentos da E08, o PDV no M8) passa por aqui, no turno aberto do próprio usuário, sem informá-lo na
+     * requisição. Sem turno aberto: `422 CASHIER_SHIFT_REQUIRED`. Trava a linha do turno (`SELECT … FOR UPDATE`) até
+     * o fim da transação de quem chama: um fechamento simultâneo espera o recebimento terminar, e o turno devolvido
+     * continua aberto até o commit. Chame **dentro** da transação de escrita do caso de uso (fora dela, ou numa só de
+     * leitura, `IllegalStateException`) e trave o turno antes da conta (a ordem das travas evita deadlock). Não confere
+     * permissão (quem chama já se autorizou) e não grava nada.
+     */
+    fun requireOpenShift(user: UserId): CashierShiftSummary
+
+    /** O turno de caixa, aberto ou fechado; `null` se não existe. */
+    fun cashierShift(id: CashierShiftId): CashierShiftSummary?
 }
 
 /** Id de um código de lançamento. */

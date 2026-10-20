@@ -15,11 +15,13 @@ value class NotificationId(
 
 /**
  * Para quem vai uma notificação: os [users] dados e os usuários ativos com cada uma das [permissions] como
- * permissão efetiva no momento (H9 do M2), sem repetir ninguém. Usuário inexistente ou inativo é ignorado.
+ * permissão efetiva no momento (H9 do M2), sem repetir ninguém e **sem** os [except] (M3 E07: quem causou o aviso não
+ * o recebe, como o operador que fechou o próprio turno com diferença). Usuário inexistente ou inativo é ignorado.
  */
 data class NotificationRecipients(
     val users: Set<UserId> = emptySet(),
     val permissions: Set<PermissionCode> = emptySet(),
+    val except: Set<UserId> = emptySet(),
 ) {
     companion object {
         /** Só o [user]. */

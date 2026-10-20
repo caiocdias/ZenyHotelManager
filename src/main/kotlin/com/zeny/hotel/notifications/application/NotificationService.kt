@@ -86,7 +86,7 @@ class NotificationService(
 
         val users =
             recipients.users.filter { iam.findUser(it)?.active == true }.toSet() +
-                recipients.permissions.flatMap(iam::usersWithPermission)
+                recipients.permissions.flatMap(iam::usersWithPermission) - recipients.except
         val created =
             users.sortedBy { it.value }.mapNotNull { user ->
                 val preference = PreferenceRules.effective(definition, preferences.of(user, type))

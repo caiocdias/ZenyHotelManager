@@ -1,5 +1,6 @@
 package com.zeny.hotel.notifications
 
+import com.zeny.hotel.billing.BillingNotificationTypes
 import com.zeny.hotel.iam.IamApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
@@ -274,6 +275,20 @@ class NotificationsApiTest(
             listOf("notificationsexample.ping")
         panel(deactivated)["items"].values().toList().shouldBeEmpty()
         panel(revoked)["items"].values().toList().shouldBeEmpty()
+
+        // Os usuários de `except` (M3 E07) ficam de fora, dados ou pela permissão.
+        val excepted =
+            notifications.notify(
+                NotificationsExampleTypes.PING,
+                "Aviso",
+                "Menos quem causou",
+                NotificationRecipients(
+                    users = setOf(without.id),
+                    permissions = setOf(NotificationsExamplePermissions.ALERTS_RECEIVE),
+                    except = setOf(withAll.id, without.id),
+                ),
+            )
+        recipientsOf(excepted) shouldContainExactlyInAnyOrder (holders - withAll.id).toList()
     }
 
     @Test
@@ -300,7 +315,9 @@ class NotificationsApiTest(
 
         val defaults = preferences(user)
         defaults.map { it["type"].asString() } shouldContainExactly
-            (NotificationsTypes.types + NotificationsExampleTypes.types).map { it.code.value }.sorted()
+            (NotificationsTypes.types + NotificationsExampleTypes.types + BillingNotificationTypes.types)
+                .map { it.code.value }
+                .sorted()
         defaults.forEach {
             it["inApp"].asBoolean() shouldBe true
             it["push"].asBoolean() shouldBe true
