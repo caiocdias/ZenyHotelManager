@@ -223,6 +223,7 @@ class AuthorizationTest(
                 "billing.codes.manage:ALL",
                 "billing.folios.read:ALL",
                 "billing.folios.manage:ALL",
+                "billing.folios.reopen:ALL",
                 "billing.postings.create:ALL",
                 "billing.postings.reverse:ALL",
                 "billing.postings.adjust:ALL",

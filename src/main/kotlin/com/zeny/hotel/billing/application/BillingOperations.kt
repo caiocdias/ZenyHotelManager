@@ -1,6 +1,7 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingErrorCodes
+import com.zeny.hotel.billing.CardPreAuthorizationStatus
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwnerType
 import com.zeny.hotel.billing.PostingSource
@@ -44,6 +45,7 @@ import java.time.temporal.ChronoUnit
 class BillingOperations(
     private val store: BillingStore,
     private val ledger: PostingLedger,
+    private val preAuthorizations: CardPreAuthorizationStore,
     private val numbers: DocumentNumberGenerator,
     private val hotel: HotelApi,
     private val guests: GuestsApi,
@@ -75,6 +77,28 @@ class BillingOperations(
         audit.created(BillingAudit.FOLIO, folio.id.value) { folio.auditState() }
         store.add(folio)
         return folio.view(Money.ZERO)
+    }
+
+    /**
+     * Encerra a conta (RF-CTA-11, RN-06, M3 E10): trava a linha (`SELECT … FOR UPDATE`) e só então lê o saldo e as
+     * cauções, então nenhum lançamento, pagamento ou caução (que travam a conta antes de gravar) entra entre a
+     * conferência e o encerramento. Saldo diferente de zero: `409 FOLIO_BALANCE_NOT_ZERO`; caução ativa ou parcialmente
+     * capturada ainda não vencida pelo relógio (a vencida não impede: o emissor já liberou o valor; decisão do usuário
+     * em 2026-10-20): `409 FOLIO_HAS_ACTIVE_PRE_AUTHORIZATION`; já encerrada: `409 FOLIO_CLOSED`.
+     */
+    fun closeFolio(id: FolioId): FolioView {
+        val folio = store.folioForUpdate(id) ?: throw folioNotFound()
+        val balance = ledger.balances(listOf(id))[id] ?: Money.ZERO
+        val stamp = stamp()
+        val active =
+            preAuthorizations
+                .unsettledOf(id)
+                .filter { it.statusAt(stamp.postedAt) != CardPreAuthorizationStatus.EXPIRED }
+                .map { it.id }
+        audit.track(BillingAudit.FOLIO, id.value) { folio.auditState() }
+        folio.close(balance, active, stamp)
+        store.flush()
+        return folio.view(balance)
     }
 
     /** Confere um pagador novo (o atual, mesmo desativado depois, fica). */

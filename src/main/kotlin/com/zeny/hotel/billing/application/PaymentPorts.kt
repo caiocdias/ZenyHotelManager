@@ -61,6 +61,12 @@ interface CardPreAuthorizationStore {
 
     fun addRelease(release: PreAuthorizationRelease)
 
+    /**
+     * As cauções da conta ainda capturáveis pela situação guardada (`ACTIVE`, `PARTIALLY_CAPTURED`; as vencidas
+     * também, que só a leitura reconhece), em ordem de registro: o encerramento da conta confere (M3 E10).
+     */
+    fun unsettledOf(folioId: FolioId): List<CardPreAuthorization>
+
     /** A caução com a liberação e as capturas; `null` se não existe. */
     fun row(id: CardPreAuthorizationId): CardPreAuthorizationRow?
 

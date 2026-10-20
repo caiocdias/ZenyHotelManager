@@ -467,7 +467,7 @@ class RoutingApiTest(
     /** Encerra a conta direto no banco (o encerramento pela API é da E10). */
     private fun close(folio: UUID) {
         jdbc
-            .sql("UPDATE billing.folio SET status = 'CLOSED' WHERE id = :id")
+            .sql("UPDATE billing.folio SET status = 'CLOSED', closed_on = opened_on, closed_at = now() WHERE id = :id")
             .param("id", folio)
             .update() shouldBe 1
     }

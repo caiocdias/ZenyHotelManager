@@ -38,6 +38,10 @@ import com.zeny.hotel.shared.TemplateGrant
  * reembolsar ([PAYMENTS_REFUND], **sensível**, com o limite [MAX_AMOUNT] sobre o total reembolsado do pagamento: os
  * reembolsos já feitos dele, por qualquer usuário, mais o novo; Gerente e Financeiro sem teto, Recepcionista e Caixa
  * A&B sem ela, sempre pedem a aprovação de um superior).
+ *
+ * Encerramento e reabertura (RF-CTA-11, M3 E10; decisões do usuário em 2026-10-20): encerrar a conta usa
+ * [FOLIOS_MANAGE] (não sensível); reabrir ([FOLIOS_REOPEN]) é **sensível**, sem limite de valor, sugerida ao Gerente e
+ * ao Financeiro (os demais sempre pedem a aprovação de um superior).
  */
 object BillingPermissions : ModulePermissions {
     override val module = "billing"
@@ -57,8 +61,11 @@ object BillingPermissions : ModulePermissions {
     /** Consultar contas, saldos e lançamentos. */
     val FOLIOS_READ = PermissionCode("billing.folios.read")
 
-    /** Abrir contas e trocar o pagador e o limite de crédito. */
+    /** Abrir e encerrar contas e trocar o pagador e o limite de crédito (o encerramento desde a E10). */
     val FOLIOS_MANAGE = PermissionCode("billing.folios.manage")
+
+    /** Reabrir uma conta encerrada (sensível, sem limite; M3 E10). */
+    val FOLIOS_REOPEN = PermissionCode("billing.folios.reopen")
 
     /** Lançar numa conta (lançamento manual). */
     val POSTINGS_CREATE = PermissionCode("billing.postings.create")
@@ -150,7 +157,7 @@ object BillingPermissions : ModulePermissions {
             ),
             PermissionDefinition(
                 FOLIOS_MANAGE,
-                "Abrir contas e trocar o pagador e o limite de crédito",
+                "Abrir e encerrar contas e trocar o pagador e o limite de crédito",
                 setOf(ALL),
                 templates =
                     mapOf(
@@ -158,6 +165,13 @@ object BillingPermissions : ModulePermissions {
                         RoleTemplate.FINANCE to all,
                         RoleTemplate.RECEPTIONIST to all,
                     ),
+            ),
+            PermissionDefinition(
+                FOLIOS_REOPEN,
+                "Reabrir uma conta encerrada (ação sensível)",
+                setOf(ALL),
+                sensitive = true,
+                templates = supervisors,
             ),
             PermissionDefinition(
                 POSTINGS_CREATE,

@@ -30,8 +30,25 @@ interface BillingApi {
     /** A conta com o saldo; `null` se não existe. */
     fun folio(id: FolioId): FolioSummary?
 
-    /** As contas do dono, da mais antiga para a mais nova, com o saldo. */
+    /** As contas do dono (todas, abertas e encerradas), da mais antiga para a mais nova, com o saldo. */
     fun foliosOf(owner: FolioOwner): List<FolioSummary>
+
+    /**
+     * O saldo do dono (M3 E10, RN-06): as contas dele (todas, abertas e encerradas, da mais antiga para a mais nova)
+     * com o saldo de cada uma e o total. [OwnerBalance.settled] diz se **todas** têm saldo zero, a condição do
+     * check-out (M5): uma conta devedora e outra credora que se anulam no total não estão quitadas (transfira antes).
+     * Não confere permissão.
+     */
+    fun balanceOf(owner: FolioOwner): OwnerBalance
+
+    /**
+     * Encerra a conta (RF-CTA-11, M3 E10), como `POST /api/v1/folios/{id}/close`: travada, só com saldo zero
+     * (`409 FOLIO_BALANCE_NOT_ZERO`) e sem caução ativa ou parcialmente capturada ainda não vencida
+     * (`409 FOLIO_HAS_ACTIVE_PRE_AUTHORIZATION`); já encerrada `409 FOLIO_CLOSED`; inexistente `404 FOLIO_NOT_FOUND`.
+     * Auditada (`billing.folio.close`) em nome do ator corrente ou do sistema; não confere permissão. A reabertura não
+     * está aqui: é ação sensível de quem opera, pela API HTTP.
+     */
+    fun closeFolio(id: FolioId): FolioSummary
 
     /**
      * Abre uma conta para o dono, na data operacional (RN-01), com número legível `C-<ano>-<sequência>`. Dono
@@ -228,7 +245,10 @@ data class FolioOwner(
     val id: UUID,
 )
 
-/** Situação da conta. O encerramento e a reabertura são da E10. */
+/**
+ * Situação da conta. Encerrada (M3 E10): só com saldo zero e sem caução em aberto; não recebe lançamento, pagamento
+ * nem caução; reaberta só por ação sensível.
+ */
 enum class FolioStatus {
     OPEN,
     CLOSED,
@@ -288,7 +308,10 @@ data class TransactionCodeSummary(
     val active: Boolean,
 )
 
-/** Uma conta com o saldo: a soma dos lançamentos menos o recebido (pagamentos menos reembolsos, desde a E08). */
+/**
+ * Uma conta com o saldo: a soma dos lançamentos menos o recebido (pagamentos menos reembolsos, desde a E08).
+ * [closedOn]: a data operacional do encerramento corrente (nula na conta aberta; M3 E10).
+ */
 data class FolioSummary(
     val id: FolioId,
     val number: DocumentNumber,
@@ -298,7 +321,26 @@ data class FolioSummary(
     val status: FolioStatus,
     val openedOn: LocalDate,
     val balance: Money,
+    val closedOn: LocalDate? = null,
 )
+
+/**
+ * O saldo de um dono (M3 E10, RN-06): as contas dele, da mais antiga para a mais nova, e a soma dos saldos. Sem conta,
+ * o total é zero e o dono está quitado.
+ */
+data class OwnerBalance(
+    val owner: FolioOwner,
+    val folios: List<FolioSummary>,
+) {
+    /** A soma dos saldos das contas (informativa: a quitação é por conta, [settled]). */
+    val total: Money get() = folios.fold(Money.ZERO) { sum, folio -> sum + folio.balance }
+
+    /** Todas as contas com saldo zero (RN-06: o check-out exige saldo zero em todas as contas da reserva). */
+    val settled: Boolean get() = folios.all { it.balance.isZero() }
+
+    /** As contas ainda abertas. */
+    val openFolios: List<FolioSummary> get() = folios.filter { it.status == FolioStatus.OPEN }
+}
 
 /**
  * Uma conta nova. [owner] com `WALK_IN` aceita id nulo (o dono passa a ser a própria conta); os outros tipos exigem

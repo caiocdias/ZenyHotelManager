@@ -169,7 +169,7 @@ data class FolioUpdateRequest(
     val creditLimit: Money? = null,
 )
 
-@Schema(description = "Uma conta, com o saldo (a soma dos lançamentos).")
+@Schema(description = "Uma conta, com o saldo (a soma dos lançamentos menos o recebido).")
 data class FolioResponse(
     val id: UUID,
     @field:Schema(description = "Número legível da conta, como `C-2026-000123`.")
@@ -186,6 +186,15 @@ data class FolioResponse(
     val openedAt: Instant,
     val openedBy: UUID?,
     val updatedAt: Instant,
+    @field:Schema(description = "Data operacional do encerramento corrente (nula na conta aberta).")
+    val closedOn: LocalDate? = null,
+    val closedAt: Instant? = null,
+    @field:Schema(description = "Quem encerrou (nulo: o sistema, ou a conta aberta).")
+    val closedBy: UUID? = null,
+    @field:Schema(description = "Data operacional da última reabertura (fica depois de um novo encerramento).")
+    val reopenedOn: LocalDate? = null,
+    val reopenedAt: Instant? = null,
+    val reopenedBy: UUID? = null,
 ) {
     companion object {
         fun of(view: FolioView) =
@@ -202,6 +211,12 @@ data class FolioResponse(
                 view.openedAt,
                 view.openedBy?.value,
                 view.updatedAt,
+                view.closedOn,
+                view.closedAt,
+                view.closedBy?.value,
+                view.reopenedOn,
+                view.reopenedAt,
+                view.reopenedBy?.value,
             )
     }
 }

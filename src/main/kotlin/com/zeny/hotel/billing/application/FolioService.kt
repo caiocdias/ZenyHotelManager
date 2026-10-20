@@ -8,6 +8,7 @@ import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.domain.CorrectionLimit
 import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.FolioReopening
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.PostingApproval
 import com.zeny.hotel.billing.domain.PostingCorrections
@@ -42,6 +43,7 @@ class FolioService(
     private val operations: BillingOperations,
     private val store: BillingStore,
     private val ledger: PostingLedger,
+    private val reopenings: FolioReopenings,
     private val directory: BillingDirectory,
     private val authorization: Authorization,
     private val audit: AuditContext,
@@ -91,6 +93,50 @@ class FolioService(
         operations.requirePayer(folio, payerCompanyId)
         audit.track(BillingAudit.FOLIO, id.value) { folio.auditState() }
         if (folio.update(payerCompanyId, creditLimit, clock.instant()).isNotEmpty()) store.flush()
+        return operations.view(folio)
+    }
+
+    /**
+     * Encerra a conta (RF-CTA-11, M3 E10) com `billing.folios.manage`: só com saldo zero e sem caução em aberto
+     * ([BillingOperations.closeFolio]).
+     */
+    @Audited(BillingAudit.CLOSE_FOLIO)
+    @Transactional
+    fun close(id: FolioId): FolioView {
+        authorization.require(BillingPermissions.FOLIOS_MANAGE)
+        return operations.closeFolio(id)
+    }
+
+    /**
+     * Reabre a conta encerrada (RF-CTA-11, RF-ACS-08, M3 E10): ação **sensível** (`billing.folios.reopen`, sem
+     * limite): sem a permissão, `403 APPROVAL_REQUIRED` (ação `billing.folio.reopen`, recurso `billing.folio:<id>`),
+     * concluída com `X-Approval-Token`. Exige antes `billing.folios.read` (sem ela, `403 PERMISSION_DENIED`, antes de
+     * ler a conta) e o motivo; a conta travada precisa estar encerrada (`409 FOLIO_NOT_CLOSED`), conferido antes da
+     * aprovação. O motivo fica na reabertura (`billing.folio_reopening`), fora da trilha.
+     */
+    @Audited(BillingAudit.REOPEN_FOLIO)
+    @Transactional
+    fun reopen(
+        id: FolioId,
+        reason: String?,
+        approvalToken: String?,
+    ): FolioView {
+        authorization.require(BillingPermissions.FOLIOS_READ)
+        val text = FolioReopening.reason(reason)
+        val folio = store.folioForUpdate(id) ?: throw folioNotFound()
+        folio.requireClosed()
+        val result =
+            authorization.requireOrApproval(
+                SensitiveAction(BillingAudit.REOPEN_FOLIO, BillingPermissions.FOLIOS_REOPEN, "billing.folio:$id"),
+                approvalToken,
+            )
+        val approval =
+            (result as? SensitiveAuthorization.ByApproval)?.let { PostingApproval(it.approvalId, it.approverId) }
+        audit.track(BillingAudit.FOLIO, id.value) { folio.auditState() }
+        val reopening = folio.reopen(text, operations.stamp(), approval)
+        store.flush()
+        audit.created(BillingAudit.FOLIO_REOPENING, reopening.id) { reopening.auditState() }
+        reopenings.add(reopening)
         return operations.view(folio)
     }
 }

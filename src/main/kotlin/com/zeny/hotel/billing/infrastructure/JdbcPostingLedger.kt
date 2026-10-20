@@ -269,8 +269,8 @@ class JdbcPostingLedger(
 
 /**
  * As tabelas *append-only* do módulo (RN-03), que a partida confere ([AppendOnlyTables]): os lançamentos e, desde a
- * E07, os movimentos de caixa e as contagens do fechamento, desde a E08, os pagamentos e reembolsos e, desde a E09,
- * as liberações de caução.
+ * E07, os movimentos de caixa e as contagens do fechamento, desde a E08, os pagamentos e reembolsos, desde a E09,
+ * as liberações de caução e, desde a E10, as reaberturas de contas.
  */
 @Configuration(proxyBeanMethods = false)
 class BillingTablesConfiguration {
@@ -283,6 +283,7 @@ class BillingTablesConfiguration {
                 CASHIER_SHIFT_COUNT_TABLE,
                 PAYMENT_TABLE,
                 PRE_AUTHORIZATION_RELEASE_TABLE,
+                FOLIO_REOPENING_TABLE,
             )
         }
 
@@ -292,5 +293,6 @@ class BillingTablesConfiguration {
         const val CASHIER_SHIFT_COUNT_TABLE = "billing.cashier_shift_count"
         const val PAYMENT_TABLE = "billing.payment"
         const val PRE_AUTHORIZATION_RELEASE_TABLE = "billing.card_pre_authorization_release"
+        const val FOLIO_REOPENING_TABLE = "billing.folio_reopening"
     }
 }

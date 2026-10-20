@@ -103,6 +103,15 @@ class JdbcCardPreAuthorizations(
             .update()
     }
 
+    override fun unsettledOf(folioId: FolioId): List<CardPreAuthorization> =
+        jdbc
+            .sql(
+                "SELECT * FROM billing.card_pre_authorization " +
+                    "WHERE folio_id = :folioId AND status IN ('ACTIVE', 'PARTIALLY_CAPTURED') ORDER BY id",
+            ).param("folioId", folioId.value)
+            .query { rs, _ -> rs.preAuthorization() }
+            .list()
+
     override fun row(id: CardPreAuthorizationId): CardPreAuthorizationRow? =
         jdbc
             .sql("$SELECT_ROWS WHERE a.id = :id")

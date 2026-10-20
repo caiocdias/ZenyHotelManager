@@ -712,7 +712,7 @@ class CardPreAuthorizationsApiTest(
 
     private fun closeFolio(folio: UUID) {
         owner
-            .sql("UPDATE billing.folio SET status = 'CLOSED' WHERE id = :id")
+            .sql("UPDATE billing.folio SET status = 'CLOSED', closed_on = opened_on, closed_at = now() WHERE id = :id")
             .param("id", folio)
             .update()
     }

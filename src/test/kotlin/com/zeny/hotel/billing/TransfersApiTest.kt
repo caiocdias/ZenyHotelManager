@@ -158,7 +158,11 @@ class TransfersApiTest(
             val source = openFolio()
             val target = openFolio()
             val closed = openFolio()
-            jdbc.sql("UPDATE billing.folio SET status = 'CLOSED' WHERE id = :id").param("id", closed).update()
+            jdbc
+                .sql(
+                    CLOSE_FOLIO_SQL,
+                ).param("id", closed)
+                .update()
             val id = post(source, codeId("ROOM_CHARGE"), "90.00")["id"].asString()
             val path = "/api/v1/folios/$source/postings/transfer"
             val body = mapOf("targetFolioId" to target, "postingIds" to listOf(id))
@@ -479,3 +483,7 @@ class TransfersApiTest(
         const val ROUNDS = 5
     }
 }
+
+/** Encerra a conta direto no banco (sem conferir o saldo), com os dados do encerramento que o banco exige. */
+private const val CLOSE_FOLIO_SQL =
+    "UPDATE billing.folio SET status = 'CLOSED', closed_on = opened_on, closed_at = now() WHERE id = :id"

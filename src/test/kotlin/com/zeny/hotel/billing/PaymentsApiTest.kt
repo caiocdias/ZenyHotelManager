@@ -237,7 +237,11 @@ class PaymentsApiTest(
             pay(folio, cashier.auth, mapOf("method" to "BITCOIN", "amount" to "10.00")).status shouldBe 400
             pay(UuidV7.generate(), cashier.auth, mapOf("method" to "PIX", "amount" to "10.00"))
                 .problem(404, "FOLIO_NOT_FOUND")
-            owner.sql("UPDATE billing.folio SET status = 'CLOSED' WHERE id = :id").param("id", folio).update()
+            owner
+                .sql(
+                    CLOSE_FOLIO_SQL,
+                ).param("id", folio)
+                .update()
             pay(folio, cashier.auth, mapOf("method" to "PIX", "amount" to "10.00")).problem(409, "FOLIO_CLOSED")
             paymentRows(folio) shouldBe 0L
             intentRows(folio) shouldBe 0L
@@ -926,3 +930,7 @@ class PaymentsApiTest(
         val SECRET_CARD_KEYS = listOf("cvv", "cvc", "securitycode", "cardnumber", "card_number")
     }
 }
+
+/** Encerra a conta direto no banco (sem conferir o saldo), com os dados do encerramento que o banco exige. */
+private const val CLOSE_FOLIO_SQL =
+    "UPDATE billing.folio SET status = 'CLOSED', closed_on = opened_on, closed_at = now() WHERE id = :id"

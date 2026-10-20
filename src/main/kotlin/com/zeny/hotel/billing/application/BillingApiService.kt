@@ -9,6 +9,7 @@ import com.zeny.hotel.billing.FolioOwner
 import com.zeny.hotel.billing.FolioSummary
 import com.zeny.hotel.billing.NewFolio
 import com.zeny.hotel.billing.NewPosting
+import com.zeny.hotel.billing.OwnerBalance
 import com.zeny.hotel.billing.PostingSummary
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
@@ -20,12 +21,14 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Instant
+import java.util.UUID
 
 /**
  * A [BillingApi]: sem conferir permissão (quem chama já se autorizou), com as mesmas regras, trava, data operacional
  * e trilha da API HTTP ([BillingOperations]).
  */
 @Service
+@Suppress("TooManyFunctions") // a API pública inteira do módulo (BillingApi)
 class BillingApiService(
     private val operations: BillingOperations,
     private val store: BillingStore,
@@ -46,9 +49,23 @@ class BillingApiService(
     override fun folio(id: FolioId): FolioSummary? = store.folio(id)?.let { operations.view(it).summary() }
 
     @Transactional(readOnly = true)
-    override fun foliosOf(owner: FolioOwner): List<FolioSummary> {
-        val folios =
-            store.folios(directory.folios(FolioFilter(owner.type, owner.id), null, MAX_FOLIOS_PER_OWNER)).reversed()
+    override fun foliosOf(owner: FolioOwner): List<FolioSummary> = summariesOf(owner)
+
+    @Transactional(readOnly = true)
+    override fun balanceOf(owner: FolioOwner): OwnerBalance = OwnerBalance(owner, summariesOf(owner))
+
+    @Audited(BillingAudit.CLOSE_FOLIO)
+    @Transactional
+    override fun closeFolio(id: FolioId): FolioSummary = operations.closeFolio(id).summary()
+
+    /** Todas as contas do dono (em páginas), da mais antiga para a mais nova, com o saldo. */
+    private fun summariesOf(owner: FolioOwner): List<FolioSummary> {
+        val ids = mutableListOf<UUID>()
+        do {
+            val page = directory.folios(FolioFilter(owner.type, owner.id), ids.lastOrNull(), FOLIO_PAGE)
+            ids += page
+        } while (page.size == FOLIO_PAGE)
+        val folios = store.folios(ids).reversed()
         val balances = ledger.balances(folios.map { it.id })
         return folios.map { it.view(balances[it.id] ?: Money.ZERO).summary() }
     }
@@ -98,7 +115,7 @@ class BillingApiService(
     ): List<CardPreAuthorizationSummary> = preAuthorizations.expiringBetween(from, to)
 
     private companion object {
-        /** Teto da leitura das contas de um dono (uma reserva tem poucas). */
-        const val MAX_FOLIOS_PER_OWNER = 200
+        /** O tamanho das páginas da leitura das contas de um dono (uma reserva tem poucas). */
+        const val FOLIO_PAGE = 200
     }
 }

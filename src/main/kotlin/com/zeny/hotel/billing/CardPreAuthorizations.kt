@@ -36,7 +36,10 @@ enum class CardPreAuthorizationStatus {
     /** A sobra foi liberada (encerrada). */
     RELEASED,
 
-    /** Venceu sem ser capturada por inteiro nem liberada (calculada na leitura; encerrada). */
+    /**
+     * Venceu sem ser capturada por inteiro nem liberada (calculada na leitura): não captura mais, mas a sobra ainda
+     * pode ser liberada (decisão do usuário em 2026-10-20) e não impede o encerramento da conta (M3 E10).
+     */
     EXPIRED,
 }
 

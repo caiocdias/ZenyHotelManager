@@ -221,6 +221,33 @@ class BillingTestSupport(
 
     fun JsonNode.uuid(field: String): UUID = UUID.fromString(this[field].asString())
 
+    /** Abre, como [auth], um turno de caixa num ponto de caixa novo (cadastrado pelo administrador); devolve o id. */
+    fun openShift(
+        auth: RequestPostProcessor,
+        float: String = "0.00",
+    ): UUID {
+        val cashPoint =
+            call(
+                POST,
+                "/api/v1/cash-points",
+                admin,
+                mapOf("name" to "Caixa ${UuidV7.generate().toString().takeLast(SUFFIX_LENGTH)}"),
+            ).expect(201).uuid("id")
+        return call(
+            POST,
+            "/api/v1/cashier-shifts",
+            auth,
+            mapOf("cashPointId" to cashPoint, "openingFloat" to float),
+        ).expect(201).uuid("id")
+    }
+
+    /** Recebe na conta como [auth] (no turno aberto dele). */
+    fun pay(
+        folio: UUID,
+        auth: RequestPostProcessor,
+        body: Map<String, Any?>,
+    ): MockHttpServletResponse = call(POST, "/api/v1/folios/$folio/payments", auth, body)
+
     fun balance(folio: UUID): String = folio(folio)["balance"].asString()
 
     fun postings(folio: UUID): List<JsonNode> = listAll("/api/v1/folios/$folio/postings")
@@ -250,6 +277,8 @@ class BillingTestSupport(
     }
 
     companion object {
+        private const val SUFFIX_LENGTH = 8
+
         fun definition(code: PermissionCode) = BillingPermissions.permissions.single { it.code == code }
     }
 }

@@ -7,10 +7,12 @@ import com.zeny.hotel.billing.PostingId
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.application.FolioFilter
 import com.zeny.hotel.billing.application.FolioService
+import com.zeny.hotel.billing.application.FolioStatementService
 import com.zeny.hotel.billing.application.FolioView
 import com.zeny.hotel.billing.application.PostingService
 import com.zeny.hotel.billing.application.PostingTransferService
 import com.zeny.hotel.billing.application.PostingView
+import com.zeny.hotel.billing.application.StatementAudience
 import com.zeny.hotel.billing.application.TransferView
 import com.zeny.hotel.guests.CompanyId
 import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
@@ -60,7 +62,8 @@ private const val TRANSFER_RULES =
 
 /**
  * Contas e lançamentos (RF-CTA-01 a 03 e 05). Consultar exige `billing.folios.read`; abrir e trocar o pagador e o
- * limite, `billing.folios.manage`; lançar, `billing.postings.create`; estornar e ajustar são sensíveis
+ * limite, `billing.folios.manage` (e encerrar, desde a E10; reabrir é sensível, `billing.folios.reopen`); lançar,
+ * `billing.postings.create`; estornar e ajustar são sensíveis
  * (`billing.postings.reverse`/`adjust`, com limite); transferir e dividir, `billing.postings.transfer`. Os POSTs que
  * criam conta ou lançamento exigem `Idempotency-Key`. Lançamentos nunca mudam nem são apagados (RN-03).
  */
@@ -72,6 +75,7 @@ class FoliosController(
     private val folios: FolioService,
     private val postings: PostingService,
     private val transfers: PostingTransferService,
+    private val statements: FolioStatementService,
 ) {
     @GetMapping
     @Operation(
@@ -130,7 +134,8 @@ class FoliosController(
         summary = "Trocar o pagador e o limite de crédito",
         description =
             "O dono não muda. Exige `billing.folios.manage` e o `If-Match` (ausente: 428; versão diferente: 412). " +
-                "Pagador novo inexistente: 400 `UNKNOWN_COMPANY`; desativado: 422 `COMPANY_INACTIVE`.",
+                "Pagador novo inexistente: 400 `UNKNOWN_COMPANY`; desativado: 422 `COMPANY_INACTIVE`; conta " +
+                "encerrada: 409 `FOLIO_CLOSED`.",
     )
     fun update(
         @PathVariable id: UUID,
@@ -145,6 +150,59 @@ class FoliosController(
                 request.creditLimit,
             ),
         )
+
+    @PostMapping("/{id}/close")
+    @Operation(
+        operationId = "closeFolio",
+        summary = "Encerrar uma conta",
+        description =
+            "RF-CTA-11: encerra a conta só com saldo zero (diferente de zero, inclusive credor: 409 " +
+                "`FOLIO_BALANCE_NOT_ZERO`, com o saldo em `balance` no problema) e sem caução ativa ou parcialmente " +
+                "capturada ainda não vencida (409 `FOLIO_HAS_ACTIVE_PRE_AUTHORIZATION`, com os ids em " +
+                "`preAuthorizationIds`: capture ou libere antes; a vencida não impede). Já encerrada: 409 " +
+                "`FOLIO_CLOSED`. Exige `billing.folios.manage`. Sem corpo. Encerrada, a conta não recebe lançamento, " +
+                "pagamento, reembolso nem caução e não troca o pagador nem o limite (409 `FOLIO_CLOSED`); a " +
+                "liberação de caução continua valendo.",
+    )
+    fun close(
+        @PathVariable id: UUID,
+    ): ResponseEntity<FolioResponse> = ok(folios.close(FolioId(id)))
+
+    @PostMapping("/{id}/reopen")
+    @Operation(
+        operationId = "reopenFolio",
+        summary = "Reabrir uma conta encerrada",
+        description =
+            "RF-CTA-11: ação **sensível** (`billing.folios.reopen`, sem limite de valor): sem a permissão, 403 " +
+                "`APPROVAL_REQUIRED` (com `action` `billing.folio.reopen`, `permission` e `resourceRef` " +
+                "`billing.folio:<id>`); repita com o `X-Approval-Token` de `POST /api/v1/auth/approvals`. Exige " +
+                "antes `billing.folios.read` (sem ela, 403 `PERMISSION_DENIED`) e o motivo (até 500; fica na " +
+                "reabertura, visível no extrato interno, fora da trilha). Conta aberta: 409 `FOLIO_NOT_CLOSED`, " +
+                "conferido antes da aprovação.",
+    )
+    fun reopen(
+        @PathVariable id: UUID,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+        @Valid @RequestBody request: FolioReopenRequest,
+    ): ResponseEntity<FolioResponse> = ok(folios.reopen(FolioId(id), request.reason, approvalToken))
+
+    @GetMapping("/{id}/statement")
+    @Operation(
+        operationId = "getFolioStatement",
+        summary = "Extrato da conta",
+        description =
+            "RF-CTA-12 (dados; o PDF vem no M5): lançamentos (inclusive estornos, ajustes, transferências e taxa de " +
+                "serviço) e pagamentos (recebimentos, depósitos, capturas de caução e reembolsos) agrupados por " +
+                "data operacional, com os totais do dia, o saldo acumulado e as cauções. A soma de `amount` das " +
+                "linhas é exatamente o saldo. `audience=GUEST`: a prévia para o hóspede, sem usuários, motivos, " +
+                "aprovações, NSU, autorização nem outros dados internos (`internal` nulo, sem reaberturas). Exige " +
+                "`billing.folios.read`.",
+    )
+    fun statement(
+        @PathVariable id: UUID,
+        @Parameter(description = "`INTERNAL` (padrão) ou `GUEST`.")
+        @RequestParam(defaultValue = "INTERNAL") audience: StatementAudience,
+    ): FolioStatementResponse = FolioStatementResponse.of(statements.statement(FolioId(id), audience))
 
     @GetMapping("/{id}/postings")
     @Operation(

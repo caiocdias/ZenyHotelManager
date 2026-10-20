@@ -9,6 +9,7 @@ import com.zeny.hotel.billing.RoutingRuleId
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.FolioReopening
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.RoutingRule
 import com.zeny.hotel.billing.domain.TransactionCode
@@ -143,6 +144,14 @@ data class PostingRow(
     val transferredFromFolioId: FolioId? = null,
     val serviceChargeId: PostingId? = null,
 )
+
+/** As reaberturas de contas (M3 E10), só inseridas e lidas. */
+interface FolioReopenings {
+    fun add(reopening: FolioReopening)
+
+    /** As reaberturas da conta, em ordem de registro. */
+    fun of(folioId: FolioId): List<FolioReopening>
+}
 
 /** As listagens de códigos e contas (só ids e chaves do cursor). */
 interface BillingDirectory {

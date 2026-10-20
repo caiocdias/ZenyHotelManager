@@ -25,8 +25,23 @@ object BillingErrorCodes {
     /** 404: conta inexistente. */
     val FOLIO_NOT_FOUND = ErrorCode("FOLIO_NOT_FOUND")
 
-    /** 409: conta encerrada não recebe lançamento nem correção. */
+    /**
+     * 409: conta encerrada não recebe lançamento, correção, pagamento, reembolso nem caução, não troca o pagador nem o
+     * limite e não se encerra de novo (M3 E10).
+     */
     val FOLIO_CLOSED = ErrorCode("FOLIO_CLOSED")
+
+    /** 409: a conta só se encerra com saldo zero (M3 E10, RN-06); o saldo vai em `balance` no problema. */
+    val FOLIO_BALANCE_NOT_ZERO = ErrorCode("FOLIO_BALANCE_NOT_ZERO")
+
+    /**
+     * 409: a conta tem caução ativa ou parcialmente capturada ainda não vencida (M3 E10): capture ou libere antes de
+     * encerrar; os ids vão em `preAuthorizationIds` no problema.
+     */
+    val FOLIO_HAS_ACTIVE_PRE_AUTHORIZATION = ErrorCode("FOLIO_HAS_ACTIVE_PRE_AUTHORIZATION")
+
+    /** 409: só uma conta encerrada é reaberta (M3 E10). */
+    val FOLIO_NOT_CLOSED = ErrorCode("FOLIO_NOT_CLOSED")
 
     /** 400: dono da conta sem id (só `WALK_IN` aceita sem). */
     val FOLIO_OWNER_INVALID = ErrorCode("FOLIO_OWNER_INVALID")

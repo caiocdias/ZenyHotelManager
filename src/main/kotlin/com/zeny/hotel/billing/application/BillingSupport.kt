@@ -18,6 +18,7 @@ import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.billing.TransactionCodeKind
 import com.zeny.hotel.billing.TransactionCodeSummary
 import com.zeny.hotel.billing.domain.Folio
+import com.zeny.hotel.billing.domain.FolioReopening
 import com.zeny.hotel.billing.domain.Posting
 import com.zeny.hotel.billing.domain.RoutingCriteria
 import com.zeny.hotel.billing.domain.RoutingRule
@@ -57,6 +58,7 @@ object BillingAudit {
     const val CASH_MOVEMENT = "billing.cash-movement"
     const val PAYMENT = "billing.payment"
     const val CARD_PRE_AUTHORIZATION = "billing.card-pre-authorization"
+    const val FOLIO_REOPENING = "billing.folio-reopening"
 
     const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
     const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
@@ -64,6 +66,8 @@ object BillingAudit {
     const val REACTIVATE_TRANSACTION_CODE = "billing.transaction-code.reactivate"
     const val OPEN_FOLIO = "billing.folio.open"
     const val UPDATE_FOLIO = "billing.folio.update"
+    const val CLOSE_FOLIO = "billing.folio.close"
+    const val REOPEN_FOLIO = "billing.folio.reopen"
     const val CREATE_POSTING = "billing.posting.create"
     const val REVERSE_POSTING = "billing.posting.reverse"
     const val ADJUST_POSTING = "billing.posting.adjust"
@@ -133,6 +137,12 @@ data class FolioView(
     val openedBy: UserId?,
     val updatedAt: Instant,
     val version: Long,
+    val closedOn: LocalDate? = null,
+    val closedAt: Instant? = null,
+    val closedBy: UserId? = null,
+    val reopenedOn: LocalDate? = null,
+    val reopenedAt: Instant? = null,
+    val reopenedBy: UserId? = null,
 ) {
     /** Saldo acima do limite de crédito (sem limite, nunca). */
     val creditLimitExceeded: Boolean get() = creditLimit?.let { balance > it } ?: false
@@ -147,6 +157,7 @@ data class FolioView(
             status,
             openedOn,
             balance,
+            closedOn,
         )
 }
 
@@ -217,6 +228,12 @@ internal fun Folio.view(balance: Money) =
         openedBy,
         updatedAt,
         checkNotNull(version),
+        closedOn,
+        closedAt,
+        closedBy,
+        reopenedOn,
+        reopenedAt,
+        reopenedBy,
     )
 
 internal fun PostingRow.view() =
@@ -297,6 +314,24 @@ internal fun Folio.auditState(): Map<String, Any?> =
         "creditLimit" to creditLimit?.amount?.toPlainString(),
         "status" to status.name,
         "openedOn" to openedOn.toString(),
+        "closedOn" to closedOn?.toString(),
+        "closedBy" to closedBy?.toString(),
+        "reopenedOn" to reopenedOn?.toString(),
+        "reopenedBy" to reopenedBy?.toString(),
+    )
+
+/**
+ * Retrato da trilha de uma reabertura (M3 E10): ids, datas e a aprovação; sem o motivo (texto livre, H10), que fica
+ * só na reabertura.
+ */
+internal fun FolioReopening.auditState(): Map<String, Any?> =
+    mapOf(
+        "folioId" to folioId.toString(),
+        "closedOn" to closedOn.toString(),
+        "businessDate" to businessDate.toString(),
+        "reopenedBy" to reopenedBy.toString(),
+        "approvalId" to approval?.approvalId?.toString(),
+        "approvedBy" to approval?.approvedBy?.toString(),
     )
 
 /** Retrato da trilha de um lançamento: sem a descrição nem o motivo (texto livre, H10). */
