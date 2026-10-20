@@ -1,6 +1,7 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingApi
+import com.zeny.hotel.billing.CardPreAuthorizationSummary
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.CashierShiftSummary
 import com.zeny.hotel.billing.FolioId
@@ -18,6 +19,7 @@ import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import java.time.Instant
 
 /**
  * A [BillingApi]: sem conferir permissão (quem chama já se autorizou), com as mesmas regras, trava, data operacional
@@ -30,6 +32,7 @@ class BillingApiService(
     private val ledger: PostingLedger,
     private val directory: BillingDirectory,
     private val cashier: CashierStore,
+    private val preAuthorizations: CardPreAuthorizationService,
 ) : BillingApi {
     @Transactional(readOnly = true)
     override fun transactionCode(id: TransactionCodeId): TransactionCodeSummary? =
@@ -88,6 +91,11 @@ class BillingApiService(
 
     @Transactional(readOnly = true)
     override fun cashierShift(id: CashierShiftId): CashierShiftSummary? = cashier.shift(id)?.summary()
+
+    override fun cardPreAuthorizationsExpiring(
+        from: Instant,
+        to: Instant,
+    ): List<CardPreAuthorizationSummary> = preAuthorizations.expiringBetween(from, to)
 
     private companion object {
         /** Teto da leitura das contas de um dono (uma reserva tem poucas). */

@@ -117,7 +117,8 @@ data class PaymentResponse(
     val folioId: UUID,
     @field:Schema(
         description =
-            "`PAYMENT` (recebimento) ou `REFUND` (reembolso de um recebimento). A lista pode crescer " +
+            "`PAYMENT` (recebimento, inclusive a captura de uma caução, com `cardPreAuthorizationId`) ou `REFUND` " +
+                "(reembolso de um recebimento). A lista pode crescer " +
                 "(`x-extensible-enum`): trate um valor desconhecido sem falhar.",
     )
     @field:ExtensibleEnum
@@ -158,6 +159,8 @@ data class PaymentResponse(
     val refundedAmount: Money?,
     @field:Schema(description = "Só no recebimento: o que ainda é reembolsável (o valor menos os reembolsos).")
     val refundableAmount: Money?,
+    @field:Schema(description = "Só no recebimento que capturou uma caução: a caução capturada.")
+    val cardPreAuthorizationId: UUID?,
 ) {
     companion object {
         fun of(view: PaymentView) =
@@ -185,6 +188,7 @@ data class PaymentResponse(
                 view.approvedBy?.value,
                 view.refunded,
                 view.refundable,
+                view.preAuthorizationId?.value,
             )
     }
 }

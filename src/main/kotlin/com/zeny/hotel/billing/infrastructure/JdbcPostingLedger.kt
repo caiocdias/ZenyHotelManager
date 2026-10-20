@@ -269,18 +269,28 @@ class JdbcPostingLedger(
 
 /**
  * As tabelas *append-only* do módulo (RN-03), que a partida confere ([AppendOnlyTables]): os lançamentos e, desde a
- * E07, os movimentos de caixa e as contagens do fechamento e, desde a E08, os pagamentos e reembolsos.
+ * E07, os movimentos de caixa e as contagens do fechamento, desde a E08, os pagamentos e reembolsos e, desde a E09,
+ * as liberações de caução.
  */
 @Configuration(proxyBeanMethods = false)
 class BillingTablesConfiguration {
     @Bean
     fun billingAppendOnlyTables(): AppendOnlyTables =
-        AppendOnlyTables { setOf(POSTING_TABLE, CASH_MOVEMENT_TABLE, CASHIER_SHIFT_COUNT_TABLE, PAYMENT_TABLE) }
+        AppendOnlyTables {
+            setOf(
+                POSTING_TABLE,
+                CASH_MOVEMENT_TABLE,
+                CASHIER_SHIFT_COUNT_TABLE,
+                PAYMENT_TABLE,
+                PRE_AUTHORIZATION_RELEASE_TABLE,
+            )
+        }
 
     companion object {
         const val POSTING_TABLE = "billing.posting"
         const val CASH_MOVEMENT_TABLE = "billing.cash_movement"
         const val CASHIER_SHIFT_COUNT_TABLE = "billing.cashier_shift_count"
         const val PAYMENT_TABLE = "billing.payment"
+        const val PRE_AUTHORIZATION_RELEASE_TABLE = "billing.card_pre_authorization_release"
     }
 }

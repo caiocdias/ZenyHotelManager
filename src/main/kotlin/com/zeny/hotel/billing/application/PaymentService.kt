@@ -2,6 +2,7 @@ package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingErrorCodes
 import com.zeny.hotel.billing.BillingPermissions
+import com.zeny.hotel.billing.CardPreAuthorizationId
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PaymentId
@@ -91,6 +92,7 @@ data class PaymentView(
     val approvedBy: UserId?,
     val refunded: Money?,
     val refundable: Money?,
+    val preAuthorizationId: CardPreAuthorizationId? = null,
 )
 
 /**
@@ -298,6 +300,7 @@ internal fun PaymentRow.view() =
         payment.approval?.approvedBy,
         refunded,
         refunded?.let { payment.amount - it },
+        payment.preAuthorizationId,
     )
 
 /**
@@ -316,6 +319,7 @@ internal fun Payment.auditState(): Map<String, Any?> =
         "cashierShiftId" to shiftId.toString(),
         "paymentIntentId" to paymentIntentId?.toString(),
         "refundOfId" to refundOfId?.toString(),
+        "cardPreAuthorizationId" to preAuthorizationId?.toString(),
         "businessDate" to businessDate.toString(),
         "approvalId" to approval?.approvalId?.toString(),
         "approvedBy" to approval?.approvedBy?.toString(),

@@ -18,7 +18,7 @@ value class PaymentId(
 
 /**
  * Tipo do registro de pagamento na conta (RF-CTA-06 e 15, M3 E08): o recebimento e a devolução vinculada a ele. No
- * contrato, nas respostas, é `x-extensible-enum` (a captura de caução da E09 pode acrescentar um tipo).
+ * contrato, nas respostas, é `x-extensible-enum`. A captura de uma caução (E09) é um `PAYMENT` vinculado à caução.
  */
 enum class PaymentType {
     /** Recebimento (diminui o saldo da conta; entra no esperado do turno de quem recebe). */

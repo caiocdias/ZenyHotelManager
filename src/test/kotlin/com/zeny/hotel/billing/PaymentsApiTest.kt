@@ -699,7 +699,12 @@ class PaymentsApiTest(
                         .filter { PROPERTY_KEY.containsMatchIn(it) }
                         .map { it.substringBefore(':').lowercase() }
                         .toSet()
-                keys.filter { it.startsWith("card") } shouldContainExactlyInAnyOrder listOf("cardbrand", "cardlast4")
+                withClue(
+                    "além da bandeira e dos últimos 4, só o vínculo e o schema da caução (E09)",
+                ) {
+                    keys.filter { it.startsWith("card") } shouldContainExactlyInAnyOrder
+                        listOf("cardbrand", "cardlast4", "cardpreauthorizationid", "cardpreauthorizationresponse")
+                }
                 keys.filter { key -> key == "pan" || SECRET_CARD_KEYS.any { key.contains(it) } } shouldBe emptyList()
             }
         }

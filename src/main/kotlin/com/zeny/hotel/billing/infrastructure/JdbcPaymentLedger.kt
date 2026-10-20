@@ -1,5 +1,6 @@
 package com.zeny.hotel.billing.infrastructure
 
+import com.zeny.hotel.billing.CardPreAuthorizationId
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PaymentId
@@ -36,10 +37,11 @@ class JdbcPaymentLedger(
                 """
                 INSERT INTO billing.payment (id, folio_id, payment_type, method, amount, tendered, change_given, deposit,
                     nsu, authorization_code, card_brand, card_last4, payment_intent_id, refund_of_id, reason,
-                    cashier_shift_id, business_date, received_at, received_by, approval_id, approved_by)
+                    cashier_shift_id, business_date, received_at, received_by, approval_id, approved_by,
+                    card_pre_authorization_id)
                 VALUES (:id, :folioId, :type, :method, :amount, :tendered, :change, :deposit, :nsu, :authorization,
                     :brand, :last4, :intentId, :refundOf, :reason, :shiftId, :businessDate, :receivedAt, :receivedBy,
-                    :approvalId, :approvedBy)
+                    :approvalId, :approvedBy, :preAuthorizationId)
                 """.trimIndent(),
             ).param("id", payment.id.value)
             .param("folioId", payment.folioId.value)
@@ -62,6 +64,7 @@ class JdbcPaymentLedger(
             .param("receivedBy", payment.receivedBy.value)
             .param("approvalId", payment.approval?.approvalId)
             .param("approvedBy", payment.approval?.approvedBy?.value)
+            .param("preAuthorizationId", payment.preAuthorizationId?.value)
             .update()
     }
 
@@ -160,6 +163,7 @@ class JdbcPaymentLedger(
             getObject("approval_id", UUID::class.java)?.let {
                 PostingApproval(it, UserId(getObject("approved_by", UUID::class.java)))
             },
+            getObject("card_pre_authorization_id", UUID::class.java)?.let(::CardPreAuthorizationId),
         )
 
     private companion object {

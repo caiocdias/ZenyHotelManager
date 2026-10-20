@@ -1,12 +1,14 @@
 package com.zeny.hotel.billing.domain
 
 import com.zeny.hotel.billing.BillingErrorCodes
+import com.zeny.hotel.billing.CardPreAuthorizationId
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PaymentId
 import com.zeny.hotel.billing.PaymentMethod
 import com.zeny.hotel.billing.PaymentType
 import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.sum
@@ -43,20 +45,26 @@ data class PaymentReferences(
          * Confere e normaliza (maiúsculas, sem espaços nas pontas; vazio vira nulo) os dados da transação para a
          * [method]: no dinheiro, nenhum; NSU e autorização com até 20 letras e dígitos e no máximo 12 dígitos; bandeira
          * (só letras e espaços, até 20) e últimos dígitos (exatamente 4) só no cartão. Fora disso,
-         * `400 PAYMENT_INVALID` com o campo.
+         * `400 PAYMENT_INVALID` (ou o [errorCode] de quem chama, como a caução) com o campo.
          */
-        @Suppress("ThrowsCount") // uma recusa por campo
+        @Suppress("ThrowsCount", "LongParameterList") // uma recusa por campo; os dados e o código da recusa
         fun of(
             method: PaymentMethod,
             nsu: String?,
             authorizationCode: String?,
             cardBrand: String? = null,
             cardLast4: String? = null,
+            errorCode: ErrorCode = BillingErrorCodes.PAYMENT_INVALID,
         ): PaymentReferences {
+            fun invalid(
+                field: String,
+                message: String,
+            ) = BillingRules.invalid(errorCode, field, message)
+
             val references =
                 PaymentReferences(
-                    reference("nsu", normalize(nsu)),
-                    reference("authorizationCode", normalize(authorizationCode)),
+                    reference("nsu", normalize(nsu), errorCode),
+                    reference("authorizationCode", normalize(authorizationCode), errorCode),
                     normalize(cardBrand)?.replace(Regex(" +"), " ")?.also {
                         if (!BRAND.matches(it)) {
                             throw invalid("cardBrand", "A bandeira do cartão usa só letras e espaços (até 20).")
@@ -90,10 +98,12 @@ data class PaymentReferences(
         private fun reference(
             field: String,
             value: String?,
+            errorCode: ErrorCode,
         ): String? {
             if (value == null) return null
             if (!REFERENCE.matches(value) || value.count(Char::isDigit) > MAX_REFERENCE_DIGITS) {
-                throw invalid(
+                throw BillingRules.invalid(
+                    errorCode,
                     field,
                     "`$field` aceita até 20 letras e dígitos, com no máximo 12 dígitos (nunca o número do cartão).",
                 )
@@ -212,6 +222,7 @@ data class Payment(
     val receivedAt: Instant,
     val receivedBy: UserId,
     val approval: PostingApproval?,
+    val preAuthorizationId: CardPreAuthorizationId? = null,
 ) {
     /** O troco entregue (só num recebimento em dinheiro com o valor entregue). */
     val change: Money? get() = tendered?.let { it - amount }
@@ -224,13 +235,18 @@ data class Payment(
     companion object {
         const val MAX_REASON_LENGTH = 200
 
-        /** O recebimento na conta (aberta), no turno aberto de quem recebe, da intenção já confirmada. */
+        /**
+         * O recebimento na conta (aberta), no turno aberto de quem recebe, da intenção já confirmada; numa captura de
+         * caução (E09), com a caução capturada.
+         */
+        @Suppress("LongParameterList") // os dados do recebimento
         fun receive(
             folio: Folio,
             draft: PaymentDraft,
             shift: CashierShift,
             paymentIntentId: UUID,
             stamp: PostingStamp,
+            preAuthorizationId: CardPreAuthorizationId? = null,
         ): Payment {
             folio.requireOpen()
             val receivedBy = checkNotNull(stamp.postedBy) { "Recebimento sem usuário" }
@@ -253,6 +269,7 @@ data class Payment(
                 stamp.postedAt,
                 receivedBy,
                 null,
+                preAuthorizationId,
             )
         }
 

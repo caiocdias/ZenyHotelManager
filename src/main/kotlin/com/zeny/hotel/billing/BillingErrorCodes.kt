@@ -164,4 +164,26 @@ object BillingErrorCodes {
 
     /** 422: o reembolso passa do que ainda é reembolsável (o valor pago menos os reembolsos anteriores). */
     val REFUND_EXCEEDS_REFUNDABLE = ErrorCode("REFUND_EXCEEDS_REFUNDABLE")
+
+    /**
+     * 400: caução, captura ou consulta fora do formato (com o campo): valor fora de 0,01 a 1.000.000,00, validade que
+     * não está no futuro ou passa de 90 dias, autorização ausente, NSU, autorização, bandeira ou últimos dígitos fora
+     * do formato (as regras do pagamento: nunca o número do cartão), período com o fim antes do início (M3 E09).
+     */
+    val PRE_AUTHORIZATION_INVALID = ErrorCode("PRE_AUTHORIZATION_INVALID")
+
+    /** 404: caução inexistente nesta conta. */
+    val PRE_AUTHORIZATION_NOT_FOUND = ErrorCode("PRE_AUTHORIZATION_NOT_FOUND")
+
+    /** 409: a caução já foi capturada por inteiro ou liberada (não aceita captura nem liberação). */
+    val PRE_AUTHORIZATION_SETTLED = ErrorCode("PRE_AUTHORIZATION_SETTLED")
+
+    /**
+     * 422: a caução venceu (agora ≥ a validade) sem ser capturada por inteiro nem liberada: não é mais capturada (a
+     * sobra ainda pode ser liberada).
+     */
+    val PRE_AUTHORIZATION_EXPIRED = ErrorCode("PRE_AUTHORIZATION_EXPIRED")
+
+    /** 422: a captura passa do que ainda está autorizado (o autorizado menos as capturas anteriores). */
+    val CAPTURE_EXCEEDS_AUTHORIZED = ErrorCode("CAPTURE_EXCEEDS_AUTHORIZED")
 }

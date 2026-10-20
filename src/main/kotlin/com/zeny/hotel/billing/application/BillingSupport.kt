@@ -56,6 +56,7 @@ object BillingAudit {
     const val CASHIER_SHIFT = "billing.cashier-shift"
     const val CASH_MOVEMENT = "billing.cash-movement"
     const val PAYMENT = "billing.payment"
+    const val CARD_PRE_AUTHORIZATION = "billing.card-pre-authorization"
 
     const val CREATE_TRANSACTION_CODE = "billing.transaction-code.create"
     const val UPDATE_TRANSACTION_CODE = "billing.transaction-code.update"
@@ -82,6 +83,9 @@ object BillingAudit {
     const val RECORD_CASH_MOVEMENT = "billing.cash-movement.record"
     const val RECEIVE_PAYMENT = "billing.payment.receive"
     const val REFUND_PAYMENT = "billing.payment.refund"
+    const val REGISTER_PRE_AUTHORIZATION = "billing.card-pre-authorization.register"
+    const val CAPTURE_PRE_AUTHORIZATION = "billing.card-pre-authorization.capture"
+    const val RELEASE_PRE_AUTHORIZATION = "billing.card-pre-authorization.release"
 }
 
 /** Um código de lançamento lido. */

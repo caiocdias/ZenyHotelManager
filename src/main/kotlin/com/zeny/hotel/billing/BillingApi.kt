@@ -17,7 +17,8 @@ import java.util.UUID
  * lançar nelas, e ler códigos e contas. **Não confere permissão** (quem chama já se autorizou); as escritas são
  * auditadas (`billing.folio.open`, `billing.posting.create`) em nome do ator da requisição corrente, ou do sistema
  * fora de uma requisição. Estorno e ajuste não estão aqui: são ações sensíveis de quem opera, pela API HTTP. Desde a
- * E07, também o turno de caixa aberto do usuário ([requireOpenShift]), que os recebimentos exigem.
+ * E07, também o turno de caixa aberto do usuário ([requireOpenShift]), que os recebimentos exigem, e, desde a E09, as
+ * cauções a vencer ([cardPreAuthorizationsExpiring]).
  */
 interface BillingApi {
     /** O código de lançamento, ativo ou não; `null` se não existe. */
@@ -76,6 +77,16 @@ interface BillingApi {
 
     /** O turno de caixa, aberto ou fechado; `null` se não existe. */
     fun cashierShift(id: CashierShiftId): CashierShiftSummary?
+
+    /**
+     * As cauções ainda não encerradas (nem capturadas por inteiro nem liberadas) com a validade em [from] (inclusive) a
+     * [to] (exclusive), em ordem de validade, com a situação calculada agora (`EXPIRED` as já vencidas; M3 E09): para o
+     * fechamento do dia (M6) listar e a renovação (M7). Até 1000. Não confere permissão.
+     */
+    fun cardPreAuthorizationsExpiring(
+        from: Instant,
+        to: Instant,
+    ): List<CardPreAuthorizationSummary>
 }
 
 /** Id de um código de lançamento. */
