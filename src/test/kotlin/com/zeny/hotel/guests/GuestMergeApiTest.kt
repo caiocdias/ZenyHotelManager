@@ -422,6 +422,19 @@ class GuestMergeApiTest(
     }
 
     @Test
+    fun `the public API gives the guest preferences, those of the survivor for a merged profile`() {
+        val survivor = createWithFloor("5º andar")
+        val merged = createWithFloor("Térreo")
+        guestsApi.preferences(GuestId(merged)).shouldNotBeNull().floor shouldBe "Térreo"
+
+        with(iam) { mergeCall(survivor, merged).ok() }
+
+        guestsApi.preferences(GuestId(merged)) shouldBe GuestPreferences("5º andar", "Casal", null)
+        guestsApi.preferences(GuestId(survivor)) shouldBe GuestPreferences("5º andar", "Casal", null)
+        guestsApi.preferences(GuestId(UUID.randomUUID())).shouldBeNull()
+    }
+
+    @Test
     fun `only the manager template gets the merge permission`() {
         GuestsPermissions.permissions
             .single { it.code == GuestsPermissions.PROFILES_MERGE }
@@ -430,6 +443,14 @@ class GuestMergeApiTest(
     }
 
     // --- Apoio ----------------------------------------------------------------------------------------------
+
+    private fun createWithFloor(floor: String): UUID {
+        val preferences = mapOf("floor" to floor, "bed" to "Casal", "pillow" to null)
+        val profile = guests.profileBody(email = guests.uniqueEmail(), extra = mapOf("preferences" to preferences))
+        return UUID.fromString(
+            guests.createGuest(guests.createBody(profile = profile, documents = emptyList()))["id"].asString(),
+        )
+    }
 
     private fun create(
         email: String? = guests.uniqueEmail(),

@@ -10,7 +10,8 @@ import org.springframework.modulith.PackageInfo
  * períodos OOO, só pela `RoomsApi`, e os eventos `RoomRegistryChanged` e `OutOfOrderChanged`) e, desde a E06, `rates`
  * (preço, vendabilidade, cotação e calendário de preços e restrições, só pela `RatesApi`) e, desde a E07, `guests`
  * (hóspedes pela `GuestsApi`, o evento `GuestsMerged` e as portas de privacidade) e `billing` (a conta da reserva pela
- * `BillingApi`); não conhece `iam`.
+ * `BillingApi`) e, desde a E10, `notifications` (a notificação de realocação pela `NotificationsApi` e o catálogo de
+ * tipos, H11); não conhece `iam`.
  *
  * A raiz do pacote é a API pública: [ReservationsApi], os tipos de valor, os códigos de erro
  * ([ReservationsErrorCodes]), as permissões ([ReservationsPermissions]) e os eventos ([AvailabilityChanged],
@@ -19,6 +20,6 @@ import org.springframework.modulith.PackageInfo
 @PackageInfo
 @ApplicationModule(
     displayName = "Reservations and availability",
-    allowedDependencies = ["shared", "hotel", "rooms", "rates", "guests", "billing"],
+    allowedDependencies = ["shared", "hotel", "rooms", "rates", "guests", "billing", "notifications"],
 )
 class ReservationsModule

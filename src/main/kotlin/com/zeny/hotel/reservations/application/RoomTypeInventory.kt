@@ -6,6 +6,7 @@ import com.zeny.hotel.reservations.HistoryCancellation
 import com.zeny.hotel.reservations.HistoryNight
 import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationSummary
+import com.zeny.hotel.reservations.RoomAssignmentSummary
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
@@ -39,7 +40,30 @@ internal object ReservationsAudit {
     const val CONFIRM_RESERVATION = "reservations.reservation.confirm"
     const val EXPIRE_RESERVATION = "reservations.reservation.expire"
 
+    const val ROOM_ASSIGNMENT = "reservations.room-assignment"
+    const val ASSIGN_ROOM = "reservations.room-assignment.assign"
+    const val UNASSIGN_ROOM = "reservations.room-assignment.unassign"
+    const val SET_DO_NOT_MOVE = "reservations.room-assignment.set-do-not-move"
+    const val MARK_REALLOCATION = "reservations.room-assignment.mark-reallocation"
+
     private const val MAX_AUDITED_VALUES = 20
+
+    /**
+     * O retrato de uma alocação de UH (E10): ids, período, motivo, "não mover", a marca de realocação (o período
+     * OOO) e, se foi solta, quando e por quê. Sem dado de hóspede.
+     */
+    fun assignmentSnapshot(assignment: RoomAssignmentSummary): Map<String, Any?> =
+        mapOf(
+            "reservationId" to assignment.reservationId.toString(),
+            "roomId" to assignment.roomId.toString(),
+            "startsOn" to assignment.startsOn.toString(),
+            "endsOn" to assignment.endsOn.toString(),
+            "reason" to assignment.reason.name,
+            "doNotMove" to assignment.doNotMove,
+            "reallocationOutOfOrderId" to assignment.reallocation?.outOfOrderId?.toString(),
+            "releasedAt" to assignment.releasedAt?.toString(),
+            "releaseReason" to assignment.releaseReason?.name,
+        )
 
     /** O retrato de uma reserva agrupadora: ids, código, origem, canal e o id externo; o titular só pelo id. */
     fun bookingSnapshot(booking: BookingSummary): Map<String, Any?> =

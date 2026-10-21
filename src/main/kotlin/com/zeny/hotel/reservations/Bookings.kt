@@ -227,6 +227,11 @@ data class ReservationSummary(
     val penaltiesCharged: Money = Money.ZERO,
     /** A garantia registrada na confirmação da pré-reserva (M4 E09); nula na reserva que nunca foi pré-reserva. */
     val guarantee: ReservationGuarantee? = null,
+    /**
+     * A UH alocada (M4 E10; RF-RES-04): a alocação ativa, com "não mover" e a marca de realocação; nula sem UH alocada
+     * (a alocação é opcional até o check-in).
+     */
+    val roomAssignment: RoomAssignmentSummary? = null,
 ) {
     val dayUse: Boolean get() = arrival == departure
 

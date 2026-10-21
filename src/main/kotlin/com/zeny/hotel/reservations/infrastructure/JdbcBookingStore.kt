@@ -40,6 +40,7 @@ import com.zeny.hotel.reservations.StayGuestSummary
 import com.zeny.hotel.reservations.application.BookingStore
 import com.zeny.hotel.reservations.application.GuestRepointing
 import com.zeny.hotel.reservations.application.PendingGuaranteeRow
+import com.zeny.hotel.reservations.application.RoomAssignmentStore
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
 import com.zeny.hotel.rooms.RoomTypeId
@@ -74,6 +75,7 @@ import java.util.UUID
 class JdbcBookingStore(
     private val jdbc: JdbcClient,
     private val jsonMapper: JsonMapper,
+    private val assignments: RoomAssignmentStore,
 ) : BookingStore {
     override fun lockGuests(
         guestIds: Collection<GuestId>,
@@ -262,6 +264,7 @@ class JdbcBookingStore(
             .query { rs, _ -> reservation(rs, guests, nights) }
             .optional()
             .orElse(null)
+            ?.copy(roomAssignment = assignments.active(id))
     }
 
     override fun reservationForUpdate(id: ReservationId): ReservationSummary? {

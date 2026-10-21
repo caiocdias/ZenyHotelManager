@@ -149,6 +149,48 @@ object ReservationsErrorCodes {
     /** 400: intervalo com o fim antes do início (campo `to`). */
     val RESERVATION_PERIOD_INVALID = ErrorCode("RESERVATION_PERIOD_INVALID")
 
+    // --- Alocação de UH (M4 E10) -------------------------------------------------------------------------------------
+
+    /**
+     * 409: a reserva não aceita alocação, realocação ou desalocação na situação em que está: só uma pré-reserva ou uma
+     * confirmada (a troca de UH do hóspede em casa é da recepção, M5). O problema traz a situação em
+     * `reservationStatus`.
+     */
+    val ROOM_ASSIGNMENT_NOT_ALLOWED = ErrorCode("ROOM_ASSIGNMENT_NOT_ALLOWED")
+
+    /** 400: a UH pedida não existe (campo `roomId`). */
+    val UNKNOWN_ROOM = ErrorCode("UNKNOWN_ROOM")
+
+    /** 422: a UH pedida está desativada. */
+    val ROOM_INACTIVE = ErrorCode("ROOM_INACTIVE")
+
+    /**
+     * 422: a UH pedida é de outro tipo que o da reserva. Para usar uma UH de outro tipo, altere antes o tipo da
+     * reserva (`PUT /api/v1/reservations/{id}`), que move o inventário e reprecifica.
+     */
+    val ROOM_TYPE_MISMATCH = ErrorCode("ROOM_TYPE_MISMATCH")
+
+    /** 422: a UH pedida está em OOO em alguma noite da estadia (RN-07); o problema traz as datas em `dates`. */
+    val ROOM_OUT_OF_ORDER = ErrorCode("ROOM_OUT_OF_ORDER")
+
+    /**
+     * 409: a UH já está alocada a outra reserva em parte do período (RN-04). O banco garante a regra
+     * (`room_assignment_overlap_ex`), e a violação dele vira este mesmo código.
+     */
+    val ROOM_ALREADY_ASSIGNED = ErrorCode("ROOM_ALREADY_ASSIGNED")
+
+    /**
+     * 409: a alocação está marcada "não mover": a UH não é trocada nem solta (nem pela alteração da reserva) sem tirar
+     * a marca antes (`POST /api/v1/reservations/{id}/do-not-move` com `false`).
+     */
+    val ROOM_ASSIGNMENT_LOCKED = ErrorCode("ROOM_ASSIGNMENT_LOCKED")
+
+    /** 409: a reserva não tem UH alocada (desalocar ou marcar "não mover"). */
+    val ROOM_NOT_ASSIGNED = ErrorCode("ROOM_NOT_ASSIGNED")
+
+    /** 400: a consulta de sugestões fora do formato: mais de 20 características ou repetidas (campo `featureIds`). */
+    val ROOM_SUGGESTION_INVALID = ErrorCode("ROOM_SUGGESTION_INVALID")
+
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
     // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,

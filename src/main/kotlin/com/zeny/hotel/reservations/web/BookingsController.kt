@@ -391,43 +391,52 @@ data class ReservationResponse(
                 "não vale mais para a política copiada atual (a reserva aparece então nas garantias pendentes).",
     )
     val guarantee: ReservationGuaranteeResponse?,
+    @field:Schema(
+        description =
+            "A UH alocada (a alocação ativa, com \"não mover\" e a marca de realocação); nula sem UH alocada (a " +
+                "alocação é opcional até o check-in).",
+    )
+    val roomAssignment: RoomAssignmentResponse?,
 ) {
     companion object {
-        fun of(reservation: ReservationSummary) =
-            ReservationResponse(
-                id = reservation.id.value,
-                code = reservation.code.toString(),
-                bookingId = reservation.bookingId.value,
-                status = reservation.status,
-                provisionalUntil = reservation.provisionalUntil,
-                roomTypeId = reservation.roomTypeId.value,
-                ratePlanId = reservation.ratePlanId.value,
-                arrival = reservation.arrival,
-                departure = reservation.departure,
-                dayUse = reservation.dayUse,
-                adults = reservation.adults,
-                childAges = reservation.childAges,
-                segment = reservation.segment,
-                specialRequests = reservation.specialRequests,
-                guests = reservation.guests.map { StayGuestResponse(it.guestId.value, it.primary) },
-                nightlyRates = reservation.nightlyRates.map(NightlyRateResponse::of),
-                roomTotal = reservation.roomTotal,
-                additionalPackagesTotal = reservation.additionalPackagesTotal,
-                total = reservation.total,
-                cancellationTerms = CancellationTermsResponse.of(reservation.cancellationTerms),
-                guaranteeTerms = GuaranteeTermsResponse.of(reservation.guaranteeTerms),
-                folioId = reservation.folioId.value,
-                approvalId = reservation.approvalId,
-                approvedBy = reservation.approvedBy?.value,
-                version = reservation.version,
-                createdAt = reservation.createdAt,
-                createdBy = reservation.createdBy?.value,
-                cancellation = reservation.cancellation?.let(CancellationResponse::of),
-                penaltiesCharged = reservation.penaltiesCharged,
-                requiredDeposit = reservation.requiredDeposit,
-                depositDueOn = reservation.guaranteeTerms.depositDueOn(reservation.arrival),
-                guarantee = reservation.guarantee?.let(ReservationGuaranteeResponse::of),
-            )
+        fun of(
+            reservation: ReservationSummary,
+            roomNumber: String? = null,
+        ) = ReservationResponse(
+            id = reservation.id.value,
+            code = reservation.code.toString(),
+            bookingId = reservation.bookingId.value,
+            status = reservation.status,
+            provisionalUntil = reservation.provisionalUntil,
+            roomTypeId = reservation.roomTypeId.value,
+            ratePlanId = reservation.ratePlanId.value,
+            arrival = reservation.arrival,
+            departure = reservation.departure,
+            dayUse = reservation.dayUse,
+            adults = reservation.adults,
+            childAges = reservation.childAges,
+            segment = reservation.segment,
+            specialRequests = reservation.specialRequests,
+            guests = reservation.guests.map { StayGuestResponse(it.guestId.value, it.primary) },
+            nightlyRates = reservation.nightlyRates.map(NightlyRateResponse::of),
+            roomTotal = reservation.roomTotal,
+            additionalPackagesTotal = reservation.additionalPackagesTotal,
+            total = reservation.total,
+            cancellationTerms = CancellationTermsResponse.of(reservation.cancellationTerms),
+            guaranteeTerms = GuaranteeTermsResponse.of(reservation.guaranteeTerms),
+            folioId = reservation.folioId.value,
+            approvalId = reservation.approvalId,
+            approvedBy = reservation.approvedBy?.value,
+            version = reservation.version,
+            createdAt = reservation.createdAt,
+            createdBy = reservation.createdBy?.value,
+            cancellation = reservation.cancellation?.let(CancellationResponse::of),
+            penaltiesCharged = reservation.penaltiesCharged,
+            requiredDeposit = reservation.requiredDeposit,
+            depositDueOn = reservation.guaranteeTerms.depositDueOn(reservation.arrival),
+            guarantee = reservation.guarantee?.let(ReservationGuaranteeResponse::of),
+            roomAssignment = reservation.roomAssignment?.let { RoomAssignmentResponse.of(it, roomNumber) },
+        )
     }
 }
 
@@ -469,7 +478,7 @@ data class ReservationDetailResponse(
     companion object {
         fun of(view: ReservationView) =
             ReservationDetailResponse(
-                ReservationResponse.of(view.reservation),
+                ReservationResponse.of(view.reservation, view.roomNumber),
                 view.bookingCode,
                 view.holderGuestId.value,
                 view.restrictionAlerts.map(RestrictionAlertResponse::of),
@@ -505,7 +514,7 @@ data class BookingResponse(
                 origin = booking.origin,
                 channel = booking.channel,
                 externalId = booking.externalId,
-                reservations = booking.reservations.map(ReservationResponse::of),
+                reservations = booking.reservations.map { ReservationResponse.of(it, view.roomNumbers[it.id]) },
                 restrictionAlerts = view.restrictionAlerts.map(RestrictionAlertResponse::of),
                 version = booking.version,
                 createdAt = booking.createdAt,

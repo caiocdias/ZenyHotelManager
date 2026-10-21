@@ -36,6 +36,8 @@ import java.time.LocalDate
 data class BookingView(
     val booking: BookingSummary,
     val restrictionAlerts: List<RestrictionAlert>,
+    /** O número atual da UH alocada a cada reserva que tem uma (E10), lido na hora pela `RoomsApi`. */
+    val roomNumbers: Map<ReservationId, String> = emptyMap(),
 )
 
 /** A reserva com os alertas da lista de restrição dos hóspedes e o código da reserva agrupadora. */
@@ -44,6 +46,8 @@ data class ReservationView(
     val bookingCode: String,
     val holderGuestId: GuestId,
     val restrictionAlerts: List<RestrictionAlert>,
+    /** O número atual da UH alocada (E10), lido na hora pela `RoomsApi`; nulo sem UH alocada. */
+    val roomNumber: String? = null,
 )
 
 /**
@@ -80,7 +84,7 @@ class BookingService(
     fun booking(id: BookingId): BookingView {
         authorization.require(ReservationsPermissions.RESERVATIONS_READ)
         val booking = store.booking(id) ?: throw bookingNotFound()
-        return BookingView(booking, alerts(booking.guestIds()))
+        return BookingView(booking, alerts(booking.guestIds()), views.roomNumbers(booking.reservations))
     }
 
     @Transactional(readOnly = true)

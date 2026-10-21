@@ -8,15 +8,15 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import java.time.Duration
 
 /**
- * Espera os listeners do inventário do `reservations` (M4 E05) terminarem: a criação, a troca de tipo, a desativação
- * e a reativação de UH e cada OOO disparam um listener assíncrono que abre uma transação de escrita para refazer os
- * contadores. Enquanto ela está aberta, o download da sincronização offline (H6 do M2) não serve nenhuma mudança
- * confirmada depois de ela começar (o cursor só anda até as transações terminadas), então um teste que baixa logo
- * depois de mexer numa UH, ou logo depois de outro teste que mexeu, veria o download incompleto. Chame antes de todo
- * download e no `@BeforeEach` dos testes da sincronização.
+ * Espera os listeners do inventário do `reservations` (M4 E05) e o da marca de realocação (E10) terminarem: a
+ * criação, a troca de tipo, a desativação e a reativação de UH e cada OOO disparam um listener assíncrono que abre
+ * uma transação de escrita para refazer os contadores. Enquanto ela está aberta, o download da sincronização offline
+ * (H6 do M2) não serve nenhuma mudança confirmada depois de ela começar (o cursor só anda até as transações
+ * terminadas), então um teste que baixa logo depois de mexer numa UH, ou logo depois de outro teste que mexeu, veria
+ * o download incompleto. Chame antes de todo download e no `@BeforeEach` dos testes da sincronização.
  *
- * Conta as publicações do outbox dos listeners do inventário ainda não concluídas (sem as `FAILED`, que já saíram de
- * execução); a conclusão é gravada na transação do listener, então zero = nenhuma transação deles aberta.
+ * Conta as publicações do outbox desses listeners ainda não concluídas (sem as `FAILED`, que já saíram de execução);
+ * a conclusão é gravada na transação do listener, então zero = nenhuma transação deles aberta.
  */
 object InventoryListenersQuiescence {
     private val timeout: Duration = Duration.ofSeconds(30)
@@ -35,8 +35,9 @@ object InventoryListenersQuiescence {
         jdbc
             .sql(
                 "SELECT count(*) FROM shared.event_publication WHERE completion_date IS NULL " +
-                    "AND status IS DISTINCT FROM 'FAILED' AND listener_id LIKE :listener",
-            ).param("listener", "%reservations.application.InventoryListeners%")
+                    "AND status IS DISTINCT FROM 'FAILED' AND (listener_id LIKE :inventory OR listener_id LIKE :marks)",
+            ).param("inventory", "%reservations.application.InventoryListeners%")
+            .param("marks", "%reservations.application.ReallocationListener%")
             .query(Int::class.java)
             .single()
 

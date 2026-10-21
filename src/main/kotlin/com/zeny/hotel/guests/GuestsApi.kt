@@ -54,6 +54,13 @@ interface GuestsApi {
         date: LocalDate,
     ): Boolean?
 
+    /**
+     * As preferências do hóspede (RF-HOS-02: andar, camas e travesseiro, texto curto), para a sugestão de UH das
+     * reservas (M4 E10, H13); `null` se o perfil não existe. De um perfil mesclado, valem as do sobrevivente
+     * (seguindo a cadeia). Sem dado de contato nem documento.
+     */
+    fun preferences(id: GuestId): GuestPreferences?
+
     /** O resumo de uma empresa (pagadora de contas, tomadora de nota); `null` se não existe. */
     fun company(id: CompanyId): CompanySummary?
 

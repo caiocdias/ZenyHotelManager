@@ -7,6 +7,7 @@ import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.iam.TestUser
 import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
+import com.zeny.hotel.reservations.ReservationsNotificationTypes
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.PermissionScope.OWN
@@ -315,8 +316,10 @@ class NotificationsApiTest(
 
         val defaults = preferences(user)
         defaults.map { it["type"].asString() } shouldContainExactly
-            (NotificationsTypes.types + NotificationsExampleTypes.types + BillingNotificationTypes.types)
-                .map { it.code.value }
+            (
+                NotificationsTypes.types + NotificationsExampleTypes.types + BillingNotificationTypes.types +
+                    ReservationsNotificationTypes.types
+            ).map { it.code.value }
                 .sorted()
         defaults.forEach {
             it["inApp"].asBoolean() shouldBe true

@@ -102,6 +102,7 @@ sealed interface WaiverAuthorization {
 class ReservationViews(
     private val store: BookingStore,
     private val guests: GuestsApi,
+    private val rooms: RoomsApi,
 ) {
     fun of(reservation: ReservationSummary): ReservationView {
         val booking = checkNotNull(store.booking(reservation.bookingId)) { "Reserva sem a reserva agrupadora" }
@@ -110,8 +111,18 @@ class ReservationViews(
                 .distinct()
                 .mapNotNull { guests.restrictionAlert(it) }
                 .distinctBy { it.guestId }
-        return ReservationView(reservation, booking.code.toString(), booking.holderGuestId, alerts)
+        val roomNumber = reservation.roomAssignment?.let { rooms.room(it.roomId)?.number }
+        return ReservationView(reservation, booking.code.toString(), booking.holderGuestId, alerts, roomNumber)
     }
+
+    /** O número atual da UH alocada de cada reserva que tem uma (E10). */
+    fun roomNumbers(reservations: List<ReservationSummary>): Map<ReservationId, String> =
+        reservations
+            .mapNotNull { reservation ->
+                reservation.roomAssignment
+                    ?.let { rooms.room(it.roomId)?.number }
+                    ?.let { reservation.id to it }
+            }.toMap()
 
     fun holderOf(reservation: ReservationSummary): GuestId =
         checkNotNull(store.booking(reservation.bookingId)) { "Reserva sem a reserva agrupadora" }.holderGuestId
@@ -138,6 +149,9 @@ class ReservationViews(
  *   de depósitos da conta pela `BillingApi`.
  * - **Expiração** ([expire], E09): a pré-reserva vencida é cancelada com o motivo `EXPIRED`, sem multa.
  *
+ * A UH alocada (E10, [RoomAssignments]) acompanha: o cancelamento e a expiração a soltam; a alteração a mantém se
+ * continuar livre e sem OOO no período novo, senão a solta ("não mover" recusa a alteração); a reativação volta sem UH.
+ *
  * Cada uma grava uma entrada no histórico (*append-only*), a trilha (sem texto livre nem dado de hóspede) e o evento
  * pelo outbox ([ReservationChanged], [ReservationCancelled], [ReservationReactivated], [ReservationConfirmed]).
  */
@@ -150,6 +164,7 @@ class ReservationLifecycle(
     private val hotel: HotelApi,
     private val billing: BillingApi,
     private val inventory: RoomTypeInventory,
+    private val assignments: RoomAssignments,
     private val authorization: Authorization,
     private val currentActor: CurrentActor,
     private val audit: AuditContext,
@@ -183,7 +198,9 @@ class ReservationLifecycle(
         }
         if (restay != null) inventory.apply(restay.inventoryChanges)
         val now = now()
-        val updated = candidate.copy(version = reservation.version + 1)
+        // A UH alocada acompanha a estadia nova (E10): fica se continua livre, ou é solta; "não mover" recusa soltar.
+        val assignment = assignments.followChange(reservation, candidate, now)
+        val updated = candidate.copy(version = reservation.version + 1, roomAssignment = assignment)
         store.update(updated, now, replaceNights = updated.nightlyRates != reservation.nightlyRates)
         record(ReservationHistoryKind.CHANGE, reservation, updated, fields, approval, now)
         events.publishEvent(changed(reservation, updated, fields, now))
@@ -409,9 +426,12 @@ class ReservationLifecycle(
             .of(reservation.roomTypeId, reservation.arrival, reservation.departure, businessDate, take = false)
             ?.let { inventory.apply(listOf(it)) }
         val posting = if (penalty.due.isPositive() && !penalty.waived) postPenalty(reservation, penalty.due) else null
+        // A UH alocada é solta (E10): a reserva cancelada ou expirada não bloqueia mais a UH.
+        assignments.releaseOnCancellation(reservation, now)
         val updated =
             reservation.copy(
                 status = ReservationStatus.CANCELLED,
+                roomAssignment = null,
                 provisionalUntil = null,
                 cancellation =
                     ReservationCancellation(

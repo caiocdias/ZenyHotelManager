@@ -29,9 +29,6 @@ tags:
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
-- description: "Inventário, disponibilidade em calendário e cotação por tipo de UH\
-    \ e data; reservas agrupadoras e reservas."
-  name: reservations
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -48,6 +45,9 @@ tags:
   name: audit
 - description: Canal de tempo real (SSE).
   name: stream
+- description: "Inventário, disponibilidade em calendário e cotação por tipo de UH\
+    \ e data; reservas agrupadoras e reservas; alocação de UH."
+  name: reservations
 - description: "Setores, colaboradores, turnos e escala."
   name: staff
 - description: "Notificações internas, preferências e dispositivos de push do pró\
@@ -7257,6 +7257,53 @@ paths:
       summary: Alterar uma reserva
       tags:
       - reservations
+  /api/v1/reservations/{id}/assign-room:
+    post:
+      description: "Aloca a UH à reserva pela estadia inteira (de `arrival` a `departure`;\
+        \ no day use, a data) ou, se a reserva já tem outra UH, a troca (a anterior\
+        \ fica solta como `REALLOCATED`; com \"não mover\", 409 `ROOM_ASSIGNMENT_LOCKED`).\
+        \ Só numa pré-reserva ou confirmada (senão 409 `ROOM_ASSIGNMENT_NOT_ALLOWED`;\
+        \ a troca de UH do hóspede em casa é da recepção) com a estadia ainda por\
+        \ vir (422 `RESERVATION_STAY_ENDED`). Exige `reservations.assignments.manage`.\
+        \ A UH existe (400 `UNKNOWN_ROOM`, campo `roomId`), está ativa (422 `ROOM_INACTIVE`)\
+        \ e é do tipo da reserva (422 `ROOM_TYPE_MISMATCH`: altere antes o tipo da\
+        \ reserva), sem OOO em nenhuma noite (422 `ROOM_OUT_OF_ORDER`, com `dates`;\
+        \ o OOS não impede) e sem outra reserva alocada em parte do período (409 `ROOM_ALREADY_ASSIGNED`,\
+        \ garantido pelo banco). A saída de uma reserva e a chegada de outra no mesmo\
+        \ dia não conflitam; o day use não conflita com a saída nem com a chegada\
+        \ de outras reservas na data, só com a estadia que atravessa a data e com\
+        \ outro day use. A mesma UH de novo só troca \"não mover\", se informado.\
+        \ Devolve a reserva com a UH alocada e o `ETag` novo."
+      operationId: assignReservationRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomAssignRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alocar (ou realocar) a UH de uma reserva
+      tags:
+      - reservations
   /api/v1/reservations/{id}/cancel:
     post:
       description: "Cancela uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`).\
@@ -7394,6 +7441,44 @@ paths:
         com a garantia
       tags:
       - reservations
+  /api/v1/reservations/{id}/do-not-move:
+    post:
+      description: "Com a marca, a UH não é trocada nem solta (nem pela alteração\
+        \ da reserva) até ela sair; o cancelamento solta a UH mesmo assim. Só numa\
+        \ pré-reserva ou confirmada (senão 409 `ROOM_ASSIGNMENT_NOT_ALLOWED`; a troca\
+        \ de UH do hóspede em casa é da recepção) com a estadia ainda por vir (422\
+        \ `RESERVATION_STAY_ENDED`). Exige `reservations.assignments.manage`. Sem\
+        \ UH alocada, 409 `ROOM_NOT_ASSIGNED`."
+      operationId: setReservationRoomDoNotMove
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DoNotMoveRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Marcar ou desmarcar "não mover" a UH alocada
+      tags:
+      - reservations
   /api/v1/reservations/{id}/history:
     get:
       description: "As alterações, cancelamentos e reativações, da mais recente à\
@@ -7504,6 +7589,107 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Reativar uma reserva cancelada ou no-show
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/room-assignments:
+    get:
+      description: "Todas as alocações da reserva, da mais recente à mais antiga (a\
+        \ ativa e as soltas, com o motivo). Exige `reservations.reservations.read`.\
+        \ Inexistente: 404 `RESERVATION_NOT_FOUND`."
+      operationId: listReservationRoomAssignments
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomAssignmentsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Histórico das UHs alocadas a uma reserva
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/room-suggestions:
+    get:
+      description: "As UHs ativas do tipo da reserva, livres em todo o período e sem\
+        \ OOO em nenhuma noite, em ordem: as com OOS por último; depois, as que tê\
+        m mais das características pedidas (`featureIds`, até 20, senão 400 `ROOM_SUGGESTION_INVALID`);\
+        \ depois, o andar preferido pelo hóspede principal (pelo perfil do hóspede);\
+        \ por fim, o número. Só numa pré-reserva ou confirmada (senão 409 `ROOM_ASSIGNMENT_NOT_ALLOWED`;\
+        \ a troca de UH do hóspede em casa é da recepção) com a estadia ainda por\
+        \ vir (422 `RESERVATION_STAY_ENDED`). Exige `reservations.assignments.manage`."
+      operationId: listReservationRoomSuggestions
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: featureIds
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomSuggestionsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Sugestões de UH para uma reserva
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/unassign-room:
+    post:
+      description: "Solta a UH alocada (fica no histórico como `UNASSIGNED` e não\
+        \ bloqueia mais a UH). Só numa pré-reserva ou confirmada (senão 409 `ROOM_ASSIGNMENT_NOT_ALLOWED`;\
+        \ a troca de UH do hóspede em casa é da recepção) com a estadia ainda por\
+        \ vir (422 `RESERVATION_STAY_ENDED`). Exige `reservations.assignments.manage`.\
+        \ Sem UH alocada, 409 `ROOM_NOT_ASSIGNED`; com \"não mover\", 409 `ROOM_ASSIGNMENT_LOCKED`."
+      operationId: unassignReservationRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desalocar a UH de uma reserva
       tags:
       - reservations
   /api/v1/roles:
@@ -7796,6 +7982,47 @@ paths:
       summary: Reativar uma role
       tags:
       - iam
+  /api/v1/room-assignments/reallocation-required:
+    get:
+      description: "As reservas cuja UH alocada entrou num OOO que atinge a estadia\
+        \ (RN-07), da estadia que começa primeiro, por cursor. A marca sai quando\
+        \ a reserva é realocada, desalocada ou cancelada, ou quando o OOO deixa de\
+        \ atingir a estadia. Exige `reservations.reservations.read`."
+      operationId: listReallocationRequired
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReallocationRequiredResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reservas que requerem realocação
+      tags:
+      - reservations
   /api/v1/room-features:
     get:
       description: Em ordem de código. Exige `rooms.registry.read`.
@@ -13620,6 +13847,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageReallocationRequiredResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReallocationRequiredResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageReservationHistoryResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -14050,6 +14291,15 @@ components:
       required:
       - id
       - name
+    DoNotMoveRequest:
+      type: object
+      description: Marca ou desmarca "não mover" na UH alocada.
+      properties:
+        doNotMove:
+          type: boolean
+          nullable: true
+      required:
+      - doNotMove
     DownloadUrlResponse:
       type: object
       description: "URL assinada de download, válida até `expiresAt`."
@@ -18398,6 +18648,57 @@ components:
           format: int32
       required:
       - read
+    ReallocationMarkResponse:
+      type: object
+      description: "A marca \"requer realocação\" (RN-07): a UH alocada entrou num\
+        \ OOO que atinge a estadia. Sai sozinha se o OOO deixar de atingir a estadia\
+        \ (liberado ou alterado)."
+      properties:
+        markedAt:
+          type: string
+          format: date-time
+        outOfOrderId:
+          type: string
+          format: uuid
+          description: O período OOO (`rooms`) que provocou a marca.
+      required:
+      - markedAt
+      - outOfOrderId
+    ReallocationRequiredResponse:
+      type: object
+      description: Uma reserva com a UH alocada marcada "requer realocação" (RN-07).
+      properties:
+        arrival:
+          type: string
+          format: date
+        assignment:
+          $ref: "#/components/schemas/RoomAssignmentResponse"
+        departure:
+          type: string
+          format: date
+        reservationCode:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: "Situação da reserva. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+      required:
+      - arrival
+      - assignment
+      - departure
+      - reservationCode
+      - reservationId
+      - status
     ReceivePaymentRequest:
       type: object
       description: "Um recebimento na conta, registrado manualmente (RF-PAG-03). **Nunca**\
@@ -19012,6 +19313,10 @@ components:
           example: "123.45"
           nullable: true
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomAssignment:
+          allOf:
+          - $ref: "#/components/schemas/RoomAssignmentResponse"
+          nullable: true
         roomTotal:
           type: string
           format: decimal
@@ -19653,6 +19958,128 @@ components:
       - name
       - systemRole
       - updatedAt
+    RoomAssignRequest:
+      type: object
+      description: "A UH a alocar (ou a nova UH, numa realocação)."
+      properties:
+        doNotMove:
+          type: boolean
+          description: "Marca \"não mover\" na alocação; sem ele, falso numa UH nova\
+            \ e mantido na mesma UH."
+          nullable: true
+        reason:
+          type: string
+          description: "Motivo; sem ele, `INITIAL` na primeira alocação e `OPERATIONAL`\
+            \ numa realocação."
+          enum:
+          - INITIAL
+          - GUEST_REQUEST
+          - OUT_OF_ORDER
+          - ROOM_ISSUE
+          - OPERATIONAL
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - roomId
+    RoomAssignmentResponse:
+      type: object
+      description: "Uma alocação de UH a uma reserva: a UH, o período (de `startsOn`\
+        \ à saída `endsOn`; no day use, as duas são a data), o motivo, \"não mover\"\
+        , a marca de realocação e, se foi solta, quando, por quem e por quê."
+      properties:
+        active:
+          type: boolean
+        assignedAt:
+          type: string
+          format: date-time
+        assignedBy:
+          type: string
+          format: uuid
+          nullable: true
+        dayUse:
+          type: boolean
+        doNotMove:
+          type: boolean
+          description: "\"Não mover\": a UH não é trocada nem solta sem tirar a marca\
+            \ antes."
+        endsOn:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+        reallocation:
+          allOf:
+          - $ref: "#/components/schemas/ReallocationMarkResponse"
+          nullable: true
+        reason:
+          type: string
+          description: "`INITIAL` (a primeira alocação), `GUEST_REQUEST`, `OUT_OF_ORDER`,\
+            \ `ROOM_ISSUE` ou `OPERATIONAL`. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - INITIAL
+          - GUEST_REQUEST
+          - OUT_OF_ORDER
+          - ROOM_ISSUE
+          - OPERATIONAL
+        releaseReason:
+          type: string
+          description: "Por que deixou de valer: `UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`\
+            \ ou `RESERVATION_CHANGED`; nulo na ativa. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          nullable: true
+          x-extensible-enum:
+          - UNASSIGNED
+          - REALLOCATED
+          - RESERVATION_CANCELLED
+          - RESERVATION_CHANGED
+        releasedAt:
+          type: string
+          format: date-time
+          nullable: true
+        releasedBy:
+          type: string
+          format: uuid
+          nullable: true
+        reservationId:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+        roomNumber:
+          type: string
+          description: O número atual da UH; nulo se a UH não existe mais.
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+      required:
+      - active
+      - assignedAt
+      - dayUse
+      - doNotMove
+      - endsOn
+      - id
+      - reason
+      - reservationId
+      - roomId
+      - startsOn
+    RoomAssignmentsResponse:
+      type: object
+      description: "As alocações de uma reserva, da mais recente à mais antiga (a\
+        \ ativa e as soltas)."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomAssignmentResponse"
+      required:
+      - items
     RoomDiscrepancyResponse:
       type: object
       description: Uma discrepância vigente entre recepção e governança (RF-UH-08).
@@ -19962,6 +20389,82 @@ components:
       - roomTypeId
       - serviceFlag
       - version
+    RoomSuggestionResponse:
+      type: object
+      description: "Uma UH sugerida: livre no período e sem OOO."
+      properties:
+        current:
+          type: boolean
+          description: É a UH já alocada à reserva.
+        featureIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        floor:
+          type: string
+          nullable: true
+        matchedFeatureIds:
+          type: array
+          description: As características pedidas que a UH tem.
+          items:
+            type: string
+            format: uuid
+            description: As características pedidas que a UH tem.
+        matchesFloorPreference:
+          type: boolean
+          description: Se o andar da UH é o preferido pelo hóspede principal.
+        number:
+          type: string
+        outOfService:
+          type: boolean
+          description: "A UH tem OOS em alguma noite da estadia (vendável, mas como\
+            \ última opção)."
+        roomId:
+          type: string
+          format: uuid
+      required:
+      - current
+      - featureIds
+      - matchedFeatureIds
+      - matchesFloorPreference
+      - number
+      - outOfService
+      - roomId
+    RoomSuggestionsResponse:
+      type: object
+      description: "As UHs que a reserva pode receber, em ordem de sugestão: as ativas\
+        \ do tipo da reserva, livres em todo o período e sem OOO; as com OOS por ú\
+        ltimo; depois, as que têm mais das características pedidas; depois, o andar\
+        \ preferido pelo hóspede principal; por fim, o número."
+      properties:
+        arrival:
+          type: string
+          format: date
+        departure:
+          type: string
+          format: date
+        floorPreferenceConsidered:
+          type: boolean
+          description: Se o hóspede principal tem preferência de andar (considerada
+            na ordem).
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomSuggestionResponse"
+        reservationId:
+          type: string
+          format: uuid
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - arrival
+      - departure
+      - floorPreferenceConsidered
+      - items
+      - reservationId
+      - roomTypeId
     RoomTypeAvailabilityResponse:
       type: object
       description: Um tipo de UH no calendário.

@@ -24,6 +24,11 @@ import com.zeny.hotel.shared.TemplateGrant
  * Ciclo de vida (E08, H16): [PENALTIES_WAIVE] isenta a multa de cancelamento devida e [RESERVATIONS_REACTIVATE] reativa
  * uma reserva cancelada ou no-show, as duas **sensíveis** (RF-ACS-08), sem limite, só com o Gerente no modelo: a
  * Recepcionista pede a aprovação de um superior.
+ *
+ * Alocação de UH (E10, H16): [ASSIGNMENTS_MANAGE] aloca, realoca e desaloca a UH de uma reserva futura, marca "não
+ * mover" e consulta as sugestões de UH (Gerente e Recepcionista; não sensível); quem a tem recebe a notificação de
+ * realocação quando um OOO atinge reservas alocadas (H11). A lista das reservas que requerem realocação e o histórico
+ * das alocações se consultam com [RESERVATIONS_READ].
  */
 object ReservationsPermissions : ModulePermissions {
     override val module = "reservations"
@@ -45,6 +50,9 @@ object ReservationsPermissions : ModulePermissions {
 
     /** Reativar uma reserva cancelada ou no-show (sensível). */
     val RESERVATIONS_REACTIVATE = PermissionCode("reservations.reservations.reactivate")
+
+    /** Alocar, realocar e desalocar UH de reservas futuras e marcar "não mover". */
+    val ASSIGNMENTS_MANAGE = PermissionCode("reservations.assignments.manage")
 
     private val all = TemplateGrant(ALL)
 
@@ -99,6 +107,12 @@ object ReservationsPermissions : ModulePermissions {
                 setOf(ALL),
                 sensitive = true,
                 templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                ASSIGNMENTS_MANAGE,
+                "Alocar, realocar e desalocar a UH de reservas futuras e marcar \"não mover\"",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
             ),
         )
 }

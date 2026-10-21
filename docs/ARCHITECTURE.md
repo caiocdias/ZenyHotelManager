@@ -115,7 +115,7 @@ flowchart LR
 | `fiscal` | FIS | Perfis fiscais, documentos e provedor fiscal | shared, hotel, files, notifications |
 | `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, notifications, payments, fiscal, printing |
 | `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, hotel, rooms, billing |
-| `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, printing |
+| `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, notifications, printing |
 | `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, reservations, rooms, guests, billing, payments, fiscal, printing |
 | `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |
 | `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations, notifications |
@@ -448,6 +448,8 @@ sequenceDiagram
 **Garantias no banco**
 
 - **UH em dobro é impossível no banco**: `EXCLUDE USING gist (room_id WITH =, stay WITH &&)` sobre as alocações ativas (requer `btree_gist`).
+  - Em `reservations.room_assignment` (M4 E10): `room_assignment_overlap_ex EXCLUDE USING gist (room_id WITH =, slots WITH &&) WHERE (released_at IS NULL)`, com `slots` em meios-dias (o pernoite `[2·chegada+1, 2·saída)`, o day use `[2·data, 2·data+1)`): a saída de uma reserva e a chegada de outra no mesmo dia não conflitam, e o day use só conflita com a estadia que atravessa a data e com outro day use (H5). O `stay` (`daterange`) fica para leitura e para cruzar com os OOO. A alocação solta (desalocada, realocada, de reserva cancelada ou expirada) continua gravada e não bloqueia a UH; gatilhos adiados garantem que só reserva ativa tem alocação ativa. A violação (`23P01`) vira o mesmo `409 ROOM_ALREADY_ASSIGNED` da aplicação.
+  - Quem grava uma alocação toma antes uma trava consultiva por UH, a mesma do listener de `OutOfOrderChanged` que marca as reservas alocadas atingidas por um OOO ("requer realocação", RN-07): o OOO confirmado no meio é visto por um dos dois.
 - **Disponibilidade**: contadores `reservations.room_type_inventory(room_type_id, stay_date, total, sold, blocked, out_of_order, overbooking_limit)`, mantidos da data operacional até 730 dias à frente.
   - `sold` e `blocked` são atualizados na mesma transação da reserva ou do bloqueio, com `SELECT … FOR UPDATE` nas datas envolvidas, sempre em ordem de (tipo, data). Isso evita overbooking em reservas simultâneas, inclusive as vindas do channel manager, e nunca dá deadlock.
   - `total` e `out_of_order` **não** mudam na transação do cadastro de UH nem na do OOO: o `reservations` escuta `RoomRegistryChanged` e `OutOfOrderChanged` (outbox) e **refaz** as datas afetadas a partir da `RoomsApi`, a fonte da verdade (H4 e H10 do roadmap do M4). Refazer nunca soma deltas, então o evento reentregue não muda o resultado; a janela de segundos entre o commit do OOO e o listener é aceita, e o job do horizonte e a recontagem reparam uma publicação perdida.

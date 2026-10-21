@@ -6,6 +6,7 @@ import com.zeny.hotel.guests.DocumentType
 import com.zeny.hotel.guests.FnrhGuestData
 import com.zeny.hotel.guests.FnrhGuestDocument
 import com.zeny.hotel.guests.GuestId
+import com.zeny.hotel.guests.GuestPreferences
 import com.zeny.hotel.guests.GuestSummary
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.guests.RestrictionAlert
@@ -52,6 +53,8 @@ class GuestsApiService(
         id: GuestId,
         date: LocalDate,
     ): Boolean? = current(id)?.isMinorOn(date)
+
+    override fun preferences(id: GuestId): GuestPreferences? = current(id)?.preferences
 
     override fun company(id: CompanyId): CompanySummary? =
         store.company(id)?.let {
