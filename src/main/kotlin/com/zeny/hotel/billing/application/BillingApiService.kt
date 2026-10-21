@@ -28,7 +28,7 @@ import java.util.UUID
  * e trilha da API HTTP ([BillingOperations]).
  */
 @Service
-@Suppress("TooManyFunctions") // a API pública inteira do módulo (BillingApi)
+@Suppress("TooManyFunctions", "LongParameterList") // a API pública inteira do módulo (BillingApi) e as portas dela
 class BillingApiService(
     private val operations: BillingOperations,
     private val store: BillingStore,
@@ -36,6 +36,7 @@ class BillingApiService(
     private val directory: BillingDirectory,
     private val cashier: CashierStore,
     private val preAuthorizations: CardPreAuthorizationService,
+    private val payments: PaymentLedger,
 ) : BillingApi {
     @Transactional(readOnly = true)
     override fun transactionCode(id: TransactionCodeId): TransactionCodeSummary? =
@@ -113,6 +114,16 @@ class BillingApiService(
         from: Instant,
         to: Instant,
     ): List<CardPreAuthorizationSummary> = preAuthorizations.expiringBetween(from, to)
+
+    @Transactional(readOnly = true)
+    override fun netDeposits(folioId: FolioId): Money = netDeposits(listOf(folioId)).getValue(folioId)
+
+    @Transactional(readOnly = true)
+    override fun netDeposits(folioIds: Collection<FolioId>): Map<FolioId, Money> {
+        if (folioIds.isEmpty()) return emptyMap()
+        val sums = payments.netDeposits(folioIds)
+        return folioIds.associateWith { sums[it] ?: Money.ZERO }
+    }
 
     private companion object {
         /** O tamanho das páginas da leitura das contas de um dono (uma reserva tem poucas). */

@@ -303,6 +303,11 @@ zeny:
     inventory-horizon:
       interval: P1D
       initial-delay: PT2M
+    # Expiração das pré-reservas (RN-23, M4 E09): o ProvisionalExpiryJob, sob trava do ShedLock, cancela as
+    # pré-reservas com a validade vencida, sem multa, e devolve o inventário.
+    provisional-expiry:
+      interval: PT5M
+      initial-delay: PT1M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

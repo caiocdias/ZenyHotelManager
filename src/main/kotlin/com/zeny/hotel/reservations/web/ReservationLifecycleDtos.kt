@@ -1,9 +1,13 @@
 package com.zeny.hotel.reservations.web
 
+import com.zeny.hotel.rates.GuaranteeType
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.reservations.CancellationReason
+import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.MarketSegment
 import com.zeny.hotel.reservations.NightlyRateOverride
+import com.zeny.hotel.reservations.PendingGuarantee
+import com.zeny.hotel.reservations.PendingGuaranteeKind
 import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationChange
 import com.zeny.hotel.reservations.ReservationHistoryEntry
@@ -69,11 +73,94 @@ data class ReservationChangeRequest(
 )
 data class ReservationCancelRequest(
     @field:NotNull
+    @field:Schema(
+        description =
+            "Motivo do cancelamento. `EXPIRED` é só da expiração automática da pré-reserva: pedido com ele é 400 " +
+                "`RESERVATION_CANCELLATION_INVALID`.",
+    )
     val reason: CancellationReason?,
     val notes: String? = null,
     val waivePenalty: Boolean = false,
 ) {
     fun toRequest() = ReservationCancellationRequest(checkNotNull(reason), notes, waivePenalty)
+}
+
+@Schema(
+    description =
+        "A confirmação de uma pré-reserva (ou o registro da garantia de uma reserva confirmada sem ela): a " +
+            "garantia recebida, `CARD` (o cartão informado pelo hóspede) ou `DEPOSIT` (o depósito pago na conta da " +
+            "reserva, conferido). A política copiada na reserva decide qual.",
+)
+data class ReservationConfirmRequest(
+    @field:NotNull
+    val guarantee: GuaranteeMethod?,
+)
+
+@Schema(
+    description =
+        "Uma reserva que ainda deve a garantia: o tipo do item (`PROVISIONAL`, a pré-reserva; `UNGUARANTEED`, a " +
+            "confirmada sem garantia), o vencimento (`overdue` quando já passou), a estadia, o total, a garantia que " +
+            "a política pede e, no depósito, o exigido, o recebido na conta (os depósitos menos os reembolsos deles) " +
+            "e o prazo da política.",
+)
+data class PendingGuaranteeResponse(
+    val id: UUID,
+    val code: String,
+    val bookingId: UUID,
+    val holderGuestId: UUID,
+    @field:ExtensibleEnum
+    @field:Schema(description = "`PROVISIONAL` ou `UNGUARANTEED`. $UNKNOWN_VALUE")
+    val kind: PendingGuaranteeKind,
+    @field:ExtensibleEnum
+    @field:Schema(description = "Situação da reserva. $UNKNOWN_VALUE")
+    val status: ReservationStatus,
+    @field:Schema(
+        description =
+            "O vencimento: a validade da pré-reserva, ou o horário de check-in (no fuso do hotel) do dia do prazo " +
+                "do depósito ou, no cartão, do dia da chegada.",
+    )
+    val dueAt: Instant,
+    val overdue: Boolean,
+    val provisionalUntil: Instant?,
+    val roomTypeId: UUID,
+    val ratePlanId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val total: Money,
+    @field:ExtensibleEnum
+    @field:Schema(description = "Tipo de garantia que a política copiada pede. $UNKNOWN_VALUE")
+    val guaranteeType: GuaranteeType,
+    val guaranteePolicyId: UUID,
+    val requiredDeposit: Money?,
+    val depositReceived: Money?,
+    val depositDueOn: LocalDate?,
+    val folioId: UUID,
+) {
+    companion object {
+        fun of(item: PendingGuarantee) =
+            PendingGuaranteeResponse(
+                id = item.reservationId.value,
+                code = item.code.toString(),
+                bookingId = item.bookingId.value,
+                holderGuestId = item.holderGuestId.value,
+                kind = item.kind,
+                status = item.status,
+                dueAt = item.dueAt,
+                overdue = item.overdue,
+                provisionalUntil = item.provisionalUntil,
+                roomTypeId = item.roomTypeId.value,
+                ratePlanId = item.ratePlanId.value,
+                arrival = item.arrival,
+                departure = item.departure,
+                total = item.total,
+                guaranteeType = item.guaranteeTerms.type,
+                guaranteePolicyId = item.guaranteeTerms.policyId.value,
+                requiredDeposit = item.requiredDeposit,
+                depositReceived = item.depositReceived,
+                depositDueOn = item.depositDueOn,
+                folioId = item.folioId.value,
+            )
+    }
 }
 
 @Schema(description = "Uma noite no retrato do histórico.")
@@ -119,6 +206,9 @@ data class ReservationStateResponse(
     val guaranteePolicyId: UUID,
     val guaranteePolicyVersion: Long,
     val cancellation: HistoryCancellationResponse?,
+    @field:ExtensibleEnum
+    @field:Schema(description = "A garantia recebida na confirmação da pré-reserva; nula sem ela. $UNKNOWN_VALUE")
+    val guaranteeMethod: GuaranteeMethod?,
 ) {
     companion object {
         fun of(state: ReservationState) =
@@ -152,6 +242,7 @@ data class ReservationStateResponse(
                             it.penaltyPostingId?.value,
                         )
                     },
+                guaranteeMethod = state.guaranteeMethod,
             )
     }
 }
@@ -164,7 +255,12 @@ data class ReservationStateResponse(
 data class ReservationHistoryResponse(
     val id: UUID,
     @field:ExtensibleEnum
-    @field:Schema(description = "`CHANGE`, `CANCEL` ou `REACTIVATE`. $UNKNOWN_VALUE")
+    @field:Schema(
+        description =
+            "`CHANGE`, `CANCEL` (inclusive a expiração da pré-reserva, com o motivo `EXPIRED`), `REACTIVATE`, " +
+                "`CONFIRM` (a confirmação da pré-reserva com a garantia) ou `GUARANTEE` (a garantia registrada numa " +
+                "reserva confirmada sem ela). $UNKNOWN_VALUE",
+    )
     val kind: ReservationHistoryKind,
     val businessDate: LocalDate,
     val occurredAt: Instant,

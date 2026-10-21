@@ -112,7 +112,10 @@ object ReservationsErrorCodes {
      */
     val RESERVATION_CHANGE_INVALID = ErrorCode("RESERVATION_CHANGE_INVALID")
 
-    /** 400: cancelamento fora do formato: observação fora de 1 a 500 caracteres (campo `notes`). */
+    /**
+     * 400: cancelamento fora do formato: observação fora de 1 a 500 caracteres (campo `notes`) ou o motivo `EXPIRED`,
+     * que é só do job de expiração (campo `reason`; E09).
+     */
     val RESERVATION_CANCELLATION_INVALID = ErrorCode("RESERVATION_CANCELLATION_INVALID")
 
     /**
@@ -120,6 +123,31 @@ object ReservationsErrorCodes {
      * já passou) e não é reativada.
      */
     val RESERVATION_STAY_ENDED = ErrorCode("RESERVATION_STAY_ENDED")
+
+    // --- Pré-reserva, garantia e expiração (M4 E09) -----------------------------------------------------------------
+
+    /**
+     * 422: a garantia informada na confirmação não é a que a política de garantia copiada na reserva pede (a política
+     * de depósito só aceita `DEPOSIT`; a de cartão, só `CARD`). O problema traz o tipo da política em `guaranteeType` e
+     * a garantia informada em `method`.
+     */
+    val GUARANTEE_METHOD_NOT_ACCEPTED = ErrorCode("GUARANTEE_METHOD_NOT_ACCEPTED")
+
+    /**
+     * 422: o total líquido de depósitos da conta da reserva (os recebimentos marcados como depósito menos os reembolsos
+     * deles, pela `BillingApi`) não cobre o depósito que a política copiada exige. O problema traz `requiredDeposit` e
+     * `depositReceived` (valores em texto decimal).
+     */
+    val DEPOSIT_INSUFFICIENT = ErrorCode("DEPOSIT_INSUFFICIENT")
+
+    /**
+     * 422: a validade da pré-reserva já passou (o instante da criação mais o prazo de expiração do hotel): ela não é
+     * mais confirmada; o job de expiração a cancela.
+     */
+    val PROVISIONAL_RESERVATION_EXPIRED = ErrorCode("PROVISIONAL_RESERVATION_EXPIRED")
+
+    /** 400: intervalo com o fim antes do início (campo `to`). */
+    val RESERVATION_PERIOD_INVALID = ErrorCode("RESERVATION_PERIOD_INVALID")
 
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,

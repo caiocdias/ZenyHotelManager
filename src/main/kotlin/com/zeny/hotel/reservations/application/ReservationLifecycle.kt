@@ -20,7 +20,9 @@ import com.zeny.hotel.rates.RatesPermissions
 import com.zeny.hotel.rates.StayPriceResult
 import com.zeny.hotel.rates.StayQuery
 import com.zeny.hotel.reservations.CancellationPenalty
+import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
+import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.NightlyRateSummary
 import com.zeny.hotel.reservations.ReservationCancellation
@@ -28,6 +30,8 @@ import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationCancelled
 import com.zeny.hotel.reservations.ReservationChange
 import com.zeny.hotel.reservations.ReservationChanged
+import com.zeny.hotel.reservations.ReservationConfirmed
+import com.zeny.hotel.reservations.ReservationGuarantee
 import com.zeny.hotel.reservations.ReservationHistoryEntry
 import com.zeny.hotel.reservations.ReservationHistoryId
 import com.zeny.hotel.reservations.ReservationHistoryKind
@@ -39,9 +43,12 @@ import com.zeny.hotel.reservations.ReservationsErrorCodes
 import com.zeny.hotel.reservations.ReservationsPermissions
 import com.zeny.hotel.reservations.domain.CancellationPenalties
 import com.zeny.hotel.reservations.domain.CancellationRules
+import com.zeny.hotel.reservations.domain.GuaranteeAction
+import com.zeny.hotel.reservations.domain.GuaranteeRules
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryNights
 import com.zeny.hotel.reservations.domain.NightlyRates
+import com.zeny.hotel.reservations.domain.ProvisionalValidity
 import com.zeny.hotel.reservations.domain.ReservationAction
 import com.zeny.hotel.reservations.domain.ReservationChangeRules
 import com.zeny.hotel.reservations.domain.ReservationFields
@@ -127,8 +134,12 @@ class ReservationViews(
  * - **Reativação** ([reactivate]): ação sensível (`reservations.reservations.reactivate`); toma as unidades de novo
  *   (sem disponibilidade, `409` e nada muda) e a reserva volta a confirmada, com o preço congelado.
  *
+ * - **Confirmação** ([confirm], E09): a pré-reserva com a garantia da política copiada; no depósito, o total líquido
+ *   de depósitos da conta pela `BillingApi`.
+ * - **Expiração** ([expire], E09): a pré-reserva vencida é cancelada com o motivo `EXPIRED`, sem multa.
+ *
  * Cada uma grava uma entrada no histórico (*append-only*), a trilha (sem texto livre nem dado de hóspede) e o evento
- * pelo outbox ([ReservationChanged], [ReservationCancelled], [ReservationReactivated]).
+ * pelo outbox ([ReservationChanged], [ReservationCancelled], [ReservationReactivated], [ReservationConfirmed]).
  */
 @Component
 @Suppress("LongParameterList", "TooManyFunctions") // as portas e os passos do ciclo de vida
@@ -157,6 +168,7 @@ class ReservationLifecycle(
         val reservation = locked(id)
         expectedVersion?.let { requireCurrentVersion(it, reservation.version) }
         ReservationTransitions.require(ReservationAction.CHANGE, reservation.status)
+        requireNotExpired(reservation, now())
         ReservationChangeRules.requireValid(command, reservation.guests.size)
         val old = StayShape.of(reservation)
         val new = StayShape.of(command)
@@ -364,39 +376,170 @@ class ReservationLifecycle(
         val due = CancellationPenalties.due(penalty, reservation.penaltiesCharged)
         val waived = due.isPositive() && request.waivePenalty
         val approval = if (waived) authorizeWaiver(reservation, waiver) else null
+        return applyCancellation(
+            reservation,
+            request.reason,
+            request.notes,
+            PenaltyOutcome(deadline, due, waived, approval),
+            now,
+        )
+    }
+
+    /** A decisão sobre a multa de um cancelamento: o prazo, o devido, se foi isentada e a aprovação da isenção. */
+    private data class PenaltyOutcome(
+        val deadline: Instant,
+        val due: Money,
+        val waived: Boolean,
+        val approval: SensitiveAuthorization.ByApproval?,
+    )
+
+    /**
+     * Cancela a reserva já travada e conferida: devolve as unidades a partir da data operacional, lança a multa devida
+     * não isentada, grava a reserva, o histórico e a trilha e publica [ReservationCancelled].
+     */
+    private fun applyCancellation(
+        reservation: ReservationSummary,
+        reason: CancellationReason,
+        notes: String?,
+        penalty: PenaltyOutcome,
+        now: Instant,
+    ): ReservationSummary {
         val businessDate = hotel.currentBusinessDate()
         InventoryNights
             .of(reservation.roomTypeId, reservation.arrival, reservation.departure, businessDate, take = false)
             ?.let { inventory.apply(listOf(it)) }
-        val posting = if (due.isPositive() && !waived) postPenalty(reservation, due) else null
+        val posting = if (penalty.due.isPositive() && !penalty.waived) postPenalty(reservation, penalty.due) else null
         val updated =
             reservation.copy(
                 status = ReservationStatus.CANCELLED,
                 provisionalUntil = null,
                 cancellation =
                     ReservationCancellation(
-                        reason = request.reason,
-                        notes = request.notes,
+                        reason = reason,
+                        notes = notes,
                         previousStatus = reservation.status,
                         cancelledAt = now,
                         cancelledBy = actor(),
                         penalty =
                             CancellationPenalty(
-                                deadline = deadline,
-                                amount = due,
-                                waived = waived,
+                                deadline = penalty.deadline,
+                                amount = penalty.due,
+                                waived = penalty.waived,
                                 postingId = posting?.id,
-                                waiverApprovalId = approval?.approvalId,
-                                waiverApprovedBy = approval?.approverId,
+                                waiverApprovalId = penalty.approval?.approvalId,
+                                waiverApprovedBy = penalty.approval?.approverId,
                             ),
                     ),
                 penaltiesCharged = reservation.penaltiesCharged + (posting?.amount ?: Money.ZERO),
                 version = reservation.version + 1,
             )
         store.update(updated, now, replaceNights = false)
-        record(ReservationHistoryKind.CANCEL, reservation, updated, listOf("status"), approval, now)
+        record(ReservationHistoryKind.CANCEL, reservation, updated, listOf("status"), penalty.approval, now)
         events.publishEvent(cancelled(reservation, updated))
         return updated
+    }
+
+    // --- Pré-reserva: confirmação e expiração (E09) ----------------------------------------------------------------
+
+    /**
+     * Confirma a pré-reserva com a garantia [method] (RF-RES-08 no recorte manual, SPEC §8.4 "garantia recebida"), ou
+     * registra a garantia de uma reserva confirmada sem garantia ([GuaranteeRules.actionFor]): travada, a pré-reserva
+     * ainda na validade ([ProvisionalValidity]), com a garantia que a política copiada pede ([GuaranteeRules]) e, no
+     * depósito, o total líquido de depósitos da conta da reserva (`BillingApi.netDeposits`, lido depois da trava da
+     * reserva) cobrindo o exigido. A pré-reserva vira confirmada (histórico `CONFIRM` e [ReservationConfirmed]); a
+     * confirmada só ganha a garantia (histórico `GUARANTEE`, sem evento). O inventário não muda.
+     */
+    fun confirm(
+        id: ReservationId,
+        method: GuaranteeMethod,
+    ): ReservationSummary {
+        requireWriteTransaction()
+        val reservation = locked(id)
+        val action = GuaranteeRules.actionFor(reservation)
+        val now = now()
+        requireNotExpired(reservation, now)
+        GuaranteeRules.requireAccepted(reservation.guaranteeTerms, method)
+        var required: Money? = null
+        var received: Money? = null
+        if (method == GuaranteeMethod.DEPOSIT) {
+            required = reservation.requiredDeposit ?: Money.ZERO
+            received = billing.netDeposits(reservation.folioId)
+            GuaranteeRules.requireDeposit(required, received)
+        }
+        val updated =
+            reservation.copy(
+                status = ReservationStatus.CONFIRMED,
+                provisionalUntil = null,
+                guarantee = ReservationGuarantee(method, now, actor(), required, received),
+                version = reservation.version + 1,
+            )
+        store.update(updated, now, replaceNights = false)
+        if (action == GuaranteeAction.REGISTER) {
+            // A reserva já estava confirmada: só a garantia muda, sem evento (nada que o channel manager precise).
+            record(ReservationHistoryKind.GUARANTEE, reservation, updated, listOf("guarantee"), null, now)
+            return updated
+        }
+        record(ReservationHistoryKind.CONFIRM, reservation, updated, listOf("status", "guarantee"), null, now)
+        events.publishEvent(
+            ReservationConfirmed(
+                reservationId = updated.id.value,
+                bookingId = updated.bookingId.value,
+                roomTypeId = updated.roomTypeId.value,
+                arrival = updated.arrival,
+                departure = updated.departure,
+                dayUse = updated.dayUse,
+                guaranteeMethod = method,
+                version = updated.version,
+                confirmedAt = now,
+            ),
+        )
+        return updated
+    }
+
+    /**
+     * A pré-reserva com a validade vencida não é mais confirmada nem alterada (RN-23; o job de expiração a cancela):
+     * `422 PROVISIONAL_RESERVATION_EXPIRED`. As outras situações passam.
+     */
+    private fun requireNotExpired(
+        reservation: ReservationSummary,
+        now: Instant,
+    ) {
+        val until = reservation.provisionalUntil ?: return
+        if (reservation.status == ReservationStatus.PROVISIONAL && ProvisionalValidity.expired(until, now)) {
+            throw BusinessRuleException(
+                ReservationsErrorCodes.PROVISIONAL_RESERVATION_EXPIRED,
+                "A validade da pré-reserva ${reservation.code} já passou: ela não é mais confirmada nem alterada.",
+            )
+        }
+    }
+
+    /**
+     * Expira a pré-reserva vencida (RN-23): trava a linha e confere **de novo** que ainda é pré-reserva e que a
+     * validade passou (uma confirmação ou um cancelamento confirmados antes da trava a tiram daqui: nada muda e devolve
+     * `null`). Vencida, é cancelada com o motivo [CancellationReason.EXPIRED], **sem multa** (a pré-reserva não foi
+     * garantida, e não é o hóspede quem cancela), com as unidades devolvidas a partir da data operacional, o histórico
+     * e [ReservationCancelled].
+     */
+    fun expire(id: ReservationId): ReservationSummary? {
+        requireWriteTransaction()
+        val reservation = locked(id)
+        val until = reservation.provisionalUntil
+        val now = now()
+        if (reservation.status != ReservationStatus.PROVISIONAL ||
+            until == null ||
+            !ProvisionalValidity.expired(until, now)
+        ) {
+            audit.noChanges()
+            return null
+        }
+        val (deadline, _) = penaltyOf(reservation, now)
+        return applyCancellation(
+            reservation,
+            CancellationReason.EXPIRED,
+            null,
+            PenaltyOutcome(deadline, Money.ZERO, waived = false, approval = null),
+            now,
+        )
     }
 
     /** O prazo da multa e o valor dela pela política copiada (zero antes do prazo). */
@@ -673,6 +816,24 @@ class ReservationLifecycleService(
         id: ReservationId,
         request: ReservationCancellationRequest,
     ): ReservationSummary = lifecycle.cancel(id, request, WaiverAuthorization.AlreadyAuthorized)
+
+    @Audited(ReservationsAudit.CONFIRM_RESERVATION)
+    @Transactional
+    fun confirm(
+        id: ReservationId,
+        method: GuaranteeMethod,
+    ): ReservationView {
+        authorization.require(ReservationsPermissions.RESERVATIONS_MANAGE)
+        return views.of(lifecycle.confirm(id, method))
+    }
+
+    /** A confirmação pela `ReservationsApi`, sem permissão (quem chama já se autorizou). */
+    @Audited(ReservationsAudit.CONFIRM_RESERVATION)
+    @Transactional
+    fun confirmAuthorized(
+        id: ReservationId,
+        method: GuaranteeMethod,
+    ): ReservationSummary = lifecycle.confirm(id, method)
 
     @Audited(ReservationsAudit.REACTIVATE_RESERVATION)
     @Transactional

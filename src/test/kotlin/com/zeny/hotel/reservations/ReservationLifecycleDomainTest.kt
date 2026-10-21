@@ -45,6 +45,7 @@ class ReservationLifecycleDomainTest {
 
     @Test
     fun `only a provisional or confirmed is changed or cancelled, only a cancelled or no-show reactivated`() {
+        // Desde a E09, a pré-reserva também é confirmada.
         val table =
             ReservationStatus.entries.associateWith { status ->
                 ReservationAction.entries.filter { ReservationTransitions.allows(it, status) }
@@ -52,7 +53,8 @@ class ReservationLifecycleDomainTest {
 
         table shouldBe
             mapOf(
-                ReservationStatus.PROVISIONAL to listOf(ReservationAction.CHANGE, ReservationAction.CANCEL),
+                ReservationStatus.PROVISIONAL to
+                    listOf(ReservationAction.CHANGE, ReservationAction.CANCEL, ReservationAction.CONFIRM),
                 ReservationStatus.CONFIRMED to listOf(ReservationAction.CHANGE, ReservationAction.CANCEL),
                 ReservationStatus.IN_HOUSE to emptyList(),
                 ReservationStatus.CHECKED_OUT to emptyList(),

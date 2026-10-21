@@ -38,6 +38,12 @@ interface PaymentLedger {
      * com algum registro).
      */
     fun shiftTotals(shiftId: CashierShiftId): Map<PaymentMethod, Money>
+
+    /**
+     * O total líquido dos depósitos de cada conta (M4 E09): os recebimentos com `deposit` menos os reembolsos de um
+     * recebimento com `deposit` (só as contas com algum registro).
+     */
+    fun netDeposits(folioIds: Collection<FolioId>): Map<FolioId, Money>
 }
 
 /** Um pagamento com o total já reembolsado dele (só no recebimento; nulo no reembolso). */

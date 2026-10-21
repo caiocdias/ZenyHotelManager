@@ -19,12 +19,15 @@ import com.zeny.hotel.reservations.BookingSummary
 import com.zeny.hotel.reservations.CancellationPenalty
 import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
+import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.HistoryCancellation
 import com.zeny.hotel.reservations.HistoryNight
 import com.zeny.hotel.reservations.MarketSegment
 import com.zeny.hotel.reservations.NightlyRateSummary
+import com.zeny.hotel.reservations.PendingGuaranteeKind
 import com.zeny.hotel.reservations.ReservationCancellation
+import com.zeny.hotel.reservations.ReservationGuarantee
 import com.zeny.hotel.reservations.ReservationHistoryEntry
 import com.zeny.hotel.reservations.ReservationHistoryId
 import com.zeny.hotel.reservations.ReservationHistoryKind
@@ -36,6 +39,7 @@ import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.StayGuestSummary
 import com.zeny.hotel.reservations.application.BookingStore
 import com.zeny.hotel.reservations.application.GuestRepointing
+import com.zeny.hotel.reservations.application.PendingGuaranteeRow
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
 import com.zeny.hotel.rooms.RoomTypeId
@@ -54,7 +58,9 @@ import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -269,7 +275,7 @@ class JdbcBookingStore(
         return if (exists) reservation(id) else null
     }
 
-    @Suppress("LongMethod") // um UPDATE com a estadia, os termos copiados, os totais e o cancelamento
+    @Suppress("LongMethod") // um UPDATE com a estadia, os termos copiados, os totais, o cancelamento e a garantia
     override fun update(
         reservation: ReservationSummary,
         now: Instant,
@@ -301,6 +307,9 @@ class JdbcBookingStore(
                         penalty_amount = :penaltyDue, penalty_waived = :penaltyWaived,
                         penalty_posting_id = :penaltyPostingId, penalty_waiver_approval_id = :waiverApprovalId,
                         penalty_waiver_approved_by = :waiverApprovedBy, penalties_charged = :penaltiesCharged,
+                        guarantee_method = :guaranteeMethod, guaranteed_at = :guaranteedAt,
+                        guaranteed_by = :guaranteedBy, guarantee_deposit_required = :depositRequired,
+                        guarantee_deposit_received = :depositReceived,
                         version = :version, updated_at = :now
                     WHERE id = :id AND version = :version - 1
                     """.trimIndent(),
@@ -346,6 +355,11 @@ class JdbcBookingStore(
                 .param("waiverApprovalId", cancelled?.penalty?.waiverApprovalId)
                 .param("waiverApprovedBy", cancelled?.penalty?.waiverApprovedBy?.value)
                 .param("penaltiesCharged", reservation.penaltiesCharged.amount)
+                .param("guaranteeMethod", reservation.guarantee?.method?.name)
+                .param("guaranteedAt", reservation.guarantee?.confirmedAt?.utc())
+                .param("guaranteedBy", reservation.guarantee?.confirmedBy?.value)
+                .param("depositRequired", reservation.guarantee?.requiredDeposit?.amount)
+                .param("depositReceived", reservation.guarantee?.depositReceived?.amount)
                 .param("version", reservation.version)
                 .param("now", now.utc())
                 .update()
@@ -358,6 +372,93 @@ class JdbcBookingStore(
             insertNights(reservation)
         }
     }
+
+    override fun dueProvisionals(
+        now: Instant,
+        after: Pair<Instant, ReservationId>?,
+        limit: Int,
+    ): List<Pair<Instant, ReservationId>> =
+        jdbc
+            .sql(
+                """
+                SELECT id, provisional_until FROM reservations.reservation
+                WHERE status = 'PROVISIONAL' AND provisional_until <= :now
+                  AND (CAST(:afterAt AS timestamptz) IS NULL
+                       OR (provisional_until, id) > (CAST(:afterAt AS timestamptz), CAST(:afterId AS uuid)))
+                ORDER BY provisional_until, id
+                LIMIT :limit
+                """.trimIndent(),
+            ).param("now", now.utc())
+            .param("afterAt", after?.first?.utc())
+            .param("afterId", after?.second?.value)
+            .param("limit", limit)
+            .query { rs, _ -> rs.requiredInstant("provisional_until") to ReservationId(rs.uuid("id")) }
+            .list()
+
+    override fun pendingGuarantees(
+        from: Instant?,
+        to: Instant,
+        checkInTime: LocalTime,
+        zone: ZoneId,
+        after: Pair<Instant, ReservationId>?,
+        limit: Int,
+    ): List<PendingGuaranteeRow> =
+        jdbc
+            .sql(
+                """
+                SELECT * FROM (
+                    SELECT r.*, b.holder_guest_id,
+                        CASE WHEN r.status = 'PROVISIONAL' THEN r.provisional_until
+                             ELSE ((CASE WHEN r.guarantee_type = 'DEPOSIT'
+                                         THEN r.arrival - r.guarantee_due_days_before ELSE r.arrival END)
+                                   + CAST(:checkIn AS time)) AT TIME ZONE :zone
+                        END AS due_at
+                    FROM reservations.reservation r
+                    JOIN reservations.booking b ON b.id = r.booking_id
+                    WHERE r.status = 'PROVISIONAL'
+                       OR (r.status = 'CONFIRMED' AND r.guarantee_type <> 'NONE'
+                           -- sem garantia, ou com a de outro meio (CARD/DEPOSIT têm o mesmo nome nos dois campos)
+                           AND (r.guarantee_method IS NULL OR r.guarantee_method <> r.guarantee_type))
+                ) p
+                WHERE p.due_at < :to
+                  AND (CAST(:from AS timestamptz) IS NULL OR p.due_at >= CAST(:from AS timestamptz))
+                  AND (CAST(:afterAt AS timestamptz) IS NULL
+                       OR (p.due_at, p.id) > (CAST(:afterAt AS timestamptz), CAST(:afterId AS uuid)))
+                ORDER BY p.due_at, p.id
+                LIMIT :limit
+                """.trimIndent(),
+            ).param("from", from?.utc())
+            .param("to", to.utc())
+            .param("checkIn", checkInTime)
+            .param("zone", zone.id)
+            .param("afterAt", after?.first?.utc())
+            .param("afterId", after?.second?.value)
+            .param("limit", limit)
+            .query { rs, _ ->
+                val status = ReservationStatus.valueOf(rs.getString("status"))
+                PendingGuaranteeRow(
+                    id = ReservationId(rs.uuid("id")),
+                    code = DocumentNumber.parse(rs.getString("code")),
+                    bookingId = BookingId(rs.uuid("booking_id")),
+                    holderGuestId = GuestId(rs.uuid("holder_guest_id")),
+                    kind =
+                        if (status == ReservationStatus.PROVISIONAL) {
+                            PendingGuaranteeKind.PROVISIONAL
+                        } else {
+                            PendingGuaranteeKind.UNGUARANTEED
+                        },
+                    status = status,
+                    dueAt = rs.requiredInstant("due_at"),
+                    provisionalUntil = rs.instant("provisional_until"),
+                    roomTypeId = RoomTypeId(rs.uuid("room_type_id")),
+                    ratePlanId = RatePlanId(rs.uuid("rate_plan_id")),
+                    arrival = rs.getObject("arrival", LocalDate::class.java),
+                    departure = rs.getObject("departure", LocalDate::class.java),
+                    total = rs.requiredMoney("total"),
+                    guaranteeTerms = guaranteeTerms(rs),
+                    folioId = FolioId(rs.uuid("folio_id")),
+                )
+            }.list()
 
     override fun insertHistory(entry: ReservationHistoryEntry) {
         jdbc
@@ -609,15 +710,7 @@ class JdbcBookingStore(
                 rs.intOrNull("cancellation_penalty_nights"),
                 rs.money("cancellation_penalty_amount"),
             ),
-        guaranteeTerms =
-            GuaranteeTerms(
-                GuaranteePolicyId(rs.uuid("guarantee_policy_id")),
-                rs.getString("guarantee_policy_name"),
-                rs.getLong("guarantee_policy_version"),
-                GuaranteeType.valueOf(rs.getString("guarantee_type")),
-                rs.percent("guarantee_deposit_percent"),
-                rs.intOrNull("guarantee_due_days_before"),
-            ),
+        guaranteeTerms = guaranteeTerms(rs),
         folioId = FolioId(rs.uuid("folio_id")),
         approvalId = rs.getObject("approval_id", UUID::class.java),
         approvedBy = rs.getObject("approved_by", UUID::class.java)?.let(::UserId),
@@ -626,7 +719,29 @@ class JdbcBookingStore(
         createdBy = rs.getObject("created_by", UUID::class.java)?.let(::UserId),
         cancellation = cancellation(rs),
         penaltiesCharged = rs.requiredMoney("penalties_charged"),
+        guarantee = guarantee(rs),
     )
+
+    private fun guarantee(rs: ResultSet): ReservationGuarantee? {
+        val method = rs.getString("guarantee_method") ?: return null
+        return ReservationGuarantee(
+            method = GuaranteeMethod.valueOf(method),
+            confirmedAt = rs.requiredInstant("guaranteed_at"),
+            confirmedBy = rs.getObject("guaranteed_by", UUID::class.java)?.let(::UserId),
+            requiredDeposit = rs.money("guarantee_deposit_required"),
+            depositReceived = rs.money("guarantee_deposit_received"),
+        )
+    }
+
+    private fun guaranteeTerms(rs: ResultSet) =
+        GuaranteeTerms(
+            GuaranteePolicyId(rs.uuid("guarantee_policy_id")),
+            rs.getString("guarantee_policy_name"),
+            rs.getLong("guarantee_policy_version"),
+            GuaranteeType.valueOf(rs.getString("guarantee_type")),
+            rs.percent("guarantee_deposit_percent"),
+            rs.intOrNull("guarantee_due_days_before"),
+        )
 
     private fun cancellation(rs: ResultSet): ReservationCancellation? {
         val reason = rs.getString("cancellation_reason") ?: return null
@@ -738,6 +853,7 @@ private data class StoredState(
     val guaranteePolicyId: UUID,
     val guaranteePolicyVersion: Long,
     val cancellation: StoredCancellation?,
+    val guaranteeMethod: String? = null,
 ) {
     fun toState() =
         ReservationState(
@@ -776,6 +892,7 @@ private data class StoredState(
                         it.penaltyPostingId?.let(::PostingId),
                     )
                 },
+            guaranteeMethod = guaranteeMethod?.let(GuaranteeMethod::valueOf),
         )
 
     data class StoredNight(
@@ -831,6 +948,7 @@ private data class StoredState(
                             it.penaltyPostingId?.value,
                         )
                     },
+                guaranteeMethod = state.guaranteeMethod?.name,
             )
     }
 }

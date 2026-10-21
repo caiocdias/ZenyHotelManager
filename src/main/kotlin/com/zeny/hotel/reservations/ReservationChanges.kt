@@ -32,9 +32,10 @@ data class ReservationChange(
 )
 
 /**
- * Por que a reserva foi cancelada (RF-RES-06), lista que cresce (a expiração da pré-reserva entra na E09; o channel
- * manager no M8): a pedido do hóspede, pelo hotel, reserva em duplicidade, garantia não recebida ou outro. Nas
- * respostas e no evento é `x-extensible-enum`.
+ * Por que a reserva foi cancelada (RF-RES-06), lista que cresce (o channel manager no M8): a pedido do hóspede, pelo
+ * hotel, reserva em duplicidade, garantia não recebida, outro ou, desde a E09, [EXPIRED] (a pré-reserva venceu sem
+ * garantia e o job de expiração a cancelou; só o sistema usa esse motivo: pedido com ele é
+ * `400 RESERVATION_CANCELLATION_INVALID`). Nas respostas e no evento é `x-extensible-enum`.
  */
 enum class CancellationReason {
     GUEST_REQUEST,
@@ -42,6 +43,7 @@ enum class CancellationReason {
     DUPLICATE,
     NO_GUARANTEE,
     OTHER,
+    EXPIRED,
 }
 
 /**
@@ -95,11 +97,19 @@ value class ReservationHistoryId(
     }
 }
 
-/** O que uma entrada do histórico registra: uma alteração, um cancelamento ou uma reativação. */
+/**
+ * O que uma entrada do histórico registra: uma alteração, um cancelamento (inclusive a expiração da pré-reserva, com o
+ * motivo `EXPIRED`), uma reativação ou, desde a E09, a confirmação da pré-reserva com a garantia e o registro da
+ * garantia numa reserva confirmada sem ela.
+ */
 enum class ReservationHistoryKind {
     CHANGE,
     CANCEL,
     REACTIVATE,
+    CONFIRM,
+
+    /** O registro da garantia numa reserva confirmada sem garantia (E09): a situação não muda. */
+    GUARANTEE,
 }
 
 /** Uma noite no retrato do histórico: a data, o plano, a diária gravada, o total e se foi editada. */
@@ -121,8 +131,8 @@ data class HistoryCancellation(
 
 /**
  * O retrato de uma reserva no histórico (H10 do M3): a situação, a estadia, o segmento, as noites com o preço, os
- * totais, as políticas copiadas pelo id e a versão e, cancelada, o motivo e a multa. Sem texto livre (os pedidos
- * especiais só como [hasSpecialRequests]) nem dado de hóspede.
+ * totais, as políticas copiadas pelo id e a versão, a garantia recebida (E09) e, cancelada, o motivo e a multa. Sem
+ * texto livre (os pedidos especiais só como [hasSpecialRequests]) nem dado de hóspede.
  */
 data class ReservationState(
     val status: ReservationStatus,
@@ -143,6 +153,8 @@ data class ReservationState(
     val guaranteePolicyId: GuaranteePolicyId,
     val guaranteePolicyVersion: Long,
     val cancellation: HistoryCancellation?,
+    /** A garantia registrada na confirmação da pré-reserva (E09); nula sem confirmação. */
+    val guaranteeMethod: GuaranteeMethod? = null,
 )
 
 /**

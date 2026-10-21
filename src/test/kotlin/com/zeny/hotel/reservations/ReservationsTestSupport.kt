@@ -42,6 +42,7 @@ object ReservationLifecycleEvents {
     val changed: MutableList<ReservationChanged> = CopyOnWriteArrayList()
     val cancelled: MutableList<ReservationCancelled> = CopyOnWriteArrayList()
     val reactivated: MutableList<ReservationReactivated> = CopyOnWriteArrayList()
+    val confirmed: MutableList<ReservationConfirmed> = CopyOnWriteArrayList()
 }
 
 /** Listener assíncrono e transacional de teste dos eventos do ciclo de vida: com ele, as publicações vão ao outbox. */
@@ -59,6 +60,11 @@ open class ReservationLifecycleProbeListener {
     @ApplicationModuleListener
     open fun on(event: ReservationReactivated) {
         ReservationLifecycleEvents.reactivated += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: ReservationConfirmed) {
+        ReservationLifecycleEvents.confirmed += event
     }
 }
 
@@ -88,7 +94,10 @@ class ReservationsTestSupport(
         val auth: RequestPostProcessor get() = authenticatedAs(user.id.value, sessionId)
     }
 
-    /** Um plano com os tipos, políticas novas (a garantia [guarantee]: `NONE` ou `DEPOSIT`) e os canais. */
+    /**
+     * Um plano com os tipos, políticas novas (a garantia [guarantee]: `NONE`, `CARD` ou `DEPOSIT`, este de 30% até 7
+     * dias antes) e os canais.
+     */
     data class Plan(
         val id: UUID,
         val cancellationPolicy: UUID,
@@ -105,10 +114,9 @@ class ReservationsTestSupport(
         val cancellation = rates.createCancellationPolicy(cancellationBody)
         val guaranteePolicy =
             rates.createGuaranteePolicy(
-                if (guarantee == "NONE") {
-                    rates.guaranteeBody(type = "NONE", depositPercent = null, dueDaysBefore = null)
-                } else {
-                    rates.guaranteeBody()
+                when (guarantee) {
+                    "NONE", "CARD" -> rates.guaranteeBody(type = guarantee, depositPercent = null, dueDaysBefore = null)
+                    else -> rates.guaranteeBody()
                 },
             )
         val body = rates.planBody(types, cancellation, guaranteePolicy, packages, channels = channels)
@@ -261,6 +269,21 @@ class ReservationsTestSupport(
             auth,
             idempotencyKey = idempotencyKey,
             approvalToken = approvalToken,
+        )
+
+    /** Confirma a pré-reserva com a garantia [guarantee] (`CARD` ou `DEPOSIT`). */
+    fun confirm(
+        id: UUID,
+        guarantee: String,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/reservations/$id/confirm",
+            auth,
+            mapOf("guarantee" to guarantee),
+            idempotencyKey = idempotencyKey,
         )
 
     fun etag(id: UUID): String =

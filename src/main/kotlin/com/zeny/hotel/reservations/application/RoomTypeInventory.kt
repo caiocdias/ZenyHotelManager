@@ -36,6 +36,8 @@ internal object ReservationsAudit {
     const val CHANGE_RESERVATION = "reservations.reservation.change"
     const val CANCEL_RESERVATION = "reservations.reservation.cancel"
     const val REACTIVATE_RESERVATION = "reservations.reservation.reactivate"
+    const val CONFIRM_RESERVATION = "reservations.reservation.confirm"
+    const val EXPIRE_RESERVATION = "reservations.reservation.expire"
 
     private const val MAX_AUDITED_VALUES = 20
 
@@ -96,7 +98,22 @@ internal object ReservationsAudit {
                     "version" to reservation.guaranteeTerms.version,
                 ),
             "folioId" to reservation.folioId.toString(),
-        ) + cancellationSnapshot(reservation)
+        ) + cancellationSnapshot(reservation) + guaranteeSnapshot(reservation)
+
+    /** A garantia recebida na confirmação (E09): o meio, quando, por quem e, no depósito, o exigido e o recebido. */
+    private fun guaranteeSnapshot(reservation: ReservationSummary): Map<String, Any?> {
+        val guarantee = reservation.guarantee ?: return emptyMap()
+        return mapOf(
+            "guarantee" to
+                mapOf(
+                    "method" to guarantee.method.name,
+                    "confirmedAt" to guarantee.confirmedAt.toString(),
+                    "confirmedBy" to guarantee.confirmedBy?.toString(),
+                    "requiredDeposit" to guarantee.requiredDeposit?.toString(),
+                    "depositReceived" to guarantee.depositReceived?.toString(),
+                ),
+        )
+    }
 
     /**
      * O cancelamento no retrato (E08): o motivo, a situação anterior e a multa (prazo, valor, isenção, lançamento e as
@@ -151,6 +168,7 @@ internal object ReservationsAudit {
                 reservation.cancellation?.let {
                     HistoryCancellation(it.reason, it.penalty.amount, it.penalty.waived, it.penalty.postingId)
                 },
+            guaranteeMethod = reservation.guarantee?.method,
         )
 
     /**

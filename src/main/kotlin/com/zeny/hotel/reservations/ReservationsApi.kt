@@ -1,6 +1,7 @@
 package com.zeny.hotel.reservations
 
 import com.zeny.hotel.rooms.RoomTypeId
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -9,7 +10,8 @@ import java.time.LocalDate
  * Inventário (M4 E05): a leitura dos contadores e a recontagem, que o fechamento do dia (M6) chama para reparar
  * qualquer divergência (uma publicação do outbox abandonada, por exemplo). Reservas (E07): a criação ([createBooking])
  * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]); desde a
- * E08, o cancelamento ([cancelReservation]).
+ * E08, o cancelamento ([cancelReservation]); desde a E09, a confirmação da pré-reserva ([confirmReservation]) e as
+ * garantias pendentes que vencem num intervalo ([pendingGuarantees]).
  */
 interface ReservationsApi {
     /**
@@ -39,6 +41,33 @@ interface ReservationsApi {
         id: ReservationId,
         cancellation: ReservationCancellationRequest,
     ): ReservationSummary
+
+    /**
+     * Confirma a pré-reserva com a garantia [method] (M4 E09; RF-RES-08 no recorte manual), na transação de quem chama
+     * (ou numa própria), auditada `reservations.reservation.confirm` em nome do ator corrente ou do sistema, com as
+     * mesmas regras de `POST /api/v1/reservations/{id}/confirm`, **menos a permissão** (quem chama já se autorizou: a
+     * confirmação do pagamento integrado no M7): travada, uma pré-reserva ainda na validade
+     * (`422 PROVISIONAL_RESERVATION_EXPIRED`) ou uma confirmada sem garantia (a política exige uma e nenhuma foi
+     * registrada, ou a registrada é de outro meio; a nova a substitui); senão
+     * `409 RESERVATION_TRANSITION_NOT_ALLOWED`; com a garantia que a política copiada pede
+     * (`422 GUARANTEE_METHOD_NOT_ACCEPTED`) e, no depósito, o total líquido de depósitos da conta cobrindo o exigido
+     * (`422 DEPOSIT_INSUFFICIENT`). A pré-reserva vira confirmada e publica `ReservationConfirmed`; a confirmada só
+     * ganha a garantia registrada (sem evento). O histórico vai na mesma transação.
+     */
+    fun confirmReservation(
+        id: ReservationId,
+        method: GuaranteeMethod,
+    ): ReservationSummary
+
+    /**
+     * As garantias pendentes (pré-reservas e reservas confirmadas sem garantia) com o vencimento de [from] (inclusive;
+     * nulo = sem início, inclusive as já vencidas) a [to] (exclusive), da que vence primeiro à última, com o depósito
+     * exigido e o recebido (M4 E09; o painel do fechamento, M6). Até 1000. Não confere permissão.
+     */
+    fun pendingGuarantees(
+        from: Instant?,
+        to: Instant,
+    ): List<PendingGuarantee>
 
     /** A reserva agrupadora com as reservas; `null` se não existe. */
     fun booking(id: BookingId): BookingSummary?

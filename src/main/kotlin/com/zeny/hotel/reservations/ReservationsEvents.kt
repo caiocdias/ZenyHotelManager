@@ -76,7 +76,8 @@ data class ReservationChanged(
 
 /**
  * A reserva [reservationId] foi cancelada (SPEC §8.3; M4 E08, RF-RES-06) a partir da [previousStatus], pelo [reason]
- * (`x-extensible-enum`: a lista cresce), com a multa lançada na conta ([penaltyCharged]) ou isentada
+ * (`x-extensible-enum`: a lista cresce; desde a E09, `EXPIRED` quando a pré-reserva venceu sem garantia e o job de
+ * expiração a cancelou, sem multa), com a multa lançada na conta ([penaltyCharged]) ou isentada
  * ([penaltyWaived]). As unidades das noites a partir da data operacional voltaram ao inventário. Publicado por
  * `reservations` pelo outbox na transação do cancelamento. Sem hóspede, observação nem valores. Escutado pela
  * distribuição (M8) e pela governança (M6).
@@ -111,4 +112,22 @@ data class ReservationReactivated(
     val dayUse: Boolean,
     val version: Long,
     val reactivatedAt: Instant,
+)
+
+/**
+ * A pré-reserva [reservationId] foi confirmada com a garantia [guaranteeMethod] (SPEC §8.4 "garantia recebida"; M4 E09,
+ * RF-RES-08 no recorte manual) e está `CONFIRMED`, sem validade. O inventário não muda (a pré-reserva já tinha as
+ * unidades). Publicado por `reservations` pelo outbox na transação da confirmação. Sem hóspede nem valores. Escutado
+ * pela distribuição (M8).
+ */
+data class ReservationConfirmed(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val roomTypeId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val guaranteeMethod: GuaranteeMethod,
+    val version: Long,
+    val confirmedAt: Instant,
 )

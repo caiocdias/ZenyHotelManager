@@ -132,6 +132,26 @@ class JdbcPaymentLedger(
             .list()
             .toMap()
 
+    override fun netDeposits(folioIds: Collection<FolioId>): Map<FolioId, Money> {
+        if (folioIds.isEmpty()) return emptyMap()
+        // O reembolso conta pelo recebimento que devolve (o depósito é dele), não pela marca copiada no reembolso.
+        return jdbc
+            .sql(
+                """
+                SELECT p.folio_id, sum(CASE WHEN p.payment_type = 'PAYMENT' THEN p.amount ELSE -p.amount END) AS total
+                FROM billing.payment p
+                LEFT JOIN billing.payment o ON o.id = p.refund_of_id
+                WHERE p.folio_id IN (:ids)
+                  AND ((p.payment_type = 'PAYMENT' AND p.deposit) OR (p.payment_type = 'REFUND' AND o.deposit))
+                GROUP BY p.folio_id
+                """.trimIndent(),
+            ).param("ids", folioIds.map { it.value })
+            .query { rs, _ ->
+                FolioId(rs.getObject("folio_id", UUID::class.java)) to Money.of(rs.getBigDecimal("total"))
+            }.list()
+            .toMap()
+    }
+
     private fun ResultSet.row(): PaymentRow {
         val payment = payment()
         val refunded = Money.of(getBigDecimal("refunded")).takeIf { payment.type == PaymentType.PAYMENT }

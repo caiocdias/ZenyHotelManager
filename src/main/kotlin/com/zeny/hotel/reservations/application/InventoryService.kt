@@ -3,9 +3,11 @@ package com.zeny.hotel.reservations.application
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.InventoryDay
 import com.zeny.hotel.reservations.InventoryRecount
 import com.zeny.hotel.reservations.NewBooking
+import com.zeny.hotel.reservations.PendingGuarantee
 import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationSummary
@@ -31,6 +33,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 
 /** O pedido de limite de overbooking: os tipos de UH, o período, os dias da semana e o limite. */
@@ -209,6 +212,7 @@ class ReservationsApiService(
     private val bookings: BookingService,
     private val bookingStore: BookingStore,
     private val lifecycle: ReservationLifecycleService,
+    private val pendingGuarantees: PendingGuaranteesService,
 ) : ReservationsApi {
     override fun createBooking(booking: NewBooking): BookingSummary = bookings.createAuthorized(booking)
 
@@ -216,6 +220,16 @@ class ReservationsApiService(
         id: ReservationId,
         cancellation: ReservationCancellationRequest,
     ): ReservationSummary = lifecycle.cancelAuthorized(id, cancellation)
+
+    override fun confirmReservation(
+        id: ReservationId,
+        method: GuaranteeMethod,
+    ): ReservationSummary = lifecycle.confirmAuthorized(id, method)
+
+    override fun pendingGuarantees(
+        from: Instant?,
+        to: Instant,
+    ): List<PendingGuarantee> = pendingGuarantees.listAuthorized(from, to)
 
     @Transactional(readOnly = true)
     override fun booking(id: BookingId): BookingSummary? = bookingStore.booking(id)

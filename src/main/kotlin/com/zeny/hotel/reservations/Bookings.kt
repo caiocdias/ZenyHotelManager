@@ -46,7 +46,8 @@ value class ReservationId(
 
 /**
  * Situação da reserva (RF-RES-02, SPEC §8.4). A criação (M4 E07) faz [PROVISIONAL] (pré-reserva, com validade) ou
- * [CONFIRMED]; o cancelamento ([CANCELLED]) e a reativação (de volta a [CONFIRMED]) entram na E08; as outras nos
+ * [CONFIRMED]; o cancelamento ([CANCELLED]) e a reativação (de volta a [CONFIRMED]) entram na E08; a confirmação da
+ * pré-reserva com a garantia e a expiração dela (cancelada com o motivo `EXPIRED`), na E09; as outras nos
  * marcos seguintes (check-in e check-out no M5, no-show no M6). Nas respostas é `x-extensible-enum`.
  */
 enum class ReservationStatus {
@@ -152,7 +153,17 @@ data class GuaranteeTerms(
     val type: GuaranteeType,
     val depositPercent: Percent?,
     val dueDaysBefore: Int?,
-)
+) {
+    /**
+     * O depósito que a política exige da reserva de [total] (M4 E09; RF-TAR-07 "depósito de X%"): o percentual sobre o
+     * total da reserva (as diárias e os pacotes adicionais), pela regra única de `Money`; nulo fora de `DEPOSIT`.
+     */
+    fun requiredDeposit(total: Money): Money? = if (type == GuaranteeType.DEPOSIT) depositPercent?.of(total) else null
+
+    /** Até quando a política pede o depósito ("até N dias antes" da [arrival]); nulo fora de `DEPOSIT`. */
+    fun depositDueOn(arrival: LocalDate): LocalDate? =
+        if (type == GuaranteeType.DEPOSIT) dueDaysBefore?.let { arrival.minusDays(it.toLong()) } else null
+}
 
 /**
  * O preço congelado de uma noite (RN-14; no day use, a própria data): a diária calculada na criação
@@ -214,8 +225,13 @@ data class ReservationSummary(
      * reativação lança só o que falta para a multa da política, nunca a multa de novo.
      */
     val penaltiesCharged: Money = Money.ZERO,
+    /** A garantia registrada na confirmação da pré-reserva (M4 E09); nula na reserva que nunca foi pré-reserva. */
+    val guarantee: ReservationGuarantee? = null,
 ) {
     val dayUse: Boolean get() = arrival == departure
+
+    /** O depósito que a política copiada exige desta reserva (E09); nulo fora de `DEPOSIT`. */
+    val requiredDeposit: Money? get() = guaranteeTerms.requiredDeposit(total)
 
     override fun toString(): String = "ReservationSummary(id=$id, code=$code, status=$status)"
 }

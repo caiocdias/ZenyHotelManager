@@ -7,18 +7,17 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 
 /**
- * Base dos testes de integração: contexto completo com o profile `local`, ligado ao
- * PostgreSQL 18 e ao MinIO ([MinioContainer]) do Testcontainers, a uma chave de cifragem e a
- * chaves JWT sorteadas por JVM e ao administrador inicial dos testes ([TestAdmin]). As classes com
- * esta anotação e sem configuração extra compartilham o mesmo contexto (cache do Spring);
- * todas compartilham o mesmo container. O contexto é web (servlet simulado) e expõe um
- * `MockMvc` com a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas
- * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
+ * Base dos testes de integração: contexto completo com o profile `local`, ligado ao PostgreSQL 18 e ao MinIO
+ * ([MinioContainer]) do Testcontainers, a uma chave de cifragem e a chaves JWT sorteadas por JVM e ao administrador
+ * inicial dos testes ([TestAdmin]). As classes com esta anotação e sem configuração extra compartilham o mesmo contexto
+ * (cache do Spring); todas compartilham o mesmo container. O contexto é web (servlet simulado) e expõe um `MockMvc` com
+ * a cadeia do Spring Security, para os testes de API. As métricas ficam ligadas como em produção
+ * (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
- * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
- * os jobs de reprocessamento e de expurgo do outbox, o expurgo de anexos órfãos, a rotação de chaves dos
- * documentos de hóspede e o horizonte do inventário, para que os testes os disparem quando
- * quiserem. Para autenticar uma requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
+ * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam os jobs de reprocessamento
+ * e de expurgo do outbox, o expurgo de anexos órfãos, a rotação de chaves dos documentos de hóspede, o horizonte do
+ * inventário e a expiração das pré-reservas, para que os testes os disparem quando quiserem. Para autenticar uma
+ * requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)
@@ -30,6 +29,7 @@ import org.springframework.test.context.ContextConfiguration
         FILES_PURGE_DEFERRED,
         GUESTS_REKEY_DEFERRED,
         INVENTORY_HORIZON_DEFERRED,
+        PROVISIONAL_EXPIRY_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
@@ -74,3 +74,9 @@ const val GUESTS_REKEY_DEFERRED = "zeny.guests.document-rekey.initial-delay=PT24
  * banco compartilhado, e os testes do inventário conferem os contadores dos próprios tipos.
  */
 const val INVENTORY_HORIZON_DEFERRED = "zeny.reservations.inventory-horizon.initial-delay=PT24H"
+
+/**
+ * A expiração das pré-reservas só roda quando o teste a chama: ela cancela todas as pré-reservas vencidas do banco
+ * compartilhado, e um contexto com o relógio adiantado ([MutableClock]) cancelaria as de outros testes.
+ */
+const val PROVISIONAL_EXPIRY_DEFERRED = "zeny.reservations.provisional-expiry.initial-delay=PT24H"

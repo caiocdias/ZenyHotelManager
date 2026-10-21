@@ -18,8 +18,10 @@ import java.util.UUID
  * auditadas (`billing.folio.open`, `billing.posting.create`) em nome do ator da requisição corrente, ou do sistema
  * fora de uma requisição. Estorno e ajuste não estão aqui: são ações sensíveis de quem opera, pela API HTTP. Desde a
  * E07, também o turno de caixa aberto do usuário ([requireOpenShift]), que os recebimentos exigem, e, desde a E09, as
- * cauções a vencer ([cardPreAuthorizationsExpiring]).
+ * cauções a vencer ([cardPreAuthorizationsExpiring]); desde o M4 E09, o total líquido de depósitos de uma conta
+ * ([netDeposits]).
  */
+@Suppress("TooManyFunctions") // a API pública inteira do módulo para os de cima
 interface BillingApi {
     /** O código de lançamento, ativo ou não; `null` se não existe. */
     fun transactionCode(id: TransactionCodeId): TransactionCodeSummary?
@@ -104,6 +106,17 @@ interface BillingApi {
         from: Instant,
         to: Instant,
     ): List<CardPreAuthorizationSummary>
+
+    /**
+     * O total líquido dos depósitos da conta (H13 do M4, M4 E09): os recebimentos marcados como depósito
+     * (`deposit: true`) menos os reembolsos deles, nunca as capturas de caução nem os pagamentos comuns. Zero sem
+     * depósito (ou com a conta inexistente). Lido sem trava e sem conferir permissão: a confirmação da pré-reserva (o
+     * `reservations`) confere o depósito exigido pela política de garantia por aqui, sem ler o schema `billing`.
+     */
+    fun netDeposits(folioId: FolioId): Money
+
+    /** O mesmo de [netDeposits] para várias contas de uma vez (todas no mapa, zero as sem depósito). */
+    fun netDeposits(folioIds: Collection<FolioId>): Map<FolioId, Money>
 }
 
 /** Id de um código de lançamento. */

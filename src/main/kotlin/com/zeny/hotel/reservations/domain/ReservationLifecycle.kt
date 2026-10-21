@@ -6,6 +6,7 @@ import com.zeny.hotel.rates.PackagePricing
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.RatesErrorCodes
 import com.zeny.hotel.rates.SaleRefusal
+import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
 import com.zeny.hotel.reservations.NightlyRateSummary
 import com.zeny.hotel.reservations.ReservationCancellationRequest
@@ -31,12 +32,16 @@ enum class ReservationAction {
     CHANGE,
     CANCEL,
     REACTIVATE,
+
+    /** Confirmar a pré-reserva com a garantia (E09). */
+    CONFIRM,
 }
 
 /**
  * As transições da reserva que a E08 faz (SPEC §8.4): alterar e cancelar só uma pré-reserva ou uma confirmada (a
  * hospedada é assunto da recepção, M5; a encerrada, a cancelada e o no-show não mudam); reativar só uma cancelada ou
- * no-show, que volta a confirmada. Fora disso, `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
+ * no-show, que volta a confirmada; desde a E09, confirmar só uma pré-reserva ("garantia recebida"). Fora disso,
+ * `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
  */
 object ReservationTransitions {
     private val allowed =
@@ -44,6 +49,7 @@ object ReservationTransitions {
             ReservationAction.CHANGE to setOf(ReservationStatus.PROVISIONAL, ReservationStatus.CONFIRMED),
             ReservationAction.CANCEL to setOf(ReservationStatus.PROVISIONAL, ReservationStatus.CONFIRMED),
             ReservationAction.REACTIVATE to setOf(ReservationStatus.CANCELLED, ReservationStatus.NO_SHOW),
+            ReservationAction.CONFIRM to setOf(ReservationStatus.PROVISIONAL),
         )
 
     fun allows(
@@ -85,6 +91,7 @@ class ReservationTransitionNotAllowedException(
                 ReservationAction.CHANGE to "alterada",
                 ReservationAction.CANCEL to "cancelada",
                 ReservationAction.REACTIVATE to "reativada",
+                ReservationAction.CONFIRM to "confirmada",
             )
     }
 }
@@ -391,11 +398,19 @@ object ReservationChangeRules {
     }
 }
 
-/** O formato de um cancelamento: a observação de 1 a [MAX_NOTES] caracteres (`400`, campo `notes`). */
+/**
+ * O formato de um cancelamento: a observação de 1 a [MAX_NOTES] caracteres (`400`, campo `notes`) e nunca o motivo
+ * `EXPIRED`, que é só do job de expiração (E09; `400`, campo `reason`).
+ */
 object CancellationRules {
     const val MAX_NOTES = 500
 
     fun requireValid(request: ReservationCancellationRequest) {
+        if (request.reason == CancellationReason.EXPIRED) {
+            val code = ReservationsErrorCodes.RESERVATION_CANCELLATION_INVALID
+            val message = "O motivo \"expirada\" é só da expiração automática da pré-reserva."
+            throw InvalidInputException(code, message, listOf(FieldViolation("reason", code.value, message)))
+        }
         val notes = request.notes ?: return
         if (notes.isBlank() || notes.length > MAX_NOTES) {
             val code = ReservationsErrorCodes.RESERVATION_CANCELLATION_INVALID

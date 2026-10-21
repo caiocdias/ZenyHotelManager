@@ -13,6 +13,7 @@ import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
 import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
+import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.MarketSegment
 import com.zeny.hotel.reservations.NewBooking
@@ -21,12 +22,14 @@ import com.zeny.hotel.reservations.NewStayGuest
 import com.zeny.hotel.reservations.NightlyRateOverride
 import com.zeny.hotel.reservations.NightlyRateSummary
 import com.zeny.hotel.reservations.ReservationCancellation
+import com.zeny.hotel.reservations.ReservationGuarantee
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationOrigin
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.application.BookingService
 import com.zeny.hotel.reservations.application.BookingView
+import com.zeny.hotel.reservations.application.PendingGuaranteesService
 import com.zeny.hotel.reservations.application.ReservationLifecycleService
 import com.zeny.hotel.reservations.application.ReservationView
 import com.zeny.hotel.rooms.RoomTypeId
@@ -55,6 +58,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import java.net.URI
 import java.time.Instant
 import java.time.LocalDate
@@ -370,6 +374,23 @@ data class ReservationResponse(
                 "reativação lança só o que falta para a multa da política).",
     )
     val penaltiesCharged: Money,
+    @field:Schema(
+        description =
+            "O depósito que a política de garantia copiada exige (o percentual sobre o total da reserva); nulo fora " +
+                "da garantia `DEPOSIT`.",
+    )
+    val requiredDeposit: Money?,
+    @field:Schema(
+        description = "Até quando a política pede o depósito (N dias antes da chegada); nulo fora de `DEPOSIT`.",
+    )
+    val depositDueOn: LocalDate?,
+    @field:Schema(
+        description =
+            "A última garantia registrada (na confirmação da pré-reserva ou depois, numa reserva confirmada sem " +
+                "garantia); nula se nenhuma foi registrada. Depois de uma troca de plano pode ser de outro meio que " +
+                "não vale mais para a política copiada atual (a reserva aparece então nas garantias pendentes).",
+    )
+    val guarantee: ReservationGuaranteeResponse?,
 ) {
     companion object {
         fun of(reservation: ReservationSummary) =
@@ -403,6 +424,37 @@ data class ReservationResponse(
                 createdBy = reservation.createdBy?.value,
                 cancellation = reservation.cancellation?.let(CancellationResponse::of),
                 penaltiesCharged = reservation.penaltiesCharged,
+                requiredDeposit = reservation.requiredDeposit,
+                depositDueOn = reservation.guaranteeTerms.depositDueOn(reservation.arrival),
+                guarantee = reservation.guarantee?.let(ReservationGuaranteeResponse::of),
+            )
+    }
+}
+
+@Schema(
+    description =
+        "A última garantia registrada (na confirmação da pré-reserva ou depois, numa reserva confirmada sem " +
+            "garantia): o meio, quando, por quem (nulo = sistema) e, no depósito, o exigido pela política e o total " +
+            "líquido de depósitos da conta naquele momento. Depois de uma troca de plano, pode ser de outro meio que " +
+            "não vale mais para a política copiada atual (a reserva aparece então nas garantias pendentes).",
+)
+data class ReservationGuaranteeResponse(
+    @field:ExtensibleEnum
+    @field:Schema(description = "`CARD` (informado) ou `DEPOSIT` (conferido na conta). $UNKNOWN")
+    val method: GuaranteeMethod,
+    val confirmedAt: Instant,
+    val confirmedBy: UUID?,
+    val requiredDeposit: Money?,
+    val depositReceived: Money?,
+) {
+    companion object {
+        fun of(guarantee: ReservationGuarantee) =
+            ReservationGuaranteeResponse(
+                guarantee.method,
+                guarantee.confirmedAt,
+                guarantee.confirmedBy?.value,
+                guarantee.requiredDeposit,
+                guarantee.depositReceived,
             )
     }
 }
@@ -521,7 +573,8 @@ class BookingsController(
 }
 
 /**
- * As reservas (M4 E07 e E08): a consulta, a alteração, o cancelamento, a reativação e o histórico de uma reserva.
+ * As reservas (M4 E07 a E09): a consulta, a alteração, o cancelamento, a reativação e o histórico de uma reserva; a
+ * confirmação da pré-reserva com a garantia e a lista das pré-reservas que vencem num intervalo.
  */
 @ApiV1Controller
 @RequestMapping("/reservations")
@@ -529,6 +582,7 @@ class BookingsController(
 class ReservationsController(
     private val bookings: BookingService,
     private val lifecycle: ReservationLifecycleService,
+    private val pendingGuarantees: PendingGuaranteesService,
 ) {
     @GetMapping("/{id}")
     @Operation(
@@ -611,6 +665,53 @@ class ReservationsController(
         @PathVariable id: UUID,
         @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
     ): ResponseEntity<ReservationDetailResponse> = detail(lifecycle.reactivate(ReservationId(id), approvalToken))
+
+    @PostMapping("/{id}/confirm")
+    @Idempotent
+    @Operation(
+        operationId = "confirmReservation",
+        summary = "Confirmar uma pré-reserva (ou registrar a garantia de uma reserva) com a garantia",
+        description =
+            "Registra a garantia recebida: confirma a pré-reserva ainda na validade (senão 422 " +
+                "`PROVISIONAL_RESERVATION_EXPIRED`) ou, numa reserva confirmada sem garantia (a política copiada " +
+                "exige uma e nenhuma foi registrada, ou a registrada é de outro meio), só grava a garantia nova; " +
+                "outra situação, 409 " +
+                "`RESERVATION_TRANSITION_NOT_ALLOWED`. Exige `reservations.reservations.manage` e " +
+                "`Idempotency-Key`. A garantia tem de ser a que a política copiada pede (422 " +
+                "`GUARANTEE_METHOD_NOT_ACCEPTED`): `CARD`, o cartão informado pelo hóspede (nenhum dado do " +
+                "cartão entra aqui), ou `DEPOSIT`, conferido na conta " +
+                "da reserva: os pagamentos com `deposit` menos os reembolsos deles precisam cobrir o percentual da " +
+                "política sobre o total da reserva (422 `DEPOSIT_INSUFFICIENT`, com `requiredDeposit` e " +
+                "`depositReceived`). Grava o histórico (`CONFIRM` ou `GUARANTEE`) e, na pré-reserva, publica " +
+                "`ReservationConfirmed`; o inventário não muda.",
+    )
+    fun confirm(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ReservationConfirmRequest,
+    ): ResponseEntity<ReservationDetailResponse> =
+        detail(lifecycle.confirm(ReservationId(id), checkNotNull(request.guarantee)))
+
+    @GetMapping("/pending-guarantees")
+    @Operation(
+        operationId = "listPendingGuarantees",
+        summary = "Garantias pendentes que vencem num intervalo",
+        description =
+            "As reservas que ainda devem a garantia, com o vencimento de `from` (inclusive; sem ele, desde as já " +
+                "vencidas) a `to` (exclusive; sem ele, agora mais a antecedência do alerta do hotel, " +
+                "`preReservationAlertLead`), do que vence primeiro ao último, por cursor. `kind` `PROVISIONAL`: a " +
+                "pré-reserva, que vence na validade (`provisionalUntil`) e o job cancela; `UNGUARANTEED`: a reserva " +
+                "confirmada cuja política copiada exige garantia e não tem nenhuma registrada, ou tem uma de outro " +
+                "meio (troca de plano, reativação), que vence no horário de check-in do hotel do dia do prazo do " +
+                "depósito ou, no cartão, do dia da chegada, e não expira. Cada item traz o depósito exigido, o já " +
+                "recebido na conta e o prazo da política. Exige `reservations.reservations.read`. Fim antes do " +
+                "início: 400 " +
+                "`RESERVATION_PERIOD_INVALID` (campo `to`).",
+    )
+    fun pendingGuarantees(
+        @RequestParam(required = false) from: Instant?,
+        @RequestParam(required = false) to: Instant?,
+        @Valid page: PageParams,
+    ): CursorPage<PendingGuaranteeResponse> = pendingGuarantees.list(from, to, page).map(PendingGuaranteeResponse::of)
 
     @GetMapping("/{id}/history")
     @Operation(
