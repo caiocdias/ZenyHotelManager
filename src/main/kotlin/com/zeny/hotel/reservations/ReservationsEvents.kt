@@ -46,3 +46,69 @@ data class ReservationCreated(
     val channel: SalesChannel,
     val createdAt: Instant,
 )
+
+/**
+ * A reserva [reservationId] foi alterada (SPEC §8.3; M4 E08, RF-RES-05): a estadia, a ocupação, o plano ou o segmento
+ * ([changedFields], os nomes dos campos da reserva). Traz a situação, a estadia de agora e a anterior (tipo de UH,
+ * plano, chegada e saída), as contagens e a [version] depois da alteração. Publicado por `reservations` pelo outbox na
+ * transação da alteração, só quando algo mudou. Sem hóspede, pedido especial nem preço. Escutado pela distribuição (M8)
+ * e pela FNRH (M5).
+ */
+data class ReservationChanged(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val status: ReservationStatus,
+    val roomTypeId: UUID,
+    val previousRoomTypeId: UUID,
+    val ratePlanId: UUID,
+    val previousRatePlanId: UUID,
+    val arrival: LocalDate,
+    val previousArrival: LocalDate,
+    val departure: LocalDate,
+    val previousDeparture: LocalDate,
+    val dayUse: Boolean,
+    val adults: Int,
+    val children: Int,
+    val changedFields: List<String>,
+    val version: Long,
+    val changedAt: Instant,
+)
+
+/**
+ * A reserva [reservationId] foi cancelada (SPEC §8.3; M4 E08, RF-RES-06) a partir da [previousStatus], pelo [reason]
+ * (`x-extensible-enum`: a lista cresce), com a multa lançada na conta ([penaltyCharged]) ou isentada
+ * ([penaltyWaived]). As unidades das noites a partir da data operacional voltaram ao inventário. Publicado por
+ * `reservations` pelo outbox na transação do cancelamento. Sem hóspede, observação nem valores. Escutado pela
+ * distribuição (M8) e pela governança (M6).
+ */
+data class ReservationCancelled(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val previousStatus: ReservationStatus,
+    val roomTypeId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val reason: CancellationReason,
+    val penaltyCharged: Boolean,
+    val penaltyWaived: Boolean,
+    val version: Long,
+    val cancelledAt: Instant,
+)
+
+/**
+ * A reserva [reservationId], cancelada ou no-show ([previousStatus]), foi reativada e está confirmada de novo (SPEC
+ * §8.4; M4 E08), com as unidades das noites a partir da data operacional tomadas outra vez. Publicado por
+ * `reservations` pelo outbox na transação da reativação.
+ */
+data class ReservationReactivated(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val previousStatus: ReservationStatus,
+    val roomTypeId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val version: Long,
+    val reactivatedAt: Instant,
+)

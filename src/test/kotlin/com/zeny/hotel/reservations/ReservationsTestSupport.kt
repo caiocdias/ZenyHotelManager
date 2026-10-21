@@ -9,6 +9,7 @@ import com.zeny.hotel.rates.RatesTestSupport
 import com.zeny.hotel.shared.UuidV7
 import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
+import org.springframework.http.HttpMethod.PUT
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.modulith.events.ApplicationModuleListener
@@ -33,6 +34,31 @@ open class ReservationCreatedProbeListener {
     @ApplicationModuleListener
     open fun on(event: ReservationCreated) {
         ReservationCreatedEvents.received += event
+    }
+}
+
+/** Os eventos do ciclo de vida (E08) recebidos pelo listener de teste. */
+object ReservationLifecycleEvents {
+    val changed: MutableList<ReservationChanged> = CopyOnWriteArrayList()
+    val cancelled: MutableList<ReservationCancelled> = CopyOnWriteArrayList()
+    val reactivated: MutableList<ReservationReactivated> = CopyOnWriteArrayList()
+}
+
+/** Listener assíncrono e transacional de teste dos eventos do ciclo de vida: com ele, as publicações vão ao outbox. */
+open class ReservationLifecycleProbeListener {
+    @ApplicationModuleListener
+    open fun on(event: ReservationChanged) {
+        ReservationLifecycleEvents.changed += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: ReservationCancelled) {
+        ReservationLifecycleEvents.cancelled += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: ReservationReactivated) {
+        ReservationLifecycleEvents.reactivated += event
     }
 }
 
@@ -74,8 +100,9 @@ class ReservationsTestSupport(
         guarantee: String = "NONE",
         channels: List<String> = listOf("DIRECT", "WEBSITE"),
         packages: List<UUID> = emptyList(),
+        cancellationBody: Map<String, Any?> = rates.cancellationBody(),
     ): Plan {
-        val cancellation = rates.createCancellationPolicy()
+        val cancellation = rates.createCancellationPolicy(cancellationBody)
         val guaranteePolicy =
             rates.createGuaranteePolicy(
                 if (guarantee == "NONE") {
@@ -165,6 +192,130 @@ class ReservationsTestSupport(
     fun created(body: Map<String, Any?>): JsonNode = with(billing) { create(body).expect(201) }
 
     fun reservation(id: UUID): JsonNode = with(iam) { call(GET, "/api/v1/reservations/$id", admin).ok() }
+
+    // --- Ciclo de vida (E08) -----------------------------------------------------------------------------------
+
+    /** O corpo da alteração a partir da reserva [current] (a resposta da API), com as trocas pedidas. */
+    @Suppress("LongParameterList") // os campos da alteração, com padrões
+    fun changeBody(
+        current: JsonNode,
+        type: UUID = UUID.fromString(current["roomTypeId"].asString()),
+        plan: UUID = UUID.fromString(current["ratePlanId"].asString()),
+        arrival: LocalDate = LocalDate.parse(current["arrival"].asString()),
+        departure: LocalDate = LocalDate.parse(current["departure"].asString()),
+        adults: Int = current["adults"].asInt(),
+        childAges: List<Int> = current["childAges"].values().map { it.asInt() },
+        segment: String = current["segment"].asString(),
+        specialRequests: String? = current["specialRequests"].takeUnless { it.isNull }?.asString(),
+        nightlyRates: List<Pair<LocalDate, String>> = emptyList(),
+    ): Map<String, Any?> =
+        mapOf(
+            "roomTypeId" to type,
+            "ratePlanId" to plan,
+            "arrival" to arrival,
+            "departure" to departure,
+            "adults" to adults,
+            "childAges" to childAges,
+            "segment" to segment,
+            "specialRequests" to specialRequests,
+            "nightlyRates" to nightlyRates.map { (date, amount) -> mapOf("date" to date, "roomAmount" to amount) },
+        )
+
+    fun change(
+        id: UUID,
+        body: Map<String, Any?>,
+        ifMatch: String? = etag(id),
+        auth: RequestPostProcessor = admin,
+        approvalToken: String? = null,
+    ): MockHttpServletResponse =
+        billing.call(PUT, "/api/v1/reservations/$id", auth, body, approvalToken = approvalToken, ifMatch = ifMatch)
+
+    @Suppress("LongParameterList") // o pedido e os cabeçalhos, com padrões
+    fun cancel(
+        id: UUID,
+        reason: String = "GUEST_REQUEST",
+        notes: String? = null,
+        waivePenalty: Boolean = false,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+        approvalToken: String? = null,
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/reservations/$id/cancel",
+            auth,
+            mapOf("reason" to reason, "notes" to notes, "waivePenalty" to waivePenalty),
+            idempotencyKey = idempotencyKey,
+            approvalToken = approvalToken,
+        )
+
+    fun reactivate(
+        id: UUID,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+        approvalToken: String? = null,
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/reservations/$id/reactivate",
+            auth,
+            idempotencyKey = idempotencyKey,
+            approvalToken = approvalToken,
+        )
+
+    fun etag(id: UUID): String =
+        checkNotNull(with(iam) { call(GET, "/api/v1/reservations/$id", admin) }.getHeader("ETag"))
+
+    /** Os lançamentos da conta: o tipo, o código do sistema (`system_key`), o valor e a descrição. */
+    fun postings(folio: UUID): List<Map<String, Any?>> =
+        jdbc
+            .sql(
+                "SELECT p.posting_type, c.system_key, p.amount, p.source, p.description, p.business_date " +
+                    "FROM billing.posting p JOIN billing.transaction_code c ON c.id = p.transaction_code_id " +
+                    "WHERE p.folio_id = :folio ORDER BY p.posted_at, p.id",
+            ).param("folio", folio)
+            .query { rs, _ ->
+                mapOf(
+                    "type" to rs.getString("posting_type"),
+                    "key" to rs.getString("system_key"),
+                    "amount" to rs.getBigDecimal("amount").toPlainString(),
+                    "source" to rs.getString("source"),
+                    "description" to rs.getString("description"),
+                    "businessDate" to rs.getObject("business_date", LocalDate::class.java),
+                )
+            }.list()
+
+    fun status(id: UUID): String =
+        jdbc
+            .sql("SELECT status FROM reservations.reservation WHERE id = :id")
+            .param("id", id)
+            .query(String::class.java)
+            .single()
+
+    fun historyKinds(id: UUID): List<String> =
+        jdbc
+            .sql(
+                "SELECT kind FROM reservations.reservation_history WHERE reservation_id = :id ORDER BY occurred_at, id",
+            ).param("id", id)
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
+
+    /** As publicações de um evento do ciclo de vida da reserva pelo outbox (as do listener de teste). */
+    fun lifecyclePublications(
+        type: Class<*>,
+        reservationId: UUID,
+    ): List<String> =
+        jdbc
+            .sql(
+                "SELECT serialized_event FROM shared.event_publication WHERE event_type = :type " +
+                    "AND serialized_event LIKE :reservation AND listener_id LIKE :listener",
+            ).param("type", type.name)
+            .param("reservation", "%\"reservationId\":\"$reservationId\"%")
+            .param("listener", "%ReservationLifecycleProbeListener%")
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
 
     fun bookingCount(type: UUID): Int =
         jdbc

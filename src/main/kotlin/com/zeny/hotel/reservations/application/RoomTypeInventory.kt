@@ -2,6 +2,9 @@ package com.zeny.hotel.reservations.application
 
 import com.zeny.hotel.reservations.AvailabilityChanged
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.HistoryCancellation
+import com.zeny.hotel.reservations.HistoryNight
+import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryCounters
@@ -30,6 +33,9 @@ internal object ReservationsAudit {
 
     const val CREATE_BOOKING = "reservations.booking.create"
     const val REPOINT_GUEST = "reservations.guest-reference.repoint"
+    const val CHANGE_RESERVATION = "reservations.reservation.change"
+    const val CANCEL_RESERVATION = "reservations.reservation.cancel"
+    const val REACTIVATE_RESERVATION = "reservations.reservation.reactivate"
 
     private const val MAX_AUDITED_VALUES = 20
 
@@ -90,6 +96,61 @@ internal object ReservationsAudit {
                     "version" to reservation.guaranteeTerms.version,
                 ),
             "folioId" to reservation.folioId.toString(),
+        ) + cancellationSnapshot(reservation)
+
+    /**
+     * O cancelamento no retrato (E08): o motivo, a situação anterior e a multa (prazo, valor, isenção, lançamento e as
+     * multas já lançadas); a observação só como `hasNotes` (texto livre).
+     */
+    private fun cancellationSnapshot(reservation: ReservationSummary): Map<String, Any?> {
+        val cancellation = reservation.cancellation
+        val charged =
+            reservation.penaltiesCharged.takeIf { it.isPositive() }?.let {
+                mapOf("penaltiesCharged" to it.toString())
+            }
+        if (cancellation == null) return charged.orEmpty()
+        return charged.orEmpty() +
+            mapOf(
+                "cancellation" to
+                    mapOf(
+                        "reason" to cancellation.reason.name,
+                        "previousStatus" to cancellation.previousStatus.name,
+                        "hasNotes" to (cancellation.notes != null),
+                        "penaltyDeadline" to cancellation.penalty.deadline.toString(),
+                        "penaltyAmount" to cancellation.penalty.amount.toString(),
+                        "penaltyWaived" to cancellation.penalty.waived,
+                        "penaltyPostingId" to cancellation.penalty.postingId?.toString(),
+                    ),
+            )
+    }
+
+    /** O retrato de uma reserva no histórico (E08): a estadia, as noites com o preço, os totais e o cancelamento. */
+    fun state(reservation: ReservationSummary): ReservationState =
+        ReservationState(
+            status = reservation.status,
+            roomTypeId = reservation.roomTypeId,
+            ratePlanId = reservation.ratePlanId,
+            arrival = reservation.arrival,
+            departure = reservation.departure,
+            adults = reservation.adults,
+            childAges = reservation.childAges,
+            segment = reservation.segment,
+            hasSpecialRequests = reservation.specialRequests != null,
+            nights =
+                reservation.nightlyRates.map {
+                    HistoryNight(it.date, it.ratePlanId, it.roomAmount, it.amount, it.overridden)
+                },
+            roomTotal = reservation.roomTotal,
+            additionalPackagesTotal = reservation.additionalPackagesTotal,
+            total = reservation.total,
+            cancellationPolicyId = reservation.cancellationTerms.policyId,
+            cancellationPolicyVersion = reservation.cancellationTerms.version,
+            guaranteePolicyId = reservation.guaranteeTerms.policyId,
+            guaranteePolicyVersion = reservation.guaranteeTerms.version,
+            cancellation =
+                reservation.cancellation?.let {
+                    HistoryCancellation(it.reason, it.penalty.amount, it.penalty.waived, it.penalty.postingId)
+                },
         )
 
     /**

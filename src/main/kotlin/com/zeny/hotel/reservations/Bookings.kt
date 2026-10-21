@@ -46,8 +46,8 @@ value class ReservationId(
 
 /**
  * Situação da reserva (RF-RES-02, SPEC §8.4). A criação (M4 E07) faz [PROVISIONAL] (pré-reserva, com validade) ou
- * [CONFIRMED]; as outras entram nas etapas e marcos seguintes (check-in e check-out no M5, cancelamento na E08,
- * no-show no M6). Nas respostas é `x-extensible-enum`.
+ * [CONFIRMED]; o cancelamento ([CANCELLED]) e a reativação (de volta a [CONFIRMED]) entram na E08; as outras nos
+ * marcos seguintes (check-in e check-out no M5, no-show no M6). Nas respostas é `x-extensible-enum`.
  */
 enum class ReservationStatus {
     PROVISIONAL,
@@ -207,6 +207,13 @@ data class ReservationSummary(
     val version: Long,
     val createdAt: Instant,
     val createdBy: UserId?,
+    /** O cancelamento corrente (M4 E08); só numa reserva cancelada. */
+    val cancellation: ReservationCancellation? = null,
+    /**
+     * O total das multas de cancelamento já lançadas na conta desta reserva (M4 E08): um cancelamento depois de uma
+     * reativação lança só o que falta para a multa da política, nunca a multa de novo.
+     */
+    val penaltiesCharged: Money = Money.ZERO,
 ) {
     val dayUse: Boolean get() = arrival == departure
 

@@ -1,6 +1,7 @@
 package com.zeny.hotel.reservations.infrastructure
 
 import com.zeny.hotel.billing.FolioId
+import com.zeny.hotel.billing.PostingId
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.rates.CancellationPenaltyType
@@ -15,12 +16,21 @@ import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.CancellationPenalty
+import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
 import com.zeny.hotel.reservations.GuaranteeTerms
+import com.zeny.hotel.reservations.HistoryCancellation
+import com.zeny.hotel.reservations.HistoryNight
 import com.zeny.hotel.reservations.MarketSegment
 import com.zeny.hotel.reservations.NightlyRateSummary
+import com.zeny.hotel.reservations.ReservationCancellation
+import com.zeny.hotel.reservations.ReservationHistoryEntry
+import com.zeny.hotel.reservations.ReservationHistoryId
+import com.zeny.hotel.reservations.ReservationHistoryKind
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationOrigin
+import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.StayGuestSummary
@@ -29,10 +39,13 @@ import com.zeny.hotel.reservations.application.GuestRepointing
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
 import com.zeny.hotel.rooms.RoomTypeId
+import com.zeny.hotel.shared.AppendOnlyTables
 import com.zeny.hotel.shared.DocumentNumber
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import com.zeny.hotel.shared.UserId
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import tools.jackson.databind.json.JsonMapper
@@ -51,7 +64,7 @@ import java.util.UUID
  * vetores (`unnest`/`ANY`) vão em texto (`{a,b}`) convertido pelo `CAST`.
  */
 @Component
-@Suppress("TooManyFunctions") // gravação, leituras, reapontamento, estadia ativa e o uso do inventário
+@Suppress("TooManyFunctions", "LargeClass") // gravação, leituras, alteração, histórico, reapontamento e inventário
 class JdbcBookingStore(
     private val jdbc: JdbcClient,
     private val jsonMapper: JsonMapper,
@@ -244,6 +257,167 @@ class JdbcBookingStore(
             .optional()
             .orElse(null)
     }
+
+    override fun reservationForUpdate(id: ReservationId): ReservationSummary? {
+        val exists =
+            jdbc
+                .sql("SELECT id FROM reservations.reservation WHERE id = :id FOR UPDATE")
+                .param("id", id.value)
+                .query { rs, _ -> rs.uuid("id") }
+                .optional()
+                .isPresent
+        return if (exists) reservation(id) else null
+    }
+
+    @Suppress("LongMethod") // um UPDATE com a estadia, os termos copiados, os totais e o cancelamento
+    override fun update(
+        reservation: ReservationSummary,
+        now: Instant,
+        replaceNights: Boolean,
+    ) {
+        val cancellation = reservation.cancellationTerms
+        val guarantee = reservation.guaranteeTerms
+        val cancelled = reservation.cancellation
+        val updated =
+            jdbc
+                .sql(
+                    """
+                    UPDATE reservations.reservation SET status = :status, provisional_until = :provisionalUntil,
+                        room_type_id = :roomTypeId, rate_plan_id = :ratePlanId, arrival = :arrival,
+                        departure = :departure, adults = :adults, child_ages = CAST(:childAges AS integer[]),
+                        segment = :segment, special_requests = :specialRequests,
+                        cancellation_policy_id = :cancellationId, cancellation_policy_name = :cancellationName,
+                        cancellation_policy_version = :cancellationVersion,
+                        cancellation_deadline_hours = :deadlineHours, cancellation_penalty_type = :penaltyType,
+                        cancellation_penalty_percent = :penaltyPercent, cancellation_penalty_nights = :penaltyNights,
+                        cancellation_penalty_amount = :penaltyAmount, guarantee_policy_id = :guaranteeId,
+                        guarantee_policy_name = :guaranteeName, guarantee_policy_version = :guaranteeVersion,
+                        guarantee_type = :guaranteeType, guarantee_deposit_percent = :depositPercent,
+                        guarantee_due_days_before = :dueDaysBefore, room_total = :roomTotal,
+                        additional_packages_total = :additionalTotal, total = :total, approval_id = :approvalId,
+                        approved_by = :approvedBy, cancellation_reason = :reason, cancellation_notes = :notes,
+                        cancellation_previous_status = :previousStatus, cancelled_at = :cancelledAt,
+                        cancelled_by = :cancelledBy, penalty_deadline = :penaltyDeadline,
+                        penalty_amount = :penaltyDue, penalty_waived = :penaltyWaived,
+                        penalty_posting_id = :penaltyPostingId, penalty_waiver_approval_id = :waiverApprovalId,
+                        penalty_waiver_approved_by = :waiverApprovedBy, penalties_charged = :penaltiesCharged,
+                        version = :version, updated_at = :now
+                    WHERE id = :id AND version = :version - 1
+                    """.trimIndent(),
+                ).param("id", reservation.id.value)
+                .param("status", reservation.status.name)
+                .param("provisionalUntil", reservation.provisionalUntil?.utc())
+                .param("roomTypeId", reservation.roomTypeId.value)
+                .param("ratePlanId", reservation.ratePlanId.value)
+                .param("arrival", reservation.arrival)
+                .param("departure", reservation.departure)
+                .param("adults", reservation.adults)
+                .param("childAges", reservation.childAges.joinToString(",", "{", "}"))
+                .param("segment", reservation.segment.name)
+                .param("specialRequests", reservation.specialRequests)
+                .param("cancellationId", cancellation.policyId.value)
+                .param("cancellationName", cancellation.name)
+                .param("cancellationVersion", cancellation.version)
+                .param("deadlineHours", cancellation.deadlineHours)
+                .param("penaltyType", cancellation.penaltyType.name)
+                .param("penaltyPercent", cancellation.penaltyPercent?.value)
+                .param("penaltyNights", cancellation.penaltyNights)
+                .param("penaltyAmount", cancellation.penaltyAmount?.amount)
+                .param("guaranteeId", guarantee.policyId.value)
+                .param("guaranteeName", guarantee.name)
+                .param("guaranteeVersion", guarantee.version)
+                .param("guaranteeType", guarantee.type.name)
+                .param("depositPercent", guarantee.depositPercent?.value)
+                .param("dueDaysBefore", guarantee.dueDaysBefore)
+                .param("roomTotal", reservation.roomTotal.amount)
+                .param("additionalTotal", reservation.additionalPackagesTotal.amount)
+                .param("total", reservation.total.amount)
+                .param("approvalId", reservation.approvalId)
+                .param("approvedBy", reservation.approvedBy?.value)
+                .param("reason", cancelled?.reason?.name)
+                .param("notes", cancelled?.notes)
+                .param("previousStatus", cancelled?.previousStatus?.name)
+                .param("cancelledAt", cancelled?.cancelledAt?.utc())
+                .param("cancelledBy", cancelled?.cancelledBy?.value)
+                .param("penaltyDeadline", cancelled?.penalty?.deadline?.utc())
+                .param("penaltyDue", cancelled?.penalty?.amount?.amount)
+                .param("penaltyWaived", cancelled?.penalty?.waived)
+                .param("penaltyPostingId", cancelled?.penalty?.postingId?.value)
+                .param("waiverApprovalId", cancelled?.penalty?.waiverApprovalId)
+                .param("waiverApprovedBy", cancelled?.penalty?.waiverApprovedBy?.value)
+                .param("penaltiesCharged", reservation.penaltiesCharged.amount)
+                .param("version", reservation.version)
+                .param("now", now.utc())
+                .update()
+        check(updated == 1) { "Reserva ${reservation.id} não gravada: versão ${reservation.version - 1} não confere" }
+        if (replaceNights) {
+            jdbc
+                .sql("DELETE FROM reservations.nightly_rate WHERE reservation_id = :id")
+                .param("id", reservation.id.value)
+                .update()
+            insertNights(reservation)
+        }
+    }
+
+    override fun insertHistory(entry: ReservationHistoryEntry) {
+        jdbc
+            .sql(
+                """
+                INSERT INTO reservations.reservation_history (id, reservation_id, kind, business_date, occurred_at,
+                    actor_id, approval_id, approved_by, changed_fields, before_state, after_state, version)
+                VALUES (:id, :reservationId, :kind, :businessDate, :occurredAt, :actorId, :approvalId, :approvedBy,
+                    CAST(:changedFields AS text[]), CAST(:before AS jsonb), CAST(:after AS jsonb), :version)
+                """.trimIndent(),
+            ).param("id", entry.id.value)
+            .param("reservationId", entry.reservationId.value)
+            .param("kind", entry.kind.name)
+            .param("businessDate", entry.businessDate)
+            .param("occurredAt", entry.occurredAt.utc())
+            .param("actorId", entry.actorId?.value)
+            .param("approvalId", entry.approvalId)
+            .param("approvedBy", entry.approvedBy?.value)
+            .param("changedFields", entry.changedFields.joinToString(",", "{", "}"))
+            .param("before", jsonMapper.writeValueAsString(StoredState.of(entry.before)))
+            .param("after", jsonMapper.writeValueAsString(StoredState.of(entry.after)))
+            .param("version", entry.version)
+            .update()
+    }
+
+    override fun history(
+        id: ReservationId,
+        after: Pair<Instant, ReservationHistoryId>?,
+        limit: Int,
+    ): List<ReservationHistoryEntry> =
+        jdbc
+            .sql(
+                """
+                SELECT * FROM reservations.reservation_history
+                WHERE reservation_id = :id
+                  AND (CAST(:afterAt AS timestamptz) IS NULL
+                       OR (occurred_at, id) < (CAST(:afterAt AS timestamptz), CAST(:afterId AS uuid)))
+                ORDER BY occurred_at DESC, id DESC
+                LIMIT :limit
+                """.trimIndent(),
+            ).param("id", id.value)
+            .param("afterAt", after?.first?.utc())
+            .param("afterId", after?.second?.value)
+            .param("limit", limit)
+            .query { rs, _ ->
+                ReservationHistoryEntry(
+                    id = ReservationHistoryId(rs.uuid("id")),
+                    reservationId = ReservationId(rs.uuid("reservation_id")),
+                    kind = ReservationHistoryKind.valueOf(rs.getString("kind")),
+                    businessDate = rs.getObject("business_date", LocalDate::class.java),
+                    occurredAt = rs.requiredInstant("occurred_at"),
+                    actorId = rs.getObject("actor_id", UUID::class.java)?.let(::UserId),
+                    approvalId = rs.getObject("approval_id", UUID::class.java),
+                    approvedBy = rs.getObject("approved_by", UUID::class.java)?.let(::UserId),
+                    changedFields = (rs.getArray("changed_fields").array as Array<*>).map { it.toString() },
+                    before = jsonMapper.readValue<StoredState>(rs.getString("before_state")).toState(),
+                    after = jsonMapper.readValue<StoredState>(rs.getString("after_state")).toState(),
+                    version = rs.getLong("version"),
+                )
+            }.list()
 
     override fun repointGuest(
         merged: GuestId,
@@ -450,7 +624,29 @@ class JdbcBookingStore(
         version = rs.getLong("version"),
         createdAt = rs.requiredInstant("created_at"),
         createdBy = rs.getObject("created_by", UUID::class.java)?.let(::UserId),
+        cancellation = cancellation(rs),
+        penaltiesCharged = rs.requiredMoney("penalties_charged"),
     )
+
+    private fun cancellation(rs: ResultSet): ReservationCancellation? {
+        val reason = rs.getString("cancellation_reason") ?: return null
+        return ReservationCancellation(
+            reason = CancellationReason.valueOf(reason),
+            notes = rs.getString("cancellation_notes"),
+            previousStatus = ReservationStatus.valueOf(rs.getString("cancellation_previous_status")),
+            cancelledAt = rs.requiredInstant("cancelled_at"),
+            cancelledBy = rs.getObject("cancelled_by", UUID::class.java)?.let(::UserId),
+            penalty =
+                CancellationPenalty(
+                    deadline = rs.requiredInstant("penalty_deadline"),
+                    amount = rs.requiredMoney("penalty_amount"),
+                    waived = rs.getBoolean("penalty_waived"),
+                    postingId = rs.getObject("penalty_posting_id", UUID::class.java)?.let(::PostingId),
+                    waiverApprovalId = rs.getObject("penalty_waiver_approval_id", UUID::class.java),
+                    waiverApprovedBy = rs.getObject("penalty_waiver_approved_by", UUID::class.java)?.let(::UserId),
+                ),
+        )
+    }
 
     private fun night(rs: ResultSet) =
         NightlyRateSummary(
@@ -506,6 +702,137 @@ class JdbcBookingStore(
     }
 
     private fun array(values: Collection<Any>): String = values.joinToString(",", "{", "}")
+}
+
+/** As tabelas *append-only* do módulo, que a partida confere ([AppendOnlyTables]): o histórico das reservas (E08). */
+@Configuration(proxyBeanMethods = false)
+class ReservationsTablesConfiguration {
+    @Bean
+    fun reservationsAppendOnlyTables(): AppendOnlyTables = AppendOnlyTables { setOf(HISTORY_TABLE) }
+
+    companion object {
+        const val HISTORY_TABLE = "reservations.reservation_history"
+    }
+}
+
+/**
+ * O retrato de uma reserva no `jsonb` do histórico (`reservation_history.before_state`/`after_state`): separado do
+ * tipo público, para renomear uma propriedade lá não mudar o que já está gravado.
+ */
+private data class StoredState(
+    val status: String,
+    val roomTypeId: UUID,
+    val ratePlanId: UUID,
+    val arrival: String,
+    val departure: String,
+    val adults: Int,
+    val childAges: List<Int>,
+    val segment: String,
+    val hasSpecialRequests: Boolean,
+    val nights: List<StoredNight>,
+    val roomTotal: String,
+    val additionalPackagesTotal: String,
+    val total: String,
+    val cancellationPolicyId: UUID,
+    val cancellationPolicyVersion: Long,
+    val guaranteePolicyId: UUID,
+    val guaranteePolicyVersion: Long,
+    val cancellation: StoredCancellation?,
+) {
+    fun toState() =
+        ReservationState(
+            status = ReservationStatus.valueOf(status),
+            roomTypeId = RoomTypeId(roomTypeId),
+            ratePlanId = RatePlanId(ratePlanId),
+            arrival = LocalDate.parse(arrival),
+            departure = LocalDate.parse(departure),
+            adults = adults,
+            childAges = childAges,
+            segment = MarketSegment.valueOf(segment),
+            hasSpecialRequests = hasSpecialRequests,
+            nights =
+                nights.map {
+                    HistoryNight(
+                        LocalDate.parse(it.date),
+                        RatePlanId(it.ratePlanId),
+                        Money.of(it.roomAmount),
+                        Money.of(it.amount),
+                        it.overridden,
+                    )
+                },
+            roomTotal = Money.of(roomTotal),
+            additionalPackagesTotal = Money.of(additionalPackagesTotal),
+            total = Money.of(total),
+            cancellationPolicyId = CancellationPolicyId(cancellationPolicyId),
+            cancellationPolicyVersion = cancellationPolicyVersion,
+            guaranteePolicyId = GuaranteePolicyId(guaranteePolicyId),
+            guaranteePolicyVersion = guaranteePolicyVersion,
+            cancellation =
+                cancellation?.let {
+                    HistoryCancellation(
+                        CancellationReason.valueOf(it.reason),
+                        Money.of(it.penaltyAmount),
+                        it.penaltyWaived,
+                        it.penaltyPostingId?.let(::PostingId),
+                    )
+                },
+        )
+
+    data class StoredNight(
+        val date: String,
+        val ratePlanId: UUID,
+        val roomAmount: String,
+        val amount: String,
+        val overridden: Boolean,
+    )
+
+    data class StoredCancellation(
+        val reason: String,
+        val penaltyAmount: String,
+        val penaltyWaived: Boolean,
+        val penaltyPostingId: UUID?,
+    )
+
+    companion object {
+        fun of(state: ReservationState) =
+            StoredState(
+                status = state.status.name,
+                roomTypeId = state.roomTypeId.value,
+                ratePlanId = state.ratePlanId.value,
+                arrival = state.arrival.toString(),
+                departure = state.departure.toString(),
+                adults = state.adults,
+                childAges = state.childAges,
+                segment = state.segment.name,
+                hasSpecialRequests = state.hasSpecialRequests,
+                nights =
+                    state.nights.map {
+                        StoredNight(
+                            it.date.toString(),
+                            it.ratePlanId.value,
+                            it.roomAmount.amount.toPlainString(),
+                            it.amount.amount.toPlainString(),
+                            it.overridden,
+                        )
+                    },
+                roomTotal = state.roomTotal.amount.toPlainString(),
+                additionalPackagesTotal = state.additionalPackagesTotal.amount.toPlainString(),
+                total = state.total.amount.toPlainString(),
+                cancellationPolicyId = state.cancellationPolicyId.value,
+                cancellationPolicyVersion = state.cancellationPolicyVersion,
+                guaranteePolicyId = state.guaranteePolicyId.value,
+                guaranteePolicyVersion = state.guaranteePolicyVersion,
+                cancellation =
+                    state.cancellation?.let {
+                        StoredCancellation(
+                            it.reason.name,
+                            it.penaltyAmount.amount.toPlainString(),
+                            it.penaltyWaived,
+                            it.penaltyPostingId?.value,
+                        )
+                    },
+            )
+    }
 }
 
 /**

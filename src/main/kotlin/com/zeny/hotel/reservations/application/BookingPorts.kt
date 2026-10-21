@@ -3,6 +3,8 @@ package com.zeny.hotel.reservations.application
 import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.ReservationHistoryEntry
+import com.zeny.hotel.reservations.ReservationHistoryId
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.domain.InventoryKey
@@ -22,6 +24,7 @@ import java.time.LocalDate
  * mesmo perfil espera a criação terminar (e então a vê) ou é esperada por ela (e então a criação lê o perfil já
  * mesclado ou anonimizado).
  */
+@Suppress("TooManyFunctions") // a gravação, as leituras, o ciclo de vida, o histórico e o reapontamento
 interface BookingStore {
     /** Trava os hóspedes [guestIds] até o fim da transação, em ordem de id; [exclusive] ou compartilhada. */
     fun lockGuests(
@@ -35,6 +38,36 @@ interface BookingStore {
     fun booking(id: BookingId): BookingSummary?
 
     fun reservation(id: ReservationId): ReservationSummary?
+
+    /**
+     * A reserva com a linha travada (`SELECT … FOR UPDATE`) até o fim da transação (M4 E08): toda alteração,
+     * cancelamento e reativação começa por aqui, antes do inventário e da conta, então duas escritas simultâneas na
+     * mesma reserva se enfileiram e a segunda vê o resultado da primeira. `null` se não existe.
+     */
+    fun reservationForUpdate(id: ReservationId): ReservationSummary?
+
+    /**
+     * Grava o estado de [reservation] (a estadia, os termos, os totais, a situação, o cancelamento e as multas) com a
+     * versão dela, que o chamador já avançou; com [replaceNights], troca também as noites.
+     */
+    fun update(
+        reservation: ReservationSummary,
+        now: Instant,
+        replaceNights: Boolean,
+    )
+
+    /** Acrescenta uma entrada ao histórico da reserva (*append-only*). */
+    fun insertHistory(entry: ReservationHistoryEntry)
+
+    /**
+     * O histórico da reserva, da entrada mais recente para a mais antiga, até [limit] entradas depois do cursor
+     * ([after]: o instante e o id da última entrada da página anterior).
+     */
+    fun history(
+        id: ReservationId,
+        after: Pair<Instant, ReservationHistoryId>?,
+        limit: Int,
+    ): List<ReservationHistoryEntry>
 
     /**
      * Reponta as referências do hóspede [merged] para [target] (titular dos bookings e hóspedes das reservas; quando a

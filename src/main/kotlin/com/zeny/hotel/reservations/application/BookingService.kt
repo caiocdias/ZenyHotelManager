@@ -27,6 +27,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.modulith.events.ApplicationModuleListener
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.LocalDate
@@ -56,6 +57,7 @@ class BookingService(
     private val store: BookingStore,
     private val guests: GuestsApi,
     private val authorization: Authorization,
+    private val views: ReservationViews,
 ) {
     @Audited(ReservationsAudit.CREATE_BOOKING)
     @Transactional
@@ -85,13 +87,7 @@ class BookingService(
     fun reservation(id: ReservationId): ReservationView {
         authorization.require(ReservationsPermissions.RESERVATIONS_READ)
         val reservation = store.reservation(id) ?: throw reservationNotFound()
-        val booking = checkNotNull(store.booking(reservation.bookingId)) { "Reserva sem a reserva agrupadora" }
-        return ReservationView(
-            reservation,
-            booking.code.toString(),
-            booking.holderGuestId,
-            alerts(listOf(booking.holderGuestId) + reservation.guests.map { it.guestId }),
-        )
+        return views.of(reservation)
     }
 
     private fun alerts(guestIds: Collection<GuestId>): List<RestrictionAlert> =
@@ -111,8 +107,16 @@ class BookingService(
  * O reapontamento das referências de um hóspede mesclado (H8; SPEC §8.3): o titular dos bookings e os hóspedes das
  * reservas passam do absorvido ao sobrevivente **final** (seguindo `mergedInto` pela `GuestsApi`: numa cadeia A → B →
  * C com os eventos fora de ordem, A vai direto a C). Idempotente: repontar o que já foi repontado não muda nada (sem
- * entrada na trilha). Toma a trava exclusiva do absorvido ([BookingStore.lockGuests]): uma criação em andamento com ele
- * termina antes, e o reapontamento a vê.
+ * entrada na trilha).
+ *
+ * **Travas** (corrigido na E08, pendência da verificação da E07): descobre a cadeia a partir do sobrevivente sem trava,
+ * toma a trava exclusiva ([BookingStore.lockGuests]) do absorvido **e** de todos os perfis da cadeia numa só chamada
+ * (em ordem de id: sem deadlock com a criação nem com a checagem de estadia ativa, que travam em ordem também) e só
+ * então relê o final (leitura fresca da `GuestsApi`). Uma criação em andamento com algum deles termina antes, e o
+ * reapontamento a vê; o listener de uma mesclagem seguinte da cadeia (B → C) espera este terminar e reponta o que ele
+ * deixou em B. Se uma mesclagem confirmada entre a descoberta e a trava levou o final para fora do que foi travado,
+ * nada é gravado e [GuestChainChangedException] pede uma nova tentativa (o [GuestsMergedListener] repete, numa
+ * transação nova; esgotadas as tentativas, o outbox reentrega).
  */
 @Service
 class GuestReferenceRepointing(
@@ -122,13 +126,14 @@ class GuestReferenceRepointing(
     private val clock: Clock,
 ) {
     @Audited(ReservationsAudit.REPOINT_GUEST)
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     fun repoint(
         merged: GuestId,
         survivor: GuestId,
     ): GuestRepointing {
-        val target = finalProfile(survivor)
-        store.lockGuests(listOf(merged), exclusive = true)
+        val chain = chainFrom(survivor)
+        store.lockGuests(chain + merged, exclusive = true)
+        val target = finalProfile(survivor, chain.toSet())
         val changes = store.repointGuest(merged, target, clock.instant())
         if (changes.empty) {
             audit.noChanges()
@@ -153,12 +158,29 @@ class GuestReferenceRepointing(
         return changes
     }
 
-    private fun finalProfile(id: GuestId): GuestId {
-        var current = id
+    /** O sobrevivente e os perfis em que ele foi mesclado depois, até o final (sem trava). */
+    private fun chainFrom(survivor: GuestId): List<GuestId> {
+        val chain = mutableListOf(survivor)
+        var guest = guests.guest(survivor)
+        while (guest?.status == GuestStatus.MERGED && chain.size < MAX_CHAIN) {
+            val next = checkNotNull(guest.mergedInto) { "Perfil mesclado sem o sobrevivente" }
+            chain += next
+            guest = guests.guest(next)
+        }
+        return chain
+    }
+
+    /** O perfil final, relido depois da trava; fora dos perfis travados, [GuestChainChangedException]. */
+    private fun finalProfile(
+        survivor: GuestId,
+        locked: Set<GuestId>,
+    ): GuestId {
+        var current = survivor
         repeat(MAX_CHAIN) {
             val guest = guests.guest(current)
             if (guest?.status != GuestStatus.MERGED) return current
             current = checkNotNull(guest.mergedInto) { "Perfil mesclado sem o sobrevivente" }
+            if (current !in locked) throw GuestChainChangedException()
         }
         return current
     }
@@ -168,9 +190,13 @@ class GuestReferenceRepointing(
     }
 }
 
+/** A cadeia de mesclagens mudou entre a descoberta e a trava: o reapontamento é tentado de novo. */
+class GuestChainChangedException : RuntimeException("A cadeia de mesclagens mudou durante o reapontamento")
+
 /**
- * O primeiro consumidor de produção de [GuestsMerged] (H8): assíncrono, numa transação própria e reentregue pelo outbox
- * se falhar; idempotente ([GuestReferenceRepointing]).
+ * O primeiro consumidor de produção de [GuestsMerged] (H8): assíncrono e reentregue pelo outbox se falhar;
+ * idempotente ([GuestReferenceRepointing], cada tentativa na própria transação). Repete até [MAX_ATTEMPTS] vezes
+ * quando a cadeia de mesclagens muda no meio ([GuestChainChangedException]).
  */
 @Component
 class GuestsMergedListener(
@@ -180,13 +206,27 @@ class GuestsMergedListener(
 
     @ApplicationModuleListener
     fun on(event: GuestsMerged) {
-        val changes = repointing.repoint(GuestId(event.mergedId), GuestId(event.survivorId))
-        log.info(
-            "Reservas reapontadas do hóspede {}: {} reserva(s) agrupadora(s), {} reserva(s)",
-            event.mergedId,
-            changes.bookings.size,
-            changes.reservations.size,
-        )
+        var attempt = 1
+        while (true) {
+            try {
+                val changes = repointing.repoint(GuestId(event.mergedId), GuestId(event.survivorId))
+                log.info(
+                    "Reservas reapontadas do hóspede {}: {} reserva(s) agrupadora(s), {} reserva(s)",
+                    event.mergedId,
+                    changes.bookings.size,
+                    changes.reservations.size,
+                )
+                return
+            } catch (e: GuestChainChangedException) {
+                if (attempt >= MAX_ATTEMPTS) throw e
+                log.info("Cadeia de mesclagens do hóspede {} mudou; nova tentativa ({})", event.mergedId, attempt)
+                attempt++
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_ATTEMPTS = 5
     }
 }
 

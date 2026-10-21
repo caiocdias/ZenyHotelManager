@@ -11,6 +11,7 @@ import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.MarketSegment
@@ -19,20 +20,24 @@ import com.zeny.hotel.reservations.NewReservation
 import com.zeny.hotel.reservations.NewStayGuest
 import com.zeny.hotel.reservations.NightlyRateOverride
 import com.zeny.hotel.reservations.NightlyRateSummary
+import com.zeny.hotel.reservations.ReservationCancellation
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationOrigin
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.application.BookingService
 import com.zeny.hotel.reservations.application.BookingView
+import com.zeny.hotel.reservations.application.ReservationLifecycleService
 import com.zeny.hotel.reservations.application.ReservationView
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.ApiV1Controller
+import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ExtensibleEnum
 import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.Percent
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
@@ -41,10 +46,12 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
@@ -263,6 +270,58 @@ data class GuaranteeTermsResponse(
     }
 }
 
+@Schema(
+    description =
+        "A multa de um cancelamento: o prazo (o horário de check-in da chegada, no fuso do hotel, menos as horas da " +
+            "política copiada), o valor devido (zero antes do prazo), se foi isentada (com a aprovação de " +
+            "superior) e " +
+            "o lançamento na conta da reserva (código `CANCELLATION_FEE`).",
+)
+data class CancellationPenaltyResponse(
+    val deadline: Instant,
+    val amount: Money,
+    val waived: Boolean,
+    val postingId: UUID?,
+    val waiverApprovalId: UUID?,
+    val waiverApprovedBy: UUID?,
+)
+
+@Schema(description = "O cancelamento corrente de uma reserva.")
+data class CancellationResponse(
+    @field:ExtensibleEnum
+    @field:Schema(description = "Motivo do cancelamento. $UNKNOWN")
+    val reason: CancellationReason,
+    @field:Schema(description = "Observação de quem cancelou (texto livre; nunca vai à trilha).")
+    val notes: String?,
+    @field:ExtensibleEnum
+    @field:Schema(description = "Situação antes do cancelamento. $UNKNOWN")
+    val previousStatus: ReservationStatus,
+    val cancelledAt: Instant,
+    val cancelledBy: UUID?,
+    val penalty: CancellationPenaltyResponse,
+) {
+    companion object {
+        fun of(cancellation: ReservationCancellation) =
+            CancellationResponse(
+                cancellation.reason,
+                cancellation.notes,
+                cancellation.previousStatus,
+                cancellation.cancelledAt,
+                cancellation.cancelledBy?.value,
+                cancellation.penalty.let {
+                    CancellationPenaltyResponse(
+                        it.deadline,
+                        it.amount,
+                        it.waived,
+                        it.postingId?.value,
+                        it.waiverApprovalId,
+                        it.waiverApprovedBy?.value,
+                    )
+                },
+            )
+    }
+}
+
 @Schema(description = "Uma reserva (uma UH num período).")
 data class ReservationResponse(
     val id: UUID,
@@ -303,6 +362,14 @@ data class ReservationResponse(
     val version: Long,
     val createdAt: Instant,
     val createdBy: UUID?,
+    @field:Schema(description = "O cancelamento corrente (só numa reserva `CANCELLED`).")
+    val cancellation: CancellationResponse?,
+    @field:Schema(
+        description =
+            "O total das multas de cancelamento já lançadas na conta desta reserva (um cancelamento depois de uma " +
+                "reativação lança só o que falta para a multa da política).",
+    )
+    val penaltiesCharged: Money,
 ) {
     companion object {
         fun of(reservation: ReservationSummary) =
@@ -334,6 +401,8 @@ data class ReservationResponse(
                 version = reservation.version,
                 createdAt = reservation.createdAt,
                 createdBy = reservation.createdBy?.value,
+                cancellation = reservation.cancellation?.let(CancellationResponse::of),
+                penaltiesCharged = reservation.penaltiesCharged,
             )
     }
 }
@@ -451,12 +520,15 @@ class BookingsController(
     }
 }
 
-/** As reservas (M4 E07): a consulta de uma reserva. */
+/**
+ * As reservas (M4 E07 e E08): a consulta, a alteração, o cancelamento, a reativação e o histórico de uma reserva.
+ */
 @ApiV1Controller
 @RequestMapping("/reservations")
 @Tag(name = RESERVATIONS_TAG, description = RESERVATIONS_TAG_DESCRIPTION)
 class ReservationsController(
     private val bookings: BookingService,
+    private val lifecycle: ReservationLifecycleService,
 ) {
     @GetMapping("/{id}")
     @Operation(
@@ -468,11 +540,96 @@ class ReservationsController(
     )
     fun get(
         @PathVariable id: UUID,
+    ): ResponseEntity<ReservationDetailResponse> = detail(bookings.reservation(ReservationId(id)))
+
+    @PutMapping("/{id}")
+    @Operation(
+        operationId = "changeReservation",
+        summary = "Alterar uma reserva",
+        description =
+            "Troca a estadia (tipo de UH, plano, datas, ocupação), o segmento e os pedidos especiais de uma " +
+                "pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`), com `If-Match` (412 " +
+                "com outra versão; 428 sem ele). Exige `reservations.reservations.manage`. Recalcula **só as noites " +
+                "afetadas**: com o tipo, o plano ou a ocupação trocados, todas; com só as datas mudadas, as noites " +
+                "novas (e, com a chegada mudada e um pacote por estadia, as noites da chegada antiga e da nova); as " +
+                "mantidas guardam o preço congelado. A venda é conferida só no que mudou (422 com o código do " +
+                "`rates` e os motivos em `refusals`). `nightlyRates` só nas noites recalculadas (senão 400 " +
+                "`NIGHTLY_RATE_INVALID`); desconto: 403 `APPROVAL_REQUIRED` sem a permissão ou acima do limite " +
+                "(`rates.discounts.apply`, `maxPercent`). Devolve as unidades antigas e toma as novas na mesma " +
+                "transação: sem unidade, 409 `ROOM_TYPE_UNAVAILABLE` e nada muda. Plano novo copia as políticas " +
+                "vigentes dele. Grava o histórico e publica `ReservationChanged`; sem diferença, nada muda.",
+    )
+    fun change(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ReservationChangeRequest,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
     ): ResponseEntity<ReservationDetailResponse> {
-        val view = bookings.reservation(ReservationId(id))
-        return ResponseEntity
+        val expected = ETags.expectedVersion(ifMatch)
+        return detail(lifecycle.change(ReservationId(id), expected, request.toChange(), approvalToken))
+    }
+
+    @PostMapping("/{id}/cancel")
+    @Idempotent
+    @Operation(
+        operationId = "cancelReservation",
+        summary = "Cancelar uma reserva",
+        description =
+            "Cancela uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`). Exige " +
+                "`reservations.reservations.manage` e `Idempotency-Key`. A multa segue a política **copiada na " +
+                "reserva**: a partir do prazo (o horário de check-in da chegada, no fuso do hotel, menos as horas " +
+                "da política), é lançada na conta da reserva no código `CANCELLATION_FEE`, na data operacional; " +
+                "antes dele, não há multa. `waivePenalty` isenta a multa devida: ação sensível " +
+                "(`reservations.penalties.waive`), 403 `APPROVAL_REQUIRED` sem a permissão (repita com o " +
+                "`X-Approval-Token` e **outra** `Idempotency-Key`). Devolve ao inventário as unidades das noites a " +
+                "partir da data operacional, grava o histórico e publica `ReservationCancelled`. A devolução de " +
+                "depósito é um reembolso na conta (`billing`).",
+    )
+    fun cancel(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: ReservationCancelRequest,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<ReservationDetailResponse> =
+        detail(lifecycle.cancel(ReservationId(id), request.toRequest(), approvalToken))
+
+    @PostMapping("/{id}/reactivate")
+    @Idempotent
+    @Operation(
+        operationId = "reactivateReservation",
+        summary = "Reativar uma reserva cancelada ou no-show",
+        description =
+            "Volta a reserva a `CONFIRMED` (só de `CANCELLED` ou `NO_SHOW`; senão 409 " +
+                "`RESERVATION_TRANSITION_NOT_ALLOWED`), com o preço congelado. Exige " +
+                "`reservations.reservations.manage` e `Idempotency-Key`; é ação sensível " +
+                "(`reservations.reservations.reactivate`): 403 `APPROVAL_REQUIRED` sem a permissão. Estadia já " +
+                "terminada: 422 `RESERVATION_STAY_ENDED`. Toma de novo as unidades das noites a partir da data " +
+                "operacional: sem unidade, 409 `ROOM_TYPE_UNAVAILABLE` e nada muda. A multa de um cancelamento " +
+                "anterior fica na conta (estorne-a pelo `billing`, se for o caso). Grava o histórico e publica " +
+                "`ReservationReactivated`.",
+    )
+    fun reactivate(
+        @PathVariable id: UUID,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<ReservationDetailResponse> = detail(lifecycle.reactivate(ReservationId(id), approvalToken))
+
+    @GetMapping("/{id}/history")
+    @Operation(
+        operationId = "listReservationHistory",
+        summary = "Histórico de uma reserva",
+        description =
+            "As alterações, cancelamentos e reativações, da mais recente à mais antiga, com quem, quando, a " +
+                "aprovação de superior, os campos mudados e o retrato antes e depois (sem texto livre). Exige " +
+                "`reservations.reservations.read`. Inexistente: 404 `RESERVATION_NOT_FOUND`.",
+    )
+    fun history(
+        @PathVariable id: UUID,
+        @Valid page: PageParams,
+    ): CursorPage<ReservationHistoryResponse> =
+        lifecycle.history(ReservationId(id), page).map(ReservationHistoryResponse::of)
+
+    private fun detail(view: ReservationView): ResponseEntity<ReservationDetailResponse> =
+        ResponseEntity
             .ok()
             .eTag(ETags.of(view.reservation.version))
             .body(ReservationDetailResponse.of(view))
-    }
 }

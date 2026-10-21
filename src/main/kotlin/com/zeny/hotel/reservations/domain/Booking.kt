@@ -2,6 +2,7 @@ package com.zeny.hotel.reservations.domain
 
 import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.rates.GuaranteeType
+import com.zeny.hotel.rates.NightPrice
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SaleRefusal
 import com.zeny.hotel.rates.StayPrice
@@ -197,10 +198,17 @@ object NightlyRates {
         price: StayPrice,
         ratePlanId: RatePlanId,
         overrides: Map<LocalDate, Money>,
+    ): List<NightlyRateSummary> = freeze(price.nights, ratePlanId, overrides)
+
+    /** O mesmo, sobre noites avulsas (a alteração da E08 recalcula só as noites afetadas). */
+    fun freeze(
+        prices: List<NightPrice>,
+        ratePlanId: RatePlanId,
+        overrides: Map<LocalDate, Money>,
     ): List<NightlyRateSummary> {
         val below = mutableListOf<LocalDate>()
         val nights =
-            price.nights.map { night ->
+            prices.map { night ->
                 val room = overrides[night.date] ?: night.roomAmount
                 if (room < night.includedPackagesAmount) below += night.date
                 NightlyRateSummary(
@@ -271,25 +279,25 @@ object StayGuests {
 
 /**
  * `422` com o código do primeiro motivo de recusa do `rates` (a estadia não é vendável no canal), a reserva em
- * `reservationIndex` e todos os motivos em `refusals`.
+ * `reservationIndex` (na criação; nula na alteração) e todos os motivos em `refusals`.
  */
 class StayNotSellableException(
-    val reservationIndex: Int,
+    val reservationIndex: Int?,
     val refusals: List<SaleRefusal>,
 ) : BusinessRuleException(refusals.first().code, refusals.first().message) {
     override val problemProperties: Map<String, Any>
         get() =
-            mapOf(
-                "reservationIndex" to reservationIndex,
-                "refusals" to
-                    refusals.map { refusal ->
-                        mapOf(
-                            "code" to refusal.code.value,
-                            "message" to refusal.message,
-                            "dates" to refusal.dates.map { it.toString() },
-                        )
-                    },
-            )
+            listOfNotNull(reservationIndex?.let { "reservationIndex" to it }).toMap() +
+                mapOf(
+                    "refusals" to
+                        refusals.map { refusal ->
+                            mapOf(
+                                "code" to refusal.code.value,
+                                "message" to refusal.message,
+                                "dates" to refusal.dates.map { it.toString() },
+                            )
+                        },
+                )
 }
 
 /** `422 NIGHTLY_RATE_BELOW_INCLUDED_PACKAGES`, com as datas em `dates`. */

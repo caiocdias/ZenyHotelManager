@@ -240,6 +240,51 @@ class BookingGuestsApiTest(
         repoint.get(TIMEOUT, TimeUnit.SECONDS).empty shouldBe true
     }
 
+    @Test
+    fun `in a chain A to B and B to C merged almost together, the repointing of A ends at C, never at the merged B`() {
+        val stay = stay()
+        // Em ordem de id (a ordem das travas): o listener de B → C nunca espera o de A → B, que para na trava de A.
+        val (a, b, c) = List(3) { support.guest() }.sortedBy { it.toString() }
+        val booking =
+            support.created(support.booking(a, support.reservation(stay.type, stay.plan, stay.arrival, stay.departure)))
+        // Outra transação segura a trava exclusiva de A: o listener de A → B descobre B ainda ativo e para na trava.
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val blocker =
+            CompletableFuture.runAsync {
+                transactions.executeWithoutResult {
+                    store.lockGuests(listOf(GuestId(a)), exclusive = true)
+                    locked.countDown()
+                    release.await(TIMEOUT, TimeUnit.SECONDS)
+                }
+            }
+        locked.await(TIMEOUT, TimeUnit.SECONDS) shouldBe true
+        merge(b, a)
+        await().atMost(Duration.ofSeconds(TIMEOUT)).until { guestLockWaits(a) > 0 }
+
+        // B é mesclado em C e o listener de B → C termina (ainda não há nada em B) enquanto o de A → B espera.
+        merge(c, b)
+        await().atMost(Duration.ofSeconds(TIMEOUT)).until { repointingDone(b) }
+        release.countDown()
+        blocker.get(TIMEOUT, TimeUnit.SECONDS)
+
+        await().atMost(Duration.ofSeconds(TIMEOUT)).until { repointingDone(a) }
+        holderOf(booking) shouldBe c
+        guests(UUID.fromString(booking["reservations"][0]["id"].asString())) shouldContainExactly listOf(c to true)
+    }
+
+    /** Se o listener de produção concluiu o reapontamento do hóspede absorvido [merged] (a publicação do outbox). */
+    private fun repointingDone(merged: UUID): Boolean =
+        jdbc
+            .sql(
+                "SELECT count(*) FROM shared.event_publication WHERE event_type = :type " +
+                    "AND listener_id LIKE :listener AND serialized_event LIKE :merged AND completion_date IS NOT NULL",
+            ).param("type", GuestsMerged::class.java.name)
+            .param("listener", "%GuestsMergedListener%")
+            .param("merged", "%\"mergedId\":\"$merged\"%")
+            .query(Int::class.java)
+            .single() > 0
+
     // --- Corridas com a mesclagem e a anonimização (a releitura depois da trava vê o que foi confirmado) -------------
 
     @Test

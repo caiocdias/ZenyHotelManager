@@ -7135,6 +7135,253 @@ paths:
       summary: Consultar uma reserva
       tags:
       - reservations
+    put:
+      description: "Troca a estadia (tipo de UH, plano, datas, ocupação), o segmento\
+        \ e os pedidos especiais de uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`),\
+        \ com `If-Match` (412 com outra versão; 428 sem ele). Exige `reservations.reservations.manage`.\
+        \ Recalcula **só as noites afetadas**: com o tipo, o plano ou a ocupação trocados,\
+        \ todas; com só as datas mudadas, as noites novas (e, com a chegada mudada\
+        \ e um pacote por estadia, as noites da chegada antiga e da nova); as mantidas\
+        \ guardam o preço congelado. A venda é conferida só no que mudou (422 com\
+        \ o código do `rates` e os motivos em `refusals`). `nightlyRates` só nas noites\
+        \ recalculadas (senão 400 `NIGHTLY_RATE_INVALID`); desconto: 403 `APPROVAL_REQUIRED`\
+        \ sem a permissão ou acima do limite (`rates.discounts.apply`, `maxPercent`).\
+        \ Devolve as unidades antigas e toma as novas na mesma transação: sem unidade,\
+        \ 409 `ROOM_TYPE_UNAVAILABLE` e nada muda. Plano novo copia as políticas vigentes\
+        \ dele. Grava o histórico e publica `ReservationChanged`; sem diferença, nada\
+        \ muda."
+      operationId: changeReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar uma reserva
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/cancel:
+    post:
+      description: "Cancela uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`).\
+        \ Exige `reservations.reservations.manage` e `Idempotency-Key`. A multa segue\
+        \ a política **copiada na reserva**: a partir do prazo (o horário de check-in\
+        \ da chegada, no fuso do hotel, menos as horas da política), é lançada na\
+        \ conta da reserva no código `CANCELLATION_FEE`, na data operacional; antes\
+        \ dele, não há multa. `waivePenalty` isenta a multa devida: ação sensível\
+        \ (`reservations.penalties.waive`), 403 `APPROVAL_REQUIRED` sem a permissã\
+        o (repita com o `X-Approval-Token` e **outra** `Idempotency-Key`). Devolve\
+        \ ao inventário as unidades das noites a partir da data operacional, grava\
+        \ o histórico e publica `ReservationCancelled`. A devolução de depósito é\
+        \ um reembolso na conta (`billing`)."
+      operationId: cancelReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationCancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cancelar uma reserva
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/history:
+    get:
+      description: "As alterações, cancelamentos e reativações, da mais recente à\
+        \ mais antiga, com quem, quando, a aprovação de superior, os campos mudados\
+        \ e o retrato antes e depois (sem texto livre). Exige `reservations.reservations.read`.\
+        \ Inexistente: 404 `RESERVATION_NOT_FOUND`."
+      operationId: listReservationHistory
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationHistoryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Histórico de uma reserva
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/reactivate:
+    post:
+      description: "Volta a reserva a `CONFIRMED` (só de `CANCELLED` ou `NO_SHOW`;\
+        \ senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`), com o preço congelado.\
+        \ Exige `reservations.reservations.manage` e `Idempotency-Key`; é ação sensí\
+        vel (`reservations.reservations.reactivate`): 403 `APPROVAL_REQUIRED` sem\
+        \ a permissão. Estadia já terminada: 422 `RESERVATION_STAY_ENDED`. Toma de\
+        \ novo as unidades das noites a partir da data operacional: sem unidade, 409\
+        \ `ROOM_TYPE_UNAVAILABLE` e nada muda. A multa de um cancelamento anterior\
+        \ fica na conta (estorne-a pelo `billing`, se for o caso). Grava o histórico\
+        \ e publica `ReservationReactivated`."
+      operationId: reactivateReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma reserva cancelada ou no-show
+      tags:
+      - reservations
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -10925,6 +11172,40 @@ components:
       required:
       - businessDate
       - timezone
+    CancellationPenaltyResponse:
+      type: object
+      description: "A multa de um cancelamento: o prazo (o horário de check-in da\
+        \ chegada, no fuso do hotel, menos as horas da política copiada), o valor\
+        \ devido (zero antes do prazo), se foi isentada (com a aprovação de superior)\
+        \ e o lançamento na conta da reserva (código `CANCELLATION_FEE`)."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        deadline:
+          type: string
+          format: date-time
+        postingId:
+          type: string
+          format: uuid
+          nullable: true
+        waived:
+          type: boolean
+        waiverApprovalId:
+          type: string
+          format: uuid
+          nullable: true
+        waiverApprovedBy:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - amount
+      - deadline
+      - waived
     CancellationPolicyRequest:
       type: object
       description: "Os termos de uma política de cancelamento: o prazo e a multa (só\
@@ -11028,6 +11309,49 @@ components:
       - name
       - penaltyType
       - updatedAt
+    CancellationResponse:
+      type: object
+      description: O cancelamento corrente de uma reserva.
+      properties:
+        cancelledAt:
+          type: string
+          format: date-time
+        cancelledBy:
+          type: string
+          format: uuid
+          nullable: true
+        notes:
+          type: string
+          description: Observação de quem cancelou (texto livre; nunca vai à trilha).
+          nullable: true
+        penalty:
+          $ref: "#/components/schemas/CancellationPenaltyResponse"
+        previousStatus:
+          type: string
+          description: "Situação antes do cancelamento. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+        reason:
+          type: string
+          description: "Motivo do cancelamento. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - GUEST_REQUEST
+          - HOTEL_REQUEST
+          - DUPLICATE
+          - NO_GUARANTEE
+          - OTHER
+      required:
+      - cancelledAt
+      - penalty
+      - previousStatus
+      - reason
     CancellationTermsResponse:
       type: object
       description: Os termos da política de cancelamento copiados na reserva (RN-15).
@@ -13157,6 +13481,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageReservationHistoryResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReservationHistoryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageRoleResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -14960,6 +15298,66 @@ components:
           - INDIGENOUS
           - NOT_DECLARED
           nullable: true
+    HistoryCancellationResponse:
+      type: object
+      description: A multa no retrato do histórico de um cancelamento.
+      properties:
+        penaltyAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        penaltyPostingId:
+          type: string
+          format: uuid
+          nullable: true
+        penaltyWaived:
+          type: boolean
+        reason:
+          type: string
+          description: "Motivo do cancelamento. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - GUEST_REQUEST
+          - HOTEL_REQUEST
+          - DUPLICATE
+          - NO_GUARANTEE
+          - OTHER
+      required:
+      - penaltyAmount
+      - penaltyWaived
+      - reason
+    HistoryNightResponse:
+      type: object
+      description: Uma noite no retrato do histórico.
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        date:
+          type: string
+          format: date
+        overridden:
+          type: boolean
+        ratePlanId:
+          type: string
+          format: uuid
+        roomAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - amount
+      - date
+      - overridden
+      - ratePlanId
+      - roomAmount
     HotelRequest:
       type: object
       description: Dados cadastrais do hotel.
@@ -17968,6 +18366,89 @@ components:
           minItems: 0
       required:
       - answers
+    ReservationCancelRequest:
+      type: object
+      description: "O cancelamento: o motivo, uma observação opcional (texto livre\
+        \ até 500 caracteres; nunca vai à trilha) e se a multa devida é isentada (aç\
+        ão sensível)."
+      properties:
+        notes:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          enum:
+          - GUEST_REQUEST
+          - HOTEL_REQUEST
+          - DUPLICATE
+          - NO_GUARANTEE
+          - OTHER
+          nullable: true
+        waivePenalty:
+          type: boolean
+      required:
+      - reason
+      - waivePenalty
+    ReservationChangeRequest:
+      type: object
+      description: "A alteração de uma reserva: a estadia inteira como deve ficar,\
+        \ o segmento e os pedidos especiais (nulo apaga). `nightlyRates` só nas noites\
+        \ que a alteração recalcula (menor que a calculada é desconto)."
+      properties:
+        adults:
+          type: integer
+          format: int32
+          minimum: 1
+          nullable: true
+        arrival:
+          type: string
+          format: date
+          nullable: true
+        childAges:
+          type: array
+          description: "A idade de cada criança na chegada, em anos completos."
+          items:
+            type: integer
+            format: int32
+            description: "A idade de cada criança na chegada, em anos completos."
+        departure:
+          type: string
+          format: date
+          nullable: true
+        nightlyRates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NightlyRateRequest"
+        ratePlanId:
+          type: string
+          format: uuid
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        segment:
+          type: string
+          enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+          nullable: true
+        specialRequests:
+          type: string
+          description: "Pedidos especiais (texto livre, até 1000 caracteres; nunca\
+            \ vai à trilha)."
+          nullable: true
+      required:
+      - adults
+      - arrival
+      - childAges
+      - departure
+      - nightlyRates
+      - ratePlanId
+      - roomTypeId
+      - segment
     ReservationDetailResponse:
       type: object
       description: Uma reserva com o código e o titular da reserva agrupadora e os
@@ -17989,6 +18470,61 @@ components:
       - holderGuestId
       - reservation
       - restrictionAlerts
+    ReservationHistoryResponse:
+      type: object
+      description: "Uma entrada do histórico da reserva: o tipo, a data operacional,\
+        \ o instante, quem (nulo = sistema), a aprovação de superior, os campos mudados\
+        \ e o retrato antes e depois, com a versão depois."
+      properties:
+        actorId:
+          type: string
+          format: uuid
+          nullable: true
+        after:
+          $ref: "#/components/schemas/ReservationStateResponse"
+        approvalId:
+          type: string
+          format: uuid
+          nullable: true
+        approvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        before:
+          $ref: "#/components/schemas/ReservationStateResponse"
+        businessDate:
+          type: string
+          format: date
+        changedFields:
+          type: array
+          items:
+            type: string
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: "`CHANGE`, `CANCEL` ou `REACTIVATE`. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - CHANGE
+          - CANCEL
+          - REACTIVATE
+        occurredAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+          format: int64
+      required:
+      - after
+      - before
+      - businessDate
+      - changedFields
+      - id
+      - kind
+      - occurredAt
+      - version
     ReservationRequest:
       type: object
       description: "Uma reserva (uma UH): chegada = saída é day use (não toma inventá\
@@ -18083,6 +18619,10 @@ components:
         bookingId:
           type: string
           format: uuid
+        cancellation:
+          allOf:
+          - $ref: "#/components/schemas/CancellationResponse"
+          nullable: true
         cancellationTerms:
           $ref: "#/components/schemas/CancellationTermsResponse"
         childAges:
@@ -18122,6 +18662,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/NightlyRateResponse"
+        penaltiesCharged:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
         provisionalUntil:
           type: string
           format: date-time
@@ -18188,6 +18734,7 @@ components:
       - guests
       - id
       - nightlyRates
+      - penaltiesCharged
       - ratePlanId
       - roomTotal
       - roomTypeId
@@ -18195,6 +18742,109 @@ components:
       - status
       - total
       - version
+    ReservationStateResponse:
+      type: object
+      description: O retrato de uma reserva no histórico (sem texto livre nem dado
+        de hóspede).
+      properties:
+        additionalPackagesTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        adults:
+          type: integer
+          format: int32
+        arrival:
+          type: string
+          format: date
+        cancellation:
+          allOf:
+          - $ref: "#/components/schemas/HistoryCancellationResponse"
+          nullable: true
+        cancellationPolicyId:
+          type: string
+          format: uuid
+        cancellationPolicyVersion:
+          type: integer
+          format: int64
+        childAges:
+          type: array
+          items:
+            type: integer
+            format: int32
+        departure:
+          type: string
+          format: date
+        guaranteePolicyId:
+          type: string
+          format: uuid
+        guaranteePolicyVersion:
+          type: integer
+          format: int64
+        hasSpecialRequests:
+          type: boolean
+        nights:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistoryNightResponse"
+        ratePlanId:
+          type: string
+          format: uuid
+        roomTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomTypeId:
+          type: string
+          format: uuid
+        segment:
+          type: string
+          description: "Segmento de mercado. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+        status:
+          type: string
+          description: "Situação da reserva. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - additionalPackagesTotal
+      - adults
+      - arrival
+      - cancellationPolicyId
+      - cancellationPolicyVersion
+      - childAges
+      - departure
+      - guaranteePolicyId
+      - guaranteePolicyVersion
+      - hasSpecialRequests
+      - nights
+      - ratePlanId
+      - roomTotal
+      - roomTypeId
+      - segment
+      - status
+      - total
     ResetPasswordRequest:
       type: object
       properties:

@@ -8,7 +8,8 @@ import java.time.LocalDate
  *
  * Inventário (M4 E05): a leitura dos contadores e a recontagem, que o fechamento do dia (M6) chama para reparar
  * qualquer divergência (uma publicação do outbox abandonada, por exemplo). Reservas (E07): a criação ([createBooking])
- * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]).
+ * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]); desde a
+ * E08, o cancelamento ([cancelReservation]).
  */
 interface ReservationsApi {
     /**
@@ -23,6 +24,21 @@ interface ReservationsApi {
      * (`BillingApi.openFolio`, dono `RESERVATION`) e `ReservationCreated` por reserva, tudo na mesma transação.
      */
     fun createBooking(booking: NewBooking): BookingSummary
+
+    /**
+     * Cancela a reserva (M4 E08; RF-RES-06), na transação de quem chama (ou numa própria), auditada
+     * `reservations.reservation.cancel` em nome do ator corrente ou do sistema, com as mesmas regras de
+     * `POST /api/v1/reservations/{id}/cancel`, **menos a permissão e o step-up da isenção** (quem chama já se
+     * autorizou: a expiração da pré-reserva na E09, o channel manager no M8): só uma pré-reserva ou uma confirmada
+     * (`409 RESERVATION_TRANSITION_NOT_ALLOWED`); a multa pela política copiada na reserva e pelo prazo, lançada na
+     * conta da reserva (`BillingApi.post`, código `CANCELLATION_FEE`, origem `MANUAL`) salvo com
+     * [ReservationCancellationRequest.waivePenalty]; as unidades das noites a partir da data operacional devolvidas; o
+     * histórico e `ReservationCancelled` pelo outbox, tudo na mesma transação.
+     */
+    fun cancelReservation(
+        id: ReservationId,
+        cancellation: ReservationCancellationRequest,
+    ): ReservationSummary
 
     /** A reserva agrupadora com as reservas; `null` se não existe. */
     fun booking(id: BookingId): BookingSummary?

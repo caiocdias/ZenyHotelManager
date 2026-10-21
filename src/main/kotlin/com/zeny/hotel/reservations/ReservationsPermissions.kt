@@ -17,8 +17,13 @@ import com.zeny.hotel.shared.TemplateGrant
  * (SPEC §3.1): o Gerente, a Recepcionista, o Comercial/Eventos e o Financeiro consultam.
  *
  * Reservas (E07, H16): [RESERVATIONS_READ] consulta reservas agrupadoras e reservas (Gerente, Recepcionista,
- * Comercial/Eventos e Financeiro); [RESERVATIONS_MANAGE] as cria (Gerente e Recepcionista; não sensível). O desconto
- * numa diária é a permissão sensível `rates.discounts.apply` do `rates` (H7), com o limite `maxPercent`.
+ * Comercial/Eventos e Financeiro); [RESERVATIONS_MANAGE] as cria e, desde a E08, as altera e cancela (Gerente e
+ * Recepcionista; não sensível). O desconto numa diária é a permissão sensível `rates.discounts.apply` do `rates` (H7),
+ * com o limite `maxPercent`.
+ *
+ * Ciclo de vida (E08, H16): [PENALTIES_WAIVE] isenta a multa de cancelamento devida e [RESERVATIONS_REACTIVATE]
+ * reativa uma reserva cancelada ou no-show, as duas **sensíveis** (RF-ACS-08), sem limite, só com o Gerente no modelo:
+ * a Recepcionista pede a aprovação de um superior.
  */
 object ReservationsPermissions : ModulePermissions {
     override val module = "reservations"
@@ -32,8 +37,14 @@ object ReservationsPermissions : ModulePermissions {
     /** Consultar reservas agrupadoras e reservas. */
     val RESERVATIONS_READ = PermissionCode("reservations.reservations.read")
 
-    /** Criar reservas (e, nas etapas seguintes, alterá-las). */
+    /** Criar, alterar e cancelar reservas. */
     val RESERVATIONS_MANAGE = PermissionCode("reservations.reservations.manage")
+
+    /** Isentar a multa de cancelamento (sensível). */
+    val PENALTIES_WAIVE = PermissionCode("reservations.penalties.waive")
+
+    /** Reativar uma reserva cancelada ou no-show (sensível). */
+    val RESERVATIONS_REACTIVATE = PermissionCode("reservations.reservations.reactivate")
 
     private val all = TemplateGrant(ALL)
 
@@ -71,9 +82,23 @@ object ReservationsPermissions : ModulePermissions {
             ),
             PermissionDefinition(
                 RESERVATIONS_MANAGE,
-                "Criar reservas",
+                "Criar, alterar e cancelar reservas",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
+            ),
+            PermissionDefinition(
+                PENALTIES_WAIVE,
+                "Isentar a multa de cancelamento de uma reserva",
+                setOf(ALL),
+                sensitive = true,
+                templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                RESERVATIONS_REACTIVATE,
+                "Reativar uma reserva cancelada ou no-show",
+                setOf(ALL),
+                sensitive = true,
+                templates = mapOf(RoleTemplate.MANAGER to all),
             ),
         )
 }

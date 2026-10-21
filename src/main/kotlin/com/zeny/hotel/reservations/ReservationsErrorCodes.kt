@@ -95,10 +95,37 @@ object ReservationsErrorCodes {
     /** 404: reserva inexistente. */
     val RESERVATION_NOT_FOUND = ErrorCode("RESERVATION_NOT_FOUND")
 
+    // --- Alteração, cancelamento e reativação (M4 E08) ----------------------------------------------------------
+
+    /**
+     * 409: a reserva não pode fazer essa transição na situação em que está (SPEC §8.4): alterar ou cancelar só uma
+     * pré-reserva ou uma confirmada; reativar só uma cancelada ou no-show. O problema traz a situação em
+     * `reservationStatus` e a ação recusada em `action` (`CHANGE`, `CANCEL`, `REACTIVATE`).
+     */
+    val RESERVATION_TRANSITION_NOT_ALLOWED = ErrorCode("RESERVATION_TRANSITION_NOT_ALLOWED")
+
+    /**
+     * 400: alteração fora do formato, com o campo: mais de 40 adultos (`adults`) ou 20 crianças (`childAges`), pedidos
+     * especiais fora de 1 a 1000 caracteres (`specialRequests`) ou menos ocupação que os hóspedes da estadia
+     * (`adults`). As diárias editadas fora do formato, ou numa noite que a alteração não recalcula, são
+     * `NIGHTLY_RATE_INVALID` (campo `nightlyRates[i]…`).
+     */
+    val RESERVATION_CHANGE_INVALID = ErrorCode("RESERVATION_CHANGE_INVALID")
+
+    /** 400: cancelamento fora do formato: observação fora de 1 a 500 caracteres (campo `notes`). */
+    val RESERVATION_CANCELLATION_INVALID = ErrorCode("RESERVATION_CANCELLATION_INVALID")
+
+    /**
+     * 422: a reserva cancelada ou no-show já terminou (nenhuma noite a partir da data operacional; no day use, a data
+     * já passou) e não é reativada.
+     */
+    val RESERVATION_STAY_ENDED = ErrorCode("RESERVATION_STAY_ENDED")
+
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
     // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,
     // `CLOSED_TO_ARRIVAL`, `CLOSED_TO_DEPARTURE`, `MIN_STAY_NOT_MET`, `MAX_STAY_EXCEEDED`, `STAY_DATE_CLOSED`,
     // `RATE_NOT_PRICED`, `OCCUPANCY_NOT_PRICED`, `CHILD_AGE_NOT_PRICED`, `INCLUDED_PACKAGES_EXCEED_RATE`), e o problema
-    // traz a reserva em `reservationIndex` e todos os motivos em `refusals` (`code`, `message`, `dates`).
+    // traz a reserva em `reservationIndex` e todos os motivos em `refusals` (`code`, `message`, `dates`). Na alteração
+    // (E08), o mesmo, sem `reservationIndex` e só com os motivos que dizem respeito ao que mudou.
 }

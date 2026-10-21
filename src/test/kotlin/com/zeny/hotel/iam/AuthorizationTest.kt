@@ -246,6 +246,8 @@ class AuthorizationTest(
                 "reservations.inventory.manage:ALL",
                 "reservations.reservations.read:ALL",
                 "reservations.reservations.manage:ALL",
+                "reservations.penalties.waive:ALL",
+                "reservations.reservations.reactivate:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(
