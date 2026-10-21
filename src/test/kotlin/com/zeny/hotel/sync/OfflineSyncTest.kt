@@ -17,6 +17,7 @@ import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.UuidV7Generator
 import com.zeny.hotel.shared.infrastructure.sync.OfflineCommandPurgeJob
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.InventoryListenersQuiescence
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import io.kotest.assertions.withClue
@@ -80,6 +81,8 @@ class OfflineSyncTest(
     fun synchronizeTestPermissions() {
         // O banco é compartilhado: outro contexto que suba depois marca as permissões só de teste obsoletas.
         synchronizer.synchronize()
+        // Um listener do inventário ainda aberto (de um teste anterior) seguraria o download (M4 E05).
+        InventoryListenersQuiescence.await(jdbc)
     }
 
     // --- Download ---------------------------------------------------------------------------------------
@@ -139,7 +142,7 @@ class OfflineSyncTest(
             .update()
         roomsApi.markOccupied(room, guestCount = 3, source = RoomStatusSource.CHECK_IN)
 
-        val response = with(iam) { call(GET, "/api/v1/sync/changes?limit=200&cursor=$cursor", reader).ok() }
+        val response = download(reader, cursor)
         val body = response.toString()
         val change = response["changes"].values().single { it["id"].asString() == room.value.toString() }
 
@@ -816,10 +819,14 @@ class OfflineSyncTest(
         auth: RequestPostProcessor,
         cursor: String? = null,
         limit: Int = 200,
-    ): JsonNode =
-        with(iam) {
+    ): JsonNode {
+        // O download só serve transações terminadas: espere os listeners do inventário (M4 E05) que mexer numa UH
+        // dispara, senão a mudança confirmada depois de eles começarem fica para o próximo download.
+        InventoryListenersQuiescence.await(jdbc)
+        return with(iam) {
             call(GET, "/api/v1/sync/changes?limit=$limit" + cursor?.let { "&cursor=$it" }.orEmpty(), auth).ok()
         }
+    }
 
     /** Segue as páginas até `hasMore` falso. */
     private fun downloadAll(

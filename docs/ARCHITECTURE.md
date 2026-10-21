@@ -448,9 +448,10 @@ sequenceDiagram
 **Garantias no banco**
 
 - **UH em dobro é impossível no banco**: `EXCLUDE USING gist (room_id WITH =, stay WITH &&)` sobre as alocações ativas (requer `btree_gist`).
-- **Disponibilidade**: contadores `room_type_inventory(room_type_id, date, total, sold, blocked, out_of_order)`.
-  - São atualizados na mesma transação da reserva, bloqueio ou OOO, com `SELECT … FOR UPDATE` nas datas envolvidas.
-  - Isso evita overbooking em reservas simultâneas, inclusive as vindas do channel manager.
+- **Disponibilidade**: contadores `reservations.room_type_inventory(room_type_id, stay_date, total, sold, blocked, out_of_order, overbooking_limit)`, mantidos da data operacional até 730 dias à frente.
+  - `sold` e `blocked` são atualizados na mesma transação da reserva ou do bloqueio, com `SELECT … FOR UPDATE` nas datas envolvidas, sempre em ordem de (tipo, data). Isso evita overbooking em reservas simultâneas, inclusive as vindas do channel manager, e nunca dá deadlock.
+  - `total` e `out_of_order` **não** mudam na transação do cadastro de UH nem na do OOO: o `reservations` escuta `RoomRegistryChanged` e `OutOfOrderChanged` (outbox) e **refaz** as datas afetadas a partir da `RoomsApi`, a fonte da verdade (H4 e H10 do roadmap do M4). Refazer nunca soma deltas, então o evento reentregue não muda o resultado; a janela de segundos entre o commit do OOO e o listener é aceita, e o job do horizonte e a recontagem reparam uma publicação perdida.
+  - O limite de overbooking por tipo e data nasce zero (Q-09) e só muda por um endpoint com permissão. O disponível (`total − sold − blocked − out_of_order + overbooking_limit`) pode ficar negativo quando uma UH é desativada ou entra em OOO depois das vendas: a data aparece como sobrevendida.
 - **Dois papéis no banco** (H4 do roadmap do M1): o **dono dos schemas** (`ZENY_DB_MIGRATION_*`) é usado só pelo Flyway; a aplicação conecta com um **papel restrito** (`ZENY_DB_*`), criado fora das migrações (script de inicialização do `db` no compose e nos testes, passo manual numa implantação), sem senha no repositório. As migrações só concedem privilégios a ele (DML por schema, com `ALTER DEFAULT PRIVILEGES` para as tabelas futuras), pelo placeholder `${app_role}`; ele não executa DDL, não cria tabelas temporárias (o `TEMPORARY` do banco sai de `PUBLIC`) nem é dono de nada. Tabelas *append-only* recebem só `SELECT, INSERT` e são declaradas pelo módulo (`AppendOnlyTables`); a partida (`DatabaseRoleGuard`) recusa o papel que for superusuário, puder criar objetos (inclusive schemas e tabelas temporárias), for dono de tabela de módulo ou puder alterar uma tabela *append-only* (inclusive por `UPDATE` de coluna).
 - **Imutabilidade financeira** (RN-03): tabelas de lançamentos e pagamentos sem `UPDATE`/`DELETE` para o usuário da aplicação, pela mesma regra dos dois papéis; estornos são novas linhas.
 - Exclusão física só para dados transitórios. Entidades de negócio usam status (inativo, cancelado).
@@ -506,6 +507,7 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 | Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
 | Reprocessamento de eventos com falha no outbox (backoff de 1 min a 1 h, abandono após 24 h) | 1 min |
 | Expurgo das publicações concluídas do outbox (há mais de 7 dias) | 1 h |
+| Horizonte do inventário por tipo e data (cria as datas até 730 dias e refaz o total e o OOO) | Diário |
 | Expiração de pré-reservas | 5 min |
 | Renovação de pré-autorizações perto do vencimento | No fechamento |
 | Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |

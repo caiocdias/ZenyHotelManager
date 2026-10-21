@@ -2,6 +2,7 @@ package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.GUESTS_REKEY_DEFERRED
+import com.zeny.hotel.testsupport.INVENTORY_HORIZON_DEFERRED
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
 import com.zeny.hotel.testsupport.RESUBMISSION_JOB_DEFERRED
@@ -35,6 +36,7 @@ import org.springframework.test.web.servlet.get
         OUTBOX_PURGE_DEFERRED,
         FILES_PURGE_DEFERRED,
         GUESTS_REKEY_DEFERRED,
+        INVENTORY_HORIZON_DEFERRED,
     ],
 )
 @ActiveProfiles("prod")

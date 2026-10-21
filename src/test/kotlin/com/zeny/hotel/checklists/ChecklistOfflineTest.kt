@@ -7,6 +7,7 @@ import com.zeny.hotel.files.TestImages
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.InventoryListenersQuiescence
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactly
@@ -50,7 +51,11 @@ class ChecklistOfflineTest(
     private val support = ChecklistExecutionsTestSupport(iam, files, jdbc)
 
     @BeforeEach
-    fun clearEvents() = ChecklistCompletedEvents.received.clear()
+    fun clearEvents() {
+        ChecklistCompletedEvents.received.clear()
+        // Um listener do inventário ainda aberto (de um teste anterior) seguraria o download (M4 E05).
+        InventoryListenersQuiescence.await(jdbc)
+    }
 
     @Test
     @Suppress("LongMethod") // o cenário de ponta a ponta: envio, repetição, horários, foto e evento
@@ -355,6 +360,8 @@ class ChecklistOfflineTest(
             var cursor = from
             var pages = 0
             do {
+                // O download só serve transações terminadas: espere os listeners do inventário (M4 E05).
+                InventoryListenersQuiescence.await(jdbc)
                 val page =
                     call(GET, "/api/v1/sync/changes?limit=200" + cursor?.let { "&cursor=$it" }.orEmpty(), auth).ok()
                 changes += page["changes"].values()

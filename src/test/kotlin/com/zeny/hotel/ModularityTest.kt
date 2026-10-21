@@ -6,6 +6,7 @@ import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
 import com.zeny.hotel.rates.RatesModule
+import com.zeny.hotel.reservations.ReservationsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -271,6 +272,34 @@ class ModularityTest {
             .toSet() shouldBe allowed
         val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.rooms", "com.zeny.hotel.billing")
         rates
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { name -> publicApis.any { name.startsWith("$it.") } }
+            .filter { it.substringBeforeLast('.') !in publicApis }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `reservations depends only on shared, hotel and rooms, and only on their public APIs`() {
+        val reservations = modules.getModuleByName("reservations").orElseThrow()
+        val allowed = setOf("shared", "hotel", "rooms")
+
+        // ARCHITECTURE §3.1 (camada Hospedagem), M4 E05: hotel (data operacional pela HotelApi) e rooms (UHs ativas e
+        // períodos OOO pela RoomsApi; os eventos RoomRegistryChanged e OutOfOrderChanged). rates, guests e billing
+        // entram nas etapas que os usarem; nunca iam.
+        reservations
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            allowed.toList()
+        ReservationsModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.rooms")
+        reservations
             .getDirectDependencies(modules)
             .stream()
             .map { it.targetType.name }

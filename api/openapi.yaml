@@ -25,6 +25,9 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
+- description: Inventário e disponibilidade por tipo de UH e data; reservas nas etapas
+    seguintes.
+  name: reservations
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
@@ -7334,6 +7337,116 @@ paths:
       summary: Reativar uma característica
       tags:
       - rooms
+  /api/v1/room-type-inventory:
+    get:
+      description: "Um período de até 366 dias, inclusive o passado (fim antes do\
+        \ início: 400 `INVENTORY_PERIOD_INVALID`; mais: 400 `INVENTORY_PERIOD_TOO_LONG`);\
+        \ tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE`. Disponível = `total` (UHs\
+        \ ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios de grupo) − `outOfOrder`\
+        \ (UHs em OOO; o OOS não conta) + `overbookingLimit` (nasce zero: overbooking\
+        \ proibido, Q-09); pode ser negativo (data sobrevendida). O inventário é mantido\
+        \ da data operacional até 730 dias à frente. Exige `reservations.availability.read`."
+      operationId: listRoomTypeInventory
+      parameters:
+      - in: query
+        name: roomTypeId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o inventário de um tipo de UH num período
+      tags:
+      - reservations
+  /api/v1/room-type-inventory/overbooking-limit:
+    post:
+      description: "Grava o mesmo `limit` (de 0 a 50; fora: 400 `OVERBOOKING_LIMIT_INVALID`)\
+        \ nos tipos de UH pedidos (de 1 a 50, sem repetir; senão 400 `OVERBOOKING_LIMIT_INVALID`;\
+        \ inexistente 400 `UNKNOWN_ROOM_TYPE`) × as datas do período nos `weekdays`.\
+        \ Fim antes do início ou nenhuma data nos dias da semana: 400 `INVENTORY_PERIOD_INVALID`;\
+        \ mais de 366 dias: 400 `INVENTORY_PERIOD_TOO_LONG`; começo antes da data\
+        \ operacional: 422 `INVENTORY_PERIOD_IN_PAST`; data fora do inventário mantido:\
+        \ 422 `INVENTORY_DATE_OUT_OF_HORIZON` (datas em `dates`). Baixar o limite\
+        \ não desfaz vendas. Exige `reservations.inventory.manage`; publica `AvailabilityChanged`\
+        \ por tipo que mudou."
+      operationId: setRoomTypeOverbookingLimit
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OverbookingLimitRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OverbookingLimitResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir o limite de overbooking por tipo de UH e data
+      tags:
+      - reservations
+  /api/v1/room-type-inventory/recount:
+    post:
+      description: "Refaz os contadores de todos os tipos de UH ativos (e dos que\
+        \ já têm inventário) no período: o total e o OOO pelas UHs e períodos OOO\
+        \ do cadastro, e as vendidas e bloqueadas pelas reservas e bloqueios; cria\
+        \ as datas que faltam no horizonte. Repara uma divergência (uma atualizaçã\
+        o perdida). Fim antes do início: 400 `INVENTORY_PERIOD_INVALID`. Exige `reservations.inventory.manage`;\
+        \ publica `AvailabilityChanged` por tipo que mudou."
+      operationId: recountRoomTypeInventory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryRecountRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryRecountResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Recontar o inventário
+      tags:
+      - reservations
   /api/v1/room-types:
     get:
       description: Em ordem de exibição. Exige `rooms.registry.read`.
@@ -14377,6 +14490,95 @@ components:
           - REJECT_INSPECTION
       required:
       - transition
+    InventoryDayResponse:
+      type: object
+      description: "Os contadores de um tipo de UH numa data. Disponível = `total`\
+        \ (UHs ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios de grupo)\
+        \ − `outOfOrder` (UHs em OOO; o OOS não conta) + `overbookingLimit` (nasce\
+        \ zero: overbooking proibido, Q-09); pode ser negativo (data sobrevendida).\
+        \ O inventário é mantido da data operacional até 730 dias à frente."
+      properties:
+        available:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        date:
+          type: string
+          format: date
+        outOfOrder:
+          type: integer
+          format: int32
+        overbookingLimit:
+          type: integer
+          format: int32
+        roomTypeId:
+          type: string
+          format: uuid
+        sold:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int32
+      required:
+      - available
+      - blocked
+      - date
+      - outOfOrder
+      - overbookingLimit
+      - roomTypeId
+      - sold
+      - total
+    InventoryRecountRequest:
+      type: object
+      description: "O período da recontagem: de `from` (padrão e mínimo: a data operacional)\
+        \ a `to` (padrão e máximo: o fim do horizonte, 730 dias)."
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+        to:
+          type: string
+          format: date
+          nullable: true
+    InventoryRecountResponse:
+      type: object
+      description: O resultado de uma recontagem.
+      properties:
+        changedRows:
+          type: integer
+          format: int32
+          description: Linhas (tipo de UH × data) que mudaram.
+        from:
+          type: string
+          format: date
+        roomTypes:
+          type: integer
+          format: int32
+          description: Tipos de UH recontados.
+        to:
+          type: string
+          format: date
+      required:
+      - changedRows
+      - from
+      - roomTypes
+      - to
+    InventoryResponse:
+      type: object
+      description: O inventário de um tipo de UH num período.
+      properties:
+        items:
+          type: array
+          description: "Uma linha por data mantida, em ordem; as datas fora do inventá\
+            rio não aparecem."
+          items:
+            $ref: "#/components/schemas/InventoryDayResponse"
+      required:
+      - items
     ItemActionDto:
       type: object
       description: "Ação vinculada ao item (RF-CHK-05), com os parâmetros do tipo\
@@ -15044,6 +15246,80 @@ components:
       - startsOn
       - updatedAt
       - version
+    OverbookingLimitRequest:
+      type: object
+      description: "O limite de overbooking (RF-TAR-09) dos tipos de UH nas datas\
+        \ do período (até 366 dias, a partir da data operacional), só nos dias da\
+        \ semana pedidos (vazio = todos)."
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+        limit:
+          type: integer
+          format: int32
+          description: "Unidades aceitas além do disponível, de 0 a 50 (0 = sem overbooking)."
+          nullable: true
+        roomTypeIds:
+          type: array
+          description: "Os tipos de UH (de 1 a 50, sem repetir)."
+          items:
+            type: string
+            format: uuid
+            description: "Os tipos de UH (de 1 a 50, sem repetir)."
+          maxItems: 50
+          minItems: 0
+        to:
+          type: string
+          format: date
+          description: "Fim do período, inclusive."
+          nullable: true
+        weekdays:
+          type: array
+          items:
+            type: string
+            enum:
+            - MONDAY
+            - TUESDAY
+            - WEDNESDAY
+            - THURSDAY
+            - FRIDAY
+            - SATURDAY
+            - SUNDAY
+          maxItems: 7
+          minItems: 0
+      required:
+      - from
+      - limit
+      - roomTypeIds
+      - to
+      - weekdays
+    OverbookingLimitResponse:
+      type: object
+      description: O resultado de uma mudança do limite de overbooking.
+      properties:
+        changedRows:
+          type: integer
+          format: int32
+          description: Linhas (tipo de UH × data) que mudaram.
+        from:
+          type: string
+          format: date
+          description: Primeira data mudada; nula se nada mudou.
+          nullable: true
+        matchedDates:
+          type: integer
+          format: int32
+          description: "Datas selecionadas (do período, nos dias da semana pedidos)."
+        to:
+          type: string
+          format: date
+          description: Última data mudada; nula se nada mudou.
+          nullable: true
+      required:
+      - changedRows
+      - matchedDates
     PackageRequest:
       type: object
       description: Os dados de um pacote.

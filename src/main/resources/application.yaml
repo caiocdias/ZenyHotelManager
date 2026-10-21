@@ -297,6 +297,12 @@ zeny:
     document-rekey:
       interval: PT1H
       initial-delay: PT10M
+  # Inventário por tipo de UH e data (módulo reservations, H3 do M4): o InventoryHorizonJob, sob trava do ShedLock, cria
+  # as datas que faltam até 730 dias da data operacional e refaz o total e o OOO pela RoomsApi.
+  reservations:
+    inventory-horizon:
+      interval: P1D
+      initial-delay: PT2M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

@@ -5,6 +5,8 @@ import com.zeny.hotel.rooms.AreaKind
 import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.rooms.RoomFeatureId
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomRegistryChange
+import com.zeny.hotel.rooms.RoomRegistryChanged
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.rooms.RoomsPermissions
@@ -29,6 +31,7 @@ import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.RealtimeTopic
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Service
@@ -45,6 +48,9 @@ import java.time.Clock
  * desativada depois. Uma UH ativa só fica num tipo ativo: criar a UH, mudar o tipo dela e reativá-la
  * exigem o tipo ativo (`422 ROOM_TYPE_INACTIVE`), e o tipo com UHs ativas não é desativado (`422
  * ROOM_TYPE_HAS_ACTIVE_ROOMS`). As duas pontas travam a linha do tipo, então não há corrida.
+ *
+ * Criar uma UH, trocar o tipo dela, desativá-la e reativá-la publicam [RoomRegistryChanged] pelo outbox, na transação
+ * (H4 do M4): o inventário por tipo do `reservations` recalcula o total. As outras edições não publicam nada.
  */
 @Service
 @Suppress("TooManyFunctions") // um caso de uso por operação do cadastro
@@ -53,6 +59,7 @@ class RoomsRegistryService(
     private val directory: RoomsDirectory,
     private val authorization: Authorization,
     private val audit: AuditContext,
+    private val events: ApplicationEventPublisher,
     private val clock: Clock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -230,6 +237,7 @@ class RoomsRegistryService(
         requireAssignableFeatures(command.featureIds, current = emptySet())
         audit.created(RoomsAudit.ROOM, room.id.value) { room.auditState() }
         if (!store.tryAdd(room)) throw roomNumberInUse()
+        publishRegistry(room, RoomRegistryChange.CREATED, null)
         log.info("UH {} cadastrada", room.id)
         return room.view()
     }
@@ -245,11 +253,13 @@ class RoomsRegistryService(
         val room = findRoom(id)
         requireCurrentVersion(expectedVersion, checkNotNull(room.version))
         audit.track(RoomsAudit.ROOM, id.value) { room.auditState() }
-        if (command.roomTypeId != room.roomTypeId) requireActiveRoomType(command.roomTypeId)
+        val previousType = room.roomTypeId
+        if (command.roomTypeId != previousType) requireActiveRoomType(command.roomTypeId)
         requireAssignableFeatures(command.featureIds, current = room.featureIds)
         if (room.update(command.details, clock.instant()) && !store.tryFlush(RoomsConstraints.ROOM_NUMBER)) {
             throw roomNumberInUse()
         }
+        if (room.roomTypeId != previousType) publishRegistry(room, RoomRegistryChange.ROOM_TYPE_CHANGED, previousType)
         return room.view()
     }
 
@@ -265,6 +275,7 @@ class RoomsRegistryService(
         }
         if (room.deactivate(clock.instant())) {
             store.flush()
+            publishRegistry(room, RoomRegistryChange.DEACTIVATED, null)
             log.info("UH {} desativada", id)
         }
         return room.view()
@@ -280,6 +291,7 @@ class RoomsRegistryService(
             requireActiveRoomType(room.roomTypeId)
             room.reactivate(clock.instant())
             store.flush()
+            publishRegistry(room, RoomRegistryChange.REACTIVATED, null)
         }
         return room.view()
     }
@@ -352,6 +364,25 @@ class RoomsRegistryService(
     }
 
     // --- Apoio -------------------------------------------------------------------------------------
+
+    /** Publica [RoomRegistryChanged] com a UH já gravada (a versão é a do `flush`). */
+    private fun publishRegistry(
+        room: Room,
+        change: RoomRegistryChange,
+        previousType: RoomTypeId?,
+    ) {
+        events.publishEvent(
+            RoomRegistryChanged(
+                room.id.value,
+                room.roomTypeId.value,
+                previousType?.value,
+                room.active,
+                change,
+                checkNotNull(room.version),
+                room.updatedAt,
+            ),
+        )
+    }
 
     private fun findFeature(id: RoomFeatureId) =
         store.feature(id)

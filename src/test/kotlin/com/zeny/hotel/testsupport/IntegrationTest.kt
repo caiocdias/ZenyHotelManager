@@ -16,8 +16,8 @@ import org.springframework.test.context.ContextConfiguration
  * como em produção (`@AutoConfigureMetrics`), com o registro do Prometheus.
  *
  * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam
- * os jobs de reprocessamento e de expurgo do outbox, o expurgo de anexos órfãos e a rotação de chaves dos
- * documentos de hóspede, para que os testes os disparem quando
+ * os jobs de reprocessamento e de expurgo do outbox, o expurgo de anexos órfãos, a rotação de chaves dos
+ * documentos de hóspede e o horizonte do inventário, para que os testes os disparem quando
  * quiserem. Para autenticar uma requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  */
 @Target(AnnotationTarget.CLASS)
@@ -29,6 +29,7 @@ import org.springframework.test.context.ContextConfiguration
         OUTBOX_PURGE_DEFERRED,
         FILES_PURGE_DEFERRED,
         GUESTS_REKEY_DEFERRED,
+        INVENTORY_HORIZON_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
@@ -67,3 +68,9 @@ const val FILES_PURGE_DEFERRED = "zeny.files.orphan-purge.initial-delay=PT24H"
  * documentos com a chave anterior (e um com o número ilegível) e conferem o que acontece com eles.
  */
 const val GUESTS_REKEY_DEFERRED = "zeny.guests.document-rekey.initial-delay=PT24H"
+
+/**
+ * O job do horizonte do inventário só roda quando o teste o chama: ele refaz o total e o OOO de todos os tipos de UH do
+ * banco compartilhado, e os testes do inventário conferem os contadores dos próprios tipos.
+ */
+const val INVENTORY_HORIZON_DEFERRED = "zeny.reservations.inventory-horizon.initial-delay=PT24H"

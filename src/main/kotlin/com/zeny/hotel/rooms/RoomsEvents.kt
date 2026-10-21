@@ -59,3 +59,38 @@ data class OutOfOrderChanged(
     val version: Long,
     val changedAt: Instant,
 )
+
+/** O que mudou no cadastro de uma UH ([RoomRegistryChanged]). */
+enum class RoomRegistryChange {
+    /** A UH foi cadastrada (nasce ativa). */
+    CREATED,
+
+    /** A UH mudou de tipo ([RoomRegistryChanged.previousRoomTypeId] é o anterior). */
+    ROOM_TYPE_CHANGED,
+
+    /** A UH foi desativada. */
+    DEACTIVATED,
+
+    /** A UH foi reativada. */
+    REACTIVATED,
+}
+
+/**
+ * O cadastro da UH [roomId] mudou de um jeito que afeta o inventário por tipo (H4 do roadmap do M4, M4 E05): criação,
+ * troca de tipo, desativação ou reativação ([change]). Leva o tipo depois da mudança ([roomTypeId]), o anterior numa
+ * troca de tipo ([previousRoomTypeId], senão `null`), se a UH ficou [active], a [version] da UH e o instante
+ * [changedAt]. Publicado por `rooms` pelo outbox na transação do cadastro (outras edições, como o número ou as
+ * características, não publicam). O `reservations` o escuta e recalcula o total dos tipos afetados a partir da
+ * [RoomsApi] (idempotente: um evento reentregue ou fora de ordem não muda o resultado).
+ *
+ * Payload mínimo: só ids, a situação, a versão e o instante; nada de número, andar, observações nem autor.
+ */
+data class RoomRegistryChanged(
+    val roomId: UUID,
+    val roomTypeId: UUID,
+    val previousRoomTypeId: UUID?,
+    val active: Boolean,
+    val change: RoomRegistryChange,
+    val version: Long,
+    val changedAt: Instant,
+)

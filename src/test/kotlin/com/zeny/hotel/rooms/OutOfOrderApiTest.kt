@@ -533,10 +533,12 @@ class OutOfOrderApiTest(
         val serialized =
             jdbc
                 .sql(
-                    "SELECT serialized_event FROM shared.event_publication " +
-                        "WHERE event_type = :type AND serialized_event LIKE :room ORDER BY publication_date",
+                    "SELECT serialized_event FROM shared.event_publication WHERE event_type = :type " +
+                        "AND serialized_event LIKE :room AND listener_id LIKE :listener ORDER BY publication_date",
                 ).param("type", OutOfOrderChanged::class.java.name)
                 .param("room", "%$room%")
+                // Só as do listener de teste: o inventário do reservations (M4 E05) também escuta o evento.
+                .param("listener", "%OutOfOrderProbeListener%")
                 .query(String::class.java)
                 .list()
                 .filterNotNull()
