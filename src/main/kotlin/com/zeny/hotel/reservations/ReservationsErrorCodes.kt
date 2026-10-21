@@ -1,5 +1,6 @@
 package com.zeny.hotel.reservations
 
+import com.zeny.hotel.rates.RatesErrorCodes
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.shared.ErrorCode
 
@@ -34,4 +35,22 @@ object ReservationsErrorCodes {
 
     /** 400: tipo de UH inexistente (o código do `rooms`). */
     val UNKNOWN_ROOM_TYPE: ErrorCode = RoomsErrorCodes.UNKNOWN_ROOM_TYPE
+
+    // --- Disponibilidade e cotação (M4 E06) -----------------------------------------------------------------------
+
+    /**
+     * 400: consulta de disponibilidade ou cotação com mais de 50 tipos de UH ou planos, ou com repetição (campo
+     * `roomTypeIds` ou `ratePlanIds`), mais de 40 adultos (`adults`) ou mais de 20 crianças (`childAges`).
+     */
+    val AVAILABILITY_QUERY_INVALID = ErrorCode("AVAILABILITY_QUERY_INVALID")
+
+    /** 400: plano tarifário inexistente (o código do `rates`; campo `ratePlanId` ou `ratePlanIds`). */
+    val UNKNOWN_RATE_PLAN: ErrorCode = RatesErrorCodes.UNKNOWN_RATE_PLAN
+
+    /**
+     * 400: estadia fora do formato na cotação (o código do `rates`): saída que não é depois da chegada ou mais de 365
+     * noites (campo `departure`), nenhum adulto (`adults`), idade de criança fora de 0 à idade limite do hotel
+     * (`childAges[i]`).
+     */
+    val STAY_INVALID: ErrorCode = RatesErrorCodes.STAY_INVALID
 }

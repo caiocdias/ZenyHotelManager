@@ -122,6 +122,9 @@ data class RatePlanFilter(
  * total e estável; o caso de uso carrega os agregados da página.
  */
 interface RatesDirectory {
+    /** Os ids dos planos **ativos** que têm algum dos tipos [roomTypeIds] (a cotação, E06), em ordem de código. */
+    fun activeRatePlansWith(roomTypeIds: Collection<RoomTypeId>): List<UUID>
+
     /** Planos em ordem de código e id, depois de [after]. */
     fun ratePlans(
         filter: RatePlanFilter,

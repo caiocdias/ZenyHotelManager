@@ -2,6 +2,7 @@ package com.zeny.hotel.rates.infrastructure
 
 import com.zeny.hotel.rates.application.RatePlanFilter
 import com.zeny.hotel.rates.application.RatesDirectory
+import com.zeny.hotel.rooms.RoomTypeId
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.util.UUID
@@ -11,6 +12,22 @@ import java.util.UUID
 class JdbcRatesDirectory(
     private val jdbc: JdbcClient,
 ) : RatesDirectory {
+    override fun activeRatePlansWith(roomTypeIds: Collection<RoomTypeId>): List<UUID> {
+        if (roomTypeIds.isEmpty()) return emptyList()
+        return jdbc
+            .sql(
+                """
+                SELECT p.id FROM rates.rate_plan p
+                WHERE p.active AND EXISTS (
+                    SELECT 1 FROM rates.rate_plan_room_type t
+                    WHERE t.rate_plan_id = p.id AND t.room_type_id = ANY (CAST(:types AS uuid[])))
+                ORDER BY p.code, p.id
+                """.trimIndent(),
+            ).param("types", roomTypeIds.joinToString(",", "{", "}") { it.value.toString() })
+            .query { rs, _ -> rs.getObject("id", UUID::class.java) }
+            .list()
+    }
+
     override fun ratePlans(
         filter: RatePlanFilter,
         after: Pair<String, UUID>?,

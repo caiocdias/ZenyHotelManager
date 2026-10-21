@@ -224,7 +224,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E05 | Inventário por tipo e data | #concluida | — | `room_type_inventory` com lock, horizonte, listener de OOO, evento de cadastro de UH no `rooms` e `AvailabilityChanged` |
-| E06 | Disponibilidade, calendário e cotação | #pendente | E04, E05 | Calendário com preços e restrições; cotação por período, ocupação e canal |
+| E06 | Disponibilidade, calendário e cotação | #concluida | E04, E05 | Calendário com preços e restrições; cotação por período, ocupação e canal |
 | E07 | Criação de reservas | #pendente | E06 | `Booking` e `Reservation` com preço congelado, política vigente, conta em `billing`, `ReservationCreated`, `GuestsMerged` e portas do `guests` |
 | E08 | Alteração, cancelamento e reativação | #pendente | E07 | Recálculo e histórico; multa pela `BillingApi` ou isenção sensível; reativação sensível |
 | E09 | Pré-reserva, garantia e expiração | #pendente | E07 | Garantia manual com depósito conferido no `billing`, confirmação e job de expiração |
@@ -757,7 +757,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 ---
 
-## E06 — Disponibilidade, calendário e cotação — #pendente
+## E06 — Disponibilidade, calendário e cotação — #concluida
 
 **Objetivo:** expor a consulta de disponibilidade em calendário (por tipo e data, com preços e restrições) e a cotação (período, ocupação e canal → tipos e planos disponíveis com total e detalhe por noite) (RF-TAR-08, RF-TAR-11).
 
@@ -813,11 +813,11 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Calendário devolve, por tipo e data, disponibilidade, preço do plano pedido e restrições; reflete vendas e OOO (teste de integração).
-- [ ] Cotação não oferece tipo sem disponibilidade nem plano não vendável no canal ou com restrição violada (testes).
-- [ ] Soma das noites igual ao total em todas as ofertas.
-- [ ] Cotação de 7 noites, 30 UHs e 730 dias de dados abaixo de 300 ms no teste local (medição registrada no handoff).
-- [ ] `ModularityTest` com `reservations` → `rates`; contrato regenerado; `./gradlew build` e oasdiff passam.
+- [x] Calendário devolve, por tipo e data, disponibilidade, preço do plano pedido e restrições; reflete vendas e OOO (teste de integração).
+- [x] Cotação não oferece tipo sem disponibilidade nem plano não vendável no canal ou com restrição violada (testes).
+- [x] Soma das noites igual ao total em todas as ofertas.
+- [x] Cotação de 7 noites, 30 UHs e 730 dias de dados abaixo de 300 ms no teste local (medição registrada no handoff).
+- [x] `ModularityTest` com `reservations` → `rates`; contrato regenerado; `./gradlew build` e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -832,12 +832,31 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `7b997a840d5bd743244f1bee3d3a51655f27e90a` (recebido do orquestrador). Snapshot ao fim da implementação (antes deste handoff): `65e319913eaf66471d964371fc31b4c44bb3f755`. Pré-requisitos conferidos: E04 e E05 `#concluida` (commits `359e85c` e `c7efa3d`); o código bate com os handoffs (`RatesApi.priceFor`/`isSellable` com `SaleRefusal`, `StayEvaluator` sobre `RatePriceReader.effectivePrices` e `RestrictionReader.effective`; `InventoryStore.rows`, `InventoryDay.available` podendo ser negativo, `ReservationsModule` com `shared`, `hotel`, `rooms`); a ARCHITECTURE §3.1 já tinha `reservations` → `rates`. Investigação: nenhuma delegada (adendo do orquestrador); RF-TAR-08 ("disponibilidade = UHs ativas − OOO − reservas − bloqueios; consulta em calendário com preços e restrições") e RF-TAR-11 ("dado período, ocupação e canal, lista tipos de UH e planos disponíveis, com o total e o detalhamento por noite") lidos na SPEC §5.6, RNF-06 (p95 < 300 ms) na §7.
+- Arquivos alterados:
+  - `rates` (acréscimos à API pública, sem quebrar nada): `RatesApi.kt` (`stayOptions`, `rateCalendar`), `StayPricing.kt` (`StayOptionsQuery`, `StayOption`), novo `RateCalendar.kt` (`RateCalendar`, `RateCalendarDay`, `DailyRates`, `DailyChildRate`, `DailyRestriction`, `ChildAgeBandSummary`), `RatesErrorCodes.kt` (descrição de `UNKNOWN_RATE_PLAN`), `application/StayEvaluator.kt` (as quatro leituras pelo mesmo `Prepared`, que lê os pacotes numa consulta e os preços e as restrições de cada plano uma vez; `isSellable` e `priceFor` também passam por ele), `application/RatesApiService.kt` (`RatePlan.summary()` compartilhado), `application/RatesPorts.kt` e `infrastructure/JdbcRatesDirectory.kt` (`activeRatePlansWith(tipos)`);
+  - `reservations`: `ReservationsModule.kt` (`"rates"` nas dependências), `ReservationsErrorCodes.kt` (`AVAILABILITY_QUERY_INVALID` e os reexportados `UNKNOWN_RATE_PLAN`, `STAY_INVALID`), `application/InventoryPorts.kt` e `infrastructure/JdbcInventoryStore.kt` (`rows(tipos, de, até)`, uma consulta para todos os tipos), novos `domain/Availability.kt` (`StayAvailability`, `AvailabilityRules`), `application/AvailabilityService.kt` (calendário e cotação, só leitura) e `web/AvailabilityController.kt` (`GET /api/v1/availability`, `GET /api/v1/quotes` e os DTOs), `web/InventoryController.kt` (constantes da tag compartilhadas e descrição da tag);
+  - testes: novos `reservations/AvailabilityApiTest.kt` e `reservations/QuotePerformanceTest.kt` (no contexto do `InventoryApiTest`); `rates/StayEvaluationApiTest.kt` (teste de `stayOptions` e `rateCalendar`); `ModularityTest.kt` (`reservations` → `rates`);
+  - `api/openapi.yaml` (regenerado: `getAvailabilityCalendar` e `quoteStay`, a descrição da tag `reservations`), `CLAUDE.md` (estado atual, a "Cotação e calendário" na seção do `rates` e a seção nova "Disponibilidade, calendário e cotação"), `README.md` (API e árvore), este roadmap. Sem migração.
+- Decisões:
+  - **já dadas:** H1 (derivado calculado na leitura), H4 (disponível negativo mostrado como sobrevendido), H10 (OOO pelo `out_of_order` do inventário), H14 (sem offline nem SSE), a semântica das restrições da E03 e as regras de venda da E04.
+  - **do implementador, decididas pela opção recomendada em nome do usuário** (o usuário, ausente, delegou em 2026-10-21 ao orquestrador escolher a opção recomendada depois de pesar prós e contras; avaliadas assim depois da verificação, sem ajuste no código: seguem as convenções da E05 e o que a E07 vai tomar, e nenhuma tem efeito fora da etapa): (1) o calendário e a cotação exigem só `reservations.availability.read` (os mesmos modelos de `rates.plans.read`: Gerente, Recepcionista, Comercial/Eventos e Financeiro), sem pedir também a permissão do `rates` para ver os preços; (2) o calendário mostra só as datas **com inventário mantido** (como o `GET /room-type-inventory`: nada antes da criação das linhas nem além dos 730 dias), até 366 dias; (3) a cotação, sem `ratePlanIds`, considera todos os planos **ativos** que têm algum dos tipos (os de outro canal entram só em `unavailable`, com `SALES_CHANNEL_NOT_ALLOWED`) e, com `ratePlanIds`, inclui também o plano desativado pedido (recusado com `RATE_PLAN_INACTIVE`); (4) a oferta é de **uma** UH: exige disponível ≥ 1 em todas as noites, o limite de overbooking conta como disponível (como na tomada da E05) e `availableUnits` é o menor disponível entre as noites; (5) `unavailable` só com `includeUnavailable=true` (senão nulo), com todos os motivos, os do `rates` antes dos do inventário (`ROOM_TYPE_UNAVAILABLE`, `INVENTORY_DATE_OUT_OF_HORIZON`, com as noites); (6) limites de entrada: até 40 adultos, 20 crianças e 50 ids, sem repetir, com o código novo `400 AVAILABILITY_QUERY_INVALID`; (7) a cotação é `GET` com parâmetros na query (nenhum dado pessoal: só datas, ocupação, canal e ids), sem `@Idempotent`; (8) acréscimos à `RatesApi` (`stayOptions` e `rateCalendar`, em bloco) em vez de chamar `isSellable` e `priceFor` por combinação, com `isSellable` e `priceFor` reimplementados sobre o mesmo caminho (mesmo resultado, provado no teste).
+  - **do implementador, sem impacto fora da etapa:** ordem das ofertas (exibição do tipo, total, código do plano) e dos tipos (exibição, código); o código de lançamento do pacote não vai à resposta da cotação (o `reservations` não depende de `billing` até a E07); o tipo de UH pedido é lido por id, um a um (até 50), e não pela lista de ativos (que no banco de testes tem milhares); o day use (chegada = saída) continua `400 STAY_INVALID` na cotação (a E07 decide, H5); `AvailabilityRules`/`StayAvailability` no domínio.
+- Validações executadas:
+  - testes escritos antes do `reservations`: `AvailabilityApiTest` falhou inteiro (5 de 5, sem endpoint) antes da implementação; o teste novo do `rates` passou já com os acréscimos à `RatesApi`;
+  - `./gradlew test --tests 'com.zeny.hotel.reservations.*' --tests 'com.zeny.hotel.rates.StayEvaluationApiTest' --tests 'com.zeny.hotel.ModularityTest'` → `AvailabilityApiTest` 5, `QuotePerformanceTest` 1, `InventoryApiTest` 17, `InventoryDomainTest` 7, `StayEvaluationApiTest` 5, `ModularityTest` 16, 0 falhas;
+  - mutações aplicadas, rodadas e revertidas: a cotação ignorando a disponibilidade (`stay.available` fora da condição) → 2 testes da cotação falham; ignorando a vendabilidade (`sellable` fora) → o teste da cotação falha; o inventário em bloco lido com `outOfOrder = 0` (o OOO ignorado) → os 3 testes do calendário e da cotação falham;
+  - **medição (RNF-06)**, `QuotePerformanceTest` (30 UHs em 5 tipos, 730 dias de inventário e de preços em 3 planos com preços próprios, 2 derivados — um com pacote —, estadia mínima nos fins de semana de um ano; cotação de 7 noites, 2 adultos, canal DIRECT, 5 tipos × 5 planos = 20 ofertas e 5 de fora, pela API com MockMvc, 10 de aquecimento e 60 amostras): isolado `p50=34ms p95=42ms max=47ms` e `p50=31ms p95=43ms max=46ms`; no `./gradlew build` completo (banco compartilhado com os dados de todos os testes) `p50=19ms p95=21ms max=23ms`; escala `nights1=13–21ms nights7=16–23ms nights28=26–31ms`, calendário de 31 dias com o plano `16–18ms` — bem abaixo de 300 ms; o tempo quase não cresce com as noites (sem N+1 por noite: preços, restrições e inventário são lidos por plano/período numa consulta cada);
+  - `./gradlew lint` → sucesso (depois de corrigir `MaxLineLength`, `ReturnCount`, `LongMethod` e `UnusedPrivateProperty`, e `./gradlew ktlintFormat`);
+  - `./gradlew updateOpenApi` → `api/openapi.yaml` com `getAvailabilityCalendar` e `quoteStay`;
+  - `./gradlew build` → BUILD SUCCESSFUL em 4 min 29 s (1034 testes, 0 falhas; detekt, ktlint, `checkOpenApi` e `koverVerify`);
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1";
+  - `python3 ~/.claude/skills/development-roadmap/scripts/check_roadmap.py docs/roadmaps/roadmap-m4-tarifas-reservas.md` → OK.
+- Parecer do verificador: **APROVADO** (verificador independente, 2026-10-21; snapshot `bfaa8b987dee70e878e4a944000b6f73e2eb9fdf`, 24 arquivos, +2965/−135). Os cinco critérios aprovados com evidência (`AvailabilityApiTest` 5/5 com os contadores dia a dia, o OOO pelo listener, a data sobrevendida e os motivos exatos das combinações de fora; a condição da oferta em `AvailabilityService.kt:201`; `QuotePerformanceTest` no build completo `p50=19ms p95=21ms max=22ms`, escala `nights1=14ms nights7=17ms nights28=26ms calendar31days=15ms`; `ModularityTest` 16/16). `./gradlew build` BUILD SUCCESSFUL em 5 min 41 s; oasdiff sem `ERR`. Foco: nenhuma oferta sem disponibilidade ou fora do canal, OOO não ignorado, sem N+1 por noite, nenhum SQL do `reservations` sobre o schema `rates`. Sem problema grave nem médio. Baixos: (1) as coleções dos planos (`findAllById`) e os tipos pedidos (`RoomsApi.roomType`, no `reservations` e no `rates`) são lidos um a um, custo proporcional aos planos e tipos, dentro do RNF-06; (2) `ratePlanIds=` vazio na URL vira conjunto vazio e a cotação sai sem ofertas, em vez de "todos os planos ativos" como `roomTypeIds` vazio (caso de borda, a alinhar quando a E07 ou a E12 mexerem na cotação); (3) a medição é no processo, pelo MockMvc, sem rede.
+- Notas para a próxima etapa:
+  - E07 (reservas): para conferir a estadia, use `RatesApi.isSellable`/`priceFor` (ou `stayOptions` com um plano e um tipo) e congele por noite o `NightPrice` (a cotação devolve o mesmo); a disponibilidade da cotação é leitura sem trava: a criação toma pelo `RoomTypeInventory.apply` (que recusa com `409 ROOM_TYPE_UNAVAILABLE`). Ao acrescentar `billing`, o código de lançamento dos pacotes (`PackageCharge.transactionCodeId`) pode entrar na resposta da cotação se for útil. O day use (H5) precisa de regra própria na cotação (hoje `STAY_INVALID`).
+  - E12: a busca e as listas podem reusar `InventoryStore.rows(tipos, de, até)` e `StayAvailability`.
+  - M8 (`distribution`): o ARI pode ler o calendário pela mesma composição (`ReservationsApi.inventory` + `RatesApi.rateCalendar`).
 
 ---
 

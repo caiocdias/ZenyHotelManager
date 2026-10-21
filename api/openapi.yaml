@@ -25,13 +25,13 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
-- description: Inventário e disponibilidade por tipo de UH e data; reservas nas etapas
-    seguintes.
-  name: reservations
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
+- description: "Inventário, disponibilidade em calendário e cotação por tipo de UH\
+    \ e data; reservas nas etapas seguintes."
+  name: reservations
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -575,6 +575,64 @@ paths:
       summary: Revogar uma sessão própria
       tags:
       - iam
+  /api/v1/availability:
+    get:
+      description: "Um período de até 366 dias, inclusive o passado (fim antes do\
+        \ início: 400 `INVENTORY_PERIOD_INVALID`; mais: 400 `INVENTORY_PERIOD_TOO_LONG`),\
+        \ nos `roomTypeIds` (até 50, sem repetir, senão 400 `AVAILABILITY_QUERY_INVALID`;\
+        \ inexistente 400 `UNKNOWN_ROOM_TYPE`; sem eles, os tipos ativos) e, com `ratePlanId`\
+        \ (inexistente 400 `UNKNOWN_RATE_PLAN`), os preços e as restrições efetivos\
+        \ do plano nos tipos dele. Um dia por data com inventário mantido. Disponí\
+        vel = `total` (UHs ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios\
+        \ de grupo) − `outOfOrder` (UHs em OOO; o OOS não conta) + `overbookingLimit`\
+        \ (nasce zero: overbooking proibido, Q-09); pode ser negativo (data sobrevendida).\
+        \ O inventário é mantido da data operacional até 730 dias à frente. Exige\
+        \ `reservations.availability.read`."
+      operationId: getAvailabilityCalendar
+      parameters:
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Os tipos de UH, separados por vírgula (sem eles, os ativos)."
+        in: query
+        name: roomTypeIds
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - in: query
+        name: ratePlanId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvailabilityResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar a disponibilidade em calendário
+      tags:
+      - reservations
   /api/v1/cancellation-policies:
     get:
       description: Em ordem de nome. Exige `rates.plans.read`.
@@ -6238,6 +6296,100 @@ paths:
       summary: Desativar um dispositivo de push próprio
       tags:
       - notifications
+  /api/v1/quotes:
+    get:
+      description: "Para a chegada, a saída (de 1 a 365 noites), os adultos (ao menos\
+        \ 1, até 40), as idades das crianças na chegada (até 20; de 0 à idade limite\
+        \ de criança do hotel) e o canal, devolve as combinações de tipo de UH (`roomTypeIds`,\
+        \ até 50, sem eles os ativos) e plano (`ratePlanIds`, até 50, sem eles os\
+        \ ativos com algum dos tipos) **vendáveis** no canal (plano ativo, canal,\
+        \ tipo no plano e ativo, ocupação máxima, antecedência pela data operacional,\
+        \ restrições e preço) e com ao menos uma UH disponível em **todas** as noites,\
+        \ com o total e o detalhe por noite. Com `includeUnavailable=true`, també\
+        m as combinações de fora, com os motivos. Estadia fora do formato: 400 `STAY_INVALID`\
+        \ (campo `departure`, `adults` ou `childAges[i]`); listas longas ou repetidas:\
+        \ 400 `AVAILABILITY_QUERY_INVALID`; tipo inexistente: 400 `UNKNOWN_ROOM_TYPE`;\
+        \ plano inexistente: 400 `UNKNOWN_RATE_PLAN`. Leitura sem trava: a reserva\
+        \ confere de novo. Exige `reservations.availability.read`."
+      operationId: quoteStay
+      parameters:
+      - in: query
+        name: arrival
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: departure
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: adults
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - description: "As idades das crianças na chegada, separadas por vírgula."
+        in: query
+        name: childAges
+        required: false
+        schema:
+          type: array
+          items:
+            type: integer
+            format: int32
+      - in: query
+        name: channel
+        required: true
+        schema:
+          type: string
+          enum:
+          - DIRECT
+          - WEBSITE
+          - OTA
+      - description: "Os tipos de UH, separados por vírgula (sem eles, os ativos)."
+        in: query
+        name: roomTypeIds
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - description: "Os planos, separados por vírgula (sem eles, os ativos com algum\
+          \ dos tipos)."
+        in: query
+        name: ratePlanIds
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            format: uuid
+      - in: query
+        name: includeUnavailable
+        required: false
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuoteResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cotar uma estadia
+      tags:
+      - reservations
   /api/v1/rate-plans:
     get:
       description: Em ordem de código. Exige `rates.plans.read`.
@@ -10454,6 +10606,86 @@ components:
       - id
       - occurredAt
       - outcome
+    AvailabilityDayResponse:
+      type: object
+      description: "Um tipo de UH numa data do calendário. Disponível = `total` (UHs\
+        \ ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios de grupo) − `outOfOrder`\
+        \ (UHs em OOO; o OOS não conta) + `overbookingLimit` (nasce zero: overbooking\
+        \ proibido, Q-09); pode ser negativo (data sobrevendida). O inventário é mantido\
+        \ da data operacional até 730 dias à frente."
+      properties:
+        available:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        date:
+          type: string
+          format: date
+        outOfOrder:
+          type: integer
+          format: int32
+        overbooked:
+          type: boolean
+          description: "Disponível negativo: a data está sobrevendida."
+        overbookingLimit:
+          type: integer
+          format: int32
+        prices:
+          allOf:
+          - $ref: "#/components/schemas/DailyRatesResponse"
+          nullable: true
+        restriction:
+          allOf:
+          - $ref: "#/components/schemas/DailyRestrictionResponse"
+          nullable: true
+        sold:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int32
+      required:
+      - available
+      - blocked
+      - date
+      - outOfOrder
+      - overbooked
+      - overbookingLimit
+      - sold
+      - total
+    AvailabilityResponse:
+      type: object
+      description: "O calendário de disponibilidade por tipo de UH e data, com os\
+        \ preços e as restrições do plano."
+      properties:
+        childAgeBands:
+          type: array
+          description: "As faixas de criança atuais do hotel, na ordem dos preços\
+            \ de criança; nulas sem plano."
+          items:
+            $ref: "#/components/schemas/ChildAgeBandResponse"
+          nullable: true
+        from:
+          type: string
+          format: date
+        ratePlan:
+          allOf:
+          - $ref: "#/components/schemas/QuotedRatePlanResponse"
+          nullable: true
+        roomTypes:
+          type: array
+          description: "Um item por tipo de UH, na ordem de exibição e de código."
+          items:
+            $ref: "#/components/schemas/RoomTypeAvailabilityResponse"
+        to:
+          type: string
+          format: date
+      required:
+      - from
+      - roomTypes
+      - to
     BusinessDateResponse:
       type: object
       description: A data operacional corrente do hotel.
@@ -11792,6 +12024,23 @@ components:
       - label
       - maxAge
       - minAge
+    ChildAgeBandResponse:
+      type: object
+      description: "Uma faixa etária de criança atual do hotel (anos completos, inclusive)."
+      nullable: true
+      properties:
+        label:
+          type: string
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - label
+      - maxAge
+      - minAge
     ChildPriceRequest:
       type: object
       description: "Preço de criança numa faixa etária (idades em anos completos,\
@@ -12849,6 +13098,30 @@ components:
           nullable: true
       required:
       - items
+    DailyChildRateResponse:
+      type: object
+      description: O preço de uma faixa atual de criança numa data; nulo = sem preço
+        para criança dessa idade.
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        label:
+          type: string
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - label
+      - maxAge
+      - minAge
     DailyRatePriceResponse:
       type: object
       description: Os preços de um tipo de UH numa data.
@@ -12901,6 +13174,75 @@ components:
       - date
       - obsoleteChildren
       - roomTypeId
+    DailyRatesResponse:
+      type: object
+      description: "Os preços efetivos do plano no tipo de UH numa data (num plano\
+        \ derivado, os do base ajustados): a diária de um e de dois adultos, o adulto\
+        \ extra (por adulto além do segundo) e um preço por faixa atual de crianç\
+        a. Nulo = aquela ocupação não tem preço na data."
+      nullable: true
+      properties:
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/DailyChildRateResponse"
+        extraAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        oneAdult:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        twoAdults:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - children
+    DailyRestrictionResponse:
+      type: object
+      description: "A restrição efetiva do plano no tipo de UH numa data (a do tipo\
+        \ sobre a geral do plano, campo a campo): fechado vale em cada noite; CTA\
+        \ só na chegada; CTD só na saída; estadia mínima e máxima e antecedência,\
+        \ as da data de chegada. Nulo = não restringe."
+      nullable: true
+      properties:
+        closed:
+          type: boolean
+        closedToArrival:
+          type: boolean
+        closedToDeparture:
+          type: boolean
+        maxAdvanceDays:
+          type: integer
+          format: int32
+          nullable: true
+        maxStay:
+          type: integer
+          format: int32
+          nullable: true
+        minAdvanceDays:
+          type: integer
+          format: int32
+          nullable: true
+        minStay:
+          type: integer
+          format: int32
+          nullable: true
+      required:
+      - closed
+      - closedToArrival
+      - closedToDeparture
     DepartmentRequest:
       type: object
       description: Nome de um setor.
@@ -16055,6 +16397,400 @@ components:
       - currentSession
       - id
       - platform
+    QuoteChildChargeResponse:
+      type: object
+      description: "O preço de uma criança numa noite: a idade, a faixa atual do hotel\
+        \ em que ela cai e o preço."
+      properties:
+        age:
+          type: integer
+          format: int32
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        label:
+          type: string
+        maxAge:
+          type: integer
+          format: int32
+        minAge:
+          type: integer
+          format: int32
+      required:
+      - age
+      - amount
+      - label
+      - maxAge
+      - minAge
+    QuoteNightResponse:
+      type: object
+      description: "Uma noite da oferta: `roomAmount` = `baseRate` (diária de um ou\
+        \ de dois adultos) + `extraAdultsAmount` + as crianças; `accommodationAmount`\
+        \ = `roomAmount` − os pacotes inclusos; `total` = `roomAmount` + os pacotes\
+        \ adicionais."
+      properties:
+        accommodationAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        additionalPackagesAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        baseRate:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteChildChargeResponse"
+        date:
+          type: string
+          format: date
+        extraAdults:
+          type: integer
+          format: int32
+        extraAdultsAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        includedPackagesAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuotePackageChargeResponse"
+        roomAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - accommodationAmount
+      - additionalPackagesAmount
+      - baseRate
+      - children
+      - date
+      - extraAdults
+      - extraAdultsAmount
+      - includedPackagesAmount
+      - packages
+      - roomAmount
+      - total
+    QuoteOfferResponse:
+      type: object
+      description: "Uma oferta da cotação: o tipo de UH, o plano, o menor número de\
+        \ unidades disponíveis entre as noites e o preço; os totais são sempre a soma\
+        \ das noites."
+      properties:
+        accommodationTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        additionalPackagesTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        availableUnits:
+          type: integer
+          format: int32
+          description: O menor disponível entre as noites (ao menos 1).
+        cancellationPolicyId:
+          type: string
+          format: uuid
+          description: "A política de cancelamento do plano (a reserva copia os termos\
+            \ dela, RN-15)."
+        category:
+          type: string
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+        guaranteePolicyId:
+          type: string
+          format: uuid
+          description: A política de garantia do plano.
+        includedPackagesTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        mealPlan:
+          type: string
+          description: Regime de alimentação do plano (trate um valor desconhecido
+            sem falhar).
+          x-extensible-enum:
+          - ROOM_ONLY
+          - BREAKFAST
+          - HALF_BOARD
+        nights:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuoteNightResponse"
+        ratePlanCode:
+          type: string
+        ratePlanId:
+          type: string
+          format: uuid
+        ratePlanName:
+          type: string
+        roomTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomTypeCode:
+          type: string
+        roomTypeId:
+          type: string
+          format: uuid
+        roomTypeName:
+          type: string
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - accommodationTotal
+      - additionalPackagesTotal
+      - availableUnits
+      - cancellationPolicyId
+      - category
+      - guaranteePolicyId
+      - includedPackagesTotal
+      - mealPlan
+      - nights
+      - ratePlanCode
+      - ratePlanId
+      - ratePlanName
+      - roomTotal
+      - roomTypeCode
+      - roomTypeId
+      - roomTypeName
+      - total
+    QuotePackageChargeResponse:
+      type: object
+      description: "Um pacote do plano numa noite: `quantity` × `unitPrice` = `amount`.\
+        \ O incluso é parte da diária; o adicional soma ao total da noite."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        code:
+          type: string
+        includedInRate:
+          type: boolean
+        name:
+          type: string
+        packageId:
+          type: string
+          format: uuid
+        postingRhythm:
+          type: string
+          enum:
+          - DAILY
+          - ON_ARRIVAL
+        pricing:
+          type: string
+          enum:
+          - PER_NIGHT
+          - PER_STAY
+          - PER_PERSON_PER_NIGHT
+        quantity:
+          type: integer
+          format: int32
+        unitPrice:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - amount
+      - code
+      - includedInRate
+      - name
+      - packageId
+      - postingRhythm
+      - pricing
+      - quantity
+      - unitPrice
+    QuoteRefusalResponse:
+      type: object
+      description: "Um motivo de a combinação não ser oferecida, com as datas a que\
+        \ ele se refere."
+      properties:
+        code:
+          type: string
+          description: "Código estável: os de vendabilidade e preço do `rates` (`RATE_PLAN_INACTIVE`,\
+            \ `SALES_CHANNEL_NOT_ALLOWED`, `CLOSED_TO_ARRIVAL`, `RATE_NOT_PRICED`…\
+            ) ou do inventário (`ROOM_TYPE_UNAVAILABLE`, `INVENTORY_DATE_OUT_OF_HORIZON`);\
+            \ a lista cresce (trate um valor desconhecido sem falhar)."
+        dates:
+          type: array
+          items:
+            type: string
+            format: date
+        message:
+          type: string
+      required:
+      - code
+      - dates
+      - message
+    QuoteResponse:
+      type: object
+      description: A cotação de uma estadia (RF-TAR-11).
+      properties:
+        adults:
+          type: integer
+          format: int32
+        arrival:
+          type: string
+          format: date
+        channel:
+          type: string
+          description: O canal da cotação (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - DIRECT
+          - WEBSITE
+          - OTA
+        childAges:
+          type: array
+          items:
+            type: integer
+            format: int32
+        departure:
+          type: string
+          format: date
+        nights:
+          type: integer
+          format: int32
+        offers:
+          type: array
+          description: "As combinações vendáveis no canal e com unidade em todas as\
+            \ noites, na ordem de exibição do tipo de UH, depois o total e o código\
+            \ do plano."
+          items:
+            $ref: "#/components/schemas/QuoteOfferResponse"
+        unavailable:
+          type: array
+          description: "As combinações de fora, com os motivos; só com `includeUnavailable=true`\
+            \ (senão nula)."
+          items:
+            $ref: "#/components/schemas/QuoteUnavailableResponse"
+          nullable: true
+      required:
+      - adults
+      - arrival
+      - channel
+      - childAges
+      - departure
+      - nights
+      - offers
+    QuoteUnavailableResponse:
+      type: object
+      description: "Uma combinação de tipo de UH e plano que não é oferecida, com\
+        \ todos os motivos."
+      nullable: true
+      properties:
+        ratePlanCode:
+          type: string
+        ratePlanId:
+          type: string
+          format: uuid
+        reasons:
+          type: array
+          description: "Todos os motivos: os do plano e da tarifa, depois os do inventá\
+            rio."
+          items:
+            $ref: "#/components/schemas/QuoteRefusalResponse"
+        roomTypeCode:
+          type: string
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - ratePlanCode
+      - ratePlanId
+      - reasons
+      - roomTypeCode
+      - roomTypeId
+    QuotedRatePlanResponse:
+      type: object
+      description: O plano tarifário do calendário.
+      nullable: true
+      properties:
+        active:
+          type: boolean
+        cancellationPolicyId:
+          type: string
+          format: uuid
+        category:
+          type: string
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+        code:
+          type: string
+        guaranteePolicyId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        mealPlan:
+          type: string
+          description: Regime de alimentação (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - ROOM_ONLY
+          - BREAKFAST
+          - HALF_BOARD
+        name:
+          type: string
+      required:
+      - active
+      - cancellationPolicyId
+      - category
+      - code
+      - guaranteePolicyId
+      - id
+      - mealPlan
+      - name
     RatePlanCreateRequest:
       type: object
       description: Um plano tarifário novo; a categoria não muda depois.
@@ -17543,6 +18279,43 @@ components:
       - roomTypeId
       - serviceFlag
       - version
+    RoomTypeAvailabilityResponse:
+      type: object
+      description: Um tipo de UH no calendário.
+      properties:
+        active:
+          type: boolean
+        code:
+          type: string
+        days:
+          type: array
+          description: "Um dia por data com inventário mantido, em ordem; as de fora\
+            \ não aparecem."
+          items:
+            $ref: "#/components/schemas/AvailabilityDayResponse"
+        inRatePlan:
+          type: boolean
+          description: Se o tipo está no plano pedido; nulo sem plano.
+          nullable: true
+        name:
+          type: string
+        overbookedDates:
+          type: array
+          description: "As datas sobrevendidas (disponível negativo), em ordem."
+          items:
+            type: string
+            format: date
+            description: "As datas sobrevendidas (disponível negativo), em ordem."
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - active
+      - code
+      - days
+      - name
+      - overbookedDates
+      - roomTypeId
     RoomTypeRequest:
       type: object
       description: Dados de um tipo de UH.

@@ -114,6 +114,27 @@ class JdbcInventoryStore(
             .list()
             .toMap()
 
+    override fun rows(
+        roomTypeIds: Collection<RoomTypeId>,
+        from: LocalDate,
+        to: LocalDate,
+    ): Map<InventoryKey, InventoryCounters> {
+        if (roomTypeIds.isEmpty()) return emptyMap()
+        return jdbc
+            .sql(
+                """
+                SELECT * FROM reservations.room_type_inventory
+                WHERE room_type_id = ANY (CAST(:types AS uuid[])) AND stay_date BETWEEN :from AND :to
+                ORDER BY room_type_id, stay_date
+                """.trimIndent(),
+            ).param("types", array(roomTypeIds.map { it.value }))
+            .param("from", from)
+            .param("to", to)
+            .query { rs, _ -> key(rs) to counters(rs) }
+            .list()
+            .toMap()
+    }
+
     override fun update(
         rows: Map<InventoryKey, InventoryCounters>,
         now: Instant,

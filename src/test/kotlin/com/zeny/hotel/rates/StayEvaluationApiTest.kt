@@ -16,6 +16,7 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -186,6 +187,102 @@ class StayEvaluationApiTest(
         }
     }
 
+    @Test
+    @Suppress("LongMethod") // as combinações da cotação comparadas uma a uma e o calendário
+    fun `stayOptions gives for each plan and room type exactly what isSellable and priceFor give`() {
+        val typeA = rates.rooms.createRoomType()
+        val typeB = rates.rooms.createRoomType()
+        val arrival = today.plusDays(6)
+        val base = rates.createPlanFor(listOf(typeA, typeB))
+        val ota = createPlan(listOf(typeA, typeB), emptyList(), channels = listOf("OTA"))
+        val derived =
+            createPlan(
+                listOf(typeA),
+                listOf(
+                    createPackage(
+                        rates.createTransactionCode(),
+                        "35.00",
+                        "PER_PERSON_PER_NIGHT",
+                        "DAILY",
+                        included = false,
+                    ),
+                ),
+            )
+        setPrices(base, typeA, arrival, arrival.plusDays(1))
+        setPrices(base, typeB, arrival, arrival)
+        setPrices(ota, typeA, arrival, arrival.plusDays(1))
+        with(iam) { prices.derive(derived, prices.derivation("PERCENT", base, percent = "-10.0000")).ok() }
+        with(iam) {
+            restrictions
+                .update(
+                    base,
+                    restrictions.body(roomTypeIds = listOf(typeA), from = arrival, set = mapOf("minStay" to 3)),
+                ).ok()
+        }
+        val query =
+            StayOptionsQuery(
+                arrival,
+                arrival.plusDays(2),
+                2,
+                emptyList(),
+                SalesChannel.DIRECT,
+                setOf(RoomTypeId(typeA), RoomTypeId(typeB)),
+            )
+
+        val options = ratesApi.stayOptions(query)
+
+        options.map { it.ratePlan.id.value to it.roomTypeId.value } shouldContainExactlyInAnyOrder
+            listOf(base to typeA, base to typeB, ota to typeA, ota to typeB, derived to typeA)
+        options.forEach { option ->
+            val stay = query.stay(option.ratePlan.id, option.roomTypeId)
+            withClue("${option.ratePlan.code} ${option.roomTypeId}") {
+                option.sellability shouldBe ratesApi.isSellable(stay, SalesChannel.DIRECT)
+                option.price shouldBe (ratesApi.priceFor(stay) as? StayPriceResult.Priced)?.price
+            }
+        }
+        val derivedOption = options.single { it.ratePlan.id.value == derived }
+        derivedOption.sellability.sellable shouldBe true
+        derivedOption.price!!.total shouldBe money("860.00")
+        options.single { it.ratePlan.id.value == base && it.roomTypeId.value == typeA }.sellability.codes.map {
+            it.value
+        } shouldContainExactly listOf("MIN_STAY_NOT_MET")
+        options.single { it.ratePlan.id.value == base && it.roomTypeId.value == typeB }.price shouldBe null
+
+        // Os planos pedidos: o desativado entra (recusado); o inexistente é 400.
+        prices.deactivatePlan(ota)
+        ratesApi
+            .stayOptions(query.copy(ratePlanIds = setOf(RatePlanId(ota))))
+            .map {
+                it.sellability.codes
+                    .first()
+                    .value
+            }.distinct() shouldContainExactly listOf("RATE_PLAN_INACTIVE")
+        ratesApi.stayOptions(query).map { it.ratePlan.id.value }.distinct() shouldNotContain ota
+        shouldThrow<InvalidInputException> {
+            ratesApi.stayOptions(query.copy(ratePlanIds = setOf(RatePlanId(UuidV7.generate()))))
+        }.code shouldBe RatesErrorCodes.UNKNOWN_RATE_PLAN
+        shouldThrow<InvalidInputException> { ratesApi.stayOptions(query.copy(departure = arrival)) }
+            .code shouldBe RatesErrorCodes.STAY_INVALID
+
+        // O calendário: os preços efetivos do derivado e a restrição efetiva do tipo; o tipo fora do plano não vem.
+        val calendar =
+            ratesApi.rateCalendar(
+                RatePlanId(derived),
+                listOf(RoomTypeId(typeA), RoomTypeId(typeB)),
+                arrival,
+                arrival.plusDays(2),
+            )!!
+        calendar.days.map { it.roomTypeId.value to it.date } shouldContainExactly
+            (0L..2L).map { typeA to arrival.plusDays(it) }
+        calendar.days.map { it.prices?.twoAdults } shouldContainExactly listOf(money("360.00"), money("360.00"), null)
+        val baseCalendar =
+            ratesApi.rateCalendar(RatePlanId(base), listOf(RoomTypeId(typeA)), arrival, arrival)!!
+        baseCalendar.days
+            .single()
+            .restriction.minStay shouldBe 3
+        ratesApi.rateCalendar(RatePlanId(UuidV7.generate()), listOf(RoomTypeId(typeA)), arrival, arrival) shouldBe null
+    }
+
     // --- Apoio ------------------------------------------------------------------------------------------------------
 
     @Suppress("LongParameterList") // a estadia inteira, com padrões
@@ -252,10 +349,17 @@ class StayEvaluationApiTest(
     private fun createPlan(
         types: List<UUID>,
         packages: List<UUID>,
+        channels: List<String> = listOf("DIRECT", "WEBSITE"),
     ): UUID =
         with(iam) {
             val body =
-                rates.planBody(types, rates.createCancellationPolicy(), rates.createGuaranteePolicy(), packages)
+                rates.planBody(
+                    types,
+                    rates.createCancellationPolicy(),
+                    rates.createGuaranteePolicy(),
+                    packages,
+                    channels = channels,
+                )
             UUID.fromString(call(POST, "/api/v1/rate-plans", asAdmin(), body).expectStatus(201)!!["id"].asString())
         }
 

@@ -45,6 +45,13 @@ interface InventoryStore {
         to: LocalDate,
     ): Map<InventoryKey, InventoryCounters>
 
+    /** Lê, sem travar, as linhas dos tipos de [from] a [to] (inclusive), numa consulta (o calendário e a cotação). */
+    fun rows(
+        roomTypeIds: Collection<RoomTypeId>,
+        from: LocalDate,
+        to: LocalDate,
+    ): Map<InventoryKey, InventoryCounters>
+
     /** Grava os contadores das linhas [rows] (que existem e estão travadas), num só comando. */
     fun update(
         rows: Map<InventoryKey, InventoryCounters>,

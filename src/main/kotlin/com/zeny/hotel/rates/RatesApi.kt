@@ -6,6 +6,7 @@ import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import com.zeny.hotel.shared.TypedId
 import com.zeny.hotel.shared.UuidV7
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -57,6 +58,31 @@ interface RatesApi {
         query: StayQuery,
         channel: SalesChannel,
     ): Sellability
+
+    /**
+     * A cotação (M4 E06, RF-TAR-11): avalia de uma vez a estadia de [query] em cada combinação de plano e tipo de UH,
+     * com a vendabilidade de [isSellable] e o preço de [priceFor] (os mesmos resultados, pelas mesmas regras), lendo o
+     * plano, as restrições e os preços de cada plano uma vez só (RNF-06). Os planos são os de `ratePlanIds`
+     * (inexistente: lança `400 UNKNOWN_RATE_PLAN`, campo `ratePlanIds`; desativado entra, recusado com
+     * `RATE_PLAN_INACTIVE`) ou, sem
+     * eles, todos os **ativos** que têm algum dos tipos; as combinações são cada plano com cada tipo pedido **que está
+     * nele**, em ordem de código do plano e de id do tipo. Estadia fora do formato: `400 STAY_INVALID` (mesmo sem
+     * nenhuma combinação). Não confere disponibilidade (inventário, `reservations`).
+     */
+    fun stayOptions(query: StayOptionsQuery): List<StayOption>
+
+    /**
+     * Os preços e as restrições **efetivos** do plano [ratePlanId] (ativo ou não) nos tipos de UH [roomTypeIds] que
+     * estão nele, de [from] a [to] (inclusive, até 366 dias), para o calendário de disponibilidade (M4 E06, RF-TAR-08):
+     * os preços como os vê o cálculo de [priceFor] (num derivado, os do base ajustados; as faixas de criança atuais) e
+     * as restrições como as vê [isSellable] (a do tipo sobre a geral). `null` se o plano não existe.
+     */
+    fun rateCalendar(
+        ratePlanId: RatePlanId,
+        roomTypeIds: Collection<RoomTypeId>,
+        from: LocalDate,
+        to: LocalDate,
+    ): RateCalendar?
 }
 
 /** Id de um plano tarifário. */

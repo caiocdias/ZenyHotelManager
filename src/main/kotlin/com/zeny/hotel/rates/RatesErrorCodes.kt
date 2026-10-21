@@ -128,7 +128,11 @@ object RatesErrorCodes {
     /** 400: regra de derivação incoerente (percentual e valor juntos, faltando ou fora da faixa), com o campo. */
     val RATE_PLAN_DERIVATION_INVALID = ErrorCode("RATE_PLAN_DERIVATION_INVALID")
 
-    /** 400: o plano base citado não existe (campo `basePlanId`). */
+    /**
+     * 400: o plano citado não existe: o base de uma derivação (campo `basePlanId`) ou, desde a E06, o plano da cotação
+     * (`ratePlanIds`) e do calendário (`ratePlanId`, no `reservations`). Também é motivo de recusa de `priceFor` e
+     * `isSellable`.
+     */
     val UNKNOWN_RATE_PLAN = ErrorCode("UNKNOWN_RATE_PLAN")
 
     /** 404: temporada inexistente. */

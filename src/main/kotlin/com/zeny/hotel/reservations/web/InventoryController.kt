@@ -22,14 +22,15 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.UUID
 
-private const val TAG = "reservations"
-private const val TAG_DESCRIPTION = "Inventário e disponibilidade por tipo de UH e data; reservas nas etapas seguintes."
-private const val COUNTERS =
+internal const val RESERVATIONS_TAG = "reservations"
+internal const val RESERVATIONS_TAG_DESCRIPTION =
+    "Inventário, disponibilidade em calendário e cotação por tipo de UH e data; reservas nas etapas seguintes."
+internal const val INVENTORY_COUNTERS =
     "Disponível = `total` (UHs ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios de grupo) − `outOfOrder` " +
         "(UHs em OOO; o OOS não conta) + `overbookingLimit` (nasce zero: overbooking proibido, Q-09); pode ser " +
         "negativo (data sobrevendida). O inventário é mantido da data operacional até 730 dias à frente."
 
-@Schema(description = "Os contadores de um tipo de UH numa data. $COUNTERS")
+@Schema(description = "Os contadores de um tipo de UH numa data. $INVENTORY_COUNTERS")
 data class InventoryDayResponse(
     val roomTypeId: UUID,
     val date: LocalDate,
@@ -141,7 +142,7 @@ data class InventoryRecountResponse(
  */
 @ApiV1Controller
 @RequestMapping("/room-type-inventory")
-@Tag(name = TAG, description = TAG_DESCRIPTION)
+@Tag(name = RESERVATIONS_TAG, description = RESERVATIONS_TAG_DESCRIPTION)
 class InventoryController(
     private val inventory: InventoryService,
 ) {
@@ -151,8 +152,8 @@ class InventoryController(
         summary = "Consultar o inventário de um tipo de UH num período",
         description =
             "Um período de até 366 dias, inclusive o passado (fim antes do início: 400 `INVENTORY_PERIOD_INVALID`; " +
-                "mais: 400 `INVENTORY_PERIOD_TOO_LONG`); tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE`. $COUNTERS " +
-                "Exige `reservations.availability.read`.",
+                "mais: 400 `INVENTORY_PERIOD_TOO_LONG`); tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE`. " +
+                "$INVENTORY_COUNTERS Exige `reservations.availability.read`.",
     )
     fun list(
         @RequestParam roomTypeId: UUID,

@@ -127,3 +127,36 @@ data class PackageCharge(
     val unitPrice: Money,
     val amount: Money,
 )
+
+/**
+ * A cotação de uma estadia em vários planos e tipos de UH de uma vez (M4 E06, RF-TAR-11; `RatesApi.stayOptions`): a
+ * chegada, a saída, a ocupação e o canal valem para todas as combinações; [roomTypeIds] são os tipos cotados (a ordem
+ * não importa) e [ratePlanIds] os planos (nulo = todos os planos **ativos** que têm algum dos tipos).
+ */
+data class StayOptionsQuery(
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val adults: Int,
+    val childAges: List<Int>,
+    val channel: SalesChannel,
+    val roomTypeIds: Set<RoomTypeId>,
+    val ratePlanIds: Set<RatePlanId>? = null,
+) {
+    /** A estadia num plano e num tipo de UH. */
+    fun stay(
+        ratePlanId: RatePlanId,
+        roomTypeId: RoomTypeId,
+    ) = StayQuery(ratePlanId, roomTypeId, arrival, departure, adults, childAges)
+}
+
+/**
+ * Uma combinação de plano e tipo de UH da cotação (`RatesApi.stayOptions`): a vendabilidade no canal, **a mesma** de
+ * `RatesApi.isSellable` (vendável implica ter preço), e o preço, **o mesmo** de `RatesApi.priceFor` (nulo quando a
+ * estadia não tem preço; presente sempre que vendável, e às vezes também quando não é, por outro motivo).
+ */
+data class StayOption(
+    val ratePlan: RatePlanSummary,
+    val roomTypeId: RoomTypeId,
+    val sellability: Sellability,
+    val price: StayPrice?,
+)
