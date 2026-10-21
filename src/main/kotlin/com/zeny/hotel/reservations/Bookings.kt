@@ -232,6 +232,11 @@ data class ReservationSummary(
      * (a alocação é opcional até o check-in).
      */
     val roomAssignment: RoomAssignmentSummary? = null,
+    /**
+     * O bloqueio de grupo de onde a reserva veio pelo pick-up (M4 E11; RF-RES-09); nulo na reserva comum. A diária é a
+     * tarifa do grupo congelada, e a estadia (tipo, plano e datas) não muda depois.
+     */
+    val blockId: RoomBlockId? = null,
 ) {
     val dayUse: Boolean get() = arrival == departure
 

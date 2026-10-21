@@ -12,6 +12,7 @@ import com.zeny.hotel.reservations.ReservationHistoryId
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
+import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
 import com.zeny.hotel.rooms.RoomTypeId
@@ -135,12 +136,17 @@ interface BookingStore {
     ): Map<InventoryKey, InventoryUsage>
 }
 
-/** O que o reapontamento de um hóspede mudou: os bookings (titular) e as reservas, com os hóspedes antes e depois. */
+/**
+ * O que o reapontamento de um hóspede mudou: os bookings (titular), as reservas, com os hóspedes antes e depois, e os
+ * bloqueios (titular).
+ */
 data class GuestRepointing(
     val bookings: List<BookingId>,
     val reservations: Map<ReservationId, Pair<List<GuestId>, List<GuestId>>>,
+    /** Os bloqueios de grupo cujo titular hóspede foi reapontado (E11). */
+    val blocks: List<RoomBlockId> = emptyList(),
 ) {
-    val empty: Boolean get() = bookings.isEmpty() && reservations.isEmpty()
+    val empty: Boolean get() = bookings.isEmpty() && reservations.isEmpty() && blocks.isEmpty()
 }
 
 /** Uma garantia pendente (E09): só o que a lista mostra, numa consulta, com o vencimento já calculado. */

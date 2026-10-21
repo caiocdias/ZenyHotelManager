@@ -8023,6 +8023,313 @@ paths:
       summary: Reservas que requerem realocação
       tags:
       - reservations
+  /api/v1/room-blocks:
+    get:
+      description: "Do mais novo ao mais antigo, por cursor; filtro opcional pela\
+        \ situação. Exige `reservations.blocks.read`."
+      operationId: listRoomBlocks
+      parameters:
+      - in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - ACTIVE
+          - RELEASED
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageRoomBlockResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os bloqueios de grupo
+      tags:
+      - reservations
+    post:
+      description: "N UHs por tipo e noite com a tarifa do grupo, a data de corte\
+        \ e o titular (`holderGuestId` **ou** `holderCompanyId`). Exige `reservations.blocks.manage`\
+        \ e `Idempotency-Key`. Formato: 400 `ROOM_BLOCK_INVALID` com o campo. Titular\
+        \ hóspede inexistente: 400 `UNKNOWN_GUEST`; mesclado vira o sobrevivente;\
+        \ anonimizado: 422 `GUEST_ANONYMIZED`. Empresa inexistente: 400 `UNKNOWN_COMPANY`;\
+        \ desativada: 422 `COMPANY_INACTIVE`. Plano inexistente: 400 `UNKNOWN_RATE_PLAN`;\
+        \ desativado: 422 `RATE_PLAN_INACTIVE`. Tipo de UH inexistente: 400 `UNKNOWN_ROOM_TYPE`;\
+        \ desativado: 422 `ROOM_TYPE_INACTIVE`; fora do plano do bloqueio: 422 `ROOM_TYPE_NOT_IN_PLAN`\
+        \ (campo em `field`). Data de corte ou noites antes da data operacional: 422\
+        \ `ROOM_BLOCK_CUTOFF_IN_PAST`/`ROOM_BLOCK_PERIOD_IN_PAST`. As unidades saem\
+        \ da disponibilidade (contador `blocked`): sem disponibilidade, 409 `ROOM_TYPE_UNAVAILABLE`\
+        \ e nada é gravado; fora do inventário mantido, 422 `INVENTORY_DATE_OUT_OF_HORIZON`.\
+        \ Abre a conta master do grupo no `billing` (dono `GROUP`; a empresa titular\
+        \ como pagadora)."
+      operationId: createRoomBlock
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomBlockRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBlockResponse"
+          description: Bloqueio criado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um bloqueio de grupo
+      tags:
+      - reservations
+  /api/v1/room-blocks/{id}:
+    get:
+      description: "Com as unidades por tipo de UH e noite, o pick-up e a conta master.\
+        \ Exige `reservations.blocks.read`. Inexistente: 404 `ROOM_BLOCK_NOT_FOUND`."
+      operationId: getRoomBlock
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBlockResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um bloqueio de grupo
+      tags:
+      - reservations
+    put:
+      description: "Troca o nome, a data de corte e as unidades das noites a partir\
+        \ da data operacional (as pedidas substituem as gravadas dessas noites; noites\
+        \ anteriores: 422 `ROOM_BLOCK_PERIOD_IN_PAST`), com `If-Match` (412 com outra\
+        \ versão; 428 sem ele). Exige `reservations.blocks.manage`. Todo tipo de UH\
+        \ das unidades precisa estar no plano do bloqueio (422 `ROOM_TYPE_NOT_IN_PLAN`).\
+        \ Só num bloqueio ativo (409 `ROOM_BLOCK_RELEASED`). Nenhuma noite fica com\
+        \ menos unidades que as já convertidas em reservas (422 `ROOM_BLOCK_BELOW_PICK_UP`).\
+        \ A diferença vai à disponibilidade na mesma transação: sem disponibilidade,\
+        \ 409 `ROOM_TYPE_UNAVAILABLE` e nada muda. A data de corte nova não pode ser\
+        \ anterior à data operacional (422 `ROOM_BLOCK_CUTOFF_IN_PAST`). A tarifa\
+        \ nova vale só para os pick-ups seguintes."
+      operationId: changeRoomBlock
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomBlockChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomBlockResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar um bloqueio de grupo
+      tags:
+      - reservations
+  /api/v1/room-blocks/{id}/pick-up:
+    post:
+      description: "Exige `reservations.blocks.pickup` e `Idempotency-Key` (a repetiç\
+        ão com a mesma chave não cria nada). Bloqueio inexistente: 404 `ROOM_BLOCK_NOT_FOUND`;\
+        \ liberado: 409 `ROOM_BLOCK_RELEASED`; depois da data de corte: 422 `ROOM_BLOCK_CUTOFF_PASSED`.\
+        \ Cada noite da reserva precisa estar no bloqueio (422 `ROOM_BLOCK_DATES_NOT_COVERED`)\
+        \ e ter unidade ainda não convertida (409 `ROOM_BLOCK_UNAVAILABLE`); sem day\
+        \ use e com as crianças até a idade limite do hotel (400 `STAY_INVALID`);\
+        \ chegada antes da data operacional ou ocupação acima da máxima do tipo de\
+        \ UH: 422 com o código do `rates`. A diária de cada noite é a tarifa do grupo,\
+        \ congelada (RN-14); as políticas são as do plano do bloqueio, copiadas (RN-15),\
+        \ e a situação inicial segue a garantia delas. Cada noite passa uma unidade\
+        \ de `blocked` para `sold` na mesma transação (a disponibilidade não muda).\
+        \ Abre a conta de cada reserva no `billing`. Responde a reserva agrupadora\
+        \ (`Location` em `/api/v1/bookings/{id}`)."
+      operationId: pickUpRoomBlock
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlockPickUpRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResponse"
+          description: Reserva agrupadora criada com a reserva do bloqueio.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Converter uma unidade do bloqueio numa reserva (pick-up)
+      tags:
+      - reservations
+  /api/v1/room-blocks/{id}/rooming-list:
+    post:
+      description: "As reservas da lista (de 1 a 30) numa só reserva agrupadora, com\
+        \ as regras do pick-up, tudo ou nada. Exige `reservations.blocks.pickup` e\
+        \ `Idempotency-Key` (a repetição com a mesma chave não cria nada). Bloqueio\
+        \ inexistente: 404 `ROOM_BLOCK_NOT_FOUND`; liberado: 409 `ROOM_BLOCK_RELEASED`;\
+        \ depois da data de corte: 422 `ROOM_BLOCK_CUTOFF_PASSED`. Cada noite da reserva\
+        \ precisa estar no bloqueio (422 `ROOM_BLOCK_DATES_NOT_COVERED`) e ter unidade\
+        \ ainda não convertida (409 `ROOM_BLOCK_UNAVAILABLE`); sem day use e com as\
+        \ crianças até a idade limite do hotel (400 `STAY_INVALID`); chegada antes\
+        \ da data operacional ou ocupação acima da máxima do tipo de UH: 422 com o\
+        \ código do `rates`. A diária de cada noite é a tarifa do grupo, congelada\
+        \ (RN-14); as políticas são as do plano do bloqueio, copiadas (RN-15), e a\
+        \ situação inicial segue a garantia delas. Cada noite passa uma unidade de\
+        \ `blocked` para `sold` na mesma transação (a disponibilidade não muda). Abre\
+        \ a conta de cada reserva no `billing`. Responde a reserva agrupadora (`Location`\
+        \ em `/api/v1/bookings/{id}`)."
+      operationId: createRoomBlockRoomingList
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomingListRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResponse"
+          description: Reserva agrupadora criada com as reservas do bloqueio.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar as reservas de uma rooming list do bloqueio
+      tags:
+      - reservations
   /api/v1/room-features:
     get:
       description: Em ordem de código. Exige `rooms.registry.read`.
@@ -11412,6 +11719,163 @@ components:
       - from
       - roomTypes
       - to
+    BlockAllocationRequest:
+      type: object
+      description: "As unidades de um tipo de UH num período de noites (de `from`\
+        \ a `to`, inclusive; a saída não é noite): `quantity` UHs por noite (de 1\
+        \ a 50) à tarifa do grupo `rate` por UH e noite."
+      properties:
+        from:
+          type: string
+          format: date
+          nullable: true
+        quantity:
+          type: integer
+          format: int32
+          nullable: true
+        rate:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        to:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - from
+      - quantity
+      - rate
+      - roomTypeId
+      - to
+    BlockAllocationResponse:
+      type: object
+      description: "As unidades do bloqueio de um tipo de UH numa noite: `quantity`\
+        \ contratadas, `pickedUp` já convertidas em reservas ativas, `released` devolvidas\
+        \ ao inventário pela liberação, `remaining` as que ainda aceitam pick-up (num\
+        \ bloqueio ativo) e a tarifa do grupo."
+      properties:
+        date:
+          type: string
+          format: date
+        pickedUp:
+          type: integer
+          format: int32
+        quantity:
+          type: integer
+          format: int32
+        rate:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        released:
+          type: integer
+          format: int32
+        remaining:
+          type: integer
+          format: int32
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - date
+      - pickedUp
+      - quantity
+      - rate
+      - released
+      - remaining
+      - roomTypeId
+    BlockPickUpRequest:
+      type: object
+      description: "O pick-up de uma reserva do bloqueio: o titular da reserva agrupadora\
+        \ (sem ele, o hóspede titular do bloqueio; obrigatório num bloqueio de empresa),\
+        \ a origem e a reserva."
+      properties:
+        holderGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        origin:
+          type: string
+          enum:
+          - FRONT_DESK
+          - PHONE
+          - EMAIL
+          - WHATSAPP
+          - WEBSITE
+          - OTA
+          - OTHER
+          nullable: true
+        reservation:
+          allOf:
+          - $ref: "#/components/schemas/BlockReservationDto"
+          nullable: true
+      required:
+      - origin
+      - reservation
+    BlockReservationDto:
+      type: object
+      description: "Uma reserva do pick-up: o tipo de UH, a chegada e a saída (noites\
+        \ do bloqueio; sem day use), a ocupação, o segmento (padrão `EVENT`), os pedidos\
+        \ especiais e os hóspedes da estadia (vazio = o titular como principal; senã\
+        o, exatamente um principal). A diária é a tarifa do grupo de cada noite, congelada."
+      properties:
+        adults:
+          type: integer
+          format: int32
+          minimum: 1
+          nullable: true
+        arrival:
+          type: string
+          format: date
+          nullable: true
+        childAges:
+          type: array
+          description: "A idade de cada criança na chegada, em anos completos."
+          items:
+            type: integer
+            format: int32
+            description: "A idade de cada criança na chegada, em anos completos."
+        departure:
+          type: string
+          format: date
+          nullable: true
+        guests:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayGuestRequest"
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        segment:
+          type: string
+          enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+        specialRequests:
+          type: string
+          description: "Pedidos especiais (texto livre, até 1000 caracteres; nunca\
+            \ vai à trilha)."
+          nullable: true
+      required:
+      - adults
+      - arrival
+      - childAges
+      - departure
+      - guests
+      - roomTypeId
+      - segment
     BookingRequest:
       type: object
       description: "Uma reserva agrupadora: o titular, a origem (que define o canal),\
@@ -13883,6 +14347,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RoleResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageRoomBlockResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoomBlockResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -19237,6 +19715,13 @@ components:
         arrival:
           type: string
           format: date
+        blockId:
+          type: string
+          format: uuid
+          description: "O bloqueio de grupo de onde a reserva veio pelo pick-up (a\
+            \ diária é a tarifa do grupo; o tipo de UH, o plano e as datas não mudam);\
+            \ nulo na reserva comum."
+          nullable: true
         bookingId:
           type: string
           format: uuid
@@ -20080,6 +20565,148 @@ components:
             $ref: "#/components/schemas/RoomAssignmentResponse"
       required:
       - items
+    RoomBlockChangeRequest:
+      type: object
+      description: "A alteração de um bloqueio ativo: o nome, a data de corte e as\
+        \ unidades das noites **a partir da data operacional**, que substituem as\
+        \ gravadas dessas noites (as anteriores ficam como estão; não as envie)."
+      properties:
+        allocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockAllocationRequest"
+        cutoffDate:
+          type: string
+          format: date
+          nullable: true
+        name:
+          type: string
+          nullable: true
+      required:
+      - allocations
+      - cutoffDate
+      - name
+    RoomBlockRequest:
+      type: object
+      description: "Um bloqueio de grupo: o nome do grupo, o titular (um hóspede **ou**\
+        \ uma empresa), o plano tarifário (as políticas que as reservas do pick-up\
+        \ copiam), a data de corte e as unidades por tipo de UH e período."
+      properties:
+        allocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockAllocationRequest"
+        cutoffDate:
+          type: string
+          format: date
+          nullable: true
+        holderCompanyId:
+          type: string
+          format: uuid
+          nullable: true
+        holderGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        name:
+          type: string
+          nullable: true
+        ratePlanId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - allocations
+      - cutoffDate
+      - name
+      - ratePlanId
+    RoomBlockResponse:
+      type: object
+      description: "Um bloqueio de grupo, com as unidades por tipo de UH e noite e\
+        \ o acompanhamento do pick-up."
+      properties:
+        allocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockAllocationResponse"
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        cutoffDate:
+          type: string
+          format: date
+        folioId:
+          type: string
+          format: uuid
+          description: A conta master do grupo no `billing` (dono `GROUP`).
+        holderCompanyId:
+          type: string
+          format: uuid
+          nullable: true
+        holderGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        ratePlanId:
+          type: string
+          format: uuid
+        releasedAt:
+          type: string
+          format: date-time
+          nullable: true
+        releasedBy:
+          type: string
+          format: uuid
+          nullable: true
+        releasedOn:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          description: "`ACTIVE` (segura as unidades não utilizadas e aceita pick-up\
+            \ até a data de corte) ou `RELEASED` (o não utilizado voltou ao inventá\
+            rio). A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido\
+            \ sem falhar."
+          x-extensible-enum:
+          - ACTIVE
+          - RELEASED
+        totalPickedUp:
+          type: integer
+          format: int32
+          description: O total de unidades já convertidas em reservas ativas (a soma
+            das noites).
+        totalQuantity:
+          type: integer
+          format: int32
+          description: O total de unidades contratadas (a soma das noites).
+        version:
+          type: integer
+          format: int64
+      required:
+      - allocations
+      - code
+      - createdAt
+      - cutoffDate
+      - folioId
+      - id
+      - name
+      - ratePlanId
+      - status
+      - totalPickedUp
+      - totalQuantity
+      - version
     RoomDiscrepancyResponse:
       type: object
       description: Uma discrepância vigente entre recepção e governança (RF-UH-08).
@@ -20653,6 +21280,34 @@ components:
       required:
       - effective
       - roomTypeId
+    RoomingListRequest:
+      type: object
+      description: "A rooming list: as reservas do bloqueio (de 1 a 30) criadas numa\
+        \ só reserva agrupadora, com o titular (sem ele, o hóspede titular do bloqueio;\
+        \ obrigatório num bloqueio de empresa) e a origem."
+      properties:
+        holderGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        origin:
+          type: string
+          enum:
+          - FRONT_DESK
+          - PHONE
+          - EMAIL
+          - WHATSAPP
+          - WEBSITE
+          - OTA
+          - OTHER
+          nullable: true
+        reservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockReservationDto"
+      required:
+      - origin
+      - reservations
     RoutingRuleCreateRequest:
       type: object
       description: "Uma regra de roteamento nova: a conta de origem (fixa depois)\

@@ -11,8 +11,10 @@ import java.time.LocalDate
  * qualquer divergência (uma publicação do outbox abandonada, por exemplo). Reservas (E07): a criação ([createBooking])
  * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]); desde a
  * E08, o cancelamento ([cancelReservation]); desde a E09, a confirmação da pré-reserva ([confirmReservation]) e as
- * garantias pendentes que vencem num intervalo ([pendingGuarantees]).
+ * garantias pendentes que vencem num intervalo ([pendingGuarantees]); desde a E11, os bloqueios de grupo
+ * ([createBlock], [block]) e a liberação do não utilizado ([releaseUnused], que o fechamento chama).
  */
+@Suppress("TooManyFunctions") // a API pública do módulo: inventário, reservas, ciclo de vida e bloqueios
 interface ReservationsApi {
     /**
      * Cria a reserva agrupadora [booking] com as reservas dela (M4 E07; RF-RES-01 a 03 e 14), na transação de quem
@@ -68,6 +70,31 @@ interface ReservationsApi {
         from: Instant?,
         to: Instant,
     ): List<PendingGuarantee>
+
+    /**
+     * Cria o bloqueio de grupo [block] (M4 E11; RF-RES-09; os eventos do M10), na transação de quem chama (ou numa
+     * própria), auditada `reservations.room-block.create` em nome do ator corrente ou do sistema, com as regras de
+     * `POST /api/v1/room-blocks`, **menos a permissão**: as unidades tomadas no contador `blocked` do inventário
+     * (`409 ROOM_TYPE_UNAVAILABLE` sem disponibilidade, nada gravado) e a conta master do grupo aberta
+     * (`BillingApi.openFolio`, dono `GROUP` com o id do bloqueio).
+     */
+    fun createBlock(block: NewRoomBlock): RoomBlockSummary
+
+    /** O bloqueio de grupo com as unidades; `null` se não existe. */
+    fun block(id: RoomBlockId): RoomBlockSummary?
+
+    /**
+     * Libera o não utilizado do bloqueio (M4 E11; RN-16): **o fechamento do dia (M6) chama**, para cada bloqueio de
+     * [blocksDueForRelease]; nada a chama automaticamente antes disso. Na transação de quem chama (ou numa própria),
+     * auditada `reservations.room-block.release-unused`: com o bloqueio travado, antes da data de corte (a data
+     * operacional ainda anterior a ela) é `409 ROOM_BLOCK_CUTOFF_NOT_REACHED`; a partir dela, devolve ao inventário as
+     * unidades que não viraram reserva nas noites a partir da data operacional (publica `AvailabilityChanged`) e deixa
+     * o bloqueio `RELEASED` (sem pick-up nem alteração depois). Num bloqueio já liberado, não muda nada.
+     */
+    fun releaseUnused(id: RoomBlockId): RoomBlockSummary
+
+    /** Os bloqueios ativos cuja data de corte já chegou (igual ou anterior à data operacional), para o fechamento. */
+    fun blocksDueForRelease(): List<RoomBlockId>
 
     /** A reserva agrupadora com as reservas; `null` se não existe. */
     fun booking(id: BookingId): BookingSummary?

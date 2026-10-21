@@ -17,8 +17,10 @@ import com.zeny.hotel.rates.RatePlanSummary
 import com.zeny.hotel.rates.RatesApi
 import com.zeny.hotel.rates.RatesErrorCodes
 import com.zeny.hotel.rates.RatesPermissions
+import com.zeny.hotel.rates.SaleRefusal
 import com.zeny.hotel.rates.StayPriceResult
 import com.zeny.hotel.rates.StayQuery
+import com.zeny.hotel.reservations.BookingSummary
 import com.zeny.hotel.reservations.CancellationPenalty
 import com.zeny.hotel.reservations.CancellationReason
 import com.zeny.hotel.reservations.CancellationTerms
@@ -61,6 +63,7 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ErrorCode
@@ -115,6 +118,16 @@ class ReservationViews(
         return ReservationView(reservation, booking.code.toString(), booking.holderGuestId, alerts, roomNumber)
     }
 
+    /** A reserva agrupadora com os alertas da lista de restrição dos hóspedes e os números das UHs alocadas. */
+    fun bookingView(booking: BookingSummary): BookingView {
+        val alerts =
+            (listOf(booking.holderGuestId) + booking.reservations.flatMap { r -> r.guests.map { it.guestId } })
+                .distinct()
+                .mapNotNull { guests.restrictionAlert(it) }
+                .distinctBy { it.guestId }
+        return BookingView(booking, alerts, roomNumbers(booking.reservations))
+    }
+
     /** O número atual da UH alocada de cada reserva que tem uma (E10). */
     fun roomNumbers(reservations: List<ReservationSummary>): Map<ReservationId, String> =
         reservations
@@ -165,6 +178,7 @@ class ReservationLifecycle(
     private val billing: BillingApi,
     private val inventory: RoomTypeInventory,
     private val assignments: RoomAssignments,
+    private val blockUnits: BlockUnits,
     private val authorization: Authorization,
     private val currentActor: CurrentActor,
     private val audit: AuditContext,
@@ -187,7 +201,15 @@ class ReservationLifecycle(
         ReservationChangeRules.requireValid(command, reservation.guests.size)
         val old = StayShape.of(reservation)
         val new = StayShape.of(command)
-        val restay = if (old == new) null else restay(reservation, old, new, command)
+        val restay =
+            when {
+                old == new -> null
+
+                // A reserva do pick-up (E11) guarda a tarifa do grupo: só a ocupação muda, sem recalcular as noites.
+                reservation.blockId != null -> requireBlockStay(reservation, old, new).let { null }
+
+                else -> restay(reservation, old, new, command)
+            }
         if (restay == null) ReservationChangeRules.requireOverridesOn(command, emptyList())
         val approval = restay?.let { authorizeDiscount(reservation, it.repriced, discount) }
         val candidate = candidate(reservation, command, restay, approval)
@@ -303,6 +325,48 @@ class ReservationLifecycle(
                 },
             inventoryChanges = changes,
         )
+    }
+
+    /**
+     * A estadia de uma reserva do pick-up (E11): o tipo de UH, o plano e as datas ficam
+     * (`409 ROOM_BLOCK_RESERVATION_STAY_FIXED`); a ocupação nova respeita a máxima do tipo e a idade das crianças.
+     */
+    @Suppress("ThrowsCount") // a estadia fixa, as idades e a ocupação
+    private fun requireBlockStay(
+        reservation: ReservationSummary,
+        old: StayShape,
+        new: StayShape,
+    ) {
+        if (old.copy(adults = new.adults, childAges = new.childAges) != new) {
+            throw ConflictException(
+                ReservationsErrorCodes.ROOM_BLOCK_RESERVATION_STAY_FIXED,
+                "A reserva ${reservation.code} veio de um bloqueio: o tipo de UH, o plano e as datas não mudam.",
+            )
+        }
+        val maxChildAge = hotel.policy().childMaxAge
+        val invalidAges =
+            new.childAges.withIndex().filter { (_, age) -> age !in 0..maxChildAge }.map { (index, _) ->
+                FieldViolation(
+                    "childAges[$index]",
+                    RatesErrorCodes.STAY_INVALID.value,
+                    "Informe a idade da criança de 0 a $maxChildAge.",
+                )
+            }
+        if (invalidAges.isNotEmpty()) {
+            throw InvalidInputException(RatesErrorCodes.STAY_INVALID, invalidAges.first().message, invalidAges)
+        }
+        val occupancy = checkNotNull(rooms.roomType(new.roomTypeId)) { "Reserva de um tipo inexistente" }.occupancy
+        if (new.adults > occupancy.maxAdults || new.childAges.size > occupancy.maxChildren) {
+            throw StayNotSellableException(
+                null,
+                listOf(
+                    SaleRefusal(
+                        RatesErrorCodes.OCCUPANCY_EXCEEDS_ROOM_TYPE,
+                        "A ocupação passa da máxima do tipo de UH.",
+                    ),
+                ),
+            )
+        }
     }
 
     /** O plano e o tipo de UH pedidos (inexistentes: `400` com o campo). */
@@ -422,9 +486,9 @@ class ReservationLifecycle(
         now: Instant,
     ): ReservationSummary {
         val businessDate = hotel.currentBusinessDate()
-        InventoryNights
-            .of(reservation.roomTypeId, reservation.arrival, reservation.departure, businessDate, take = false)
-            ?.let { inventory.apply(listOf(it)) }
+        // As unidades a partir da data operacional voltam ao inventário ou, na reserva do pick-up de um bloqueio ativo,
+        // ao bloqueio (E11), numa só mudança.
+        inventory.apply(blockUnits.onCancellation(reservation, businessDate, now))
         val posting = if (penalty.due.isPositive() && !penalty.waived) postPenalty(reservation, penalty.due) else null
         // A UH alocada é solta (E10): a reserva cancelada ou expirada não bloqueia mais a UH.
         assignments.releaseOnCancellation(reservation, now)
@@ -641,10 +705,9 @@ class ReservationLifecycle(
                 ),
                 approvalToken,
             )
-        InventoryNights
-            .of(reservation.roomTypeId, reservation.arrival, reservation.departure, businessDate, take = true)
-            ?.let { inventory.apply(listOf(it)) }
         val now = now()
+        // Toma as unidades de novo: do bloqueio ativo, na reserva do pick-up (E11), ou do inventário geral.
+        inventory.apply(blockUnits.onReactivation(reservation, businessDate, now))
         val updated =
             reservation.copy(
                 status = ReservationStatus.CONFIRMED,

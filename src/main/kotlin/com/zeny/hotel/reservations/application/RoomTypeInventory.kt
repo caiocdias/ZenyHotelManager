@@ -7,6 +7,7 @@ import com.zeny.hotel.reservations.HistoryNight
 import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.RoomAssignmentSummary
+import com.zeny.hotel.reservations.RoomBlockSummary
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
@@ -46,7 +47,51 @@ internal object ReservationsAudit {
     const val SET_DO_NOT_MOVE = "reservations.room-assignment.set-do-not-move"
     const val MARK_REALLOCATION = "reservations.room-assignment.mark-reallocation"
 
+    const val ROOM_BLOCK = "reservations.room-block"
+    const val CREATE_BLOCK = "reservations.room-block.create"
+    const val UPDATE_BLOCK = "reservations.room-block.update"
+    const val PICK_UP_BLOCK = "reservations.room-block.pick-up"
+    const val RELEASE_BLOCK = "reservations.room-block.release-unused"
+
     private const val MAX_AUDITED_VALUES = 20
+
+    /**
+     * O retrato de um bloqueio de grupo (E11): ids, código, titular pelo id, plano, data de corte, situação, conta
+     * master e as unidades resumidas (as noites, os tipos, o total contratado, convertido e liberado e as tarifas
+     * distintas, até 20); sem o nome do grupo (texto livre que pode citar pessoas).
+     */
+    fun blockSnapshot(block: RoomBlockSummary): Map<String, Any?> =
+        mapOf(
+            "code" to block.code.toString(),
+            "holderGuestId" to block.holderGuestId?.toString(),
+            "holderCompanyId" to block.holderCompanyId?.toString(),
+            "ratePlanId" to block.ratePlanId.toString(),
+            "cutoffDate" to block.cutoffDate.toString(),
+            "status" to block.status.name,
+            "folioId" to block.folioId.toString(),
+            "releasedOn" to block.releasedOn?.toString(),
+            "allocations" to
+                mapOf(
+                    "from" to block.allocations.minOfOrNull { it.date }?.toString(),
+                    "to" to block.allocations.maxOfOrNull { it.date }?.toString(),
+                    "rows" to block.allocations.size,
+                    "roomTypeIds" to
+                        block.allocations
+                            .map { it.roomTypeId.toString() }
+                            .distinct()
+                            .sorted(),
+                    "quantity" to block.allocations.sumOf { it.quantity },
+                    "pickedUp" to block.allocations.sumOf { it.pickedUp },
+                    "released" to block.allocations.sumOf { it.released },
+                    "rates" to
+                        block.allocations
+                            .map { it.rate }
+                            .distinct()
+                            .sorted()
+                            .take(MAX_AUDITED_VALUES)
+                            .map { it.toString() },
+                ),
+        )
 
     /**
      * O retrato de uma alocação de UH (E10): ids, período, motivo, "não mover", a marca de realocação (o período
@@ -122,7 +167,9 @@ internal object ReservationsAudit {
                     "version" to reservation.guaranteeTerms.version,
                 ),
             "folioId" to reservation.folioId.toString(),
-        ) + cancellationSnapshot(reservation) + guaranteeSnapshot(reservation)
+        ) + listOfNotNull(reservation.blockId?.let { "blockId" to it.toString() }).toMap() +
+            cancellationSnapshot(reservation) +
+            guaranteeSnapshot(reservation)
 
     /** A garantia recebida na confirmação (E09): o meio, quando, por quem e, no depósito, o exigido e o recebido. */
     private fun guaranteeSnapshot(reservation: ReservationSummary): Map<String, Any?> {

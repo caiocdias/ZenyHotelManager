@@ -289,6 +289,135 @@ class ReservationsTestSupport(
     fun etag(id: UUID): String =
         checkNotNull(with(iam) { call(GET, "/api/v1/reservations/$id", admin) }.getHeader("ETag"))
 
+    // --- Grupos e bloqueios (E11) ---------------------------------------------------------------------------------
+
+    /** Uma faixa de unidades do bloqueio: o tipo, as noites de [from] a [to] (inclusive), a quantidade e a tarifa. */
+    fun allocation(
+        type: UUID,
+        from: LocalDate,
+        to: LocalDate,
+        quantity: Int,
+        rate: String = "250.00",
+    ): Map<String, Any?> =
+        mapOf("roomTypeId" to type, "from" to from, "to" to to, "quantity" to quantity, "rate" to rate)
+
+    @Suppress("LongParameterList") // o bloqueio inteiro, com padrões
+    fun blockBody(
+        plan: UUID,
+        cutoff: LocalDate,
+        vararg allocations: Map<String, Any?>,
+        holderGuest: UUID? = null,
+        holderCompany: UUID? = null,
+        name: String = "Casamento ${UuidV7.generate().toString().takeLast(SUFFIX)}",
+    ): Map<String, Any?> =
+        mapOf(
+            "name" to name,
+            "holderGuestId" to holderGuest,
+            "holderCompanyId" to holderCompany,
+            "ratePlanId" to plan,
+            "cutoffDate" to cutoff,
+            "allocations" to allocations.toList(),
+        )
+
+    fun createBlock(
+        body: Map<String, Any?>,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+    ): MockHttpServletResponse = billing.call(POST, "/api/v1/room-blocks", auth, body, idempotencyKey = idempotencyKey)
+
+    fun createdBlock(body: Map<String, Any?>): JsonNode = with(billing) { createBlock(body).expect(201) }
+
+    fun block(id: UUID): JsonNode = with(iam) { call(GET, "/api/v1/room-blocks/$id", admin).ok() }
+
+    /** Uma reserva do pick-up (tipo, chegada, saída, ocupação e hóspedes). */
+    fun blockReservation(
+        type: UUID,
+        arrival: LocalDate,
+        departure: LocalDate,
+        adults: Int = 2,
+        guests: List<Pair<UUID, Boolean>> = emptyList(),
+    ): Map<String, Any?> =
+        mapOf(
+            "roomTypeId" to type,
+            "arrival" to arrival,
+            "departure" to departure,
+            "adults" to adults,
+            "guests" to guests.map { (id, primary) -> mapOf("guestId" to id, "primary" to primary) },
+        )
+
+    fun pickUp(
+        block: UUID,
+        reservation: Map<String, Any?>,
+        holder: UUID? = null,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/room-blocks/$block/pick-up",
+            auth,
+            mapOf("holderGuestId" to holder, "origin" to "EMAIL", "reservation" to reservation),
+            idempotencyKey = idempotencyKey,
+        )
+
+    fun roomingList(
+        block: UUID,
+        reservations: List<Map<String, Any?>>,
+        holder: UUID? = null,
+        auth: RequestPostProcessor = admin,
+        idempotencyKey: String = UuidV7.generate().toString(),
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/room-blocks/$block/rooming-list",
+            auth,
+            mapOf("holderGuestId" to holder, "origin" to "EMAIL", "reservations" to reservations),
+            idempotencyKey = idempotencyKey,
+        )
+
+    fun blockEtag(id: UUID): String =
+        checkNotNull(with(iam) { call(GET, "/api/v1/room-blocks/$id", admin) }.getHeader("ETag"))
+
+    fun changeBlock(
+        id: UUID,
+        body: Map<String, Any?>,
+        ifMatch: String? = blockEtag(id),
+        auth: RequestPostProcessor = admin,
+    ): MockHttpServletResponse = billing.call(PUT, "/api/v1/room-blocks/$id", auth, body, ifMatch = ifMatch)
+
+    fun blocksNamed(name: String): Int =
+        jdbc
+            .sql("SELECT count(*) FROM reservations.room_block WHERE name = :name")
+            .param("name", name)
+            .query(Int::class.java)
+            .single()
+
+    /** As reservas criadas pelo pick-up do bloqueio (todas as situações). */
+    fun blockReservations(block: UUID): List<UUID> =
+        jdbc
+            .sql("SELECT id FROM reservations.reservation WHERE block_id = :block ORDER BY id")
+            .param("block", block)
+            .query(UUID::class.java)
+            .list()
+            .filterNotNull()
+
+    /** As unidades do bloqueio numa noite: (quantidade, convertidas, liberadas). */
+    fun allocationRow(
+        block: UUID,
+        type: UUID,
+        date: LocalDate,
+    ): Triple<Int, Int, Int>? =
+        jdbc
+            .sql(
+                "SELECT quantity, picked_up, released FROM reservations.block_allocation " +
+                    "WHERE block_id = :block AND room_type_id = :type AND stay_date = :date",
+            ).param("block", block)
+            .param("type", type)
+            .param("date", date)
+            .query { rs, _ -> Triple(rs.getInt("quantity"), rs.getInt("picked_up"), rs.getInt("released")) }
+            .optional()
+            .orElse(null)
+
     /** Os lançamentos da conta: o tipo, o código do sistema (`system_key`), o valor e a descrição. */
     fun postings(folio: UUID): List<Map<String, Any?>> =
         jdbc
@@ -381,4 +510,8 @@ class ReservationsTestSupport(
             .query(String::class.java)
             .list()
             .filterNotNull()
+
+    private companion object {
+        const val SUFFIX = 6
+    }
 }

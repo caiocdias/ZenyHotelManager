@@ -29,6 +29,7 @@ import com.zeny.hotel.reservations.ReservationCreated
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsErrorCodes
+import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.domain.BookingRules
 import com.zeny.hotel.reservations.domain.InitialStatus
 import com.zeny.hotel.reservations.domain.InventoryChange
@@ -93,6 +94,7 @@ class BookingCreation(
     private val hotel: HotelApi,
     private val billing: BillingApi,
     private val inventory: RoomTypeInventory,
+    private val pickUps: RoomBlockPickUps,
     private val numbers: DocumentNumberGenerator,
     private val authorization: Authorization,
     private val currentActor: CurrentActor,
@@ -100,9 +102,15 @@ class BookingCreation(
     private val events: ApplicationEventPublisher,
     private val clock: Clock,
 ) {
+    /**
+     * Cria a reserva agrupadora [command]; com [block], as reservas vêm do pick-up desse bloqueio (E11,
+     * [RoomBlockPickUps]): a tarifa do grupo congelada, as políticas do plano do bloqueio, sem conferir a venda nem o
+     * desconto, e cada noite passando uma unidade de `blocked` para `sold` na mesma `RoomTypeInventory.apply`.
+     */
     fun create(
         command: NewBooking,
         discount: DiscountAuthorization,
+        block: RoomBlockId? = null,
     ): BookingSummary {
         check(
             TransactionSynchronizationManager.isActualTransactionActive() &&
@@ -111,15 +119,27 @@ class BookingCreation(
         BookingRules.requireValid(command)
         val resolved = guestResolution.resolve(requestedGuests(command))
         val holder = resolved.getValue(command.holderGuestId)
+        // O bloqueio é travado depois dos hóspedes e antes do inventário (a ordem das travas, RoomBlockStore).
+        val pickUp = block?.let { pickUps.prepare(it, command) }
         val drafts =
-            command.reservations.mapIndexed { index, reservation -> draft(index, reservation, command.origin.channel) }
-        val approval = authorizeDiscount(drafts, holder, discount)
-        // Uma só tomada para todas as reservas que pernoitam (o day use não toma, H5): as linhas travadas em ordem.
+            if (pickUp == null) {
+                command.reservations.mapIndexed { index, reservation ->
+                    draft(index, reservation, command.origin.channel)
+                }
+            } else {
+                command.reservations.mapIndexed { index, reservation ->
+                    Draft(reservation, pickUp.plan, pickUp.nights[index], pickUp.cancellation, pickUp.guarantee)
+                }
+            }
+        val approval = if (pickUp == null) authorizeDiscount(drafts, holder, discount) else null
+        // Uma só mudança do inventário para todas as reservas: a tomada das que pernoitam (o day use não toma, H5)
+        // ou, no pick-up, a passagem de cada noite de `blocked` para `sold`; as linhas travadas em ordem.
         inventory.apply(
-            drafts
-                .map { it.request }
-                .filterNot { it.arrival == it.departure }
-                .map { InventoryChange.take(it.roomTypeId, it.arrival, it.departure, 1, InventoryUse.SOLD) },
+            pickUp?.inventoryChanges
+                ?: drafts
+                    .map { it.request }
+                    .filterNot { it.arrival == it.departure }
+                    .map { InventoryChange.take(it.roomTypeId, it.arrival, it.departure, 1, InventoryUse.SOLD) },
         )
         val context =
             Context(
@@ -130,6 +150,7 @@ class BookingCreation(
                 createdBy = currentActor.currentOrNull()?.userId,
                 approval = approval,
                 resolved = resolved,
+                blockId = pickUp?.block?.id,
             )
         val booking =
             BookingSummary(
@@ -145,6 +166,7 @@ class BookingCreation(
                 createdBy = context.createdBy,
             )
         store.insert(booking)
+        pickUp?.let { pickUps.record(it, context.now) }
         record(booking)
         return checkNotNull(store.booking(booking.id)) { "Reserva agrupadora recém-gravada não encontrada" }
     }
@@ -158,6 +180,7 @@ class BookingCreation(
         val createdBy: UserId?,
         val approval: SensitiveAuthorization.ByApproval?,
         val resolved: Map<GuestId, GuestId>,
+        val blockId: RoomBlockId?,
     )
 
     /** A reserva de um rascunho, com a situação inicial e a conta aberta no `billing`. */
@@ -199,6 +222,7 @@ class BookingCreation(
             version = 0,
             createdAt = context.now,
             createdBy = context.createdBy,
+            blockId = context.blockId,
         )
     }
 

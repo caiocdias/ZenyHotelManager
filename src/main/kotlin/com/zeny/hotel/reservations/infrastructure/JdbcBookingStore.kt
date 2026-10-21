@@ -36,6 +36,7 @@ import com.zeny.hotel.reservations.ReservationOrigin
 import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
+import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.StayGuestSummary
 import com.zeny.hotel.reservations.application.BookingStore
 import com.zeny.hotel.reservations.application.GuestRepointing
@@ -128,15 +129,16 @@ class JdbcBookingStore(
                     guarantee_policy_name,
                     guarantee_policy_version, guarantee_type, guarantee_deposit_percent, guarantee_due_days_before,
                     room_total, additional_packages_total, total, folio_id, approval_id, approved_by, version,
-                    created_at, created_by, updated_at)
+                    created_at, created_by, updated_at, block_id)
                 VALUES (:id, :code, :bookingId, :status, :provisionalUntil, :roomTypeId, :ratePlanId, :arrival,
                     :departure, :adults, CAST(:childAges AS integer[]), :segment, :specialRequests, :cancellationId,
                     :cancellationName, :cancellationVersion, :deadlineHours, :penaltyType, :penaltyPercent,
                     :penaltyNights, :penaltyAmount, :guaranteeId, :guaranteeName, :guaranteeVersion, :guaranteeType,
                     :depositPercent, :dueDaysBefore, :roomTotal, :additionalTotal, :total, :folioId, :approvalId,
-                    :approvedBy, :version, :createdAt, :createdBy, :createdAt)
+                    :approvedBy, :version, :createdAt, :createdBy, :createdAt, :blockId)
                 """.trimIndent(),
             ).param("id", reservation.id.value)
+            .param("blockId", reservation.blockId?.value)
             .param("code", reservation.code.toString())
             .param("bookingId", reservation.bookingId.value)
             .param("status", reservation.status.name)
@@ -723,6 +725,7 @@ class JdbcBookingStore(
         cancellation = cancellation(rs),
         penaltiesCharged = rs.requiredMoney("penalties_charged"),
         guarantee = guarantee(rs),
+        blockId = rs.getObject("block_id", UUID::class.java)?.let(::RoomBlockId),
     )
 
     private fun guarantee(rs: ResultSet): ReservationGuarantee? {

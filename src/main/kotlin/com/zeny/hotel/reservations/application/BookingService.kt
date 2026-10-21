@@ -15,6 +15,7 @@ import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsErrorCodes
 import com.zeny.hotel.reservations.ReservationsPermissions
+import com.zeny.hotel.reservations.RoomBlockSummary
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
 import com.zeny.hotel.rooms.RoomTypeId
@@ -125,6 +126,7 @@ class BookingService(
 @Service
 class GuestReferenceRepointing(
     private val store: BookingStore,
+    private val blocks: RoomBlockStore,
     private val guests: GuestsApi,
     private val audit: AuditContext,
     private val clock: Clock,
@@ -138,7 +140,9 @@ class GuestReferenceRepointing(
         val chain = chainFrom(survivor)
         store.lockGuests(chain + merged, exclusive = true)
         val target = finalProfile(survivor, chain.toSet())
-        val changes = store.repointGuest(merged, target, clock.instant())
+        val now = clock.instant()
+        // Os bookings e as reservas primeiro, depois os bloqueios (a ordem das travas de linha, RoomBlockStore).
+        val changes = store.repointGuest(merged, target, now).copy(blocks = blocks.repointHolder(merged, target, now))
         if (changes.empty) {
             audit.noChanges()
             return changes
@@ -146,6 +150,14 @@ class GuestReferenceRepointing(
         changes.bookings.forEach {
             audit.record(
                 ReservationsAudit.BOOKING,
+                it.value,
+                mapOf("holderGuestId" to merged.toString()),
+                mapOf("holderGuestId" to target.toString(), "mergedGuestId" to merged.toString()),
+            )
+        }
+        changes.blocks.forEach {
+            audit.record(
+                ReservationsAudit.ROOM_BLOCK,
                 it.value,
                 mapOf("holderGuestId" to merged.toString()),
                 mapOf("holderGuestId" to target.toString(), "mergedGuestId" to merged.toString()),
@@ -215,10 +227,11 @@ class GuestsMergedListener(
             try {
                 val changes = repointing.repoint(GuestId(event.mergedId), GuestId(event.survivorId))
                 log.info(
-                    "Reservas reapontadas do hóspede {}: {} reserva(s) agrupadora(s), {} reserva(s)",
+                    "Reservas reapontadas do hóspede {}: {} reserva(s) agrupadora(s), {} reserva(s), {} bloqueio(s)",
                     event.mergedId,
                     changes.bookings.size,
                     changes.reservations.size,
+                    changes.blocks.size,
                 )
                 return
             } catch (e: GuestChainChangedException) {
@@ -260,6 +273,7 @@ class ReservationsActiveStayCheck(
 @Component
 class ReservationsPersonalData(
     private val store: BookingStore,
+    private val blocks: RoomBlockStore,
     private val rooms: RoomsApi,
     private val rates: RatesApi,
 ) : GuestPersonalDataContributor {
@@ -267,9 +281,11 @@ class ReservationsPersonalData(
 
     override fun personalData(guestIds: List<GuestId>): Any? {
         val ids = store.reservationsOfGuests(guestIds)
-        if (ids.isEmpty()) return null
+        val held = blocks.blocksHeldBy(guestIds)
+        if (ids.isEmpty() && held.isEmpty()) return null
         val wanted = guestIds.toSet()
         return mapOf(
+            "roomBlocks" to held.map { blockData(checkNotNull(blocks.block(it))) },
             "reservations" to
                 ids.map { id ->
                     val reservation = checkNotNull(store.reservation(id))
@@ -303,6 +319,29 @@ class ReservationsPersonalData(
                 },
         )
     }
+
+    /** Um bloqueio de que o titular é o hóspede (E11): o código, o nome do grupo, o plano, o corte e as unidades. */
+    private fun blockData(block: RoomBlockSummary): Map<String, Any?> =
+        mapOf(
+            "code" to block.code.toString(),
+            "name" to block.name,
+            "role" to "HOLDER",
+            "status" to block.status.name,
+            "ratePlan" to
+                mapOf("id" to block.ratePlanId.toString(), "name" to rates.ratePlan(block.ratePlanId)?.name),
+            "cutoffDate" to block.cutoffDate,
+            "allocations" to
+                block.allocations.map {
+                    mapOf(
+                        "roomTypeId" to it.roomTypeId.toString(),
+                        "date" to it.date,
+                        "quantity" to it.quantity,
+                        "pickedUp" to it.pickedUp,
+                        "rate" to it.rate,
+                    )
+                },
+            "createdAt" to block.createdAt,
+        )
 
     private fun roles(
         booking: BookingSummary,

@@ -7,6 +7,7 @@ import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.InventoryDay
 import com.zeny.hotel.reservations.InventoryRecount
 import com.zeny.hotel.reservations.NewBooking
+import com.zeny.hotel.reservations.NewRoomBlock
 import com.zeny.hotel.reservations.PendingGuarantee
 import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationId
@@ -14,6 +15,8 @@ import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsErrorCodes
 import com.zeny.hotel.reservations.ReservationsPermissions
+import com.zeny.hotel.reservations.RoomBlockId
+import com.zeny.hotel.reservations.RoomBlockSummary
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryOutOfHorizonException
@@ -206,6 +209,7 @@ internal fun days(rows: Map<InventoryKey, InventoryCounters>): List<InventoryDay
 
 /** A API pública do `reservations` ([ReservationsApi]), sem checar permissão. */
 @Service
+@Suppress("LongParameterList", "TooManyFunctions") // os serviços por trás de cada parte da API pública
 class ReservationsApiService(
     private val store: InventoryStore,
     private val recalculation: InventoryRecalculation,
@@ -213,7 +217,16 @@ class ReservationsApiService(
     private val bookingStore: BookingStore,
     private val lifecycle: ReservationLifecycleService,
     private val pendingGuarantees: PendingGuaranteesService,
+    private val blocks: RoomBlockService,
 ) : ReservationsApi {
+    override fun createBlock(block: NewRoomBlock): RoomBlockSummary = blocks.createAuthorized(block)
+
+    override fun block(id: RoomBlockId): RoomBlockSummary? = blocks.blockAuthorized(id)
+
+    override fun releaseUnused(id: RoomBlockId): RoomBlockSummary = blocks.releaseUnused(id)
+
+    override fun blocksDueForRelease(): List<RoomBlockId> = blocks.dueForRelease()
+
     override fun createBooking(booking: NewBooking): BookingSummary = bookings.createAuthorized(booking)
 
     override fun cancelReservation(

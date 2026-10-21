@@ -191,6 +191,81 @@ object ReservationsErrorCodes {
     /** 400: a consulta de sugestões fora do formato: mais de 20 características ou repetidas (campo `featureIds`). */
     val ROOM_SUGGESTION_INVALID = ErrorCode("ROOM_SUGGESTION_INVALID")
 
+    // --- Grupos e bloqueios (M4 E11) -----------------------------------------------------------------------------
+
+    /** 404: bloqueio de grupo inexistente. */
+    val ROOM_BLOCK_NOT_FOUND = ErrorCode("ROOM_BLOCK_NOT_FOUND")
+
+    /**
+     * 400: bloqueio fora do formato, com o campo: nome fora de 1 a 120 caracteres (`name`), titular que não é
+     * exatamente um hóspede ou uma empresa (`holderGuestId`), nenhuma unidade na criação ou mais de 50 faixas
+     * (`allocations`), faixa com o fim antes do início ou de mais de 366 noites (`allocations[i].to`), quantidade fora
+     * de 1 a 50 (`allocations[i].quantity`), tarifa fora de 0,00 a 1.000.000,00 (`allocations[i].rate`) ou duas
+     * faixas do mesmo tipo de UH na mesma noite (`allocations[i]`).
+     */
+    val ROOM_BLOCK_INVALID = ErrorCode("ROOM_BLOCK_INVALID")
+
+    /** 422: unidades do bloqueio numa noite antes da data operacional (o problema traz as datas em `dates`). */
+    val ROOM_BLOCK_PERIOD_IN_PAST = ErrorCode("ROOM_BLOCK_PERIOD_IN_PAST")
+
+    /** 422: a data de corte nova (na criação ou trocada na alteração) é anterior à data operacional. */
+    val ROOM_BLOCK_CUTOFF_IN_PAST = ErrorCode("ROOM_BLOCK_CUTOFF_IN_PAST")
+
+    /** 409: o bloqueio já foi liberado (`releaseUnused`) e não aceita pick-up nem alteração. */
+    val ROOM_BLOCK_RELEASED = ErrorCode("ROOM_BLOCK_RELEASED")
+
+    /** 422: a data de corte do bloqueio já passou (a data operacional é posterior a ela): não há mais pick-up. */
+    val ROOM_BLOCK_CUTOFF_PASSED = ErrorCode("ROOM_BLOCK_CUTOFF_PASSED")
+
+    /**
+     * 409: a liberação do não utilizado (`ReservationsApi.releaseUnused`) foi pedida antes da data de corte (a data
+     * operacional ainda é anterior a ela). O problema traz `cutoffDate`.
+     */
+    val ROOM_BLOCK_CUTOFF_NOT_REACHED = ErrorCode("ROOM_BLOCK_CUTOFF_NOT_REACHED")
+
+    /**
+     * 409: o bloqueio não tem mais unidades do tipo de UH em alguma noite pedida (todas já viraram reservas). O
+     * problema traz os tipos em `roomTypeIds` e as datas em `dates`.
+     */
+    val ROOM_BLOCK_UNAVAILABLE = ErrorCode("ROOM_BLOCK_UNAVAILABLE")
+
+    /**
+     * 422: alguma noite da reserva do pick-up está fora do bloqueio (o bloqueio não tem unidades do tipo de UH nela);
+     * o problema traz os tipos em `roomTypeIds` e as datas em `dates`.
+     */
+    val ROOM_BLOCK_DATES_NOT_COVERED = ErrorCode("ROOM_BLOCK_DATES_NOT_COVERED")
+
+    /**
+     * 422: a alteração deixa alguma noite com menos unidades que as já convertidas em reservas (o problema traz os
+     * tipos em `roomTypeIds` e as datas em `dates`); cancele as reservas antes.
+     */
+    val ROOM_BLOCK_BELOW_PICK_UP = ErrorCode("ROOM_BLOCK_BELOW_PICK_UP")
+
+    /**
+     * 409: a reserva veio do pick-up de um bloqueio e não troca o tipo de UH, o plano nem as datas (a diária é a tarifa
+     * do grupo daquelas noites); a ocupação, o segmento e os pedidos especiais mudam. Para outra estadia, cancele (a
+     * unidade volta ao bloqueio) e faça outro pick-up.
+     */
+    val ROOM_BLOCK_RESERVATION_STAY_FIXED = ErrorCode("ROOM_BLOCK_RESERVATION_STAY_FIXED")
+
+    /** 400: empresa titular inexistente no `guests` (o código do `guests`; campo `holderCompanyId`). */
+    val UNKNOWN_COMPANY: ErrorCode = GuestsErrorCodes.UNKNOWN_COMPANY
+
+    /** 422: a empresa titular está desativada (o código do `guests`). */
+    val COMPANY_INACTIVE: ErrorCode = GuestsErrorCodes.COMPANY_INACTIVE
+
+    /** 422: o plano tarifário do bloqueio está desativado (o código do `rates`). */
+    val RATE_PLAN_INACTIVE: ErrorCode = RatesErrorCodes.RATE_PLAN_INACTIVE
+
+    /**
+     * 422: o tipo de UH de uma faixa do bloqueio não está no plano tarifário dele (o código do `rates`); o problema
+     * traz o campo em `field` (`allocations[i].roomTypeId`) e o tipo em `roomTypeIds`.
+     */
+    val ROOM_TYPE_NOT_IN_PLAN: ErrorCode = RatesErrorCodes.ROOM_TYPE_NOT_IN_PLAN
+
+    /** 422: o tipo de UH de uma faixa nova do bloqueio está desativado (o código do `rooms`). */
+    val ROOM_TYPE_INACTIVE: ErrorCode = RoomsErrorCodes.ROOM_TYPE_INACTIVE
+
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
     // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,

@@ -397,6 +397,12 @@ data class ReservationResponse(
                 "alocação é opcional até o check-in).",
     )
     val roomAssignment: RoomAssignmentResponse?,
+    @field:Schema(
+        description =
+            "O bloqueio de grupo de onde a reserva veio pelo pick-up (a diária é a tarifa do grupo; o tipo de UH, o " +
+                "plano e as datas não mudam); nulo na reserva comum.",
+    )
+    val blockId: UUID?,
 ) {
     companion object {
         fun of(
@@ -436,6 +442,7 @@ data class ReservationResponse(
             depositDueOn = reservation.guaranteeTerms.depositDueOn(reservation.arrival),
             guarantee = reservation.guarantee?.let(ReservationGuaranteeResponse::of),
             roomAssignment = reservation.roomAssignment?.let { RoomAssignmentResponse.of(it, roomNumber) },
+            blockId = reservation.blockId?.value,
         )
     }
 }
