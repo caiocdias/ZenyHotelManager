@@ -8,14 +8,17 @@ import org.springframework.modulith.PackageInfo
  * tipo de UH e data (M4 E05); disponibilidade em calendário e cotação (E06); reservas, alocação e bloqueios nas etapas
  * seguintes. Pode depender de `shared`, `hotel` (data operacional, só pela `HotelApi`), `rooms` (UHs ativas e
  * períodos OOO, só pela `RoomsApi`, e os eventos `RoomRegistryChanged` e `OutOfOrderChanged`) e, desde a E06, `rates`
- * (preço, vendabilidade, cotação e calendário de preços e restrições, só pela `RatesApi`); não conhece `iam`.
+ * (preço, vendabilidade, cotação e calendário de preços e restrições, só pela `RatesApi`) e, desde a E07, `guests`
+ * (hóspedes pela `GuestsApi`, o evento `GuestsMerged` e as portas de privacidade) e `billing` (a conta da reserva pela
+ * `BillingApi`); não conhece `iam`.
  *
  * A raiz do pacote é a API pública: [ReservationsApi], os tipos de valor, os códigos de erro
- * ([ReservationsErrorCodes]), as permissões ([ReservationsPermissions]) e os eventos ([AvailabilityChanged]).
+ * ([ReservationsErrorCodes]), as permissões ([ReservationsPermissions]) e os eventos ([AvailabilityChanged],
+ * [ReservationCreated]).
  */
 @PackageInfo
 @ApplicationModule(
     displayName = "Reservations and availability",
-    allowedDependencies = ["shared", "hotel", "rooms", "rates"],
+    allowedDependencies = ["shared", "hotel", "rooms", "rates", "guests", "billing"],
 )
 class ReservationsModule

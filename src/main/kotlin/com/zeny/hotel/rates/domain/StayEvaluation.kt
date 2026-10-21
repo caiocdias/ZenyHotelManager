@@ -30,15 +30,29 @@ object StayRules {
     /** Noites de uma estadia, no máximo (a estadia máxima das restrições, `RestrictionValues.MAX_NIGHTS`). */
     const val MAX_NIGHTS = RestrictionValues.MAX_NIGHTS
 
-    /** As noites da estadia: da chegada à véspera da saída. */
+    /**
+     * As noites da estadia: da chegada à véspera da saída. No day use (chegada = saída, H5 do M4, E07), a própria data,
+     * precificada como uma "noite" pela tarifa do plano naquela data.
+     */
     fun nights(query: StayQuery): List<LocalDate> =
-        generateSequence(query.arrival) { it.plusDays(1) }.takeWhile { it.isBefore(query.departure) }.toList()
+        if (query.dayUse) {
+            listOf(query.arrival)
+        } else {
+            generateSequence(query.arrival) { it.plusDays(1) }.takeWhile { it.isBefore(query.departure) }.toList()
+        }
 
-    /** O número de noites (saída − chegada). */
+    /** A última data com preço da estadia de [arrival] a [departure]: a véspera da saída, ou a própria no day use. */
+    fun lastPricedDate(
+        arrival: LocalDate,
+        departure: LocalDate,
+    ): LocalDate = if (arrival == departure) arrival else departure.minusDays(1)
+
+    /** O número de noites (saída − chegada; zero no day use). */
     fun nightCount(query: StayQuery): Long = ChronoUnit.DAYS.between(query.arrival, query.departure)
 
     /**
-     * Confere o formato da estadia: saída depois da chegada e até [MAX_NIGHTS] noites (campo `departure`), ao menos um
+     * Confere o formato da estadia: saída não antes da chegada (igual é day use, H5) e até [MAX_NIGHTS] noites (campo
+     * `departure`), ao menos um
      * adulto (campo `adults`) e cada idade de criança de 0 à idade limite das faixas atuais do hotel ([bands]; campo
      * `childAges[i]`). Senão, `400 STAY_INVALID` com todos os campos.
      */
@@ -55,7 +69,7 @@ object StayRules {
             violations += FieldViolation(field, RatesErrorCodes.STAY_INVALID.value, message)
         }
         val nights = nightCount(query)
-        if (nights < 1) violation("departure", "A saída precisa ser depois da chegada.")
+        if (nights < 0) violation("departure", "A saída não pode ser antes da chegada.")
         if (nights > MAX_NIGHTS) violation("departure", "A estadia pode ter até $MAX_NIGHTS noites.")
         if (query.adults < 1) violation("adults", "Informe ao menos um adulto.")
         query.childAges.forEachIndexed { index, age ->
@@ -294,7 +308,8 @@ data class SaleConditions(
  *
  * - **fechado** vale em cada noite (da chegada à véspera da saída), nunca na data de saída;
  * - **CTA** só na data de chegada; **CTD** só na data de saída (que não é noite da estadia);
- * - **estadia mínima e máxima** em noites (saída − chegada), as da data de chegada ("on arrival");
+ * - **estadia mínima e máxima** em noites (saída − chegada), as da data de chegada ("on arrival"); não valem no day use
+ *   (chegada = saída, H5), que não tem noite;
  * - **antecedência** em dias da data operacional até a chegada, as da data de chegada; a chegada antes da data
  *   operacional nunca é vendável (e então a antecedência não é avaliada).
  *
@@ -408,7 +423,7 @@ object SaleRules {
                     ),
                 )
             }
-            atArrival.minStay?.takeIf { nights < it }?.let {
+            atArrival.minStay?.takeIf { !query.dayUse && nights < it }?.let {
                 add(
                     SaleRefusal(
                         RatesErrorCodes.MIN_STAY_NOT_MET,
@@ -417,7 +432,7 @@ object SaleRules {
                     ),
                 )
             }
-            atArrival.maxStay?.takeIf { nights > it }?.let {
+            atArrival.maxStay?.takeIf { !query.dayUse && nights > it }?.let {
                 add(
                     SaleRefusal(
                         RatesErrorCodes.MAX_STAY_EXCEEDED,

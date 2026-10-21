@@ -3,6 +3,7 @@
 
 package com.zeny.hotel.reservations
 
+import com.zeny.hotel.rates.SalesChannel
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -20,4 +21,28 @@ data class AvailabilityChanged(
     val from: LocalDate,
     val to: LocalDate,
     val changedAt: Instant,
+)
+
+/**
+ * A reserva [reservationId] da agrupadora [bookingId] foi criada (SPEC §8.3; M4 E07), na [status] inicial
+ * (`PROVISIONAL` ou `CONFIRMED`), no tipo de UH [roomTypeId] e no plano [ratePlanId], de [arrival] a [departure]
+ * (iguais no day use), para [adults] adultos e [children] crianças, vendida no [channel] pela [origin]. Publicado por
+ * `reservations` pelo outbox na transação da criação, um por reserva. Só ids, datas, contagens e situações: nada de
+ * hóspede, pedido especial nem preço (quem consome relê a reserva pela `ReservationsApi`). Escutado pela distribuição
+ * (M8), pela FNRH (M5) e pela governança (M6).
+ */
+data class ReservationCreated(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val status: ReservationStatus,
+    val roomTypeId: UUID,
+    val ratePlanId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val adults: Int,
+    val children: Int,
+    val origin: ReservationOrigin,
+    val channel: SalesChannel,
+    val createdAt: Instant,
 )

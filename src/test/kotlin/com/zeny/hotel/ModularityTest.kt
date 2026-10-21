@@ -281,14 +281,14 @@ class ModularityTest {
     }
 
     @Test
-    fun `reservations depends only on shared, hotel, rooms and rates, and only on their public APIs`() {
+    fun `reservations depends only on shared, hotel, rooms, rates, guests and billing, only on their public APIs`() {
         val reservations = modules.getModuleByName("reservations").orElseThrow()
-        val allowed = setOf("shared", "hotel", "rooms", "rates")
+        val allowed = setOf("shared", "hotel", "rooms", "rates", "guests", "billing")
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M4 E05: hotel (data operacional pela HotelApi) e rooms (UHs ativas e
         // períodos OOO pela RoomsApi; os eventos RoomRegistryChanged e OutOfOrderChanged); E06: rates (vendabilidade,
-        // preço, cotação e calendário de preços e restrições pela RatesApi). guests e billing entram nas etapas que os
-        // usarem; nunca iam.
+        // preço, cotação e calendário de preços e restrições pela RatesApi); E07: guests (hóspedes pela GuestsApi, o
+        // evento GuestsMerged e as portas de privacidade) e billing (a conta da reserva pela BillingApi); nunca iam.
         reservations
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -299,7 +299,14 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        val publicApis = setOf("com.zeny.hotel.hotel", "com.zeny.hotel.rooms", "com.zeny.hotel.rates")
+        val publicApis =
+            setOf(
+                "com.zeny.hotel.hotel",
+                "com.zeny.hotel.rooms",
+                "com.zeny.hotel.rates",
+                "com.zeny.hotel.guests",
+                "com.zeny.hotel.billing",
+            )
         reservations
             .getDirectDependencies(modules)
             .stream()

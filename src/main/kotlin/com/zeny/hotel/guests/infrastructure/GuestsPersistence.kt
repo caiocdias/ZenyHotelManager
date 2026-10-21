@@ -39,6 +39,8 @@ class JpaGuestsStore(
 ) : GuestsStore {
     override fun guest(id: GuestId): Guest? = guests.findById(id.value).orElse(null)
 
+    override fun freshGuest(id: GuestId): Guest? = guest(id)?.also { entityManager.refresh(it) }
+
     override fun guests(ids: List<UUID>): List<Guest> {
         if (ids.isEmpty()) return emptyList()
         val found = guests.findAllWithDocuments(ids).associateBy { it.id.value }

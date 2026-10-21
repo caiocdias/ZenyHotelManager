@@ -1,5 +1,6 @@
 package com.zeny.hotel.reservations
 
+import com.zeny.hotel.guests.GuestsErrorCodes
 import com.zeny.hotel.rates.RatesErrorCodes
 import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.shared.ErrorCode
@@ -53,4 +54,51 @@ object ReservationsErrorCodes {
      * (`childAges[i]`).
      */
     val STAY_INVALID: ErrorCode = RatesErrorCodes.STAY_INVALID
+
+    // --- Reservas (M4 E07) ------------------------------------------------------------------------------------------
+
+    /**
+     * 400: reserva agrupadora ou reserva fora do formato, com o campo: nenhuma reserva ou mais de 30 (`reservations`),
+     * id externo fora de 1 a 60 caracteres (`externalId`), mais de 40 adultos ou 20 crianças, pedidos especiais acima
+     * de 1000 caracteres, hóspedes repetidos, sem principal ou com mais de um, ou mais hóspedes que a ocupação
+     * (`reservations[i].guests`).
+     */
+    val BOOKING_INVALID = ErrorCode("BOOKING_INVALID")
+
+    /**
+     * 400: diária editada fora do formato, com o campo (`reservations[i].nightlyRates[j]…`): data que não é noite da
+     * estadia (no day use, a própria data), data repetida ou valor fora de 0,00 a 1.000.000,00.
+     */
+    val NIGHTLY_RATE_INVALID = ErrorCode("NIGHTLY_RATE_INVALID")
+
+    /**
+     * 422: a diária editada de uma noite fica abaixo dos pacotes inclusos nela (a hospedagem ficaria negativa); o
+     * problema traz a data em `dates`.
+     */
+    val NIGHTLY_RATE_BELOW_INCLUDED_PACKAGES = ErrorCode("NIGHTLY_RATE_BELOW_INCLUDED_PACKAGES")
+
+    /** 400: hóspede inexistente no `guests` (campo `holderGuestId` ou `reservations[i].guests[j].guestId`). */
+    val UNKNOWN_GUEST = ErrorCode("UNKNOWN_GUEST")
+
+    /** 422: o perfil do hóspede foi anonimizado (o código do `guests`) e não entra numa reserva nova. */
+    val GUEST_ANONYMIZED: ErrorCode = GuestsErrorCodes.GUEST_ANONYMIZED
+
+    /**
+     * 409: um hóspede citado foi mesclado noutro perfil enquanto a reserva era criada; repita o pedido (a reserva usa
+     * o sobrevivente).
+     */
+    val GUEST_PROFILE_CHANGED = ErrorCode("GUEST_PROFILE_CHANGED")
+
+    /** 404: reserva agrupadora inexistente. */
+    val BOOKING_NOT_FOUND = ErrorCode("BOOKING_NOT_FOUND")
+
+    /** 404: reserva inexistente. */
+    val RESERVATION_NOT_FOUND = ErrorCode("RESERVATION_NOT_FOUND")
+
+    // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
+    // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
+    // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,
+    // `CLOSED_TO_ARRIVAL`, `CLOSED_TO_DEPARTURE`, `MIN_STAY_NOT_MET`, `MAX_STAY_EXCEEDED`, `STAY_DATE_CLOSED`,
+    // `RATE_NOT_PRICED`, `OCCUPANCY_NOT_PRICED`, `CHILD_AGE_NOT_PRICED`, `INCLUDED_PACKAGES_EXCEED_RATE`), e o problema
+    // traz a reserva em `reservationIndex` e todos os motivos em `refusals` (`code`, `message`, `dates`).
 }

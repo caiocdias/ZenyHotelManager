@@ -1,6 +1,8 @@
 package com.zeny.hotel.reservations.application
 
 import com.zeny.hotel.reservations.AvailabilityChanged
+import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
@@ -23,7 +25,72 @@ internal object ReservationsAudit {
     const val RECOUNT_INVENTORY = "reservations.inventory.recount"
     const val SET_OVERBOOKING_LIMIT = "reservations.inventory.set-overbooking-limit"
 
+    const val BOOKING = "reservations.booking"
+    const val RESERVATION = "reservations.reservation"
+
+    const val CREATE_BOOKING = "reservations.booking.create"
+    const val REPOINT_GUEST = "reservations.guest-reference.repoint"
+
     private const val MAX_AUDITED_VALUES = 20
+
+    /** O retrato de uma reserva agrupadora: ids, código, origem, canal e o id externo; o titular só pelo id. */
+    fun bookingSnapshot(booking: BookingSummary): Map<String, Any?> =
+        mapOf(
+            "code" to booking.code.toString(),
+            "holderGuestId" to booking.holderGuestId.toString(),
+            "origin" to booking.origin.name,
+            "channel" to booking.channel.name,
+            "externalId" to booking.externalId,
+            "reservationIds" to booking.reservations.map { it.id.toString() },
+        )
+
+    /**
+     * O retrato de uma reserva (H10 do M3): ids, situação, datas, contagens, segmento, os termos copiados pelo id e a
+     * versão, os totais e o desconto; os pedidos especiais só como `hasSpecialRequests` (texto livre) e os hóspedes só
+     * pelos ids.
+     */
+    fun reservationSnapshot(reservation: ReservationSummary): Map<String, Any?> =
+        mapOf(
+            "code" to reservation.code.toString(),
+            "bookingId" to reservation.bookingId.toString(),
+            "status" to reservation.status.name,
+            "provisionalUntil" to reservation.provisionalUntil?.toString(),
+            "roomTypeId" to reservation.roomTypeId.toString(),
+            "ratePlanId" to reservation.ratePlanId.toString(),
+            "arrival" to reservation.arrival.toString(),
+            "departure" to reservation.departure.toString(),
+            "dayUse" to reservation.dayUse,
+            "adults" to reservation.adults,
+            "children" to reservation.childAges.size,
+            "segment" to reservation.segment.name,
+            "hasSpecialRequests" to (reservation.specialRequests != null),
+            "guestIds" to reservation.guests.map { it.guestId.toString() },
+            "primaryGuestId" to
+                reservation.guests
+                    .firstOrNull { it.primary }
+                    ?.guestId
+                    ?.toString(),
+            "nights" to reservation.nightlyRates.size,
+            "overriddenDates" to reservation.nightlyRates.filter { it.overridden }.map { it.date.toString() },
+            "maxDiscountPercent" to
+                reservation.nightlyRates
+                    .mapNotNull { it.discountPercent }
+                    .maxOrNull()
+                    ?.toString(),
+            "roomTotal" to reservation.roomTotal.toString(),
+            "total" to reservation.total.toString(),
+            "cancellationPolicy" to
+                mapOf(
+                    "id" to reservation.cancellationTerms.policyId.toString(),
+                    "version" to reservation.cancellationTerms.version,
+                ),
+            "guaranteePolicy" to
+                mapOf(
+                    "id" to reservation.guaranteeTerms.policyId.toString(),
+                    "version" to reservation.guaranteeTerms.version,
+                ),
+            "folioId" to reservation.folioId.toString(),
+        )
 
     /**
      * O retrato de um conjunto de linhas de um tipo: o período, quantas e os valores distintos de cada contador (até

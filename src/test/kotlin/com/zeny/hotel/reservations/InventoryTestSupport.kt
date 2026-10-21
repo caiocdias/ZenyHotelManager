@@ -34,6 +34,9 @@ open class AvailabilityChangedProbeListener {
 class InventoryTestConfiguration {
     @Bean
     fun availabilityChangedProbeListener() = AvailabilityChangedProbeListener()
+
+    @Bean
+    fun reservationCreatedProbeListener() = ReservationCreatedProbeListener()
 }
 
 /** Uma linha do inventário lida direto do banco. */

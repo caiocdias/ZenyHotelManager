@@ -20,6 +20,10 @@ import java.time.LocalDate
  * A [GuestsApi]: leituras sem conferir permissão (quem chama já se autorizou). [guest] devolve o perfil pedido, mesmo
  * mesclado (com o sobrevivente em `mergedInto`); o alerta de restrição, a maioridade e os dados da FNRH de um perfil
  * mesclado são os do sobrevivente ([current]).
+ *
+ * Toda leitura relê o perfil do banco ([GuestsStore.freshGuest]), mesmo que a transação de quem chama já o tenha
+ * lido: quem trava antes de reler (a criação de reservas, M4 E07) vê a mesclagem ou a anonimização confirmada entre as
+ * duas leituras, e não a cópia do contexto de persistência.
  */
 @Service
 @Transactional(readOnly = true)
@@ -29,7 +33,7 @@ class GuestsApiService(
     private val blindIndex: BlindIndex,
     private val cipher: FieldCipher,
 ) : GuestsApi {
-    override fun guest(id: GuestId): GuestSummary? = store.guest(id)?.summary()
+    override fun guest(id: GuestId): GuestSummary? = store.freshGuest(id)?.summary()
 
     override fun findByDocument(
         type: DocumentType,
@@ -86,10 +90,10 @@ class GuestsApiService(
      * o sobrevivente também foi absorvido depois).
      */
     private fun current(id: GuestId): Guest? {
-        val start = store.guest(id) ?: return null
+        val start = store.freshGuest(id) ?: return null
         // Uma mesclagem nunca tem como sobrevivente um perfil já mesclado: a cadeia não fecha um ciclo.
         return generateSequence(start) { guest ->
-            guest.mergedInto?.let { checkNotNull(store.guest(it)) { "Sobrevivente inexistente: ${guest.id}" } }
+            guest.mergedInto?.let { checkNotNull(store.freshGuest(it)) { "Sobrevivente inexistente: ${guest.id}" } }
         }.last()
     }
 

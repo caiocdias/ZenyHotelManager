@@ -119,7 +119,7 @@ Entregar os módulos `rates` e `reservations`. Ao fim do marco, a API permite ma
 - **E02:** ~~o que acontece com preços por faixa quando as faixas do hotel mudam; limite de período da edição em massa~~ — **decididas pelo usuário em 2026-10-20** (entrevista da E02, ambas pela opção recomendada): (1) o preço guarda a faixa (idades) com que foi gravado; a faixa que não existe mais nas `childAgeBands` atuais é ignorada e a data fica sem preço de criança naquela faixa (não vendável para criança dessa idade, regra que a E04 aplica) até o gestor regravar, e a leitura sinaliza a faixa obsoleta; nada é recalculado em silêncio, reservas já feitas não mudam (RN-14) e nunca cai no preço de adulto extra; (2) edição em massa de até 366 dias por requisição (acima, `400 RATE_PRICE_PERIOD_TOO_LONG` no campo `to`); períodos maiores em duas chamadas. Pontos novos da E02 no handoff dela.
 - **E03:** ~~semântica de CTA, CTD e estadia mínima (pela restrição da data de chegada ou de cada noite), registrada para o M8 mapear~~ — **decididas pelo usuário em 2026-10-20** (entrevista da E03, todas pela opção recomendada): (1) estadia mínima e máxima "on arrival": valem as da data de chegada, não as de cada noite (a antecedência também pela data de chegada, H15); (2) CTA e CTD só na data exata: o CTA da data de chegada impede chegar nela, o CTD da data de saída impede sair nela, e as noites do meio não são afetadas (só o "fechado" vale em qualquer noite da estadia); (3) precedência: a restrição do tipo de UH substitui a geral do plano **campo a campo** (o campo informado no tipo prevalece, o vazio herda o da geral), com todos os campos anuláveis e os booleanos tri-estado (o `false` do tipo abre exceção sobre a geral `true`). Registradas no `CLAUDE.md` (seção "Restrições de venda") para o M8 mapear. Pontos novos da E03 no handoff dela.
 - **E04:** ~~criança acima da `childMaxAge`; inclusos acima da diária; onde entra o pacote por estadia; pacotes extras na consulta; preço faltante no `isSellable`; ocupação máxima; quem conta no pacote por pessoa/noite~~ — **decididas pelo usuário em 2026-10-20** (entrevista da E04, todas pela opção recomendada; detalhes no handoff da E04).
-- **E07:** segmentos (lista fixa ou cadastrável); se a reserva agrupadora tem conta própria além das contas das reservas.
+- **E07:** ~~segmentos (lista fixa ou cadastrável); se a reserva agrupadora tem conta própria além das contas das reservas~~ — **decididas em 2026-10-21 pelo orquestrador, por delegação do usuário ausente** (opção recomendada depois de pesar prós e contras): segmentos em lista fixa `MarketSegment` com `x-extensible-enum`; a reserva agrupadora sem conta própria (cada reserva tem a sua, RF-CTA-01; o "a empresa paga tudo" pelo roteamento ou pela conta master da E11). Demais pontos no handoff da E07.
 - **E08:** o que acontece com a conta de uma reserva cancelada sem saldo (encerrar pela `BillingApi.closeFolio` ou deixar aberta); antecedência mínima para alterar uma reserva.
 - **E09:** como a garantia "cartão" é registrada manualmente até o M7 (só informada ou ligada a uma caução registrada do M3).
 - **E11:** se a unidade de uma reserva de pick-up cancelada antes do corte volta ao bloqueio; se a rooming list cria regras de roteamento para a conta master (exigiria acrescentar a criação de regra à `BillingApi`).
@@ -225,7 +225,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 |---|---|---|---|---|
 | E05 | Inventário por tipo e data | #concluida | — | `room_type_inventory` com lock, horizonte, listener de OOO, evento de cadastro de UH no `rooms` e `AvailabilityChanged` |
 | E06 | Disponibilidade, calendário e cotação | #concluida | E04, E05 | Calendário com preços e restrições; cotação por período, ocupação e canal |
-| E07 | Criação de reservas | #pendente | E06 | `Booking` e `Reservation` com preço congelado, política vigente, conta em `billing`, `ReservationCreated`, `GuestsMerged` e portas do `guests` |
+| E07 | Criação de reservas | #concluida | E06 | `Booking` e `Reservation` com preço congelado, política vigente, conta em `billing`, `ReservationCreated`, `GuestsMerged` e portas do `guests` |
 | E08 | Alteração, cancelamento e reativação | #pendente | E07 | Recálculo e histórico; multa pela `BillingApi` ou isenção sensível; reativação sensível |
 | E09 | Pré-reserva, garantia e expiração | #pendente | E07 | Garantia manual com depósito conferido no `billing`, confirmação e job de expiração |
 | E10 | Alocação de UH | #pendente | E07 | Alocação com `EXCLUDE`, sugestão, "não mover", OOS como última opção e alerta de realocação |
@@ -860,7 +860,7 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 ---
 
-## E07 — Criação de reservas — #pendente
+## E07 — Criação de reservas — #concluida
 
 **Objetivo:** criar reservas e reservas agrupadoras (uma reserva por UH sob o mesmo titular e canal), com hóspede principal e acompanhantes, origem, canal, segmento e pedidos especiais; preço congelado por noite (editável com desconto sujeito a limite e step-up); política vigente copiada; consumo de inventário na mesma transação; conta da reserva aberta pela `BillingApi`; day use; evento `ReservationCreated`; e as integrações com o `guests` que o M3 deixou para o M4: listener de `GuestsMerged`, `GuestPersonalDataContributor` e `GuestActiveStayCheck` (RF-RES-01, 02, 03, 14; RN-14, RN-15; RF-CTA-01; H5, H7, H8, H12).
 
@@ -924,16 +924,16 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Reserva simples e reserva agrupadora com duas UHs criadas: inventário consumido, conta da reserva aberta em `billing` (`FolioOwner(RESERVATION, id)`), `ReservationCreated` no outbox (com listener de teste), tudo na mesma transação (teste de integração).
-- [ ] Alterar a tarifa do plano depois da criação não muda os `NightlyRate` da reserva.
-- [ ] Políticas de cancelamento e garantia vigentes copiadas na reserva; editar a política depois não altera a reserva.
-- [ ] Desconto acima do limite sem permissão nem aprovação → `403` com `APPROVAL_REQUIRED` (com `limit.key` `maxPercent`); com aprovação, auditado com solicitante e aprovador.
-- [ ] Sem disponibilidade → `409` com `code` estável e nada gravado (nem conta).
-- [ ] Repetição com a mesma `Idempotency-Key` não cria segunda reserva nem segunda conta.
-- [ ] Hóspede na lista de restrição gera alerta na resposta; hóspede mesclado vira o sobrevivente e anonimizado é recusado; `GuestsMerged` reponta titular e hóspedes da estadia, e a reentrega não muda nada.
-- [ ] `GuestActiveStayCheck` recusa a anonimização (`409 GUEST_HAS_ACTIVE_STAY`) de hóspede com reserva ativa (H12); a exportação do titular traz a seção `reservations`.
-- [ ] Day use criado segundo H5, com a regra registrada no handoff.
-- [ ] Trilha, evento e log sem pedidos especiais nem dado pessoal; API pública de criação documentada no `CLAUDE.md`; `ModularityTest` atualizado; contrato regenerado; `./gradlew build` e oasdiff passam.
+- [x] Reserva simples e reserva agrupadora com duas UHs criadas: inventário consumido, conta da reserva aberta em `billing` (`FolioOwner(RESERVATION, id)`), `ReservationCreated` no outbox (com listener de teste), tudo na mesma transação (teste de integração).
+- [x] Alterar a tarifa do plano depois da criação não muda os `NightlyRate` da reserva.
+- [x] Políticas de cancelamento e garantia vigentes copiadas na reserva; editar a política depois não altera a reserva.
+- [x] Desconto acima do limite sem permissão nem aprovação → `403` com `APPROVAL_REQUIRED` (com `limit.key` `maxPercent`); com aprovação, auditado com solicitante e aprovador.
+- [x] Sem disponibilidade → `409` com `code` estável e nada gravado (nem conta).
+- [x] Repetição com a mesma `Idempotency-Key` não cria segunda reserva nem segunda conta.
+- [x] Hóspede na lista de restrição gera alerta na resposta; hóspede mesclado vira o sobrevivente e anonimizado é recusado; `GuestsMerged` reponta titular e hóspedes da estadia, e a reentrega não muda nada.
+- [x] `GuestActiveStayCheck` recusa a anonimização (`409 GUEST_HAS_ACTIVE_STAY`) de hóspede com reserva ativa (H12); a exportação do titular traz a seção `reservations`.
+- [x] Day use criado segundo H5, com a regra registrada no handoff.
+- [x] Trilha, evento e log sem pedidos especiais nem dado pessoal; API pública de criação documentada no `CLAUDE.md`; `ModularityTest` atualizado; contrato regenerado; `./gradlew build` e oasdiff passam.
 
 **Validação obrigatória:**
 
@@ -949,12 +949,69 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `e0aea76e205ca20b40ab4ceeaf7ae3a48a0ee413` (recebido do orquestrador). Snapshot ao fim da implementação (antes deste handoff): `fd27da2412550f498754f672a76d02c32aac34ea`. Pré-requisitos conferidos: E06 `#concluida` (commit `45e1d26`) e o código bate com o handoff dela (`AvailabilityService`, `RatesApi.stayOptions`/`rateCalendar`, `RoomTypeInventory.apply`, `InventoryUsageSource` sem implementação); H5, H7 e H12 decididas pelo usuário em 2026-10-20; a ARCHITECTURE §3.1 já tinha `reservations` → `guests` e `billing` (sem mudança). Investigação feita pela própria sessão (adendo do orquestrador): SPEC RF-RES-01 a 03, 08 e 14, §8.2.6 (`Booking`, `Reservation`, `StayGuest`, `NightlyRate`), §8.4 (criada sem garantia → pré-reserva; com garantia → confirmada), RN-14, RN-15 e RF-CTA-01 (a conta existe desde a criação); `GuestDataSubjectService` (contribuidores por `ObjectProvider`, seção nula omitida; `GuestActiveStayCheck` chamado na transação da anonimização, depois de travar os perfis) e `GuestPrivacyApiTest` (contribuidor e checagem de teste).
+- Arquivos alterados:
+  - novos (`reservations`): `Bookings.kt` (ids, `ReservationStatus`, `ReservationOrigin` com o canal, `MarketSegment`, `NewBooking`/`NewReservation`/`NewStayGuest`/`NightlyRateOverride`, `BookingSummary`, `ReservationSummary`, `NightlyRateSummary`, `CancellationTerms`, `GuaranteeTerms`), `domain/Booking.kt`, `application/BookingPorts.kt`, `BookingCreation.kt`, `BookingService.kt`, `infrastructure/JdbcBookingStore.kt`, `web/BookingsController.kt`; migração `reservations/V2026_10_21_0520__create_bookings.sql`;
+  - alterados (`reservations`): `ReservationsApi.kt` (`createBooking`, `booking`, `reservation`), `ReservationsEvents.kt` (`ReservationCreated`), `ReservationsErrorCodes.kt` (seção E07), `ReservationsPermissions.kt` (`reservations.reservations.read`/`manage`), `ReservationsModule.kt` (`guests`, `billing`), `application/InventoryService.kt` (`ReservationsApiService`), `RoomTypeInventory.kt` (`ReservationsAudit` com as ações e os retratos da reserva), `AvailabilityService.kt` (a cotação recusa o day use explicitamente), `web/InventoryController.kt` (descrição da tag);
+  - `guests` (correção da 1ª verificação): `application/GuestsPorts.kt` (`freshGuest`), `infrastructure/GuestsPersistence.kt`, `application/GuestsApiService.kt` (leituras frescas);
+  - `rates` (day use, sem quebrar nada): `StayPricing.kt` (`StayQuery.dayUse`), `domain/StayEvaluation.kt` (`StayRules.nights` e `lastPricedDate`, formato aceita chegada = saída, estadia mínima e máxima fora do day use), `application/StayEvaluator.kt`, `RatesApi.kt` (KDoc);
+  - testes novos: `reservations/BookingDomainTest.kt`, `BookingsApiTest.kt`, `BookingGuestsApiTest.kt`, `ReservationsTestSupport.kt`; alterados: `reservations/InventoryTestSupport.kt` (o `ReservationCreatedProbeListener` no `InventoryTestConfiguration`), `ModularityTest.kt`, `iam/AuthorizationTest.kt` (modelo Gerente), `rates/StayEvaluationDomainTest.kt` (chegada = saída deixou de ser inválida; dois testes de day use), `rates/StayEvaluationApiTest.kt` (estadia inválida = saída antes da chegada);
+  - `api/openapi.yaml` (regenerado: `createBooking`, `getBooking`, `getReservation`), `CLAUDE.md` (estado atual, seção "Reservas e reservas agrupadoras", listeners, recontagem), `README.md` (API e árvore), este roadmap.
+- Decisões:
+  - **já dadas:** H5 (day use: chegada = saída, não toma o contador de pernoite, plano com tarifa própria), H7 (`rates.discounts.apply`, sensível, `maxPercent`; Gerente sem teto, Recepcionista 10%), H8 (mesclado → sobrevivente, anonimizado recusado, listener idempotente), H12 (estadia ativa = `PROVISIONAL`/`CONFIRMED`/`IN_HOUSE` como titular ou hóspede; seção `reservations` da exportação), H16 (nomes `reservations.reservations.read`/`manage`), H14 (sem offline nem SSE).
+  - **do implementador, pela opção recomendada em nome do usuário (delegado ao orquestrador); confirmadas pelo orquestrador em 2026-10-21 na revisão humana delegada** (o usuário, ausente, delegou a escolha da opção recomendada depois de pesar prós e contras; todas mantidas como implementadas, inclusive os itens de revisão humana: a mitigação da corrida com a mesclagem pela trava consultiva por hóspede com a leitura fresca, a aprovação do desconto vinculada a `reservations.booking:new:<titular>` e os pedidos especiais na resposta HTTP e na exportação, nunca na trilha, nos eventos ou no log):
+    1. **Segmentos:** lista fixa `MarketSegment` (`LEISURE`, `BUSINESS`, `EVENT`, `OTHER`; os três da SPEC mais "outro"), `x-extensible-enum` na resposta, obrigatório por reserva. Contra o cadastrável: sem CRUD nem permissão nova; um valor novo não quebra o contrato.
+    2. **Conta da reserva agrupadora:** **sem conta própria** do booking; cada reserva tem a sua (RF-CTA-01). Para "a empresa paga tudo", roteamento para a conta de uma das reservas (ou a conta master do grupo, E11). Evita um dono novo em `FolioOwnerType` e a conta vazia.
+    3. **Day use na cotação:** a cotação **continua recusando** chegada = saída (`400 STAY_INVALID`, campo `departure`): o day use não toma inventário e a disponibilidade dele depende da alocação (E10); o preço da data já está no calendário. A criação aceita e precifica pela tarifa da data (o `rates` passou a aceitar o day use em `priceFor`/`isSellable`/`stayOptions`: o fechado, o CTA e o CTD da data e a antecedência valem; a estadia mínima e a máxima, não).
+    4. **Situação inicial pela política de garantia:** `NONE` → `CONFIRMED`; `CARD`/`DEPOSIT` → `PROVISIONAL` com `provisionalUntil` = criação + `preReservationExpiry` (sem campo no pedido para forçar a pré-reserva).
+    5. **Origem define o canal** (`ReservationOrigin.channel`: balcão, telefone, e-mail, WhatsApp e outros → `DIRECT`; `WEBSITE`; `OTA`), sem `channel` no pedido; `x-extensible-enum` (o M8 pode acrescentar origens por OTA).
+    6. **Diária editável = a diária da noite** (`roomAmount`, com os inclusos dentro); os adicionais ficam como calculados; abaixo dos inclusos `422 NIGHTLY_RATE_BELOW_INCLUDED_PACKAGES`; acima da calculada não é desconto. Desconto em percentual da calculada com 4 casas **arredondado para cima** (conservador para o teto), conferido **uma vez** pelo maior desconto da agrupadora, com `resourceRef` `reservations.booking:new:<titular>` (a chave natural da criação; a aprovação vale para o mesmo solicitante, sessão, ação e valor, uma vez, por 2 min).
+    7. **Um só endpoint de criação** (`POST /api/v1/bookings`, com 1 a 30 reservas; a reserva simples é a agrupadora com uma), e as consultas `GET /bookings/{id}` e `GET /reservations/{id}`; sem listagem (E12).
+    8. **`ReservationsApi.createBooking` sem permissão nem step-up do desconto** (o channel manager grava a diária da OTA; quem chama se autoriza), auditada como a HTTP.
+    9. **Corrida com a mesclagem e a anonimização** (risco da E07): trava consultiva por hóspede, compartilhada na criação (depois de descobrir a cadeia de mesclagens, com releitura; mudança no meio `409 GUEST_PROFILE_CHANGED`) e exclusiva no listener e na checagem de estadia ativa. Alternativas descartadas: varredura periódica pelo `mergedInto` (janela maior) e travar as linhas do `guests` (outro schema).
+    10. **Listener:** reponta para o sobrevivente **final** (segue `mergedInto`); reserva com os dois perfis fica com um só (principal se algum era); avança as versões; ator sistema; sem mudança, nada na trilha.
+    11. **Exportação:** a seção `reservations` traz, por reserva, código, agrupadora, papel (`HOLDER`/`PRIMARY_GUEST`/`GUEST`), situação, datas, tipo e plano (ids e nomes), ocupação, segmento, pedidos especiais, noites e total; `null` sem reservas.
+    12. **Alertas da lista de restrição** lidos na hora, em toda resposta (criação e consultas), não gravados.
+    13. **Evento `ReservationCreated`** um por reserva, com origem, canal, contagens e `dayUse`; sem hóspede nem preço.
+    14. Persistência por `JdbcClient` (`Reservation` como agregado próprio, `Booking` leve; noites e hóspedes num comando cada, por `jsonb_to_recordset`); bookings e reservas nunca apagados (trigger); `nightly_rate` e `reservation_guest` mutáveis (a E08 refaz as noites; o listener mexe nos hóspedes).
+- Validações executadas:
+  - testes escritos antes da implementação dos casos de uso (a primeira rodada, com a implementação, falhou em 4: a mesclagem recusada por CPFs diferentes nos hóspedes de teste, o `limit.amount` sem zeros e a estadia de zero noite do `rates`, corrigidos nos testes e no apoio);
+  - `./gradlew test --tests 'com.zeny.hotel.reservations.Booking*' --tests 'com.zeny.hotel.rates.StayEvaluationApiTest'` → `BookingDomainTest` 8, `BookingGuestsApiTest` 5, `BookingsApiTest` 13, `StayEvaluationApiTest` 5, 0 falhas;
+  - mutações aplicadas, rodadas e revertidas: sem a tomada de inventário → 6 testes do `BookingsApiTest` falham (simples, agrupadora, sem unidade, concorrência, idempotência, day use); o step-up do desconto pulado → o teste do desconto falha; a trava do listener compartilhada em vez de exclusiva → o teste "the repointing waits for a reservation being created…" falha;
+  - `./gradlew lint` → sucesso (depois de `ktlintFormat` e de corrigir `MaxLineLength`, `LongMethod`, `ThrowsCount`, `ReturnCount`, `SwallowedException`, `UnsafeCallOnNullableType`, `TooManyFunctions`);
+  - `./gradlew updateOpenApi` → `createBooking`, `getBooking`, `getReservation`; `./gradlew checkOpenApi` → em dia;
+  - `./gradlew build` → BUILD SUCCESSFUL em 4 min 43 s (1061 testes, 0 falhas; detekt, ktlint, `checkOpenApi` e `koverVerify`);
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+- Parecer do verificador: 1ª verificação independente **REPROVADO** (orquestrador, 2026-10-21):
+  - **(grave)** a releitura do hóspede depois da trava lia a cópia do contexto de persistência: `GuestsApi.guest` usava `findById`, que na segunda leitura da mesma transação não vai ao banco. Por isso a anonimização ou a mesclagem confirmada entre a descoberta e a trava não era vista. O verificador reproduziu `first=ACTIVE db=ANONYMIZED resolve={A=A}`;
+  - o teste da trava exercitava só a trava consultiva isolada, e o caminho `GUEST_PROFILE_CHANGED` não tinha teste;
+  - **(menor)** o `CLAUDE.md` ainda dizia "noites (1 a 365)" na `StayQuery`.
+- **Correção da 1ª verificação** (snapshot depois da correção, antes deste registro: `08ecf32fa6942afe1b84df4346525fd84dd59d1b`):
+  - **leitura fresca na `GuestsApi`, sem mudar o contrato.** Novo `GuestsStore.freshGuest(id)` em `JpaGuestsStore`, que faz `findById` seguido de `entityManager.refresh`. `GuestsApiService.guest` e `current` (usado por `restrictionAlert`, `isMinorOn` e `fnrhData`) passaram a usá-lo, com a regra documentada na `GuestsApi`/`GuestsStore` e no `CLAUDE.md`. Escolhida em vez de "travar cada id antes da primeira leitura" porque descobrir a cadeia de mesclagens exige ler antes de saber o que travar. Travar o sobrevivente depois, fora de ordem, daria deadlock com a anonimização, que trava a cadeia em ordem. Com a leitura fresca, a sequência continua descobrir, travar tudo em ordem e reler, e a releitura vê o que foi confirmado. Nenhum código do `guests` chama a `GuestsApi` (o `refresh` descartaria mudanças não enviadas de quem alterou o perfil na mesma transação);
+  - **testes determinísticos novos** em `BookingGuestsApiTest`:
+    - (1) a transação da criação já leu o perfil, a anonimização confirma noutra thread, e `ReservationsApi.createBooking` termina com `422 GUEST_ANONYMIZED`, sem reserva;
+    - (2) idem com a mesclagem: a reserva fica com o sobrevivente;
+    - (3) outra transação segura a trava exclusiva do absorvido (como o listener), a criação descobre o perfil ativo e para na trava (conferido em `pg_locks` pela chave consultiva do hóspede), a mesclagem confirma, a trava sai, e a criação termina com `409 GUEST_PROFILE_CHANGED`, sem reserva;
+  - **mutação:** `GuestsApiService` voltando a `store.guest` (sem `refresh`) faz os 3 testes falharem; com a correção, passam;
+  - `CLAUDE.md`: a `StayQuery` com o day use (chegada = saída), a leitura fresca na `GuestsApi` e na seção das reservas;
+  - **registros pedidos pelo orquestrador** (sem mudar código):
+    - (a) day use: qualquer plano vende day use pela diária da data, e a quantidade só é controlada na alocação (E10). É decisão do implementador, aceita pelo orquestrador: o "plano com tarifa própria" da H5 é o plano que o operador escolhe para o day use (o preço dele na data). Evolução possível: uma marca no plano que restrinja o day use;
+    - (b) nota para o M8: `ReservationsApi.createBooking` não tem idempotência nem `external_id` único; o channel manager vai precisar dos dois (por exemplo, unicidade de origem + `external_id` e a criação idempotente por ele);
+    - (c) o `externalId` vai à trilha, porque não é dado pessoal (é o número da reserva na OTA);
+  - validações:
+    - `./gradlew test --tests 'com.zeny.hotel.reservations.BookingGuestsApiTest'` → 8 testes, 0 falhas;
+    - `./gradlew lint` → sucesso;
+    - `./gradlew build` → BUILD SUCCESSFUL em 5 min 42 s (1064 testes, 0 falhas);
+    - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR`; contrato sem mudança nesta correção.
+  - 2ª verificação independente **APROVADO** (orquestrador, 2026-10-21; snapshot `57c8c7ba825a04810364d78bf5b98e61f6aaf00e`, 37 arquivos desde o inicial): os dez critérios aprovados com evidência; a leitura fresca (`GuestsStore.freshGuest`) fecha as corridas com a anonimização (antes e depois da trava compartilhada) e com a mesclagem (entre a descoberta e a trava, `409 GUEST_PROFILE_CHANGED`; depois da releitura, o listener espera e reponta), sem deadlock; o `refresh` não descarta mudança pendente de nenhum chamador atual (só `reservations` usa `guest`; o `billing` só `company`; nada dentro do `guests` chama a `GuestsApiService`); a mutação sem a leitura fresca faz falhar exatamente os três testes novos. `./gradlew build` BUILD SUCCESSFUL em 5 min 42 s (1064 testes, 0 falhas); oasdiff sem `ERR`. Sem problema grave. Menores: (1) **corrida residual numa cadeia de mesclagens**: `GuestReferenceRepointing.repoint` calcula o perfil final antes de travar e trava só o absorvido; com A→B e B→C quase juntos, o listener de A pode repontar para B já mesclado, sem reparo posterior (janela estreita; correção: calcular o final depois da trava e travar também o alvo, em ordem) — **encaminhada à E08**; (2) colisão de `hashtext` (32 bits) nas travas por hóspede poderia, em tese, inverter a ordem e dar um deadlock que o PostgreSQL aborta (probabilidade desprezível; aceita); (3) a regra "não chame a `GuestsApi` numa transação que alterou o perfil" (o `refresh` descartaria a mudança) é só documental (aceita; KDoc e `CLAUDE.md`).
+- Notas para a próxima etapa:
+  - **E08, pendência da verificação da E07:** corrija a corrida residual do listener de `GuestsMerged` numa cadeia (A→B e B→C quase juntos): em `GuestReferenceRepointing.repoint`, calcule o perfil final **depois** de travar e trave também o alvo (as travas por hóspede em ordem estável), com um teste determinístico da cadeia.
+  - E08 (alteração e cancelamento): os termos copiados estão na reserva (`cancellation_*`, `guarantee_*`); refaça as noites (`nightly_rate`) com o histórico e tome/devolva o inventário numa só `RoomTypeInventory.apply` (devolver as datas antigas e tomar as novas); a multa vai à conta da reserva (`folio_id`); o day use não tem unidade a devolver. `priceFor` não confere plano ativo (para reprecificar um plano desativado).
+  - E09: a pré-reserva já nasce com `provisional_until`; a confirmação muda `status` e limpa a validade (o `CHECK reservation_provisional_ck` exige os dois juntos); o job de expiração devolve a unidade.
+  - E10: o day use usa `[data, data]` na alocação (H5); a reserva não tem alocação ainda.
+  - E11: estenda o listener de `GuestsMerged` ao titular do bloqueio (o `BookingStore.repointGuest` e a trava por hóspede); o pick-up chama a criação com o bloqueio (devolver `BLOCKED` e tomar `SOLD` na mesma `apply`).
+  - E12: busca e listas sobre `reservations.reservation`/`booking` (índices por tipo e período e por titular já existem); views `report_*` sem pedidos especiais.
+  - Testes: hóspedes de teste sem documentos (`ReservationsTestSupport.guest()`), para a mesclagem não esbarrar em CPFs diferentes; o `ReservationCreatedProbeListener` está no `InventoryTestConfiguration` (o mesmo contexto dos testes do inventário); a recontagem do `BookingsApiTest` usa datas a 640 dias (nenhum outro teste as usa).
 
 ---
 

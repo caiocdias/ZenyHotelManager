@@ -168,6 +168,15 @@ class AvailabilityService(
     @Transactional(readOnly = true)
     fun quote(query: QuoteQuery): Quote {
         authorization.require(ReservationsPermissions.AVAILABILITY_READ)
+        if (!query.departure.isAfter(query.arrival)) {
+            // O day use (chegada = saída, H5) não é cotado (decisão da E07): ele não toma inventário e a
+            // disponibilidade dele depende da alocação de UH (E10); o preço é a tarifa da data, no calendário.
+            throw InventoryRules.invalid(
+                ReservationsErrorCodes.STAY_INVALID,
+                "departure",
+                "A cotação é de pernoite: a saída precisa ser depois da chegada.",
+            )
+        }
         AvailabilityRules.requireOccupancy(query.adults, query.childAges)
         val planIds = query.ratePlanIds?.let { AvailabilityRules.requireIds(it, "ratePlanIds").toSet() }
         val types = roomTypes(query.roomTypeIds)

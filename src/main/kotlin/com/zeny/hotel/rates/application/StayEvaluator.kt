@@ -246,7 +246,7 @@ class StayEvaluator(
             val planPrices =
                 nightly.getOrPut(
                     plan.id,
-                ) { prices.effectivePrices(plan, typesOf(plan), arrival, departure.minusDays(1)) }
+                ) { prices.effectivePrices(plan, typesOf(plan), arrival, StayRules.lastPricedDate(arrival, departure)) }
             val stayPrices =
                 planPrices.filterKeys { it.roomTypeId == query.roomTypeId }.mapKeys { it.key.date }
             val planPackages = plan.packageIds.mapNotNull { packages[it] }.sortedBy { it.code }

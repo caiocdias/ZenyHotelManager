@@ -129,6 +129,13 @@ data class SearchRow(
 interface GuestsStore {
     fun guest(id: GuestId): Guest?
 
+    /**
+     * O perfil relido do banco (`refresh`), mesmo que a transação já o tenha carregado: vê o que outra transação
+     * confirmou depois (uma mesclagem, uma anonimização). Para a `GuestsApi`, que os módulos de cima leem depois de
+     * travar (M4 E07). Descarta mudanças não enviadas do perfil: nunca use numa transação que o alterou.
+     */
+    fun freshGuest(id: GuestId): Guest?
+
     /** Os perfis com os [ids], na ordem dos [ids] (os inexistentes ficam de fora). */
     fun guests(ids: List<UUID>): List<Guest>
 

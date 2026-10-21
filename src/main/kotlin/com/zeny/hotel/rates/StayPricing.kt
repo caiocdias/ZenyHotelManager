@@ -11,6 +11,10 @@ import java.time.LocalDate
  * e a saída (datas de negócio; as noites vão da chegada à véspera da saída, de 1 a 365), o número de adultos (ao menos
  * um) e a **idade de cada criança** em anos completos na data de chegada (de 0 à idade limite de criança do hotel,
  * `HotelApi.policy().childMaxAge`; acima dela a pessoa é adulta e conta em [adults]).
+ *
+ * **Day use** (RF-RES-14, H5 do M4; desde a E07): chegada = saída. A data é precificada como uma noite, pela tarifa do
+ * plano naquela data (o day use usa um plano com tarifa própria), e o pacote por estadia entra nela; valem o fechado,
+ * o CTA e o CTD da data e a antecedência, mas não a estadia mínima nem a máxima (não há noite).
  */
 data class StayQuery(
     val ratePlanId: RatePlanId,
@@ -19,7 +23,10 @@ data class StayQuery(
     val departure: LocalDate,
     val adults: Int,
     val childAges: List<Int> = emptyList(),
-)
+) {
+    /** Day use: chegada = saída (H5). */
+    val dayUse: Boolean get() = arrival == departure
+}
 
 /**
  * Um motivo de recusa da vendabilidade ou do preço (M4 E04): o [code] estável (em [RatesErrorCodes]), a mensagem em

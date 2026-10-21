@@ -15,6 +15,10 @@ import com.zeny.hotel.shared.TemplateGrant
  * calendário e a cotação vêm na E06); [INVENTORY_MANAGE] configura o limite de overbooking por tipo e data (RF-TAR-09,
  * Q-09: nasce zero) e pede a recontagem dos contadores (não sensível; só o Gerente no modelo). Sugestões aos modelos
  * (SPEC §3.1): o Gerente, a Recepcionista, o Comercial/Eventos e o Financeiro consultam.
+ *
+ * Reservas (E07, H16): [RESERVATIONS_READ] consulta reservas agrupadoras e reservas (Gerente, Recepcionista,
+ * Comercial/Eventos e Financeiro); [RESERVATIONS_MANAGE] as cria (Gerente e Recepcionista; não sensível). O desconto
+ * numa diária é a permissão sensível `rates.discounts.apply` do `rates` (H7), com o limite `maxPercent`.
  */
 object ReservationsPermissions : ModulePermissions {
     override val module = "reservations"
@@ -24,6 +28,12 @@ object ReservationsPermissions : ModulePermissions {
 
     /** Configurar o limite de overbooking por tipo de UH e data e recontar o inventário. */
     val INVENTORY_MANAGE = PermissionCode("reservations.inventory.manage")
+
+    /** Consultar reservas agrupadoras e reservas. */
+    val RESERVATIONS_READ = PermissionCode("reservations.reservations.read")
+
+    /** Criar reservas (e, nas etapas seguintes, alterá-las). */
+    val RESERVATIONS_MANAGE = PermissionCode("reservations.reservations.manage")
 
     private val all = TemplateGrant(ALL)
 
@@ -46,6 +56,24 @@ object ReservationsPermissions : ModulePermissions {
                 "Configurar o limite de overbooking por tipo de UH e data e recontar o inventário",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                RESERVATIONS_READ,
+                "Consultar reservas agrupadoras e reservas",
+                setOf(ALL),
+                templates =
+                    mapOf(
+                        RoleTemplate.MANAGER to all,
+                        RoleTemplate.RECEPTIONIST to all,
+                        RoleTemplate.SALES_EVENTS to all,
+                        RoleTemplate.FINANCE to all,
+                    ),
+            ),
+            PermissionDefinition(
+                RESERVATIONS_MANAGE,
+                "Criar reservas",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
             ),
         )
 }

@@ -166,6 +166,51 @@ class StayEvaluationDomainTest {
         refusals.single { it.code == RatesErrorCodes.CLOSED_TO_DEPARTURE }.dates shouldContainExactly listOf(DEPARTURE)
     }
 
+    // --- Day use (H5, M4 E07) ---------------------------------------------------------------------------------------
+
+    @Test
+    fun `a day use is priced by the rate of its own date, with the per-stay package on it`() {
+        val price = priced(query(nights = 0), flat(BASE), listOf(DECORATION_PER_STAY, BREAKFAST_INCLUDED))
+
+        price.nights.map { it.date } shouldContainExactly listOf(ARRIVAL)
+        price.nights.single().roomAmount shouldBe money("400.00")
+        price.nights
+            .single()
+            .packages
+            .map { it.quantity } shouldContainExactly listOf(1, 2)
+        price.total shouldBe money("550.00")
+        StayRules.nightCount(query(nights = 0)) shouldBe 0
+    }
+
+    @Test
+    fun `a day use ignores the minimum and maximum stay but keeps closed, CTA, CTD and the advance`() {
+        val dayUse = query(nights = 0)
+        SaleRules
+            .evaluate(dayUse, SalesChannel.DIRECT, restricted(ARRIVAL, RestrictionValues(minStay = 2, maxStay = 1)))
+            .shouldBeEmpty()
+        SaleRules
+            .evaluate(
+                dayUse,
+                SalesChannel.DIRECT,
+                restricted(
+                    ARRIVAL,
+                    RestrictionValues(
+                        closed = true,
+                        closedToArrival = true,
+                        closedToDeparture = true,
+                        minAdvanceDays = 30,
+                    ),
+                ),
+            ).map { it.code } shouldContainExactly
+            listOf(
+                RatesErrorCodes.MIN_ADVANCE_NOT_MET,
+                RatesErrorCodes.CLOSED_TO_ARRIVAL,
+                RatesErrorCodes.CLOSED_TO_DEPARTURE,
+                RatesErrorCodes.STAY_DATE_CLOSED,
+            )
+        StayRules.requireValid(dayUse, BANDS)
+    }
+
     // --- Formato --------------------------------------------------------------------------------------------------
 
     @ParameterizedTest(name = "{0}")
@@ -635,7 +680,6 @@ class StayEvaluationDomainTest {
         @JvmStatic
         fun invalidStays(): List<InvalidStay> =
             listOf(
-                InvalidStay("saída igual à chegada", query(nights = 0), listOf("departure")),
                 InvalidStay("saída antes da chegada", query(nights = -1), listOf("departure")),
                 InvalidStay("mais de 365 noites", query(nights = 366), listOf("departure")),
                 InvalidStay("nenhum adulto", query(adults = 0), listOf("adults")),

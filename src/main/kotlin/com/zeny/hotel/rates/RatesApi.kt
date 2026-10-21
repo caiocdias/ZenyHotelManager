@@ -39,7 +39,8 @@ interface RatesApi {
      *
      * Sem preço, devolve `StayPriceResult.NotPriced` com os motivos (`SaleRefusal`): `UNKNOWN_RATE_PLAN`,
      * `ROOM_TYPE_NOT_IN_PLAN`, `RATE_NOT_PRICED`, `OCCUPANCY_NOT_PRICED`, `CHILD_AGE_NOT_PRICED`,
-     * `INCLUDED_PACKAGES_EXCEED_RATE`. Estadia fora do formato: lança `400 STAY_INVALID` com os campos.
+     * `INCLUDED_PACKAGES_EXCEED_RATE`. Estadia fora do formato: lança `400 STAY_INVALID` com os campos. O day use
+     * (chegada = saída, desde a E07) é precificado pela tarifa da data (`StayQuery`).
      */
     fun priceFor(query: StayQuery): StayPriceResult
 

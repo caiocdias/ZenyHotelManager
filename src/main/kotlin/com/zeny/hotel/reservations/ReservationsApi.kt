@@ -7,9 +7,29 @@ import java.time.LocalDate
  * API pública do `reservations` para os outros módulos (sem checar permissão: quem chama já se autorizou).
  *
  * Inventário (M4 E05): a leitura dos contadores e a recontagem, que o fechamento do dia (M6) chama para reparar
- * qualquer divergência (uma publicação do outbox abandonada, por exemplo).
+ * qualquer divergência (uma publicação do outbox abandonada, por exemplo). Reservas (E07): a criação ([createBooking])
+ * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]).
  */
 interface ReservationsApi {
+    /**
+     * Cria a reserva agrupadora [booking] com as reservas dela (M4 E07; RF-RES-01 a 03 e 14), na transação de quem
+     * chama (ou numa própria), auditada `reservations.booking.create` em nome do ator corrente ou do sistema, com as
+     * mesmas regras de `POST /api/v1/bookings`, **menos as permissões e o step-up do desconto** (quem chama já se
+     * autorizou: o channel manager grava a diária da OTA): hóspedes pela `GuestsApi` (mesclado vira o sobrevivente;
+     * anonimizado `422 GUEST_ANONYMIZED`; inexistente `400 UNKNOWN_GUEST`), estadia vendável no canal da origem
+     * (`RatesApi.isSellable`; recusa `422` com o código do `rates` e todos os motivos em `refusals`), preço congelado
+     * por noite (`RatesApi.priceFor`, RN-14), políticas copiadas (RN-15), uma unidade do tipo tomada em cada noite
+     * (`409 ROOM_TYPE_UNAVAILABLE`, nada gravado; o day use não toma, H5), a conta de cada reserva aberta
+     * (`BillingApi.openFolio`, dono `RESERVATION`) e `ReservationCreated` por reserva, tudo na mesma transação.
+     */
+    fun createBooking(booking: NewBooking): BookingSummary
+
+    /** A reserva agrupadora com as reservas; `null` se não existe. */
+    fun booking(id: BookingId): BookingSummary?
+
+    /** A reserva; `null` se não existe. */
+    fun reservation(id: ReservationId): ReservationSummary?
+
     /**
      * Os contadores do tipo de UH [roomTypeId] de [from] a [to] (inclusive, até 366 dias), em ordem de data; só as
      * datas mantidas no inventário (as de fora não aparecem).

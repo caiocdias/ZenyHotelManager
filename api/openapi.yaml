@@ -30,7 +30,7 @@ tags:
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
 - description: "Inventário, disponibilidade em calendário e cotação por tipo de UH\
-    \ e data; reservas nas etapas seguintes."
+    \ e data; reservas agrupadoras e reservas."
   name: reservations
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
@@ -631,6 +631,105 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Consultar a disponibilidade em calendário
+      tags:
+      - reservations
+  /api/v1/bookings:
+    post:
+      description: "Uma reserva por UH, sob o mesmo titular e canal (o canal vem da\
+        \ origem). Exige `reservations.reservations.manage`. Hóspede inexistente:\
+        \ 400 `UNKNOWN_GUEST` (com o campo); mesclado: vira o sobrevivente; anonimizado:\
+        \ 422 `GUEST_ANONYMIZED`. Plano ou tipo de UH inexistente: 400 `UNKNOWN_RATE_PLAN`/`UNKNOWN_ROOM_TYPE`;\
+        \ estadia fora do formato: 400 `STAY_INVALID`; não vendável no canal: 422\
+        \ com o código do `rates` (o primeiro motivo; todos em `refusals`, a reserva\
+        \ em `reservationIndex`). O preço é calculado e congelado por noite; uma diá\
+        ria editada abaixo da calculada é **desconto**, ação sensível com o limite\
+        \ `maxPercent` (`rates.discounts.apply`): sem a permissão ou acima do limite,\
+        \ 403 `APPROVAL_REQUIRED` (repita com o `X-Approval-Token` e **outra** `Idempotency-Key`).\
+        \ Sem unidade do tipo em alguma noite: 409 `ROOM_TYPE_UNAVAILABLE` (nada é\
+        \ gravado); fora do inventário mantido: 422 `INVENTORY_DATE_OUT_OF_HORIZON`.\
+        \ Abre a conta de cada reserva no `billing`. Sem garantia exigida pela polí\
+        tica, nasce `CONFIRMED`; senão, `PROVISIONAL` com a validade da pré-reserva\
+        \ do hotel."
+      operationId: createBooking
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResponse"
+          description: Reserva agrupadora criada.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar uma reserva agrupadora com as reservas
+      tags:
+      - reservations
+  /api/v1/bookings/{id}:
+    get:
+      description: "Com as reservas e os alertas da lista de restrição. Exige `reservations.reservations.read`.\
+        \ Inexistente: 404 `BOOKING_NOT_FOUND`."
+      operationId: getBooking
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookingResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma reserva agrupadora
       tags:
       - reservations
   /api/v1/cancellation-policies:
@@ -7007,6 +7106,35 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reservations/{id}:
+    get:
+      description: "Com o preço congelado por noite, os termos das políticas, a conta\
+        \ e os alertas da lista de restrição. Exige `reservations.reservations.read`.\
+        \ Inexistente: 404 `RESERVATION_NOT_FOUND`."
+      operationId: getReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReservationDetailResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma reserva
+      tags:
+      - reservations
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -10686,6 +10814,102 @@ components:
       - from
       - roomTypes
       - to
+    BookingRequest:
+      type: object
+      description: "Uma reserva agrupadora: o titular, a origem (que define o canal),\
+        \ o id externo e as reservas."
+      properties:
+        externalId:
+          type: string
+          description: "Id externo (o número da OTA), de 1 a 60 caracteres."
+          nullable: true
+        holderGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        origin:
+          type: string
+          enum:
+          - FRONT_DESK
+          - PHONE
+          - EMAIL
+          - WHATSAPP
+          - WEBSITE
+          - OTA
+          - OTHER
+          nullable: true
+        reservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReservationRequest"
+      required:
+      - holderGuestId
+      - origin
+      - reservations
+    BookingResponse:
+      type: object
+      description: Uma reserva agrupadora com as reservas e os alertas da lista de
+        restrição dos hóspedes.
+      properties:
+        channel:
+          type: string
+          description: "Canal de venda (derivado da origem). A lista pode crescer\
+            \ (`x-extensible-enum`): trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - DIRECT
+          - WEBSITE
+          - OTA
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        externalId:
+          type: string
+          nullable: true
+        holderGuestId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        origin:
+          type: string
+          description: "Origem da reserva. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - FRONT_DESK
+          - PHONE
+          - EMAIL
+          - WHATSAPP
+          - WEBSITE
+          - OTA
+          - OTHER
+        reservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReservationResponse"
+        restrictionAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/RestrictionAlertResponse"
+        version:
+          type: integer
+          format: int64
+      required:
+      - channel
+      - code
+      - createdAt
+      - holderGuestId
+      - id
+      - origin
+      - reservations
+      - restrictionAlerts
+      - version
     BusinessDateResponse:
       type: object
       description: A data operacional corrente do hotel.
@@ -10804,6 +11028,51 @@ components:
       - name
       - penaltyType
       - updatedAt
+    CancellationTermsResponse:
+      type: object
+      description: Os termos da política de cancelamento copiados na reserva (RN-15).
+      properties:
+        deadlineHours:
+          type: integer
+          format: int32
+        name:
+          type: string
+        penaltyAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        penaltyNights:
+          type: integer
+          format: int32
+          nullable: true
+        penaltyPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        penaltyType:
+          type: string
+          enum:
+          - PERCENT_OF_STAY
+          - NIGHTS
+          - FIXED_AMOUNT
+        policyId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+      required:
+      - deadlineHours
+      - name
+      - penaltyType
+      - policyId
+      - version
     CapturePreAuthorizationRequest:
       type: object
       description: "A captura de uma caução (total ou parcial): gera um recebimento\
@@ -14126,6 +14395,42 @@ components:
       - name
       - type
       - updatedAt
+    GuaranteeTermsResponse:
+      type: object
+      description: Os termos da política de garantia copiados na reserva (RN-15).
+      properties:
+        depositPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        dueDaysBefore:
+          type: integer
+          format: int32
+          nullable: true
+        name:
+          type: string
+        policyId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          description: "Tipo de garantia. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - NONE
+          - CARD
+          - DEPOSIT
+        version:
+          type: integer
+          format: int64
+      required:
+      - name
+      - policyId
+      - type
+      - version
     GuestAddressDto:
       type: object
       description: Endereço no Brasil com o código IBGE do município.
@@ -15265,6 +15570,144 @@ components:
       required:
       - mergedGuestId
       - takeFromMerged
+    NightlyPackageResponse:
+      type: object
+      description: "Um pacote numa noite, com o código de lançamento do `billing`\
+        \ (para o check-in e o fechamento)."
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        code:
+          type: string
+        includedInRate:
+          type: boolean
+        name:
+          type: string
+        packageId:
+          type: string
+          format: uuid
+        postingRhythm:
+          type: string
+          enum:
+          - DAILY
+          - ON_ARRIVAL
+        pricing:
+          type: string
+          enum:
+          - PER_NIGHT
+          - PER_STAY
+          - PER_PERSON_PER_NIGHT
+        quantity:
+          type: integer
+          format: int32
+        transactionCodeId:
+          type: string
+          format: uuid
+        unitPrice:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - amount
+      - code
+      - includedInRate
+      - name
+      - packageId
+      - postingRhythm
+      - pricing
+      - quantity
+      - transactionCodeId
+      - unitPrice
+    NightlyRateRequest:
+      type: object
+      description: A diária gravada numa noite em vez da calculada; menor que a calculada
+        é desconto.
+      properties:
+        date:
+          type: string
+          format: date
+          nullable: true
+        roomAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - date
+      - roomAmount
+    NightlyRateResponse:
+      type: object
+      description: "O preço congelado de uma noite (RN-14): `calculatedRoomAmount`\
+        \ é a diária calculada na criação, `roomAmount` a gravada (`overridden` quando\
+        \ difere; `discountPercent` quando é menor), `amount` = `roomAmount` + `additionalPackagesAmount`."
+      properties:
+        additionalPackagesAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        calculatedRoomAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        date:
+          type: string
+          format: date
+        discountPercent:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        includedPackagesAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        overridden:
+          type: boolean
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/NightlyPackageResponse"
+        ratePlanId:
+          type: string
+          format: uuid
+        roomAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - additionalPackagesAmount
+      - amount
+      - calculatedRoomAmount
+      - date
+      - includedPackagesAmount
+      - overridden
+      - packages
+      - ratePlanId
+      - roomAmount
     NotificationPreferenceRequest:
       type: object
       description: A preferência para um tipo.
@@ -17525,6 +17968,233 @@ components:
           minItems: 0
       required:
       - answers
+    ReservationDetailResponse:
+      type: object
+      description: Uma reserva com o código e o titular da reserva agrupadora e os
+        alertas da lista de restrição.
+      properties:
+        bookingCode:
+          type: string
+        holderGuestId:
+          type: string
+          format: uuid
+        reservation:
+          $ref: "#/components/schemas/ReservationResponse"
+        restrictionAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/RestrictionAlertResponse"
+      required:
+      - bookingCode
+      - holderGuestId
+      - reservation
+      - restrictionAlerts
+    ReservationRequest:
+      type: object
+      description: "Uma reserva (uma UH): chegada = saída é day use (não toma inventá\
+        rio, precificado pela tarifa da data). `guests` vazio = o titular como principal;\
+        \ senão, exatamente um principal. `nightlyRates` só com as noites cuja diá\
+        ria muda."
+      properties:
+        adults:
+          type: integer
+          format: int32
+          minimum: 1
+          nullable: true
+        arrival:
+          type: string
+          format: date
+          nullable: true
+        childAges:
+          type: array
+          description: "A idade de cada criança na chegada, em anos completos."
+          items:
+            type: integer
+            format: int32
+            description: "A idade de cada criança na chegada, em anos completos."
+        departure:
+          type: string
+          format: date
+          nullable: true
+        guests:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayGuestRequest"
+        nightlyRates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NightlyRateRequest"
+        ratePlanId:
+          type: string
+          format: uuid
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        segment:
+          type: string
+          enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+          nullable: true
+        specialRequests:
+          type: string
+          description: "Pedidos especiais (texto livre, até 1000 caracteres; nunca\
+            \ vai à trilha)."
+          nullable: true
+      required:
+      - adults
+      - arrival
+      - childAges
+      - departure
+      - guests
+      - nightlyRates
+      - ratePlanId
+      - roomTypeId
+      - segment
+    ReservationResponse:
+      type: object
+      description: Uma reserva (uma UH num período).
+      properties:
+        additionalPackagesTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        adults:
+          type: integer
+          format: int32
+        approvalId:
+          type: string
+          format: uuid
+          description: "A aprovação de superior do desconto, se houve."
+          nullable: true
+        approvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        arrival:
+          type: string
+          format: date
+        bookingId:
+          type: string
+          format: uuid
+        cancellationTerms:
+          $ref: "#/components/schemas/CancellationTermsResponse"
+        childAges:
+          type: array
+          items:
+            type: integer
+            format: int32
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        dayUse:
+          type: boolean
+          description: "Day use: chegada = saída (não toma inventário)."
+        departure:
+          type: string
+          format: date
+        folioId:
+          type: string
+          format: uuid
+          description: A conta da reserva no `billing` (dono `RESERVATION`).
+        guaranteeTerms:
+          $ref: "#/components/schemas/GuaranteeTermsResponse"
+        guests:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayGuestResponse"
+        id:
+          type: string
+          format: uuid
+        nightlyRates:
+          type: array
+          items:
+            $ref: "#/components/schemas/NightlyRateResponse"
+        provisionalUntil:
+          type: string
+          format: date-time
+          nullable: true
+        ratePlanId:
+          type: string
+          format: uuid
+        roomTotal:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomTypeId:
+          type: string
+          format: uuid
+        segment:
+          type: string
+          description: "Segmento de mercado. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+        specialRequests:
+          type: string
+          nullable: true
+        status:
+          type: string
+          description: "Situação (SPEC §8.4): `PROVISIONAL` (pré-reserva, válida até\
+            \ `provisionalUntil`), `CONFIRMED`, `IN_HOUSE`, `CHECKED_OUT`, `CANCELLED`,\
+            \ `NO_SHOW`. A lista pode crescer (`x-extensible-enum`): trate um valor\
+            \ desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        version:
+          type: integer
+          format: int64
+      required:
+      - additionalPackagesTotal
+      - adults
+      - arrival
+      - bookingId
+      - cancellationTerms
+      - childAges
+      - code
+      - createdAt
+      - dayUse
+      - departure
+      - folioId
+      - guaranteeTerms
+      - guests
+      - id
+      - nightlyRates
+      - ratePlanId
+      - roomTotal
+      - roomTypeId
+      - segment
+      - status
+      - total
+      - version
     ResetPasswordRequest:
       type: object
       properties:
@@ -17559,6 +18229,23 @@ components:
           nullable: true
       required:
       - reason
+    RestrictionAlertResponse:
+      type: object
+      description: Um alerta da lista de restrição de um hóspede da reserva (não impede
+        a reserva).
+      properties:
+        guestId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        since:
+          type: string
+          format: date-time
+      required:
+      - guestId
+      - reason
+      - since
     RestrictionChangeResponse:
       type: object
       description: O resultado de uma edição de restrições.
@@ -19416,6 +20103,31 @@ components:
       - expiresAt
       - id
       - status
+    StayGuestRequest:
+      type: object
+      description: "Um hóspede da estadia: o perfil (do `guests`) e se é o principal."
+      properties:
+        guestId:
+          type: string
+          format: uuid
+          nullable: true
+        primary:
+          type: boolean
+      required:
+      - guestId
+      - primary
+    StayGuestResponse:
+      type: object
+      description: Um hóspede da estadia.
+      properties:
+        guestId:
+          type: string
+          format: uuid
+        primary:
+          type: boolean
+      required:
+      - guestId
+      - primary
     SubjectAttributesDto:
       type: object
       description: Os atributos do sujeito (IDs de outros módulos) para escolher o

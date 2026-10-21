@@ -24,7 +24,7 @@ import java.util.UUID
 
 internal const val RESERVATIONS_TAG = "reservations"
 internal const val RESERVATIONS_TAG_DESCRIPTION =
-    "Inventário, disponibilidade em calendário e cotação por tipo de UH e data; reservas nas etapas seguintes."
+    "Inventário, disponibilidade em calendário e cotação por tipo de UH e data; reservas agrupadoras e reservas."
 internal const val INVENTORY_COUNTERS =
     "Disponível = `total` (UHs ativas do tipo) − `sold` (reservas) − `blocked` (bloqueios de grupo) − `outOfOrder` " +
         "(UHs em OOO; o OOS não conta) + `overbookingLimit` (nasce zero: overbooking proibido, Q-09); pode ser " +

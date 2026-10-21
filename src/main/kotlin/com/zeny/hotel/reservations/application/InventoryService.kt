@@ -1,8 +1,13 @@
 package com.zeny.hotel.reservations.application
 
 import com.zeny.hotel.hotel.HotelApi
+import com.zeny.hotel.reservations.BookingId
+import com.zeny.hotel.reservations.BookingSummary
 import com.zeny.hotel.reservations.InventoryDay
 import com.zeny.hotel.reservations.InventoryRecount
+import com.zeny.hotel.reservations.NewBooking
+import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsErrorCodes
 import com.zeny.hotel.reservations.ReservationsPermissions
@@ -200,7 +205,17 @@ internal fun days(rows: Map<InventoryKey, InventoryCounters>): List<InventoryDay
 class ReservationsApiService(
     private val store: InventoryStore,
     private val recalculation: InventoryRecalculation,
+    private val bookings: BookingService,
+    private val bookingStore: BookingStore,
 ) : ReservationsApi {
+    override fun createBooking(booking: NewBooking): BookingSummary = bookings.createAuthorized(booking)
+
+    @Transactional(readOnly = true)
+    override fun booking(id: BookingId): BookingSummary? = bookingStore.booking(id)
+
+    @Transactional(readOnly = true)
+    override fun reservation(id: ReservationId): ReservationSummary? = bookingStore.reservation(id)
+
     @Transactional(readOnly = true)
     override fun inventory(
         roomTypeId: RoomTypeId,

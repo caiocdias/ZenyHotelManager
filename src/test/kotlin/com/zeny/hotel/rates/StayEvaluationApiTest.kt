@@ -105,7 +105,7 @@ class StayEvaluationApiTest(
             listOf(RatesErrorCodes.ROOM_TYPE_NOT_IN_PLAN.value)
         ratesApi.priceFor(stay(UUID.randomUUID(), type, arrival, nights = 1)).refusals().map { it.first } shouldBe
             listOf(RatesErrorCodes.UNKNOWN_RATE_PLAN.value)
-        shouldThrow<InvalidInputException> { ratesApi.priceFor(stay(plan, type, arrival, nights = 0)) }
+        shouldThrow<InvalidInputException> { ratesApi.priceFor(stay(plan, type, arrival, nights = -1)) }
             .code shouldBe RatesErrorCodes.STAY_INVALID
     }
 
@@ -261,7 +261,7 @@ class StayEvaluationApiTest(
         shouldThrow<InvalidInputException> {
             ratesApi.stayOptions(query.copy(ratePlanIds = setOf(RatePlanId(UuidV7.generate()))))
         }.code shouldBe RatesErrorCodes.UNKNOWN_RATE_PLAN
-        shouldThrow<InvalidInputException> { ratesApi.stayOptions(query.copy(departure = arrival)) }
+        shouldThrow<InvalidInputException> { ratesApi.stayOptions(query.copy(departure = arrival.minusDays(1))) }
             .code shouldBe RatesErrorCodes.STAY_INVALID
 
         // O calendário: os preços efetivos do derivado e a restrição efetiva do tipo; o tipo fora do plano não vem.
