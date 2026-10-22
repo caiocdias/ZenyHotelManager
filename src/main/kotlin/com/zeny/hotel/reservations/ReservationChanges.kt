@@ -1,9 +1,11 @@
 package com.zeny.hotel.reservations
 
 import com.zeny.hotel.billing.PostingId
+import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.rates.CancellationPolicyId
 import com.zeny.hotel.rates.GuaranteePolicyId
 import com.zeny.hotel.rates.RatePlanId
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.TypedId
@@ -99,8 +101,8 @@ value class ReservationHistoryId(
 
 /**
  * O que uma entrada do histórico registra: uma alteração, um cancelamento (inclusive a expiração da pré-reserva, com o
- * motivo `EXPIRED`), uma reativação ou, desde a E09, a confirmação da pré-reserva com a garantia e o registro da
- * garantia numa reserva confirmada sem ela.
+ * motivo `EXPIRED`), uma reativação, desde a E09 a confirmação da pré-reserva com a garantia e o registro da garantia
+ * numa reserva confirmada sem ela e, desde o M5 E01, o check-in, o check-in desfeito, o check-out e a troca de UH.
  */
 enum class ReservationHistoryKind {
     CHANGE,
@@ -110,6 +112,18 @@ enum class ReservationHistoryKind {
 
     /** O registro da garantia numa reserva confirmada sem garantia (E09): a situação não muda. */
     GUARANTEE,
+
+    /** O check-in (M5 E01): a reserva confirmada passa a hospedada. */
+    CHECK_IN,
+
+    /** O check-in desfeito no mesmo dia (M5 E01): a hospedada volta a confirmada. */
+    UNDO_CHECK_IN,
+
+    /** O check-out (M5 E01), inclusive o antecipado: a hospedada passa a encerrada. */
+    CHECK_OUT,
+
+    /** A troca de UH do hospedado (M5 E01). */
+    ROOM_MOVE,
 }
 
 /** Uma noite no retrato do histórico: a data, o plano, a diária gravada, o total e se foi editada. */
@@ -127,6 +141,19 @@ data class HistoryCancellation(
     val penaltyAmount: Money,
     val penaltyWaived: Boolean,
     val penaltyPostingId: PostingId?,
+)
+
+/**
+ * Um hóspede da estadia no retrato do histórico (M5 E01): o id, se é o principal, os códigos de check-in e a
+ * comprovação do menor (só ids e códigos: nada de nome nem documento). A comprovação de um check-in desfeito fica
+ * registrada aqui, no retrato de antes.
+ */
+data class HistoryStayGuest(
+    val guestId: GuestId,
+    val primary: Boolean,
+    val travelReason: String?,
+    val transportMode: String?,
+    val minorAuthorization: MinorAuthorization?,
 )
 
 /**
@@ -155,6 +182,14 @@ data class ReservationState(
     val cancellation: HistoryCancellation?,
     /** A garantia registrada na confirmação da pré-reserva (E09); nula sem confirmação. */
     val guaranteeMethod: GuaranteeMethod? = null,
+    /** O check-in (M5 E01); nulo antes dele (ou depois de desfeito). */
+    val checkIn: StayTransitionRecord? = null,
+    /** O check-out (M5 E01); nulo antes dele. */
+    val checkOut: StayTransitionRecord? = null,
+    /** A UH alocada (M5 E01); nula sem UH. */
+    val roomId: RoomId? = null,
+    /** Os hóspedes da estadia com os dados de check-in (M5 E01). */
+    val stayGuests: List<HistoryStayGuest> = emptyList(),
 )
 
 /**

@@ -35,21 +35,39 @@ enum class ReservationAction {
 
     /** Confirmar a pré-reserva com a garantia (E09). */
     CONFIRM,
+
+    /** Fazer o check-in (M5 E01). */
+    CHECK_IN,
+
+    /** Desfazer o check-in no mesmo dia (M5 E01). */
+    UNDO_CHECK_IN,
+
+    /** Fazer o check-out, inclusive antecipado (M5 E01). */
+    CHECK_OUT,
+
+    /** Trocar a UH do hospedado (M5 E01). */
+    MOVE_ROOM,
 }
 
 /**
- * As transições da reserva que a E08 faz (SPEC §8.4): alterar e cancelar só uma pré-reserva ou uma confirmada (a
- * hospedada é assunto da recepção, M5; a encerrada, a cancelada e o no-show não mudam); reativar só uma cancelada ou
- * no-show, que volta a confirmada; desde a E09, confirmar só uma pré-reserva ("garantia recebida"). Fora disso,
- * `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
+ * As transições da reserva (SPEC §8.4): alterar uma pré-reserva, uma confirmada ou, desde o M5 E01, uma hospedada (só a
+ * saída, [InHouseChangeRules]); cancelar só uma pré-reserva ou uma confirmada (a encerrada, a cancelada e o no-show não
+ * mudam); reativar só uma cancelada ou no-show, que volta a confirmada; desde a E09, confirmar só uma pré-reserva
+ * ("garantia recebida"); desde o M5 E01, o check-in só de uma confirmada (a pré-reserva confirma antes), e desfazê-lo,
+ * o check-out e a troca de UH só de uma hospedada. Fora disso, `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
  */
 object ReservationTransitions {
     private val allowed =
         mapOf(
-            ReservationAction.CHANGE to setOf(ReservationStatus.PROVISIONAL, ReservationStatus.CONFIRMED),
+            ReservationAction.CHANGE to
+                setOf(ReservationStatus.PROVISIONAL, ReservationStatus.CONFIRMED, ReservationStatus.IN_HOUSE),
             ReservationAction.CANCEL to setOf(ReservationStatus.PROVISIONAL, ReservationStatus.CONFIRMED),
             ReservationAction.REACTIVATE to setOf(ReservationStatus.CANCELLED, ReservationStatus.NO_SHOW),
             ReservationAction.CONFIRM to setOf(ReservationStatus.PROVISIONAL),
+            ReservationAction.CHECK_IN to setOf(ReservationStatus.CONFIRMED),
+            ReservationAction.UNDO_CHECK_IN to setOf(ReservationStatus.IN_HOUSE),
+            ReservationAction.CHECK_OUT to setOf(ReservationStatus.IN_HOUSE),
+            ReservationAction.MOVE_ROOM to setOf(ReservationStatus.IN_HOUSE),
         )
 
     fun allows(
@@ -92,6 +110,10 @@ class ReservationTransitionNotAllowedException(
                 ReservationAction.CANCEL to "cancelada",
                 ReservationAction.REACTIVATE to "reativada",
                 ReservationAction.CONFIRM to "confirmada",
+                ReservationAction.CHECK_IN to "hospedada (check-in)",
+                ReservationAction.UNDO_CHECK_IN to "voltar a confirmada (desfazer o check-in)",
+                ReservationAction.CHECK_OUT to "encerrada (check-out)",
+                ReservationAction.MOVE_ROOM to "trocada de UH como hospedada",
             )
     }
 }

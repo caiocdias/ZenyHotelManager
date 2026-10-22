@@ -43,14 +43,21 @@ enum class RoomAssignmentReason {
 /**
  * Por que a alocação deixou de valer (M4 E10): [UNASSIGNED] desalocada por quem opera, [REALLOCATED] substituída por
  * outra UH, [RESERVATION_CANCELLED] a reserva foi cancelada (ou a pré-reserva expirou), [RESERVATION_CHANGED] a
- * alteração da reserva (outro tipo de UH, ou datas em que a UH não está livre) a soltou. A alocação solta continua
- * gravada (o histórico das UHs da reserva) e não bloqueia mais a UH. Nas respostas é `x-extensible-enum`.
+ * alteração da reserva (outro tipo de UH, ou datas em que a UH não está livre) a soltou; desde o M5 E01, [CHECKED_OUT]
+ * e [ROOM_MOVED]. A alocação solta continua gravada (o histórico das UHs da reserva) e não bloqueia mais a UH. Nas
+ * respostas é `x-extensible-enum`.
  */
 enum class RoomAssignmentEndReason {
     UNASSIGNED,
     REALLOCATED,
     RESERVATION_CANCELLED,
     RESERVATION_CHANGED,
+
+    /** O check-out (M5 E01), inclusive o antecipado (a alocação termina na data do check-out). */
+    CHECKED_OUT,
+
+    /** A troca de UH do hospedado (M5 E01): a alocação termina na data operacional e outra começa nela. */
+    ROOM_MOVED,
 }
 
 /**
@@ -67,7 +74,7 @@ data class ReallocationMark(
  * Uma alocação de UH a uma reserva (RF-RES-04, RN-04; M4 E10): a UH, o período (de [startsOn] a [endsOn], a saída; no
  * day use os dois são a data, e a alocação ocupa a UH naquela data, H5), o motivo, "não mover" ([doNotMove]: a UH não
  * é trocada nem solta sem tirar a marca antes), a marca de realocação e, quando deixou de valer, quando, por quem e
- * por quê. A reserva tem no máximo uma alocação ativa (`releasedAt` nulo).
+ * por quê. A reserva tem no máximo uma alocação ativa (`releasedAt` nulo); a hospedada, sempre uma (M5 E01).
  */
 data class RoomAssignmentSummary(
     val id: RoomAssignmentId,

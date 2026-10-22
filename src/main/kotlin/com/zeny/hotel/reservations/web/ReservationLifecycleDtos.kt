@@ -209,6 +209,18 @@ data class ReservationStateResponse(
     @field:ExtensibleEnum
     @field:Schema(description = "A garantia recebida na confirmação da pré-reserva; nula sem ela. $UNKNOWN_VALUE")
     val guaranteeMethod: GuaranteeMethod?,
+    @field:Schema(description = "O check-in; nulo antes dele (ou depois de desfeito).")
+    val checkIn: StayTransitionResponse?,
+    @field:Schema(description = "O check-out; nulo antes dele.")
+    val checkOut: StayTransitionResponse?,
+    @field:Schema(description = "A UH alocada; nula sem UH.")
+    val roomId: UUID?,
+    @field:Schema(
+        description =
+            "Os hóspedes da estadia com os códigos de check-in e a comprovação do menor (só ids e códigos; a " +
+                "comprovação de um check-in desfeito fica no retrato de antes).",
+    )
+    val stayGuests: List<HistoryStayGuestResponse>,
 ) {
     companion object {
         fun of(state: ReservationState) =
@@ -243,9 +255,31 @@ data class ReservationStateResponse(
                         )
                     },
                 guaranteeMethod = state.guaranteeMethod,
+                checkIn = state.checkIn?.let(StayTransitionResponse::of),
+                checkOut = state.checkOut?.let(StayTransitionResponse::of),
+                roomId = state.roomId?.value,
+                stayGuests =
+                    state.stayGuests.map {
+                        HistoryStayGuestResponse(
+                            it.guestId.value,
+                            it.primary,
+                            it.travelReason,
+                            it.transportMode,
+                            it.minorAuthorization?.let(MinorAuthorizationResponse::of),
+                        )
+                    },
             )
     }
 }
+
+@Schema(description = "Um hóspede da estadia no retrato do histórico: o id, os códigos de check-in e a comprovação.")
+data class HistoryStayGuestResponse(
+    val guestId: UUID,
+    val primary: Boolean,
+    val travelReason: String?,
+    val transportMode: String?,
+    val minorAuthorization: MinorAuthorizationResponse?,
+)
 
 @Schema(
     description =
@@ -258,8 +292,9 @@ data class ReservationHistoryResponse(
     @field:Schema(
         description =
             "`CHANGE`, `CANCEL` (inclusive a expiração da pré-reserva, com o motivo `EXPIRED`), `REACTIVATE`, " +
-                "`CONFIRM` (a confirmação da pré-reserva com a garantia) ou `GUARANTEE` (a garantia registrada numa " +
-                "reserva confirmada sem ela). $UNKNOWN_VALUE",
+                "`CONFIRM` (a confirmação da pré-reserva com a garantia), `GUARANTEE` (a garantia registrada numa " +
+                "reserva confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `ROOM_MOVE` (a troca de UH " +
+                "do hospedado). $UNKNOWN_VALUE",
     )
     val kind: ReservationHistoryKind,
     val businessDate: LocalDate,

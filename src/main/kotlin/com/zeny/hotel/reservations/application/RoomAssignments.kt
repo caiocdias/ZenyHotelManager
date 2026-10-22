@@ -15,6 +15,7 @@ import com.zeny.hotel.reservations.RoomAssignmentEndReason
 import com.zeny.hotel.reservations.RoomAssignmentId
 import com.zeny.hotel.reservations.RoomAssignmentReason
 import com.zeny.hotel.reservations.RoomAssignmentSummary
+import com.zeny.hotel.reservations.RoomMove
 import com.zeny.hotel.reservations.RoomSuggestion
 import com.zeny.hotel.reservations.domain.AssignmentPeriod
 import com.zeny.hotel.reservations.domain.AssignmentRules
@@ -23,6 +24,8 @@ import com.zeny.hotel.reservations.domain.ReallocationMarks
 import com.zeny.hotel.reservations.domain.ReallocationNotice
 import com.zeny.hotel.reservations.domain.RoomAlreadyAssignedException
 import com.zeny.hotel.reservations.domain.RoomCandidate
+import com.zeny.hotel.reservations.domain.RoomMoveRules
+import com.zeny.hotel.reservations.domain.RoomOutOfOrderException
 import com.zeny.hotel.reservations.domain.RoomSuggestions
 import com.zeny.hotel.rooms.OutOfOrderChanged
 import com.zeny.hotel.rooms.OutOfOrderKind
@@ -51,6 +54,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
 /** Os tipos de notificação do `reservations` no catálogo do `notifications` (H11). */
@@ -204,6 +208,127 @@ class RoomAssignments(
         AssignmentRules.requireMovable(current)
         release(current, RoomAssignmentEndReason.RESERVATION_CHANGED, now)
         return null
+    }
+
+    // --- Hospedagem (M5 E01) --------------------------------------------------------------------------------------
+
+    /**
+     * A UH do check-in (Ajuste D 1 da M4 E10): a alocação ativa, cuja UH continua ativa e do tipo da
+     * reserva (o cadastro
+     * do `rooms` pode ter mudado desde a alocação: `RoomRegistryChanged` não solta alocações). Sem UH,
+     * `409 ROOM_NOT_ASSIGNED`; UH desativada `422 ROOM_INACTIVE`; de outro tipo `422 ROOM_TYPE_MISMATCH`.
+     */
+    fun requireForCheckIn(reservation: ReservationSummary): RoomAssignmentSummary {
+        val current = store.active(reservation.id) ?: throw notAssigned()
+        AssignmentRules.requireRoom(rooms.room(current.roomId), reservation)
+        return current
+    }
+
+    /**
+     * O check-out encerra a alocação ativa na mesma transação (Ajuste D 2 da M4 E10; motivo `CHECKED_OUT`), com o fim
+     * em [endsOn] (a saída da estadia, que o check-out antecipado já trouxe para a data operacional),
+     * com "não mover" ou
+     * não. Devolve a encerrada, ou `null` se não havia.
+     */
+    fun endOnCheckOut(
+        reservation: ReservationSummary,
+        endsOn: LocalDate,
+        now: Instant,
+    ): RoomAssignmentSummary? {
+        val current = store.active(reservation.id) ?: return null
+        return end(current, endsOn, RoomAssignmentEndReason.CHECKED_OUT, now)
+    }
+
+    /**
+     * A troca de UH do hospedado ([RoomMoveRules]): trava as duas UHs, confere a nova (ativa, do tipo da reserva, sem
+     * OOO no período novo), encerra a atual na data operacional (`ROOM_MOVED`) e abre a nova da data
+     * operacional à saída
+     * (a sobreposição com outra alocação ativa é recusada pelo banco: `409 ROOM_ALREADY_ASSIGNED`). "Não mover" passa à
+     * nova. Devolve a encerrada e a nova.
+     */
+    fun moveInHouse(
+        reservation: ReservationSummary,
+        move: RoomMove,
+        businessDate: LocalDate,
+        now: Instant,
+    ): Pair<RoomAssignmentSummary, RoomAssignmentSummary> {
+        val current = store.active(reservation.id) ?: throw notAssigned()
+        RoomMoveRules.requireOtherRoom(current, move)
+        val room = AssignmentRules.requireRoom(rooms.room(move.roomId), reservation)
+        store.lockRooms(listOf(current.roomId, room.id))
+        val period = RoomMoveRules.newPeriod(reservation, businessDate)
+        AssignmentRules.requireNotOutOfOrder(room, period, blockingPeriods(period, room.id))
+        val ended = end(current, RoomMoveRules.oldEnd(current, businessDate), RoomAssignmentEndReason.ROOM_MOVED, now)
+        val assignment =
+            RoomAssignmentSummary(
+                id = RoomAssignmentId.new(),
+                reservationId = reservation.id,
+                roomId = room.id,
+                startsOn = period.startsOn,
+                endsOn = period.endsOn,
+                reason = move.reason,
+                doNotMove = current.doNotMove,
+                reallocation = null,
+                assignedAt = now,
+                assignedBy = actor(),
+            )
+        if (!store.tryInsert(assignment)) throw RoomAlreadyAssignedException(room.number)
+        audit.record(
+            ReservationsAudit.ROOM_ASSIGNMENT,
+            assignment.id.value,
+            null,
+            ReservationsAudit.assignmentSnapshot(assignment) + ("previousRoomId" to current.roomId.toString()),
+        )
+        return ended to assignment
+    }
+
+    /**
+     * A alteração da saída do hospedado ([InHouseChangeRules]): a alocação ativa vai até a saída nova, a partir do
+     * início dela (que, depois de uma troca de UH, é a data da troca, não a chegada). Na extensão, a UH continua dele
+     * se não tiver OOO nas noites novas (`422 ROOM_OUT_OF_ORDER`) nem outra reserva alocada nelas
+     * (`409 ROOM_ALREADY_ASSIGNED`, pelo banco); a UH nunca é solta (o hóspede está nela). Devolve a alocação que fica.
+     */
+    @Suppress("ThrowsCount") // sem UH, OOO nas noites novas e outra reserva na UH
+    fun followInHouseChange(
+        before: ReservationSummary,
+        after: ReservationSummary,
+    ): RoomAssignmentSummary {
+        val current = store.active(before.id) ?: throw notAssigned()
+        if (before.departure == after.departure) return current
+        val period = AssignmentPeriod(current.startsOn, after.departure)
+        store.lockRooms(listOf(current.roomId))
+        if (after.departure.isAfter(before.departure)) {
+            val added = AssignmentPeriod(before.departure, after.departure)
+            val room = rooms.room(current.roomId)
+            val dates = AssignmentRules.outOfOrderDates(added, blockingPeriods(added, current.roomId))
+            if (dates.isNotEmpty()) throw RoomOutOfOrderException(room?.number ?: current.roomId.toString(), dates)
+        }
+        if (!store.movePeriod(current.id, period)) throw RoomAlreadyAssignedException(roomNumber(current.roomId))
+        val moved = current.copy(startsOn = period.startsOn, endsOn = period.endsOn, reallocation = null)
+        audit.record(
+            ReservationsAudit.ROOM_ASSIGNMENT,
+            current.id.value,
+            ReservationsAudit.assignmentSnapshot(current),
+            ReservationsAudit.assignmentSnapshot(moved),
+        )
+        return moved
+    }
+
+    private fun end(
+        current: RoomAssignmentSummary,
+        endsOn: LocalDate,
+        reason: RoomAssignmentEndReason,
+        now: Instant,
+    ): RoomAssignmentSummary {
+        val ended =
+            checkNotNull(store.end(current.id, endsOn, now, actor(), reason)) { "Alocação ${current.id} solta" }
+        audit.record(
+            ReservationsAudit.ROOM_ASSIGNMENT,
+            current.id.value,
+            ReservationsAudit.assignmentSnapshot(current),
+            ReservationsAudit.assignmentSnapshot(ended),
+        )
+        return ended
     }
 
     /** O cancelamento ou a expiração solta a UH alocada (`RESERVATION_CANCELLED`), com "não mover" ou não. */
@@ -364,6 +489,22 @@ class RoomAssignmentService(
         authorization.require(ReservationsPermissions.ASSIGNMENTS_MANAGE)
         assignments.assign(locked(id), roomId, reason, doNotMove)
         return views.of(checkNotNull(bookings.reservation(id)))
+    }
+
+    /**
+     * A alocação pela `ReservationsApi` (M5 E01, Ajuste D 4 da M4 E10: o check-in e o walk-in), com as mesmas regras e
+     * a mesma trilha do endpoint, sem a permissão (quem chama já se autorizou).
+     */
+    @Audited(ReservationsAudit.ASSIGN_ROOM)
+    @Transactional
+    fun assignAuthorized(
+        id: ReservationId,
+        roomId: RoomId,
+        reason: RoomAssignmentReason?,
+        doNotMove: Boolean?,
+    ): ReservationSummary {
+        assignments.assign(locked(id), roomId, reason, doNotMove)
+        return checkNotNull(bookings.reservation(id))
     }
 
     @Audited(ReservationsAudit.UNASSIGN_ROOM)

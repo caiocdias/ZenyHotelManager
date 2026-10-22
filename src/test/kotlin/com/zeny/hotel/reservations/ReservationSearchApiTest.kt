@@ -27,6 +27,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import org.flywaydb.core.Flyway
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Import
@@ -276,7 +277,7 @@ class ReservationSearchApiTest(
     @Test
     @Suppress("LongMethod") // as quatro listas com as pendências e o relógio à frente da data operacional
     fun `the operational lists follow the business date of the hotel, never the clock`() {
-        val (type, _) = inventory.roomTypeWithRooms(6, today)
+        val (type, rooms) = inventory.roomTypeWithRooms(6, today)
         val plan = planFor(type, today.plusDays(45))
         val arriving = created(type, plan, today, today.plusDays(2))
         val dayUse = created(type, plan, today, today)
@@ -284,13 +285,13 @@ class ReservationSearchApiTest(
         val cancelled = created(type, plan, today, today.plusDays(1))
         with(support.billing) { support.cancel(cancelled).expect(200) }
         val inHouse = created(type, plan, today, today.plusDays(3))
-        setStatus(inHouse, "IN_HOUSE")
+        support.forceInHouse(inHouse, rooms[0])
         // As pendências da data corrente: um day use de ontem que não chegou e um hospedado que já devia ter saído.
         val pendingArrival = created(type, plan, today, today)
         moveTo(pendingArrival, today.minusDays(1))
         val pendingDeparture = created(type, plan, today, today)
         moveTo(pendingDeparture, today.minusDays(2))
-        setStatus(pendingDeparture, "IN_HOUSE")
+        support.forceInHouse(pendingDeparture, rooms[1])
         // A chegada na data do relógio adiantado, que não é a data operacional.
         val clockDay = today.plusDays(CLOCK_AHEAD_DAYS)
         val onClockDay = created(type, plan, clockDay, clockDay.plusDays(1))
@@ -421,7 +422,14 @@ class ReservationSearchApiTest(
     // --- Índices ---------------------------------------------------------------------------------------------------
 
     @Test
-    fun `every search filter and every list is served by an index, never by a scan of the reservations`() {
+    fun `every search filter and every list is served by an index, never by a scan of the reservations`(
+        @Autowired flyway: Flyway,
+    ) {
+        // Estatísticas atuais (o banco é compartilhado e muda com os outros testes): o planejador decide com elas.
+        JdbcClient
+            .create(flyway.configuration.dataSource)
+            .sql("ANALYZE reservations.reservation, reservations.reservation_guest, reservations.booking")
+            .update()
         val guestIds = listOf(GuestId(UuidV7.generate()))
         val queries =
             mapOf(
@@ -458,13 +466,34 @@ class ReservationSearchApiTest(
         explain(queries.getValue("externalId")) shouldContain "booking_external_idx"
         explain(queries.getValue("${OperationalList.DEPARTURES} ${today.plusDays(1)}")) shouldContain
             "reservation_departure_idx"
-        explain(queries.getValue("${OperationalList.IN_HOUSE} ${today.plusDays(1)}")) shouldContain
-            "reservation_in_house_idx"
+        // As listas por situação: o índice parcial da situação ou o da data (qual o planejador prefere depende das
+        // estatísticas do banco compartilhado, com hospedadas reais desde o M5 E01); sempre um índice, nunca a tabela.
         for (date in listOf(today, today.plusDays(1))) {
-            explain(queries.getValue("${OperationalList.EXPECTED_NO_SHOWS} $date")) shouldContain
-                "reservation_confirmed_arrival_idx"
+            explain(queries.getValue("${OperationalList.IN_HOUSE} $date")).shouldUseOneOf(
+                "reservation_in_house_idx",
+                "reservation_arrival_idx",
+                "reservation_departure_idx",
+            )
+            explain(queries.getValue("${OperationalList.EXPECTED_NO_SHOWS} $date")).shouldUseOneOf(
+                "reservation_confirmed_arrival_idx",
+                "reservation_arrival_idx",
+            )
         }
-        explain(queries.getValue("status")) shouldContain "reservation_confirmed_arrival_idx"
+        explain(queries.getValue("status")).shouldUseOneOf(
+            "reservation_confirmed_arrival_idx",
+            "reservation_arrival_idx",
+        )
+    }
+
+    /** O plano lê `reservation r` por um dos índices [indexes] (e nunca a tabela inteira). */
+    private fun String.shouldUseOneOf(vararg indexes: String) {
+        withClue(this) {
+            indexes.any {
+                contains("using $it on reservation r", ignoreCase = true) ||
+                    contains("Bitmap Index Scan on $it", ignoreCase = true)
+            } shouldBe true
+            this shouldNotContain "Seq Scan on reservation r"
+        }
     }
 
     // --- Apoio -----------------------------------------------------------------------------------------------------
@@ -500,18 +529,6 @@ class ReservationSearchApiTest(
             .created(
                 support.booking(support.guest(), support.reservation(type, plan, arrival, departure, adults = 1)),
             ).reservationId()
-
-    /** A reserva hospedada (o check-in é do M5): a situação gravada direto. */
-    private fun setStatus(
-        id: UUID,
-        status: String,
-    ) {
-        jdbc
-            .sql("UPDATE reservations.reservation SET status = :status WHERE id = :id")
-            .param("status", status)
-            .param("id", id)
-            .update() shouldBe 1
-    }
 
     /** Leva um day use para [date] (antes da data operacional: a API não cria no passado); sem inventário. */
     private fun moveTo(

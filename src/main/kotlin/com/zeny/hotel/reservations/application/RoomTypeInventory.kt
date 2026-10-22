@@ -4,10 +4,12 @@ import com.zeny.hotel.reservations.AvailabilityChanged
 import com.zeny.hotel.reservations.BookingSummary
 import com.zeny.hotel.reservations.HistoryCancellation
 import com.zeny.hotel.reservations.HistoryNight
+import com.zeny.hotel.reservations.HistoryStayGuest
 import com.zeny.hotel.reservations.ReservationState
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.RoomAssignmentSummary
 import com.zeny.hotel.reservations.RoomBlockSummary
+import com.zeny.hotel.reservations.StayTransitionRecord
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
@@ -40,6 +42,10 @@ internal object ReservationsAudit {
     const val REACTIVATE_RESERVATION = "reservations.reservation.reactivate"
     const val CONFIRM_RESERVATION = "reservations.reservation.confirm"
     const val EXPIRE_RESERVATION = "reservations.reservation.expire"
+    const val CHECK_IN = "reservations.reservation.check-in"
+    const val UNDO_CHECK_IN = "reservations.reservation.undo-check-in"
+    const val CHECK_OUT = "reservations.reservation.check-out"
+    const val MOVE_ROOM = "reservations.reservation.move-room"
 
     const val ROOM_ASSIGNMENT = "reservations.room-assignment"
     const val ASSIGN_ROOM = "reservations.room-assignment.assign"
@@ -169,7 +175,46 @@ internal object ReservationsAudit {
             "folioId" to reservation.folioId.toString(),
         ) + listOfNotNull(reservation.blockId?.let { "blockId" to it.toString() }).toMap() +
             cancellationSnapshot(reservation) +
-            guaranteeSnapshot(reservation)
+            guaranteeSnapshot(reservation) +
+            stayTransitionsSnapshot(reservation)
+
+    /**
+     * O check-in e o check-out (M5 E01): as datas, os instantes e quem; por hóspede, só o id e os códigos de check-in e
+     * da comprovação do menor (nunca nome nem documento).
+     */
+    private fun stayTransitionsSnapshot(reservation: ReservationSummary): Map<String, Any?> {
+        val checkIn = reservation.checkIn ?: return emptyMap()
+        return mapOf(
+            "checkIn" to stampSnapshot(checkIn),
+            "checkOut" to reservation.checkOut?.let(::stampSnapshot),
+            "stayGuests" to
+                reservation.guests.map { guest ->
+                    mapOf(
+                        "guestId" to guest.guestId.toString(),
+                        "primary" to guest.primary,
+                        "travelReason" to guest.travelReason,
+                        "transportMode" to guest.transportMode,
+                        "minorAuthorization" to
+                            guest.minorAuthorization?.let {
+                                mapOf(
+                                    "proofType" to it.proofType.name,
+                                    "responsibleGuestId" to it.responsibleGuestId.toString(),
+                                    "relationship" to it.relationship,
+                                    "attachmentId" to it.attachmentId?.toString(),
+                                    "validUntil" to it.validUntil?.toString(),
+                                )
+                            },
+                    )
+                },
+        )
+    }
+
+    private fun stampSnapshot(record: StayTransitionRecord): Map<String, Any?> =
+        mapOf(
+            "businessDate" to record.businessDate.toString(),
+            "at" to record.at.toString(),
+            "by" to record.by?.toString(),
+        )
 
     /** A garantia recebida na confirmação (E09): o meio, quando, por quem e, no depósito, o exigido e o recebido. */
     private fun guaranteeSnapshot(reservation: ReservationSummary): Map<String, Any?> {
@@ -240,6 +285,13 @@ internal object ReservationsAudit {
                     HistoryCancellation(it.reason, it.penalty.amount, it.penalty.waived, it.penalty.postingId)
                 },
             guaranteeMethod = reservation.guarantee?.method,
+            checkIn = reservation.checkIn,
+            checkOut = reservation.checkOut,
+            roomId = reservation.roomAssignment?.roomId,
+            stayGuests =
+                reservation.guests.map {
+                    HistoryStayGuest(it.guestId, it.primary, it.travelReason, it.transportMode, it.minorAuthorization)
+                },
         )
 
     /**

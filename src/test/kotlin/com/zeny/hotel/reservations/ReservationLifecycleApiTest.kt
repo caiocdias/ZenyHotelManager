@@ -578,14 +578,14 @@ class ReservationLifecycleApiTest(
 
     @Test
     fun `transitions outside the state machine are 409 with a stable code`() {
-        val (type, _) = inventory.roomTypeWithRooms(3, today)
+        val (type, rooms) = inventory.roomTypeWithRooms(3, today)
         val plan = support.plan(listOf(type))
         support.setPrices(plan.id, listOf(type), today, today.plusDays(10))
         val confirmed = created(type, plan.id, today.plusDays(2), today.plusDays(3))
         val checkedOut = created(type, plan.id, today.plusDays(2), today.plusDays(3))
         val inHouse = created(type, plan.id, today.plusDays(2), today.plusDays(3))
-        setStatus(checkedOut.id(), "CHECKED_OUT")
-        setStatus(inHouse.id(), "IN_HOUSE")
+        support.forceCheckedOut(checkedOut.id())
+        support.forceInHouse(inHouse.id(), rooms.first())
 
         with(support.billing) {
             support
@@ -693,15 +693,6 @@ class ReservationLifecycleApiTest(
 
     private fun deactivate(plan: UUID) =
         with(iam) { call(POST, "/api/v1/rate-plans/$plan/deactivate", support.admin).ok() }
-
-    private fun setStatus(
-        id: UUID,
-        status: String,
-    ) = jdbc
-        .sql("UPDATE reservations.reservation SET status = :status, provisional_until = NULL WHERE id = :id")
-        .param("status", status)
-        .param("id", id)
-        .update()
 
     private fun manage() = TestGrant(definition(ReservationsPermissions.RESERVATIONS_MANAGE), ALL)
 

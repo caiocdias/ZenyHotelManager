@@ -127,6 +127,31 @@ class JdbcRoomAssignmentStore(
             .optional()
             .orElse(null)
 
+    override fun end(
+        id: RoomAssignmentId,
+        endsOn: LocalDate,
+        now: Instant,
+        by: UserId?,
+        reason: RoomAssignmentEndReason,
+    ): RoomAssignmentSummary? =
+        jdbc
+            .sql(
+                """
+                UPDATE reservations.room_assignment
+                SET ends_on = GREATEST(CAST(:endsOn AS date), starts_on), released_at = :now, released_by = :by,
+                    release_reason = :reason
+                WHERE id = :id AND released_at IS NULL
+                RETURNING *
+                """.trimIndent(),
+            ).param("endsOn", endsOn)
+            .param("now", now.utc())
+            .param("by", by?.value)
+            .param("reason", reason.name)
+            .param("id", id.value)
+            .query { rs, _ -> assignment(rs) }
+            .optional()
+            .orElse(null)
+
     override fun setDoNotMove(
         id: RoomAssignmentId,
         doNotMove: Boolean,

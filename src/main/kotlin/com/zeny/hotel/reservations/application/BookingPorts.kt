@@ -58,12 +58,14 @@ interface BookingStore {
 
     /**
      * Grava o estado de [reservation] (a estadia, os termos, os totais, a situação, o cancelamento e as multas) com a
-     * versão dela, que o chamador já avançou; com [replaceNights], troca também as noites.
+     * versão dela, que o chamador já avançou; com [replaceNights], troca também as noites; com [replaceGuests], os
+     * hóspedes da estadia com os dados de check-in (M5 E01). Grava também o check-in e o check-out.
      */
     fun update(
         reservation: ReservationSummary,
         now: Instant,
         replaceNights: Boolean,
+        replaceGuests: Boolean = false,
     )
 
     /**

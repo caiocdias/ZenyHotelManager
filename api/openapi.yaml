@@ -7571,15 +7571,20 @@ paths:
       - reservations
     put:
       description: "Troca a estadia (tipo de UH, plano, datas, ocupação), o segmento\
-        \ e os pedidos especiais de uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`),\
-        \ com `If-Match` (412 com outra versão; 428 sem ele). Exige `reservations.reservations.manage`.\
-        \ Recalcula **só as noites afetadas**: com o tipo, o plano ou a ocupação trocados,\
-        \ todas; com só as datas mudadas, as noites novas (e, com a chegada mudada\
-        \ e um pacote por estadia, as noites da chegada antiga e da nova); as mantidas\
-        \ guardam o preço congelado. A venda é conferida só no que mudou (422 com\
-        \ o código do `rates` e os motivos em `refusals`). `nightlyRates` só nas noites\
-        \ recalculadas (senão 400 `NIGHTLY_RATE_INVALID`); desconto: 403 `APPROVAL_REQUIRED`\
-        \ sem a permissão ou acima do limite (`rates.discounts.apply`, `maxPercent`).\
+        \ e os pedidos especiais de uma pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`);\
+        \ numa **hospedada**, só a saída (extensão e redução), o segmento e os pedidos\
+        \ especiais: mudar a chegada, o tipo, o plano ou a ocupação é 409 `IN_HOUSE_STAY_FIXED`\
+        \ (campos em `fields`), a saída nova vem depois da data operacional (422 `IN_HOUSE_DEPARTURE_INVALID`)\
+        \ e a UH alocada vai até ela (outra reserva na UH nas noites novas: 409 `ROOM_ALREADY_ASSIGNED`;\
+        \ OOO: 422 `ROOM_OUT_OF_ORDER`; nada muda). Com `If-Match` (412 com outra\
+        \ versão; 428 sem ele). Exige `reservations.reservations.manage`. Recalcula\
+        \ **só as noites afetadas**: com o tipo, o plano ou a ocupação trocados, todas;\
+        \ com só as datas mudadas, as noites novas (e, com a chegada mudada e um pacote\
+        \ por estadia, as noites da chegada antiga e da nova); as mantidas guardam\
+        \ o preço congelado. A venda é conferida só no que mudou (422 com o código\
+        \ do `rates` e os motivos em `refusals`). `nightlyRates` só nas noites recalculadas\
+        \ (senão 400 `NIGHTLY_RATE_INVALID`); desconto: 403 `APPROVAL_REQUIRED` sem\
+        \ a permissão ou acima do limite (`rates.discounts.apply`, `maxPercent`).\
         \ Devolve as unidades antigas e toma as novas na mesma transação: sem unidade,\
         \ 409 `ROOM_TYPE_UNAVAILABLE` e nada muda. Plano novo copia as políticas vigentes\
         \ dele. Grava o histórico e publica `ReservationChanged`; sem diferença, nada\
@@ -16659,6 +16664,29 @@ components:
       - overridden
       - ratePlanId
       - roomAmount
+    HistoryStayGuestResponse:
+      type: object
+      description: "Um hóspede da estadia no retrato do histórico: o id, os códigos\
+        \ de check-in e a comprovação."
+      properties:
+        guestId:
+          type: string
+          format: uuid
+        minorAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/MinorAuthorizationResponse"
+          nullable: true
+        primary:
+          type: boolean
+        transportMode:
+          type: string
+          nullable: true
+        travelReason:
+          type: string
+          nullable: true
+      required:
+      - guestId
+      - primary
     HotelRequest:
       type: object
       description: Dados cadastrais do hotel.
@@ -17294,6 +17322,39 @@ components:
       required:
       - mergedGuestId
       - takeFromMerged
+    MinorAuthorizationResponse:
+      type: object
+      description: "A comprovação do menor no check-in (RN-24): o tipo, o hóspede\
+        \ adulto da mesma estadia responsável, o parentesco (código do domínio da\
+        \ FNRH), o anexo (autorização escrita ou judicial) e a validade."
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+          nullable: true
+        proofType:
+          type: string
+          description: "`PARENT_PRESENT` (pais presentes), `WRITTEN_AUTHORIZATION`\
+            \ (autorização escrita) ou `COURT_ORDER` (autorização judicial). A lista\
+            \ pode crescer (`x-extensible-enum`): trate um valor desconhecido sem\
+            \ falhar."
+          x-extensible-enum:
+          - PARENT_PRESENT
+          - WRITTEN_AUTHORIZATION
+          - COURT_ORDER
+        relationship:
+          type: string
+        responsibleGuestId:
+          type: string
+          format: uuid
+        validUntil:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - proofType
+      - relationship
+      - responsibleGuestId
     NightlyPackageResponse:
       type: object
       description: "Um pacote numa noite, com o código de lançamento do `billing`\
@@ -20104,15 +20165,20 @@ components:
           type: string
           description: "`CHANGE`, `CANCEL` (inclusive a expiração da pré-reserva,\
             \ com o motivo `EXPIRED`), `REACTIVATE`, `CONFIRM` (a confirmação da pré\
-            -reserva com a garantia) ou `GUARANTEE` (a garantia registrada numa reserva\
-            \ confirmada sem ela). A lista pode crescer (`x-extensible-enum`): trate\
-            \ um valor desconhecido sem falhar."
+            -reserva com a garantia), `GUARANTEE` (a garantia registrada numa reserva\
+            \ confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `ROOM_MOVE`\
+            \ (a troca de UH do hospedado). A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
           x-extensible-enum:
           - CHANGE
           - CANCEL
           - REACTIVATE
           - CONFIRM
           - GUARANTEE
+          - CHECK_IN
+          - UNDO_CHECK_IN
+          - CHECK_OUT
+          - ROOM_MOVE
         occurredAt:
           type: string
           format: date-time
@@ -20388,6 +20454,14 @@ components:
           nullable: true
         cancellationTerms:
           $ref: "#/components/schemas/CancellationTermsResponse"
+        checkIn:
+          allOf:
+          - $ref: "#/components/schemas/StayTransitionResponse"
+          nullable: true
+        checkOut:
+          allOf:
+          - $ref: "#/components/schemas/StayTransitionResponse"
+          nullable: true
         childAges:
           type: array
           items:
@@ -20563,6 +20637,14 @@ components:
         cancellationPolicyVersion:
           type: integer
           format: int64
+        checkIn:
+          allOf:
+          - $ref: "#/components/schemas/StayTransitionResponse"
+          nullable: true
+        checkOut:
+          allOf:
+          - $ref: "#/components/schemas/StayTransitionResponse"
+          nullable: true
         childAges:
           type: array
           items:
@@ -20595,6 +20677,11 @@ components:
         ratePlanId:
           type: string
           format: uuid
+        roomId:
+          type: string
+          format: uuid
+          description: A UH alocada; nula sem UH.
+          nullable: true
         roomTotal:
           type: string
           format: decimal
@@ -20624,6 +20711,13 @@ components:
           - CHECKED_OUT
           - CANCELLED
           - NO_SHOW
+        stayGuests:
+          type: array
+          description: Os hóspedes da estadia com os códigos de check-in e a comprovação
+            do menor (só ids e códigos; a comprovação de um check-in desfeito fica
+            no retrato de antes).
+          items:
+            $ref: "#/components/schemas/HistoryStayGuestResponse"
         total:
           type: string
           format: decimal
@@ -20647,6 +20741,7 @@ components:
       - roomTypeId
       - segment
       - status
+      - stayGuests
       - total
     ResetPasswordRequest:
       type: object
@@ -21180,8 +21275,9 @@ components:
           - OPERATIONAL
         releaseReason:
           type: string
-          description: "Por que deixou de valer: `UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`\
-            \ ou `RESERVATION_CHANGED`; nulo na ativa. A lista pode crescer (`x-extensible-enum`):\
+          description: "Por que deixou de valer: `UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`,\
+            \ `RESERVATION_CHANGED`, `CHECKED_OUT` (o check-out) ou `ROOM_MOVED` (a\
+            \ troca de UH do hospedado); nulo na ativa. A lista pode crescer (`x-extensible-enum`):\
             \ trate um valor desconhecido sem falhar."
           nullable: true
           x-extensible-enum:
@@ -21189,6 +21285,8 @@ components:
           - REALLOCATED
           - RESERVATION_CANCELLED
           - RESERVATION_CHANGED
+          - CHECKED_OUT
+          - ROOM_MOVED
         releasedAt:
           type: string
           format: date-time
@@ -22939,16 +23037,54 @@ components:
       - primary
     StayGuestResponse:
       type: object
-      description: Um hóspede da estadia.
+      description: "Um hóspede da estadia, com os dados de check-in (motivo de viagem\
+        \ e meio de transporte como códigos dos domínios da FNRH, entrada, saída e\
+        \ a comprovação do menor), nulos antes do check-in."
       properties:
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+        checkedOutAt:
+          type: string
+          format: date-time
+          nullable: true
         guestId:
           type: string
           format: uuid
+        minorAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/MinorAuthorizationResponse"
+          nullable: true
         primary:
           type: boolean
+        transportMode:
+          type: string
+          nullable: true
+        travelReason:
+          type: string
+          nullable: true
       required:
       - guestId
       - primary
+    StayTransitionResponse:
+      type: object
+      description: "Uma transição de hospedagem: a data operacional, o instante e\
+        \ quem (nulo = sistema)."
+      properties:
+        at:
+          type: string
+          format: date-time
+        businessDate:
+          type: string
+          format: date
+        by:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - at
+      - businessDate
     SubjectAttributesDto:
       type: object
       description: Os atributos do sujeito (IDs de outros módulos) para escolher o

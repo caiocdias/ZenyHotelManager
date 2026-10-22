@@ -119,8 +119,9 @@ object ReservationsErrorCodes {
     val RESERVATION_CANCELLATION_INVALID = ErrorCode("RESERVATION_CANCELLATION_INVALID")
 
     /**
-     * 422: a reserva cancelada ou no-show já terminou (nenhuma noite a partir da data operacional; no day use, a data
-     * já passou) e não é reativada.
+     * 422: a estadia da reserva já terminou (nenhuma noite a partir da data operacional; no day use, a data já passou):
+     * a cancelada ou no-show não é reativada, a UH não é mais alocada e, desde o M5 E01, não há mais check-in nem troca
+     * de UH.
      */
     val RESERVATION_STAY_ENDED = ErrorCode("RESERVATION_STAY_ENDED")
 
@@ -153,7 +154,7 @@ object ReservationsErrorCodes {
 
     /**
      * 409: a reserva não aceita alocação, realocação ou desalocação na situação em que está: só uma pré-reserva ou uma
-     * confirmada (a troca de UH do hóspede em casa é da recepção, M5). O problema traz a situação em
+     * confirmada (a troca de UH do hospedado é a transição `moveRoom`, M5 E01). O problema traz a situação em
      * `reservationStatus`.
      */
     val ROOM_ASSIGNMENT_NOT_ALLOWED = ErrorCode("ROOM_ASSIGNMENT_NOT_ALLOWED")
@@ -185,7 +186,7 @@ object ReservationsErrorCodes {
      */
     val ROOM_ASSIGNMENT_LOCKED = ErrorCode("ROOM_ASSIGNMENT_LOCKED")
 
-    /** 409: a reserva não tem UH alocada (desalocar ou marcar "não mover"). */
+    /** 409: a reserva não tem UH alocada (desalocar, marcar "não mover", ou, desde o M5 E01, o check-in). */
     val ROOM_NOT_ASSIGNED = ErrorCode("ROOM_NOT_ASSIGNED")
 
     /** 400: a consulta de sugestões fora do formato: mais de 20 características ou repetidas (campo `featureIds`). */
@@ -273,6 +274,69 @@ object ReservationsErrorCodes {
      * nome.
      */
     val GUEST_NAME_TOO_BROAD = ErrorCode("GUEST_NAME_TOO_BROAD")
+
+    // --- Hospedagem (M5 E01) ---------------------------------------------------------------------------------------
+
+    /**
+     * 400: check-in fora do formato, com o campo: nenhum hóspede ou mais que a ocupação da reserva (`guests`), hóspede
+     * repetido, nenhum ou mais de um principal, código de motivo de viagem, meio de transporte ou parentesco fora do
+     * formato (letras, dígitos, `_`, `.` e `-`, até 40), anexo faltando na autorização escrita ou judicial (ou
+     * presente na presença dos pais).
+     */
+    val CHECK_IN_INVALID = ErrorCode("CHECK_IN_INVALID")
+
+    /**
+     * 422: a data operacional ainda é anterior à chegada da reserva: altere antes a chegada
+     * (`PUT /api/v1/reservations/{id}`).
+     */
+    val CHECK_IN_BEFORE_ARRIVAL = ErrorCode("CHECK_IN_BEFORE_ARRIVAL")
+
+    /**
+     * 422: um hóspede da estadia não tem data de nascimento no `guests`, e a menoridade (RN-24) não pode ser conferida.
+     * O problema traz o hóspede em `guestId`.
+     */
+    val GUEST_BIRTH_DATE_REQUIRED = ErrorCode("GUEST_BIRTH_DATE_REQUIRED")
+
+    /**
+     * 422: um hóspede menor de idade na data operacional não tem a comprovação (RN-24: pais presentes, autorização
+     * escrita ou judicial). O problema traz o hóspede em `guestId`.
+     */
+    val MINOR_AUTHORIZATION_REQUIRED = ErrorCode("MINOR_AUTHORIZATION_REQUIRED")
+
+    /**
+     * 422: a comprovação do menor não vale: o responsável não é um hóspede adulto da mesma estadia, a validade já
+     * passou, ou a comprovação foi informada para um hóspede adulto. O problema traz o hóspede em `guestId`.
+     */
+    val MINOR_AUTHORIZATION_INVALID = ErrorCode("MINOR_AUTHORIZATION_INVALID")
+
+    /** 422: o check-in só é desfeito na mesma data operacional em que foi feito. */
+    val UNDO_CHECK_IN_EXPIRED = ErrorCode("UNDO_CHECK_IN_EXPIRED")
+
+    /** 422: a UH pedida na troca é a mesma em que o hóspede já está. */
+    val ROOM_MOVE_SAME_ROOM = ErrorCode("ROOM_MOVE_SAME_ROOM")
+
+    /** 400: troca de UH fora do formato: o motivo `INITIAL`, que é só da primeira alocação (campo `reason`). */
+    val ROOM_MOVE_INVALID = ErrorCode("ROOM_MOVE_INVALID")
+
+    /**
+     * 409: a alteração de uma reserva hospedada muda o que fica fixo depois do check-in: a chegada, o tipo de UH, o
+     * plano ou a ocupação (o tipo muda pela troca de UH; a ocupação, pela recepção, M5 E05). O problema
+     * traz os campos em
+     * `fields`.
+     */
+    val IN_HOUSE_STAY_FIXED = ErrorCode("IN_HOUSE_STAY_FIXED")
+
+    /**
+     * 422: a saída nova de uma reserva hospedada não é posterior à data operacional (para sair hoje, faça o check-out,
+     * que encerra a estadia na data).
+     */
+    val IN_HOUSE_DEPARTURE_INVALID = ErrorCode("IN_HOUSE_DEPARTURE_INVALID")
+
+    /**
+     * 422: a alteração da reserva hospedada recalcularia uma noite já passada e congelada (RN-14; o day use de uma
+     * data já passada transformado em pernoite). O problema traz as noites em `dates`.
+     */
+    val IN_HOUSE_PAST_NIGHT_FIXED = ErrorCode("IN_HOUSE_PAST_NIGHT_FIXED")
 
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,

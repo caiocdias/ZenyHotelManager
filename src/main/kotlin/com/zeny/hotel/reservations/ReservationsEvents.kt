@@ -131,3 +131,88 @@ data class ReservationConfirmed(
     val version: Long,
     val confirmedAt: Instant,
 )
+
+// --- Hospedagem (M5 E01) ------------------------------------------------------------------------------------------
+//
+// Os eventos de hospedagem levam `performedBy` (o id opaco do usuário que fez a operação; nulo = sistema), exceção
+// justificada à convenção "sem autor" dos eventos do módulo (H16 do M5): a FNRH (E08) exige o solicitante. Nada de
+// hóspede: só ids, datas, contagens e situações (quem consome relê a reserva pela `ReservationsApi`).
+
+/**
+ * O check-in da reserva [reservationId] foi feito (SPEC §8.3, RF-REC-01): a reserva está `IN_HOUSE` na UH [roomId], do
+ * tipo [roomTypeId], de [arrival] a [departure], com [guestCount] hóspedes ([adults] adultos e [children] crianças
+ * reservados), na data operacional [businessDate]. Publicado por `reservations` pelo outbox na transação do check-in.
+ * Escutado pela FNRH (M5 E08) e pela governança (M6).
+ */
+data class GuestCheckedIn(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val roomId: UUID,
+    val roomTypeId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val adults: Int,
+    val children: Int,
+    val guestCount: Int,
+    val businessDate: LocalDate,
+    val performedBy: UUID?,
+    val version: Long,
+    val checkedInAt: Instant,
+)
+
+/**
+ * O check-in da reserva [reservationId] foi desfeito na mesma data operacional [businessDate] (SPEC §8.4, ação
+ * sensível no `frontdesk`): a reserva voltou a `CONFIRMED`, com a UH [roomId] ainda alocada. Publicado por
+ * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08) e pela governança (M6).
+ */
+data class GuestCheckInUndone(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val roomId: UUID,
+    val businessDate: LocalDate,
+    val performedBy: UUID?,
+    val version: Long,
+    val undoneAt: Instant,
+)
+
+/**
+ * O check-out da reserva [reservationId] foi feito (SPEC §8.3, RF-REC-06) na data operacional [businessDate]: a
+ * reserva está `CHECKED_OUT` e a alocação da UH [roomId] foi encerrada. No check-out antecipado ([early]), a saída
+ * passou de [previousDeparture] a [departure] e as noites seguintes voltaram ao inventário. Publicado por
+ * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08) e pela governança (M6).
+ */
+data class GuestCheckedOut(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val roomId: UUID,
+    val roomTypeId: UUID,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val previousDeparture: LocalDate,
+    val early: Boolean,
+    val businessDate: LocalDate,
+    val performedBy: UUID?,
+    val version: Long,
+    val checkedOutAt: Instant,
+)
+
+/**
+ * O hospedado da reserva [reservationId] trocou da UH [fromRoomId] para a [toRoomId] (SPEC §8.3, RF-REC-04) na data
+ * operacional [businessDate], pelo [reason], com a tarifa das noites restantes mantida ou recalculada ([tariff]).
+ * Publicado por `reservations` pelo outbox na transação. Escutado pela governança (M6: a UH de origem fica para
+ * limpeza).
+ */
+data class RoomMoved(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val fromRoomId: UUID,
+    val toRoomId: UUID,
+    val roomTypeId: UUID,
+    val businessDate: LocalDate,
+    val reason: RoomAssignmentReason,
+    val tariff: RoomMoveTariff,
+    val performedBy: UUID?,
+    val version: Long,
+    val movedAt: Instant,
+)

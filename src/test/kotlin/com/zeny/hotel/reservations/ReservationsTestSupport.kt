@@ -68,6 +68,37 @@ open class ReservationLifecycleProbeListener {
     }
 }
 
+/** Os eventos de hospedagem (M5 E01) recebidos pelo listener de teste, como a FNRH (E08) os receberia. */
+object StayTransitionsEvents {
+    val checkedIn: MutableList<GuestCheckedIn> = CopyOnWriteArrayList()
+    val undone: MutableList<GuestCheckInUndone> = CopyOnWriteArrayList()
+    val checkedOut: MutableList<GuestCheckedOut> = CopyOnWriteArrayList()
+    val moved: MutableList<RoomMoved> = CopyOnWriteArrayList()
+}
+
+/** Listener assíncrono e transacional de teste dos eventos de hospedagem: com ele, as publicações vão ao outbox. */
+open class StayTransitionsProbeListener {
+    @ApplicationModuleListener
+    open fun on(event: GuestCheckedIn) {
+        StayTransitionsEvents.checkedIn += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: GuestCheckInUndone) {
+        StayTransitionsEvents.undone += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: GuestCheckedOut) {
+        StayTransitionsEvents.checkedOut += event
+    }
+
+    @ApplicationModuleListener
+    open fun on(event: RoomMoved) {
+        StayTransitionsEvents.moved += event
+    }
+}
+
 /**
  * Apoio dos testes das reservas (M4 E07): cria planos com políticas e preços, hóspedes e reservas pela API (com
  * `Idempotency-Key`, pelo `BillingTestSupport`) e lê as reservas do banco. Cada teste cria os próprios tipos de UH
@@ -437,6 +468,47 @@ class ReservationsTestSupport(
                 )
             }.list()
 
+    // --- Hospedagem (M5 E01) ---------------------------------------------------------------------------------------
+
+    /**
+     * Grava a reserva como hospedada direto no banco (para os testes que precisam de um hospedado no passado, que a
+     * API não cria): a alocação ativa na UH [room], do início [startsOn] à saída, e o check-in na chegada, num só
+     * comando (os gatilhos adiados conferem no commit que a hospedada tem UH).
+     */
+    fun forceInHouse(
+        id: UUID,
+        room: UUID,
+    ) = jdbc
+        .sql(
+            """
+            WITH assigned AS (
+                INSERT INTO reservations.room_assignment (id, reservation_id, room_id, starts_on, ends_on, reason,
+                    assigned_at)
+                SELECT CAST(:assignment AS uuid), r.id, CAST(:room AS uuid), r.arrival, r.departure, 'INITIAL', now()
+                FROM reservations.reservation r WHERE r.id = :id
+                RETURNING reservation_id
+            )
+            UPDATE reservations.reservation r SET status = 'IN_HOUSE', provisional_until = NULL,
+                checked_in_on = r.arrival, checked_in_at = now()
+            FROM assigned a WHERE r.id = a.reservation_id
+            """.trimIndent(),
+        ).param("assignment", UuidV7.generate())
+        .param("room", room)
+        .param("id", id)
+        .update()
+
+    /** Grava a reserva (sem UH alocada) como encerrada direto no banco. */
+    fun forceCheckedOut(id: UUID) =
+        jdbc
+            .sql(
+                """
+                UPDATE reservations.reservation SET status = 'CHECKED_OUT', provisional_until = NULL,
+                    checked_in_on = arrival, checked_in_at = now(), checked_out_on = departure, checked_out_at = now()
+                WHERE id = :id
+                """.trimIndent(),
+            ).param("id", id)
+            .update()
+
     fun status(id: UUID): String =
         jdbc
             .sql("SELECT status FROM reservations.reservation WHERE id = :id")
@@ -457,6 +529,7 @@ class ReservationsTestSupport(
     fun lifecyclePublications(
         type: Class<*>,
         reservationId: UUID,
+        listener: String = "ReservationLifecycleProbeListener",
     ): List<String> =
         jdbc
             .sql(
@@ -464,7 +537,7 @@ class ReservationsTestSupport(
                     "AND serialized_event LIKE :reservation AND listener_id LIKE :listener",
             ).param("type", type.name)
             .param("reservation", "%\"reservationId\":\"$reservationId\"%")
-            .param("listener", "%ReservationLifecycleProbeListener%")
+            .param("listener", "%$listener%")
             .query(String::class.java)
             .list()
             .filterNotNull()

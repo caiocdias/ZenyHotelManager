@@ -3,6 +3,7 @@ package com.zeny.hotel.reservations.application
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.BookingSummary
+import com.zeny.hotel.reservations.CheckIn
 import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.InventoryDay
 import com.zeny.hotel.reservations.InventoryRecount
@@ -15,14 +16,17 @@ import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsErrorCodes
 import com.zeny.hotel.reservations.ReservationsPermissions
+import com.zeny.hotel.reservations.RoomAssignmentReason
 import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.RoomBlockSummary
+import com.zeny.hotel.reservations.RoomMove
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryOutOfHorizonException
 import com.zeny.hotel.reservations.domain.InventoryPeriod
 import com.zeny.hotel.reservations.domain.InventoryRules
 import com.zeny.hotel.reservations.domain.OverbookingLimit
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.AuditContext
@@ -218,7 +222,30 @@ class ReservationsApiService(
     private val lifecycle: ReservationLifecycleService,
     private val pendingGuarantees: PendingGuaranteesService,
     private val blocks: RoomBlockService,
+    private val assignments: RoomAssignmentService,
+    private val stays: StayTransitionsService,
 ) : ReservationsApi {
+    override fun assignRoom(
+        id: ReservationId,
+        roomId: RoomId,
+        reason: RoomAssignmentReason?,
+        doNotMove: Boolean?,
+    ): ReservationSummary = assignments.assignAuthorized(id, roomId, reason, doNotMove)
+
+    override fun checkIn(
+        id: ReservationId,
+        checkIn: CheckIn,
+    ): ReservationSummary = stays.checkIn(id, checkIn)
+
+    override fun undoCheckIn(id: ReservationId): ReservationSummary = stays.undoCheckIn(id)
+
+    override fun checkOut(id: ReservationId): ReservationSummary = stays.checkOut(id)
+
+    override fun moveRoom(
+        id: ReservationId,
+        move: RoomMove,
+    ): ReservationSummary = stays.moveRoom(id, move)
+
     override fun createBlock(block: NewRoomBlock): RoomBlockSummary = blocks.createAuthorized(block)
 
     override fun block(id: RoomBlockId): RoomBlockSummary? = blocks.blockAuthorized(id)

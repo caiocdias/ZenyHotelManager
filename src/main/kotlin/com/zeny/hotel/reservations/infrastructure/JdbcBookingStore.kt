@@ -24,7 +24,10 @@ import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.HistoryCancellation
 import com.zeny.hotel.reservations.HistoryNight
+import com.zeny.hotel.reservations.HistoryStayGuest
 import com.zeny.hotel.reservations.MarketSegment
+import com.zeny.hotel.reservations.MinorAuthorization
+import com.zeny.hotel.reservations.MinorProofType
 import com.zeny.hotel.reservations.NightlyRateSummary
 import com.zeny.hotel.reservations.PendingGuaranteeKind
 import com.zeny.hotel.reservations.ReservationCancellation
@@ -39,12 +42,14 @@ import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.StayGuestSummary
+import com.zeny.hotel.reservations.StayTransitionRecord
 import com.zeny.hotel.reservations.application.BookingStore
 import com.zeny.hotel.reservations.application.GuestRepointing
 import com.zeny.hotel.reservations.application.PendingGuaranteeRow
 import com.zeny.hotel.reservations.application.RoomAssignmentStore
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryUsage
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.AppendOnlyTables
 import com.zeny.hotel.shared.DocumentNumber
@@ -185,20 +190,37 @@ class JdbcBookingStore(
         jdbc
             .sql(
                 """
-                INSERT INTO reservations.reservation_guest (reservation_id, guest_id, is_primary, position)
-                SELECT :id, g.guest_id, g.is_primary, g.position
+                INSERT INTO reservations.reservation_guest (reservation_id, guest_id, is_primary, position,
+                    travel_reason, transport_mode, checked_in_at, checked_out_at, minor_proof_type,
+                    minor_responsible_guest_id, minor_relationship, minor_attachment_id, minor_valid_until)
+                SELECT :id, g.guest_id, g.is_primary, g.position, g.travel_reason, g.transport_mode, g.checked_in_at,
+                    g.checked_out_at, g.minor_proof_type, g.minor_responsible_guest_id, g.minor_relationship,
+                    g.minor_attachment_id, g.minor_valid_until
                 FROM jsonb_to_recordset(CAST(:guests AS jsonb))
-                    AS g(guest_id uuid, is_primary boolean, position smallint)
+                    AS g(guest_id uuid, is_primary boolean, position smallint, travel_reason varchar,
+                        transport_mode varchar, checked_in_at timestamptz, checked_out_at timestamptz,
+                        minor_proof_type varchar, minor_responsible_guest_id uuid, minor_relationship varchar,
+                        minor_attachment_id uuid, minor_valid_until date)
                 """.trimIndent(),
             ).param("id", reservation.id.value)
             .param(
                 "guests",
                 jsonMapper.writeValueAsString(
                     reservation.guests.mapIndexed { index, guest ->
+                        val minor = guest.minorAuthorization
                         mapOf(
                             "guest_id" to guest.guestId.toString(),
                             "is_primary" to guest.primary,
                             "position" to index,
+                            "travel_reason" to guest.travelReason,
+                            "transport_mode" to guest.transportMode,
+                            "checked_in_at" to guest.checkedInAt?.toString(),
+                            "checked_out_at" to guest.checkedOutAt?.toString(),
+                            "minor_proof_type" to minor?.proofType?.name,
+                            "minor_responsible_guest_id" to minor?.responsibleGuestId?.toString(),
+                            "minor_relationship" to minor?.relationship,
+                            "minor_attachment_id" to minor?.attachmentId?.toString(),
+                            "minor_valid_until" to minor?.validUntil?.toString(),
                         )
                     },
                 ),
@@ -287,6 +309,7 @@ class JdbcBookingStore(
         reservation: ReservationSummary,
         now: Instant,
         replaceNights: Boolean,
+        replaceGuests: Boolean,
     ) {
         val cancellation = reservation.cancellationTerms
         val guarantee = reservation.guaranteeTerms
@@ -318,6 +341,9 @@ class JdbcBookingStore(
                         guarantee_method = :guaranteeMethod, guaranteed_at = :guaranteedAt,
                         guaranteed_by = :guaranteedBy, guarantee_deposit_required = :depositRequired,
                         guarantee_deposit_received = :depositReceived,
+                        checked_in_on = :checkedInOn, checked_in_at = :checkedInAt, checked_in_by = :checkedInBy,
+                        checked_out_on = :checkedOutOn, checked_out_at = :checkedOutAt,
+                        checked_out_by = :checkedOutBy,
                         version = :version, updated_at = :now
                     WHERE id = :id AND version = :version - 1
                     """.trimIndent(),
@@ -369,6 +395,12 @@ class JdbcBookingStore(
                 .param("guaranteedBy", reservation.guarantee?.confirmedBy?.value)
                 .param("depositRequired", reservation.guarantee?.requiredDeposit?.amount)
                 .param("depositReceived", reservation.guarantee?.depositReceived?.amount)
+                .param("checkedInOn", reservation.checkIn?.businessDate)
+                .param("checkedInAt", reservation.checkIn?.at?.utc())
+                .param("checkedInBy", reservation.checkIn?.by?.value)
+                .param("checkedOutOn", reservation.checkOut?.businessDate)
+                .param("checkedOutAt", reservation.checkOut?.at?.utc())
+                .param("checkedOutBy", reservation.checkOut?.by?.value)
                 .param("version", reservation.version)
                 .param("now", now.utc())
                 .update()
@@ -379,6 +411,13 @@ class JdbcBookingStore(
                 .param("id", reservation.id.value)
                 .update()
             insertNights(reservation)
+        }
+        if (replaceGuests) {
+            jdbc
+                .sql("DELETE FROM reservations.reservation_guest WHERE reservation_id = :id")
+                .param("id", reservation.id.value)
+                .update()
+            insertGuests(reservation)
         }
     }
 
@@ -558,6 +597,27 @@ class JdbcBookingStore(
                 .query { rs, _ -> ReservationId(rs.uuid("reservation_id")) }
                 .list()
         val changes = if (affected.isEmpty()) emptyMap() else repointStayGuests(merged, target, affected, now)
+        // O responsável pela comprovação de um menor (M5 E01) é um hóspede da mesma estadia: a reserva já está nas
+        // afetadas (a versão dela já avançou). Se o responsável foi mesclado no próprio menor (os dois perfis eram a
+        // mesma pessoa), a comprovação perde o sentido e sai (o responsável nunca é o próprio hóspede; o retrato da
+        // trilha e o histórico anteriores a guardam).
+        jdbc
+            .sql(
+                """
+                UPDATE reservations.reservation_guest SET minor_proof_type = NULL, minor_responsible_guest_id = NULL,
+                    minor_relationship = NULL, minor_attachment_id = NULL, minor_valid_until = NULL
+                WHERE minor_responsible_guest_id = :merged AND guest_id = :target
+                """.trimIndent(),
+            ).param("merged", merged.value)
+            .param("target", target.value)
+            .update()
+        jdbc
+            .sql(
+                "UPDATE reservations.reservation_guest SET minor_responsible_guest_id = :target " +
+                    "WHERE minor_responsible_guest_id = :merged",
+            ).param("target", target.value)
+            .param("merged", merged.value)
+            .update()
         return GuestRepointing(bookings, changes)
     }
 
@@ -676,14 +736,46 @@ class JdbcBookingStore(
     private fun guestsOf(ids: Collection<ReservationId>): Map<ReservationId, List<StayGuestSummary>> =
         jdbc
             .sql(
-                "SELECT reservation_id, guest_id, is_primary FROM reservations.reservation_guest " +
+                "SELECT * FROM reservations.reservation_guest " +
                     "WHERE reservation_id = ANY (CAST(:ids AS uuid[])) ORDER BY reservation_id, position, guest_id",
             ).param("ids", array(ids.map { it.value }))
-            .query { rs, _ ->
-                ReservationId(rs.uuid("reservation_id")) to
-                    StayGuestSummary(GuestId(rs.uuid("guest_id")), rs.getBoolean("is_primary"))
-            }.list()
+            .query { rs, _ -> ReservationId(rs.uuid("reservation_id")) to stayGuest(rs) }
+            .list()
             .groupBy({ it.first }, { it.second })
+
+    private fun stayGuest(rs: ResultSet): StayGuestSummary {
+        val proof = rs.getString("minor_proof_type")
+        return StayGuestSummary(
+            guestId = GuestId(rs.uuid("guest_id")),
+            primary = rs.getBoolean("is_primary"),
+            travelReason = rs.getString("travel_reason"),
+            transportMode = rs.getString("transport_mode"),
+            checkedInAt = rs.instant("checked_in_at"),
+            checkedOutAt = rs.instant("checked_out_at"),
+            minorAuthorization =
+                proof?.let {
+                    MinorAuthorization(
+                        proofType = MinorProofType.valueOf(it),
+                        responsibleGuestId = GuestId(rs.uuid("minor_responsible_guest_id")),
+                        relationship = rs.getString("minor_relationship"),
+                        attachmentId = rs.getObject("minor_attachment_id", UUID::class.java),
+                        validUntil = rs.getObject("minor_valid_until", LocalDate::class.java),
+                    )
+                },
+        )
+    }
+
+    private fun stamp(
+        rs: ResultSet,
+        prefix: String,
+    ): StayTransitionRecord? {
+        val at = rs.instant("${prefix}_at") ?: return null
+        return StayTransitionRecord(
+            businessDate = rs.getObject("${prefix}_on", LocalDate::class.java),
+            at = at,
+            by = rs.getObject("${prefix}_by", UUID::class.java)?.let(::UserId),
+        )
+    }
 
     private fun reservation(
         rs: ResultSet,
@@ -731,6 +823,8 @@ class JdbcBookingStore(
         penaltiesCharged = rs.requiredMoney("penalties_charged"),
         guarantee = guarantee(rs),
         blockId = rs.getObject("block_id", UUID::class.java)?.let(::RoomBlockId),
+        checkIn = stamp(rs, "checked_in"),
+        checkOut = stamp(rs, "checked_out"),
     )
 
     private fun guarantee(rs: ResultSet): ReservationGuarantee? {
@@ -865,6 +959,10 @@ private data class StoredState(
     val guaranteePolicyVersion: Long,
     val cancellation: StoredCancellation?,
     val guaranteeMethod: String? = null,
+    val checkIn: StoredStamp? = null,
+    val checkOut: StoredStamp? = null,
+    val roomId: UUID? = null,
+    val stayGuests: List<StoredStayGuest> = emptyList(),
 ) {
     fun toState() =
         ReservationState(
@@ -904,7 +1002,69 @@ private data class StoredState(
                     )
                 },
             guaranteeMethod = guaranteeMethod?.let(GuaranteeMethod::valueOf),
+            checkIn = checkIn?.toRecord(),
+            checkOut = checkOut?.toRecord(),
+            roomId = roomId?.let(::RoomId),
+            stayGuests = stayGuests.map { it.toGuest() },
         )
+
+    data class StoredStamp(
+        val businessDate: String,
+        val at: String,
+        val by: UUID?,
+    ) {
+        fun toRecord() = StayTransitionRecord(LocalDate.parse(businessDate), Instant.parse(at), by?.let(::UserId))
+
+        companion object {
+            fun of(record: StayTransitionRecord) =
+                StoredStamp(record.businessDate.toString(), record.at.toString(), record.by?.value)
+        }
+    }
+
+    data class StoredStayGuest(
+        val guestId: UUID,
+        val primary: Boolean,
+        val travelReason: String?,
+        val transportMode: String?,
+        val minorProofType: String?,
+        val minorResponsibleGuestId: UUID?,
+        val minorRelationship: String?,
+        val minorAttachmentId: UUID?,
+        val minorValidUntil: String?,
+    ) {
+        fun toGuest() =
+            HistoryStayGuest(
+                guestId = GuestId(guestId),
+                primary = primary,
+                travelReason = travelReason,
+                transportMode = transportMode,
+                minorAuthorization =
+                    minorProofType?.let {
+                        MinorAuthorization(
+                            MinorProofType.valueOf(it),
+                            GuestId(checkNotNull(minorResponsibleGuestId)),
+                            checkNotNull(minorRelationship),
+                            minorAttachmentId,
+                            minorValidUntil?.let(LocalDate::parse),
+                        )
+                    },
+            )
+
+        companion object {
+            fun of(guest: HistoryStayGuest) =
+                StoredStayGuest(
+                    guestId = guest.guestId.value,
+                    primary = guest.primary,
+                    travelReason = guest.travelReason,
+                    transportMode = guest.transportMode,
+                    minorProofType = guest.minorAuthorization?.proofType?.name,
+                    minorResponsibleGuestId = guest.minorAuthorization?.responsibleGuestId?.value,
+                    minorRelationship = guest.minorAuthorization?.relationship,
+                    minorAttachmentId = guest.minorAuthorization?.attachmentId,
+                    minorValidUntil = guest.minorAuthorization?.validUntil?.toString(),
+                )
+        }
+    }
 
     data class StoredNight(
         val date: String,
@@ -960,6 +1120,10 @@ private data class StoredState(
                         )
                     },
                 guaranteeMethod = state.guaranteeMethod?.name,
+                checkIn = state.checkIn?.let(StoredStamp::of),
+                checkOut = state.checkOut?.let(StoredStamp::of),
+                roomId = state.roomId?.value,
+                stayGuests = state.stayGuests.map(StoredStayGuest::of),
             )
     }
 }

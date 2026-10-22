@@ -315,6 +315,27 @@ class ReservationsPersonalData(
                         "nights" to reservation.nightlyRates.map { mapOf("date" to it.date, "amount" to it.amount) },
                         "total" to reservation.total,
                         "createdAt" to reservation.createdAt,
+                        "checkIn" to reservation.checkIn?.businessDate,
+                        "checkOut" to reservation.checkOut?.businessDate,
+                        // Os dados de check-in do próprio titular (M5 E01): os códigos e a comprovação do menor.
+                        "stayData" to
+                            reservation.guests.filter { it.guestId in wanted && it.checkedInAt != null }.map { guest ->
+                                mapOf(
+                                    "guestId" to guest.guestId.toString(),
+                                    "travelReason" to guest.travelReason,
+                                    "transportMode" to guest.transportMode,
+                                    "checkedInAt" to guest.checkedInAt,
+                                    "checkedOutAt" to guest.checkedOutAt,
+                                    "minorAuthorization" to
+                                        guest.minorAuthorization?.let {
+                                            mapOf(
+                                                "proofType" to it.proofType.name,
+                                                "relationship" to it.relationship,
+                                                "validUntil" to it.validUntil,
+                                            )
+                                        },
+                                )
+                            },
                     )
                 },
         )

@@ -56,6 +56,19 @@ interface RoomAssignmentStore {
         reason: RoomAssignmentEndReason,
     ): RoomAssignmentSummary?
 
+    /**
+     * Encerra a alocação ativa [id] (M5 E01: o check-out e a troca de UH do hospedado): o fim passa a [endsOn] (nunca
+     * antes do início) e ela é solta pelo [reason] no mesmo comando; devolve a encerrada, ou `null` se
+     * já não era ativa.
+     */
+    fun end(
+        id: RoomAssignmentId,
+        endsOn: LocalDate,
+        now: Instant,
+        by: UserId?,
+        reason: RoomAssignmentEndReason,
+    ): RoomAssignmentSummary?
+
     /** Marca ou desmarca "não mover" na alocação ativa [id]. */
     fun setDoNotMove(
         id: RoomAssignmentId,

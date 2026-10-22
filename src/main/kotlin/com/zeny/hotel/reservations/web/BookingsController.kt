@@ -17,6 +17,8 @@ import com.zeny.hotel.reservations.CancellationTerms
 import com.zeny.hotel.reservations.GuaranteeMethod
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.MarketSegment
+import com.zeny.hotel.reservations.MinorAuthorization
+import com.zeny.hotel.reservations.MinorProofType
 import com.zeny.hotel.reservations.NewBooking
 import com.zeny.hotel.reservations.NewReservation
 import com.zeny.hotel.reservations.NewStayGuest
@@ -28,6 +30,8 @@ import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationOrigin
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
+import com.zeny.hotel.reservations.StayGuestSummary
+import com.zeny.hotel.reservations.StayTransitionRecord
 import com.zeny.hotel.reservations.application.BookingService
 import com.zeny.hotel.reservations.application.BookingView
 import com.zeny.hotel.reservations.application.PendingGuaranteesService
@@ -154,11 +158,74 @@ data class RestrictionAlertResponse(
     }
 }
 
-@Schema(description = "Um hóspede da estadia.")
+@Schema(
+    description =
+        "A comprovação do menor no check-in (RN-24): o tipo, o hóspede adulto da mesma estadia responsável, o " +
+            "parentesco (código do domínio da FNRH), o anexo (autorização escrita ou judicial) e a validade.",
+)
+data class MinorAuthorizationResponse(
+    @field:ExtensibleEnum
+    @field:Schema(
+        description =
+            "`PARENT_PRESENT` (pais presentes), `WRITTEN_AUTHORIZATION` (autorização escrita) ou `COURT_ORDER` " +
+                "(autorização judicial). $UNKNOWN",
+    )
+    val proofType: MinorProofType,
+    val responsibleGuestId: UUID,
+    val relationship: String,
+    val attachmentId: UUID?,
+    val validUntil: LocalDate?,
+) {
+    companion object {
+        fun of(authorization: MinorAuthorization) =
+            MinorAuthorizationResponse(
+                authorization.proofType,
+                authorization.responsibleGuestId.value,
+                authorization.relationship,
+                authorization.attachmentId,
+                authorization.validUntil,
+            )
+    }
+}
+
+@Schema(
+    description =
+        "Um hóspede da estadia, com os dados de check-in (motivo de viagem e meio de transporte como códigos dos " +
+            "domínios da FNRH, entrada, saída e a comprovação do menor), nulos antes do check-in.",
+)
 data class StayGuestResponse(
     val guestId: UUID,
     val primary: Boolean,
-)
+    val travelReason: String?,
+    val transportMode: String?,
+    val checkedInAt: Instant?,
+    val checkedOutAt: Instant?,
+    val minorAuthorization: MinorAuthorizationResponse?,
+) {
+    companion object {
+        fun of(guest: StayGuestSummary) =
+            StayGuestResponse(
+                guest.guestId.value,
+                guest.primary,
+                guest.travelReason,
+                guest.transportMode,
+                guest.checkedInAt,
+                guest.checkedOutAt,
+                guest.minorAuthorization?.let(MinorAuthorizationResponse::of),
+            )
+    }
+}
+
+@Schema(description = "Uma transição de hospedagem: a data operacional, o instante e quem (nulo = sistema).")
+data class StayTransitionResponse(
+    val businessDate: LocalDate,
+    val at: Instant,
+    val by: UUID?,
+) {
+    companion object {
+        fun of(record: StayTransitionRecord) = StayTransitionResponse(record.businessDate, record.at, record.by?.value)
+    }
+}
 
 @Schema(description = "Um pacote numa noite, com o código de lançamento do `billing` (para o check-in e o fechamento).")
 data class NightlyPackageResponse(
@@ -410,6 +477,12 @@ data class ReservationResponse(
                 "plano e as datas não mudam); nulo na reserva comum.",
     )
     val blockId: UUID?,
+    @field:Schema(
+        description = "O check-in (data operacional, instante e quem); nulo antes dele ou depois de desfeito.",
+    )
+    val checkIn: StayTransitionResponse?,
+    @field:Schema(description = "O check-out (data operacional, instante e quem); só na reserva encerrada.")
+    val checkOut: StayTransitionResponse?,
 ) {
     companion object {
         fun of(
@@ -431,7 +504,7 @@ data class ReservationResponse(
             childAges = reservation.childAges,
             segment = reservation.segment,
             specialRequests = reservation.specialRequests,
-            guests = reservation.guests.map { StayGuestResponse(it.guestId.value, it.primary) },
+            guests = reservation.guests.map(StayGuestResponse::of),
             nightlyRates = reservation.nightlyRates.map(NightlyRateResponse::of),
             roomTotal = reservation.roomTotal,
             additionalPackagesTotal = reservation.additionalPackagesTotal,
@@ -451,6 +524,8 @@ data class ReservationResponse(
             guarantee = reservation.guarantee?.let(ReservationGuaranteeResponse::of),
             roomAssignment = reservation.roomAssignment?.let { RoomAssignmentResponse.of(it, roomNumber) },
             blockId = reservation.blockId?.value,
+            checkIn = reservation.checkIn?.let(StayTransitionResponse::of),
+            checkOut = reservation.checkOut?.let(StayTransitionResponse::of),
         )
     }
 }
@@ -626,8 +701,13 @@ class ReservationsController(
         summary = "Alterar uma reserva",
         description =
             "Troca a estadia (tipo de UH, plano, datas, ocupação), o segmento e os pedidos especiais de uma " +
-                "pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`), com `If-Match` (412 " +
-                "com outra versão; 428 sem ele). Exige `reservations.reservations.manage`. Recalcula **só as noites " +
+                "pré-reserva ou confirmada (senão 409 `RESERVATION_TRANSITION_NOT_ALLOWED`); numa **hospedada**, " +
+                "só a saída (extensão e redução), o segmento e os pedidos especiais: mudar a chegada, o tipo, o " +
+                "plano ou a ocupação é 409 `IN_HOUSE_STAY_FIXED` (campos em `fields`), a saída nova vem depois da " +
+                "data operacional (422 `IN_HOUSE_DEPARTURE_INVALID`) e a UH alocada vai até ela (outra reserva na UH " +
+                "nas noites novas: 409 `ROOM_ALREADY_ASSIGNED`; OOO: 422 `ROOM_OUT_OF_ORDER`; nada muda). Com " +
+                "`If-Match` (412 com outra versão; 428 sem ele). Exige `reservations.reservations.manage`. " +
+                "Recalcula **só as noites " +
                 "afetadas**: com o tipo, o plano ou a ocupação trocados, todas; com só as datas mudadas, as noites " +
                 "novas (e, com a chegada mudada e um pacote por estadia, as noites da chegada antiga e da nova); as " +
                 "mantidas guardam o preço congelado. A venda é conferida só no que mudou (422 com o código do " +

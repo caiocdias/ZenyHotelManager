@@ -48,6 +48,7 @@ import com.zeny.hotel.reservations.domain.CancellationPenalties
 import com.zeny.hotel.reservations.domain.CancellationRules
 import com.zeny.hotel.reservations.domain.GuaranteeAction
 import com.zeny.hotel.reservations.domain.GuaranteeRules
+import com.zeny.hotel.reservations.domain.InHouseChangeRules
 import com.zeny.hotel.reservations.domain.InventoryChange
 import com.zeny.hotel.reservations.domain.InventoryNights
 import com.zeny.hotel.reservations.domain.NightlyRates
@@ -99,6 +100,52 @@ sealed interface WaiverAuthorization {
 
     /** Quem chama já se autorizou (a `ReservationsApi`). */
     data object AlreadyAuthorized : WaiverAuthorization
+}
+
+/**
+ * O histórico (*append-only*) e a trilha de uma escrita na reserva (sem texto livre nem dado de
+ * hóspede): uma entrada no
+ * histórico com o retrato antes e depois e uma entrada da reserva na trilha, com os campos mudados.
+ */
+@Component
+class ReservationHistoryRecorder(
+    private val store: BookingStore,
+    private val hotel: HotelApi,
+    private val currentActor: CurrentActor,
+    private val audit: AuditContext,
+) {
+    @Suppress("LongParameterList") // a entrada inteira do histórico
+    fun record(
+        kind: ReservationHistoryKind,
+        before: ReservationSummary,
+        after: ReservationSummary,
+        fields: List<String>,
+        approval: SensitiveAuthorization.ByApproval?,
+        now: Instant,
+    ) {
+        store.insertHistory(
+            ReservationHistoryEntry(
+                id = ReservationHistoryId.new(),
+                reservationId = after.id,
+                kind = kind,
+                businessDate = hotel.currentBusinessDate(),
+                occurredAt = now,
+                actorId = currentActor.currentOrNull()?.userId,
+                approvalId = approval?.approvalId,
+                approvedBy = approval?.approverId,
+                changedFields = fields,
+                before = ReservationsAudit.state(before),
+                after = ReservationsAudit.state(after),
+                version = after.version,
+            ),
+        )
+        audit.record(
+            ReservationsAudit.RESERVATION,
+            after.id.value,
+            ReservationsAudit.reservationSnapshot(before),
+            ReservationsAudit.reservationSnapshot(after) + ("changedFields" to fields),
+        )
+    }
 }
 
 /** A reserva com os alertas da lista de restrição dos hóspedes, lidos na hora (RF-HOS-04). */
@@ -173,6 +220,7 @@ class ReservationViews(
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass") // as portas e os passos do ciclo de vida
 class ReservationLifecycle(
     private val store: BookingStore,
+    private val history: ReservationHistoryRecorder,
     private val rates: RatesApi,
     private val rooms: RoomsApi,
     private val hotel: HotelApi,
@@ -202,6 +250,9 @@ class ReservationLifecycle(
         ReservationChangeRules.requireValid(command, reservation.guests.size)
         val old = StayShape.of(reservation)
         val new = StayShape.of(command)
+        // O hospedado (M5 E01) só muda a saída (extensão e redução); a chegada, o tipo, o plano e a ocupação ficam.
+        val inHouse = reservation.status == ReservationStatus.IN_HOUSE
+        if (inHouse) InHouseChangeRules.require(old, new, hotel.currentBusinessDate())
         val restay =
             when {
                 old == new -> null
@@ -211,6 +262,13 @@ class ReservationLifecycle(
 
                 else -> restay(reservation, old, new, command)
             }
+        if (inHouse && restay != null) {
+            InHouseChangeRules.requireNoPastNight(
+                restay.repriced.map { it.date },
+                reservation.nightlyRates.map { it.date },
+                hotel.currentBusinessDate(),
+            )
+        }
         if (restay == null) ReservationChangeRules.requireOverridesOn(command, emptyList())
         val approval = restay?.let { authorizeDiscount(reservation, it.repriced, discount) }
         val candidate = candidate(reservation, command, restay, approval)
@@ -221,8 +279,14 @@ class ReservationLifecycle(
         }
         if (restay != null) inventory.apply(restay.inventoryChanges)
         val now = now()
-        // A UH alocada acompanha a estadia nova (E10): fica se continua livre, ou é solta; "não mover" recusa soltar.
-        val assignment = assignments.followChange(reservation, candidate, now)
+        // A UH alocada acompanha a estadia nova (E10): fica se continua livre, ou é solta; "não mover" recusa soltar. A
+        // do hospedado (M5 E01) nunca é solta: vai até a saída nova, ou a alteração é recusada.
+        val assignment =
+            if (inHouse) {
+                assignments.followInHouseChange(reservation, candidate)
+            } else {
+                assignments.followChange(reservation, candidate, now)
+            }
         val updated = candidate.copy(version = reservation.version + 1, roomAssignment = assignment)
         store.update(updated, now, replaceNights = updated.nightlyRates != reservation.nightlyRates)
         record(ReservationHistoryKind.CHANGE, reservation, updated, fields, approval, now)
@@ -745,7 +809,6 @@ class ReservationLifecycle(
         store.reservationForUpdate(id)
             ?: throw NotFoundException(ReservationsErrorCodes.RESERVATION_NOT_FOUND, "Reserva não encontrada.")
 
-    /** O histórico (*append-only*) e a trilha (sem texto livre nem dado de hóspede). */
     @Suppress("LongParameterList") // a entrada inteira do histórico
     private fun record(
         kind: ReservationHistoryKind,
@@ -754,30 +817,7 @@ class ReservationLifecycle(
         fields: List<String>,
         approval: SensitiveAuthorization.ByApproval?,
         now: Instant,
-    ) {
-        store.insertHistory(
-            ReservationHistoryEntry(
-                id = ReservationHistoryId.new(),
-                reservationId = after.id,
-                kind = kind,
-                businessDate = hotel.currentBusinessDate(),
-                occurredAt = now,
-                actorId = actor(),
-                approvalId = approval?.approvalId,
-                approvedBy = approval?.approverId,
-                changedFields = fields,
-                before = ReservationsAudit.state(before),
-                after = ReservationsAudit.state(after),
-                version = after.version,
-            ),
-        )
-        audit.record(
-            ReservationsAudit.RESERVATION,
-            after.id.value,
-            ReservationsAudit.reservationSnapshot(before),
-            ReservationsAudit.reservationSnapshot(after) + ("changedFields" to fields),
-        )
-    }
+    ) = history.record(kind, before, after, fields, approval, now)
 
     private fun changed(
         before: ReservationSummary,

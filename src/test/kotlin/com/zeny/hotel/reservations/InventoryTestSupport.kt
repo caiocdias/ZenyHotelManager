@@ -40,6 +40,9 @@ class InventoryTestConfiguration {
 
     @Bean
     fun reservationLifecycleProbeListener() = ReservationLifecycleProbeListener()
+
+    @Bean
+    fun stayTransitionsProbeListener() = StayTransitionsProbeListener()
 }
 
 /** Uma linha do inventário lida direto do banco. */

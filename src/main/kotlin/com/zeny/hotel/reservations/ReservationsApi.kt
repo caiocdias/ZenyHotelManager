@@ -1,5 +1,6 @@
 package com.zeny.hotel.reservations
 
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import java.time.Instant
 import java.time.LocalDate
@@ -12,7 +13,8 @@ import java.time.LocalDate
  * para o walk-in (M5), o channel manager (M8) e os eventos (M10), e as leituras ([booking], [reservation]); desde a
  * E08, o cancelamento ([cancelReservation]); desde a E09, a confirmação da pré-reserva ([confirmReservation]) e as
  * garantias pendentes que vencem num intervalo ([pendingGuarantees]); desde a E11, os bloqueios de grupo
- * ([createBlock], [block]) e a liberação do não utilizado ([releaseUnused], que o fechamento chama).
+ * ([createBlock], [block]) e a liberação do não utilizado ([releaseUnused], que o fechamento chama); desde o M5 E01, a
+ * alocação de UH ([assignRoom]) e as transições de hospedagem ([checkIn], [undoCheckIn], [checkOut], [moveRoom]).
  */
 @Suppress("TooManyFunctions") // a API pública do módulo: inventário, reservas, ciclo de vida e bloqueios
 interface ReservationsApi {
@@ -95,6 +97,68 @@ interface ReservationsApi {
 
     /** Os bloqueios ativos cuja data de corte já chegou (igual ou anterior à data operacional), para o fechamento. */
     fun blocksDueForRelease(): List<RoomBlockId>
+
+    /**
+     * Aloca a UH [roomId] à reserva (M5 E01, Ajuste D 4 da M4 E10: o check-in e o walk-in), na transação de quem chama
+     * (ou numa própria), auditada `reservations.room-assignment.assign`, com as mesmas regras de
+     * `POST /api/v1/reservations/{id}/assign-room`, **menos a permissão**: só uma pré-reserva ou uma confirmada com a
+     * estadia ainda por vir; a UH ativa, do tipo da reserva e sem OOO nas noites; a sobreposição recusada pelo banco
+     * (`409 ROOM_ALREADY_ASSIGNED`); com outra UH já alocada, realoca ("não mover" recusa).
+     */
+    fun assignRoom(
+        id: ReservationId,
+        roomId: RoomId,
+        reason: RoomAssignmentReason? = null,
+        doNotMove: Boolean? = null,
+    ): ReservationSummary
+
+    /**
+     * O check-in da reserva (M5 E01; RF-REC-01, SPEC §8.4 `Confirmed → InHouse`), na transação de quem chama (ou numa
+     * própria), auditado `reservations.reservation.check-in`, **sem conferir permissão nem RN-05** (o `frontdesk` se
+     * autoriza, confere a UH pronta e marca a ocupação no `rooms`): só uma confirmada
+     * (`409 RESERVATION_TRANSITION_NOT_ALLOWED`, ação `CHECK_IN`); a data operacional dentro da estadia (antes da
+     * chegada `422 CHECK_IN_BEFORE_ARRIVAL`, depois do fim `422 RESERVATION_STAY_ENDED`; a chegada atrasada é aceita);
+     * a UH alocada (`409 ROOM_NOT_ASSIGNED`), ainda ativa (`422 ROOM_INACTIVE`) e do tipo da reserva
+     * (`422 ROOM_TYPE_MISMATCH`); a lista completa dos hóspedes com os dados de check-in ([CheckIn]; formato
+     * `400 CHECK_IN_INVALID`; mesclado vira o sobrevivente, anonimizado `422 GUEST_ANONYMIZED`); a RN-24 (sem data de
+     * nascimento `422 GUEST_BIRTH_DATE_REQUIRED`, menor sem comprovação `422 MINOR_AUTHORIZATION_REQUIRED`, comprovação
+     * inválida `422 MINOR_AUTHORIZATION_INVALID`). Grava `IN_HOUSE`, o histórico `CHECK_IN` e publica [GuestCheckedIn].
+     */
+    fun checkIn(
+        id: ReservationId,
+        checkIn: CheckIn,
+    ): ReservationSummary
+
+    /**
+     * Desfaz o check-in (M5 E01; SPEC §8.4 `InHouse → Confirmed`), auditado `reservations.reservation.undo-check-in`,
+     * **sem conferir a permissão sensível** (é do `frontdesk`): só uma hospedada, na mesma data operacional do check-in
+     * (`422 UNDO_CHECK_IN_EXPIRED`). A reserva volta a confirmada, com a UH ainda alocada e sem os dados de check-in (a
+     * comprovação do menor fica no histórico); publica [GuestCheckInUndone].
+     */
+    fun undoCheckIn(id: ReservationId): ReservationSummary
+
+    /**
+     * O check-out (M5 E01; RF-REC-06, SPEC §8.4 `InHouse → CheckedOut`), auditado `reservations.reservation.check-out`,
+     * **sem conferir permissão nem saldo** (o `frontdesk` confere a conta e muda a UH): só uma hospedada. Antecipado (a
+     * data operacional antes da saída): a saída passa à data operacional, as noites seguintes voltam ao inventário (ou
+     * ao bloqueio do pick-up) e as que ficam guardam o preço congelado; no próprio dia da chegada, a
+     * estadia vira day use
+     * na data. A alocação é encerrada na mesma transação (motivo `CHECKED_OUT`). Publica [GuestCheckedOut].
+     */
+    fun checkOut(id: ReservationId): ReservationSummary
+
+    /**
+     * A troca de UH do hospedado (M5 E01; RF-REC-04), auditada `reservations.reservation.move-room`, **sem conferir
+     * permissão** (o `frontdesk` muda o status das duas UHs): só uma hospedada com a estadia ainda por usar; a UH nova
+     * ativa, do tipo da reserva (`422 ROOM_TYPE_MISMATCH`), diferente da atual (`422 ROOM_MOVE_SAME_ROOM`) e sem OOO no
+     * período novo (`422 ROOM_OUT_OF_ORDER`); a alocação atual termina na data operacional (`ROOM_MOVED`) e a nova vai
+     * dela à saída (`409 ROOM_ALREADY_ASSIGNED` se outra reserva ocupa a UH); a tarifa das noites restantes mantida ou
+     * recalculada ([RoomMoveTariff]). Publica [RoomMoved].
+     */
+    fun moveRoom(
+        id: ReservationId,
+        move: RoomMove,
+    ): ReservationSummary
 
     /** A reserva agrupadora com as reservas; `null` se não existe. */
     fun booking(id: BookingId): BookingSummary?

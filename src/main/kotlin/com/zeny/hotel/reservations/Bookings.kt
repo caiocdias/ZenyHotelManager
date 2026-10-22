@@ -48,8 +48,9 @@ value class ReservationId(
 /**
  * Situação da reserva (RF-RES-02, SPEC §8.4). A criação (M4 E07) faz [PROVISIONAL] (pré-reserva, com validade) ou
  * [CONFIRMED]; o cancelamento ([CANCELLED]) e a reativação (de volta a [CONFIRMED]) entram na E08; a confirmação da
- * pré-reserva com a garantia e a expiração dela (cancelada com o motivo `EXPIRED`), na E09; as outras nos
- * marcos seguintes (check-in e check-out no M5, no-show no M6). Nas respostas é `x-extensible-enum`.
+ * pré-reserva com a garantia e a expiração dela (cancelada com o motivo `EXPIRED`), na E09; o check-in
+ * ([IN_HOUSE], desfeito de volta a [CONFIRMED]) e o check-out ([CHECKED_OUT]) no M5 E01; o no-show no M6. Nas respostas
+ * é `x-extensible-enum`.
  */
 enum class ReservationStatus {
     PROVISIONAL,
@@ -185,10 +186,19 @@ data class NightlyRateSummary(
     val packages: List<PackageCharge>,
 )
 
-/** Um hóspede da estadia (`StayGuest`). */
+/**
+ * Um hóspede da estadia (`StayGuest`). Desde o M5 E01, com os dados de check-in (H10): o motivo de viagem e o meio de
+ * transporte (códigos opacos da FNRH), os instantes de entrada e de saída e a comprovação do menor (RN-24); nulos antes
+ * do check-in (e limpos quando ele é desfeito).
+ */
 data class StayGuestSummary(
     val guestId: GuestId,
     val primary: Boolean,
+    val travelReason: String? = null,
+    val transportMode: String? = null,
+    val checkedInAt: Instant? = null,
+    val checkedOutAt: Instant? = null,
+    val minorAuthorization: MinorAuthorization? = null,
 )
 
 /** Uma reserva como os outros módulos a veem (M5 check-in, M6 fechamento, M8 channel manager). */
@@ -244,6 +254,10 @@ data class ReservationSummary(
      * tarifa do grupo congelada, e a estadia (tipo, plano e datas) não muda depois.
      */
     val blockId: RoomBlockId? = null,
+    /** O check-in (M5 E01): só numa reserva hospedada ou encerrada (desfeito, volta a nulo). */
+    val checkIn: StayTransitionRecord? = null,
+    /** O check-out (M5 E01): só numa reserva encerrada. */
+    val checkOut: StayTransitionRecord? = null,
 ) {
     val dayUse: Boolean get() = arrival == departure
 
