@@ -22,3 +22,7 @@ out/
 
 # Sistema operacional
 .DS_Store
+
+# Worktrees da execução de roadmap (superpowers e Claude Code)
+.worktrees/
+.claude/worktrees/
