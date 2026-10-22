@@ -73,6 +73,15 @@ interface GuestsApi {
      */
     fun preferences(id: GuestId): GuestPreferences?
 
+    /**
+     * Os dados de identificação do hóspede para a conferência do check-in (M5 E02, H11): a nacionalidade, a data de
+     * nascimento e os documentos **sem o número** (o tipo, o país emissor e o número mascarado, `***` + o sufixo já
+     * guardado em claro); **nada é decifrado**. De um perfil mesclado, valem os do sobrevivente (seguindo a cadeia),
+     * com o id dele em [GuestIdentification.id]. `null` se o perfil não existe. A regra fina da FNRH é do `fnrh`, no
+     * envio; o número inteiro só sai por [fnrhData].
+     */
+    fun identification(id: GuestId): GuestIdentification?
+
     /** O resumo de uma empresa (pagadora de contas, tomadora de nota); `null` se não existe. */
     fun company(id: CompanyId): CompanySummary?
 
@@ -246,6 +255,35 @@ data class CompanySummary(
     val creditLimit: Money?,
     val active: Boolean,
 )
+
+/**
+ * Os dados de identificação de um perfil para o check-in (M5 E02, H11; [GuestsApi.identification]): o perfil corrente
+ * ([id]; num mesclado, o sobrevivente) com a [status], a [nationality], a [birthDate] e os documentos sem número.
+ */
+data class GuestIdentification(
+    val id: GuestId,
+    val status: GuestStatus,
+    val nationality: String?,
+    val birthDate: LocalDate?,
+    val documents: List<MaskedGuestDocument>,
+) {
+    /** Sem dado pessoal (pode acabar num log). */
+    override fun toString(): String = "GuestIdentification(id=$id, status=$status, documents=${documents.size})"
+}
+
+/**
+ * Um documento do perfil sem o número (M5 E02, H11): o tipo, o país emissor e o número mascarado ([maskedNumber],
+ * `***` + os últimos caracteres guardados em claro na gravação; nada é decifrado).
+ */
+data class MaskedGuestDocument(
+    val id: GuestDocumentId,
+    val type: DocumentType,
+    val issuingCountry: String,
+    val maskedNumber: String,
+) {
+    /** Sem o sufixo do número. */
+    override fun toString(): String = "MaskedGuestDocument(id=$id, type=$type, issuingCountry=$issuingCountry)"
+}
 
 /** Um documento com o número em claro, só para a FNRH. */
 data class FnrhGuestDocument(

@@ -117,6 +117,20 @@ interface RoomsApi {
      */
     fun isReadyForCheckIn(id: RoomId): Boolean
 
+    /**
+     * O check-in atômico da UH (M5 E02): com a linha da UH **travada** (`SELECT … FOR UPDATE`, como toda mudança de
+     * status), confere a RN-05 ([isReadyForCheckIn]) e, só se ela estiver pronta, marca a UH Ocupada com [guestCount]
+     * hóspedes (as regras de [markOccupied]). Não lança quando a UH não está pronta: devolve [CheckInOccupation.ready]
+     * falso com o status travado (nada muda, sem histórico nem evento), para quem chama recusar e desfazer a própria
+     * transação. Duas chamadas simultâneas na mesma UH se enfileiram na trava, e a segunda vê a UH já ocupada pela
+     * primeira. Auditada como [markOccupied] quando ocupa. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun markOccupiedIfReady(
+        id: RoomId,
+        guestCount: Int,
+        source: RoomStatusSource,
+    ): CheckInOccupation
+
     // --- OOO e OOS (M2 E03) ------------------------------------------------------------------------
 
     /** O período OOO/OOS, liberado ou não, ou `null` se não existe. */
@@ -274,6 +288,15 @@ enum class RoomStatusField {
     INSPECTION_PENDING,
     SERVICE_FLAG,
 }
+
+/**
+ * O resultado de [RoomsApi.markOccupiedIfReady]: [ready] diz se a UH travada estava pronta (RN-05) e foi ocupada;
+ * [status] é o status depois (ocupada) ou, não pronta, o status travado que impediu o check-in.
+ */
+data class CheckInOccupation(
+    val ready: Boolean,
+    val status: RoomStatus,
+)
 
 /**
  * O status de uma UH (RF-UH-04): ocupação e número de hóspedes informados pela recepção, status de

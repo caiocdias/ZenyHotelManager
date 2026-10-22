@@ -6,10 +6,12 @@ import com.zeny.hotel.guests.DocumentType
 import com.zeny.hotel.guests.FnrhGuestData
 import com.zeny.hotel.guests.FnrhGuestDocument
 import com.zeny.hotel.guests.GuestId
+import com.zeny.hotel.guests.GuestIdentification
 import com.zeny.hotel.guests.GuestPreferences
 import com.zeny.hotel.guests.GuestSummary
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.guests.MAX_NAME_MATCHES
+import com.zeny.hotel.guests.MaskedGuestDocument
 import com.zeny.hotel.guests.RestrictionAlert
 import com.zeny.hotel.guests.domain.Guest
 import com.zeny.hotel.guests.domain.GuestsRules
@@ -70,6 +72,18 @@ class GuestsApiService(
     override fun company(id: CompanyId): CompanySummary? =
         store.company(id)?.let {
             CompanySummary(it.id, it.legalName, it.tradeName, it.cnpj, it.billingEmail, it.creditLimit, it.active)
+        }
+
+    override fun identification(id: GuestId): GuestIdentification? =
+        current(id)?.let { guest ->
+            GuestIdentification(
+                id = guest.id,
+                status = guest.status,
+                nationality = guest.nationality,
+                birthDate = guest.birthDate,
+                // O número mascarado sai do sufixo gravado em claro: o número cifrado nunca é lido.
+                documents = guest.documents.map { MaskedGuestDocument(it.id, it.type, it.issuingCountry, it.masked) },
+            )
         }
 
     override fun fnrhData(id: GuestId): FnrhGuestData? =

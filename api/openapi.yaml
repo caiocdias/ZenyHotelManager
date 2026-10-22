@@ -25,6 +25,9 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
+- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in\
+    \ e cotação de early check-in e late check-out."
+  name: frontdesk
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
@@ -7756,6 +7759,82 @@ paths:
       summary: Cancelar uma reserva
       tags:
       - reservations
+  /api/v1/reservations/{id}/check-in:
+    post:
+      description: "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): confere os\
+        \ hóspedes, a UH e a conta, registra a caução opcional, faz a reserva `IN_HOUSE`\
+        \ e ocupa a UH com o número de hóspedes (publica `GuestCheckedIn`). Exige\
+        \ `frontdesk.stays.checkin` e `Idempotency-Key`; com `roomId` diferente da\
+        \ UH alocada, aloca ou realoca antes e exige também `reservations.assignments.manage`.\
+        \ Na ordem: inexistente 404 `RESERVATION_NOT_FOUND`; só uma confirmada (409\
+        \ `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `CHECK_IN`; a pré-reserva confirma\
+        \ antes) já chegada (422 `CHECK_IN_BEFORE_ARRIVAL`); conta da reserva encerrada\
+        \ 409 `FOLIO_CLOSED`; hóspede inexistente 400 `UNKNOWN_GUEST`, anonimizado\
+        \ 422 `GUEST_ANONYMIZED`; hóspede sem nacionalidade, data de nascimento ou\
+        \ documento aceito (CPF do brasileiro adulto; CPF ou RG do brasileiro menor;\
+        \ passaporte, RNM ou identidade estrangeira do estrangeiro) 422 `GUEST_DATA_INCOMPLETE`,\
+        \ com `incompleteGuests` (o hóspede, o que falta e os documentos aceitos,\
+        \ sem número); anexo da comprovação do menor inexistente, de outra finalidade\
+        \ ou de outro perfil 422 `MINOR_AUTHORIZATION_ATTACHMENT_INVALID`; sem UH\
+        \ alocada 409 `ROOM_NOT_ASSIGNED`; UH não pronta (RN-05: vaga, fora de OOO\
+        \ e inspecionada, ou limpa sem inspeção pendente; conferida de novo com a\
+        \ UH travada ao ocupar: dois check-ins simultâneos na mesma UH nunca passam\
+        \ os dois) 409 `ROOM_NOT_READY`, com a situação dela; as recusas do check-in\
+        \ da reserva (RN-24: menor sem comprovação 422 `MINOR_AUTHORIZATION_REQUIRED`,\
+        \ sem data de nascimento 422 `GUEST_BIRTH_DATE_REQUIRED`, comprovação invá\
+        lida 422 `MINOR_AUTHORIZATION_INVALID`; UH desativada ou de outro tipo 422;\
+        \ formato 400 `CHECK_IN_INVALID`); as recusas da caução (400 `PRE_AUTHORIZATION_INVALID`\
+        \ com o campo em `preAuthorization.…`). Os hóspedes na lista de restrição\
+        \ vêm em `restrictionAlerts`, sem bloquear. A caução não muda o saldo da conta.\
+        \ Nenhum pacote nem o early check-in é lançado aqui."
+      operationId: checkInReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckInRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckInResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Fazer o check-in de uma reserva confirmada
+      tags:
+      - frontdesk
   /api/v1/reservations/{id}/confirm:
     post:
       description: "Registra a garantia recebida: confirma a pré-reserva ainda na\
@@ -7858,6 +7937,39 @@ paths:
       summary: Marcar ou desmarcar "não mover" a UH alocada
       tags:
       - reservations
+  /api/v1/reservations/{id}/early-late-quote:
+    get:
+      description: "Pela política vigente do hotel (RN-11: o preço é informado antes),\
+        \ no fuso do hotel: se cada um é oferecido, o horário limite, o valor e a\
+        \ janela em instantes (early: da chegada no limite à chegada no horário de\
+        \ check-in; late: da saída no horário de check-out à saída no limite). Nã\
+        o oferecido: `offered` falso, sem horário nem valor. Exige `reservations.reservations.read`.\
+        \ Inexistente: 404 `RESERVATION_NOT_FOUND`. A cobrança confere de novo o valor\
+        \ da política."
+      operationId: getEarlyLateQuote
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EarlyLateQuoteResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cotar o early check-in e o late check-out de uma reserva
+      tags:
+      - frontdesk
   /api/v1/reservations/{id}/history:
     get:
       description: "As alterações, cancelamentos e reativações, da mais recente à\
@@ -8071,6 +8183,53 @@ paths:
       summary: Desalocar a UH de uma reserva
       tags:
       - reservations
+  /api/v1/reservations/{id}/undo-check-in:
+    post:
+      description: "Volta a reserva a `CONFIRMED`, com a UH ainda alocada e sem os\
+        \ dados de check-in (a comprovação do menor fica no histórico), e a UH a Vaga\
+        \ sem sujar (publica `GuestCheckInUndone`). Exige `frontdesk.stays.checkin`;\
+        \ é ação sensível (`frontdesk.stays.undocheckin`): sem a permissão, 403 `APPROVAL_REQUIRED`\
+        \ (repita com `X-Approval-Token`). Antes da aprovação: inexistente 404 `RESERVATION_NOT_FOUND`;\
+        \ só uma hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `UNDO_CHECK_IN`),\
+        \ na mesma data operacional do check-in (422 `UNDO_CHECK_IN_EXPIRED`). A cauç\
+        ão registrada e o early lançado ficam na conta: libere a caução e estorne\
+        \ o lançamento pelo `billing`."
+      operationId: undoCheckInReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UndoCheckInResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desfazer o check-in na mesma data operacional
+      tags:
+      - frontdesk
   /api/v1/roles:
     get:
       description: "Todas as roles, ativas e inativas, em ordem de criação. Exige\
@@ -13133,6 +13292,181 @@ components:
       required:
       - currentPassword
       - newPassword
+    CheckInGuestRequest:
+      type: object
+      description: "Um hóspede no check-in: o perfil (cadastrado e com os dados FNRH\
+        \ confirmados antes pelo `guests`), se é o principal, o motivo de viagem e\
+        \ o meio de transporte e, se for menor, a comprovação."
+      properties:
+        guestId:
+          type: string
+          format: uuid
+          nullable: true
+        minorAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/CheckInMinorAuthorizationRequest"
+          nullable: true
+        primary:
+          type: boolean
+        transportMode:
+          type: string
+          description: "O meio de transporte. Código opaco do domínio da FNRH (letras,\
+            \ dígitos, `_`, `.` e `-`, até 40), conferido pelo `fnrh` no envio."
+          example: AUTOMOVEL
+          nullable: true
+        travelReason:
+          type: string
+          description: "O motivo de viagem. Código opaco do domínio da FNRH (letras,\
+            \ dígitos, `_`, `.` e `-`, até 40), conferido pelo `fnrh` no envio."
+          example: LAZER
+          nullable: true
+      required:
+      - guestId
+      - primary
+    CheckInMinorAuthorizationRequest:
+      type: object
+      description: "A comprovação de um hóspede menor (RN-24, RF-REC-08): o tipo,\
+        \ o hóspede adulto da mesma estadia responsável, o parentesco e, na autorizaç\
+        ão escrita e na judicial, o anexo (finalidade `guests.minor-authorization-photo`\
+        \ ou `guests.document-pdf`, vinculado ao perfil do menor por `POST /api/v1/guests/{id}/attachments`)."
+      nullable: true
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+          description: O anexo da autorização (obrigatório na escrita e na judicial).
+          nullable: true
+        proofType:
+          type: string
+          enum:
+          - PARENT_PRESENT
+          - WRITTEN_AUTHORIZATION
+          - COURT_ORDER
+          nullable: true
+        relationship:
+          type: string
+          description: "O parentesco do responsável. Código opaco do domínio da FNRH\
+            \ (letras, dígitos, `_`, `.` e `-`, até 40), conferido pelo `fnrh` no\
+            \ envio."
+          example: MAE
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        responsibleGuestId:
+          type: string
+          format: uuid
+          nullable: true
+        validUntil:
+          type: string
+          format: date
+          description: "A validade da autorização, não antes da data operacional."
+          nullable: true
+      required:
+      - proofType
+      - relationship
+      - responsibleGuestId
+    CheckInPreAuthorizationRequest:
+      type: object
+      description: "Uma caução (pré-autorização de cartão de crédito) feita numa maquininha\
+        \ não integrada, registrada na conta da reserva no check-in (RF-CTA-08 no\
+        \ recorte manual). Não entra no saldo até ser capturada (pelo `billing`, com\
+        \ turno de caixa). **Nunca** envie o número do cartão nem o CVV (PCI-DSS,\
+        \ RNF-10)."
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        authorizationCode:
+          type: string
+          description: "Código de autorização (obrigatório; até 20 letras e dígitos,\
+            \ no máximo 12 dígitos)."
+          maxLength: 20
+          nullable: true
+        cardBrand:
+          type: string
+          description: "A bandeira (só letras e espaços, até 20)."
+          example: VISA
+          maxLength: 20
+          nullable: true
+        cardLast4:
+          type: string
+          description: Exatamente os 4 últimos dígitos do cartão.
+          nullable: true
+          pattern: "^[0-9]{4}$"
+        expiresAt:
+          type: string
+          format: date-time
+          description: "Validade na adquirente (instante em UTC): depois de agora\
+            \ e até 90 dias."
+          nullable: true
+        nsu:
+          type: string
+          description: "NSU (até 20 letras e dígitos, no máximo 12 dígitos)."
+          maxLength: 20
+          nullable: true
+      required:
+      - amount
+      - expiresAt
+    CheckInRequest:
+      type: object
+      description: "O check-in: a lista **completa** dos hóspedes da estadia (exatamente\
+        \ um principal, até a ocupação da reserva), o número de pessoas na UH, a UH\
+        \ (opcional: aloca ou realoca antes) e a caução opcional."
+      properties:
+        guestCount:
+          type: integer
+          format: int32
+          description: "O número de pessoas na UH (de 1 a 40, não abaixo da lista);\
+            \ nulo, o tamanho da lista."
+          maximum: 40
+          minimum: 1
+          nullable: true
+        guests:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckInGuestRequest"
+          maxItems: 40
+          minItems: 1
+          nullable: true
+        preAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/CheckInPreAuthorizationRequest"
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH em que o hóspede entra; nula ou igual à alocada, vale\
+            \ a alocada. Diferente, aloca ou realoca antes (exige `reservations.assignments.manage`)."
+          nullable: true
+      required:
+      - guests
+    CheckInResponse:
+      type: object
+      description: "O check-in feito: a reserva `IN_HOUSE`, a UH Ocupada, a cauçã\
+        o registrada (nula sem caução) e os alertas da lista de restrição. Nenhum\
+        \ número de documento nem dado sensível."
+      properties:
+        preAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/StayPreAuthorizationResponse"
+          nullable: true
+        reservation:
+          $ref: "#/components/schemas/StayReservationResponse"
+        restrictionAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayRestrictionAlertResponse"
+        room:
+          $ref: "#/components/schemas/StayRoomResponse"
+      required:
+      - reservation
+      - restrictionAlerts
+      - room
     ChecklistAnswerDto:
       type: object
       description: "Uma resposta: a chave do item e só o campo do tipo dele — `check`\
@@ -15303,6 +15637,79 @@ components:
       required:
       - fee
       - limitTime
+    EarlyLateOfferResponse:
+      type: object
+      description: O early check-in ou o late check-out pela política vigente do hotel.
+      properties:
+        fee:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        from:
+          type: string
+          format: date-time
+          description: "Início da janela em UTC (early: a chegada no limite; late:\
+            \ a saída no horário de check-out)."
+          nullable: true
+        limitTime:
+          type: string
+          format: time-local
+          description: "Early: o horário mais cedo de entrada; late: o mais tarde\
+            \ de saída. Nulo se não oferecido."
+          example: 10:00:00
+          nullable: true
+        offered:
+          type: boolean
+        until:
+          type: string
+          format: date-time
+          description: "Fim da janela em UTC (early: a chegada no horário de check-in;\
+            \ late: a saída no limite)."
+          nullable: true
+      required:
+      - offered
+    EarlyLateQuoteResponse:
+      type: object
+      description: "A cotação de early check-in e late check-out de uma reserva (RN-11),\
+        \ no fuso do hotel."
+      properties:
+        arrival:
+          type: string
+          format: date
+        checkInTime:
+          type: string
+          format: time-local
+          example: 14:00:00
+        checkOutTime:
+          type: string
+          format: time-local
+          example: 12:00:00
+        departure:
+          type: string
+          format: date
+        earlyCheckIn:
+          $ref: "#/components/schemas/EarlyLateOfferResponse"
+        lateCheckOut:
+          $ref: "#/components/schemas/EarlyLateOfferResponse"
+        reservationId:
+          type: string
+          format: uuid
+        timezone:
+          type: string
+          description: O fuso do hotel (IANA).
+          example: America/Sao_Paulo
+      required:
+      - arrival
+      - checkInTime
+      - checkOutTime
+      - departure
+      - earlyCheckIn
+      - lateCheckOut
+      - reservationId
+      - timezone
     EffectivePermissionResponse:
       type: object
       description: Uma permissão efetiva do usuário corrente.
@@ -23022,6 +23429,33 @@ components:
       - expiresAt
       - id
       - status
+    StayGuestCheckInResponse:
+      type: object
+      description: "Um hóspede da estadia com os dados de check-in (só ids e códigos,\
+        \ sem dado pessoal)."
+      properties:
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+        guestId:
+          type: string
+          format: uuid
+        minorAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/StayMinorAuthorizationResponse"
+          nullable: true
+        primary:
+          type: boolean
+        transportMode:
+          type: string
+          nullable: true
+        travelReason:
+          type: string
+          nullable: true
+      required:
+      - guestId
+      - primary
     StayGuestRequest:
       type: object
       description: "Um hóspede da estadia: o perfil (do `guests`) e se é o principal."
@@ -23067,6 +23501,224 @@ components:
       required:
       - guestId
       - primary
+    StayMinorAuthorizationResponse:
+      type: object
+      description: A comprovação de um menor como foi registrada no check-in.
+      nullable: true
+      properties:
+        attachmentId:
+          type: string
+          format: uuid
+          nullable: true
+        proofType:
+          type: string
+          description: "`PARENT_PRESENT`, `WRITTEN_AUTHORIZATION` ou `COURT_ORDER`.\
+            \ A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido\
+            \ sem falhar."
+          x-extensible-enum:
+          - PARENT_PRESENT
+          - WRITTEN_AUTHORIZATION
+          - COURT_ORDER
+        relationship:
+          type: string
+        responsibleGuestId:
+          type: string
+          format: uuid
+        validUntil:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - proofType
+      - relationship
+      - responsibleGuestId
+    StayPreAuthorizationResponse:
+      type: object
+      description: A caução registrada no check-in (não entra no saldo da conta até
+        ser capturada).
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        expiresAt:
+          type: string
+          format: date-time
+        folioId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: "`ACTIVE` na criação. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - ACTIVE
+          - PARTIALLY_CAPTURED
+          - CAPTURED
+          - RELEASED
+          - EXPIRED
+      required:
+      - amount
+      - expiresAt
+      - folioId
+      - id
+      - status
+    StayReservationResponse:
+      type: object
+      description: "A reserva depois da transição, resumida (o detalhe completo, com\
+        \ as noites e os termos, é `GET /api/v1/reservations/{id}`)."
+      properties:
+        adults:
+          type: integer
+          format: int32
+        arrival:
+          type: string
+          format: date
+        bookingId:
+          type: string
+          format: uuid
+        checkIn:
+          allOf:
+          - $ref: "#/components/schemas/StayTransitionRecordResponse"
+          nullable: true
+        children:
+          type: integer
+          format: int32
+        code:
+          type: string
+        dayUse:
+          type: boolean
+        departure:
+          type: string
+          format: date
+        folioId:
+          type: string
+          format: uuid
+        guests:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayGuestCheckInResponse"
+        id:
+          type: string
+          format: uuid
+        roomId:
+          type: string
+          format: uuid
+          description: A UH alocada; nula sem alocação.
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: "Situação (SPEC §8.4): `PROVISIONAL`, `CONFIRMED`, `IN_HOUSE`,\
+            \ `CHECKED_OUT`, `CANCELLED`, `NO_SHOW`. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+        version:
+          type: integer
+          format: int64
+          description: A versão da reserva (o `ETag` da resposta).
+      required:
+      - adults
+      - arrival
+      - bookingId
+      - children
+      - code
+      - dayUse
+      - departure
+      - folioId
+      - guests
+      - id
+      - roomTypeId
+      - status
+      - version
+    StayRestrictionAlertResponse:
+      type: object
+      description: Um hóspede da estadia na lista de restrição (não bloqueia o check-in).
+      properties:
+        guestId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        since:
+          type: string
+          format: date-time
+      required:
+      - guestId
+      - reason
+      - since
+    StayRoomResponse:
+      type: object
+      description: O status da UH depois da transição.
+      properties:
+        guestCount:
+          type: integer
+          format: int32
+          description: Número de hóspedes; só com a UH ocupada.
+          nullable: true
+        housekeepingStatus:
+          type: string
+          enum:
+          - DIRTY
+          - CLEAN
+          - INSPECTED
+        inspectionPending:
+          type: boolean
+        number:
+          type: string
+        occupancy:
+          type: string
+          enum:
+          - VACANT
+          - OCCUPIED
+        roomId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          description: A versão do status da UH.
+      required:
+      - housekeepingStatus
+      - inspectionPending
+      - number
+      - occupancy
+      - roomId
+      - version
+    StayTransitionRecordResponse:
+      type: object
+      description: "Uma transição de hospedagem: a data operacional, o instante e\
+        \ quem a fez."
+      nullable: true
+      properties:
+        at:
+          type: string
+          format: date-time
+        businessDate:
+          type: string
+          format: date
+        by:
+          type: string
+          format: uuid
+          description: O usuário; nulo = o sistema.
+          nullable: true
+      required:
+      - at
+      - businessDate
     StayTransitionResponse:
       type: object
       description: "Uma transição de hospedagem: a data operacional, o instante e\
@@ -23623,6 +24275,18 @@ components:
       - incoming
       - originalId
       - outgoing
+    UndoCheckInResponse:
+      type: object
+      description: "O check-in desfeito: a reserva de novo `CONFIRMED`, com a UH alocada,\
+        \ e a UH Vaga."
+      properties:
+        reservation:
+          $ref: "#/components/schemas/StayReservationResponse"
+        room:
+          $ref: "#/components/schemas/StayRoomResponse"
+      required:
+      - reservation
+      - room
     UnpricedByDerivationResponse:
       type: object
       description: "O que a derivação deixou sem preço nesta data: o ajuste do plano\

@@ -116,7 +116,7 @@ flowchart LR
 | `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, notifications, payments, fiscal, printing |
 | `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, hotel, rooms, billing |
 | `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, notifications, printing |
-| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, reservations, rooms, guests, billing, payments, fiscal, printing |
+| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, hotel, files, reservations, rooms, guests, billing, payments, fiscal, printing |
 | `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |
 | `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations, notifications |
 | `housekeeping` | GOV | Tarefas, distribuição, inspeção, achados e danos | shared, hotel, rooms, reservations, staff, checklists, billing, notifications |
@@ -269,17 +269,20 @@ sequenceDiagram
   participant HK as housekeeping
 
   C->>FD: POST /api/v1/reservations/{id}/check-in
-  FD->>G: validar dados FNRH e menores
-  FD->>RM: isReadyForCheckIn(room)?
-  FD->>B: garantir contas e registrar caução
-  FD->>R: reservation.checkIn()
-  FD->>RM: markOccupied(room)
+  FD->>B: conta da reserva aberta?
+  FD->>G: identificação sem número (documentos, menores) e alertas de restrição
+  FD->>RM: isReadyForCheckIn(room)? (sem trava: o erro sai cedo)
+  FD->>R: checkIn() — trava a reserva, confere a RN-24
+  FD->>B: registrar caução — trava a conta
+  FD->>RM: markOccupiedIfReady(room) — trava a UH e confere a RN-05 de novo
   Note over FD,OB: mesma transação — tudo ou nada
   R-->>OB: GuestCheckedIn
   FD-->>C: 200 OK
   OB-)F: enviar check-in à FNRH (retry automático)
   OB-)HK: atualizar plano do dia
 ```
+
+Ordem real (M5 E02): as conferências sem escrita vêm antes (conta aberta, hóspedes pela `GuestsApi.identification`, que não decifra nada, anexo da comprovação do menor, UH alocada e pronta) e as escritas depois, sempre com as travas na ordem **reserva → conta → UH**. A transição da reserva vem **antes** da caução porque o cancelamento trava a reserva e depois a conta (para lançar a multa): com a caução primeiro, um check-in e um cancelamento simultâneos da mesma reserva travariam em ordem oposta (deadlock). A UH é ocupada por último, e a RN-05 é conferida de novo **com a linha da UH travada** (`RoomsApi.markOccupiedIfReady`): dois check-ins simultâneos na mesma UH (um day use e um pernoite alocados nela, que não conflitam nos meios-dias) se enfileiram na trava, e o segundo encontra a UH ocupada e é recusado (`409 ROOM_NOT_READY`), com a própria transação inteira desfeita.
 
 ### 6.2 Checklist concluído offline
 

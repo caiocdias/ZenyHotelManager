@@ -32,10 +32,6 @@ interface RoomTypeJpaRepository : JpaRepository<RoomType, UUID> {
 }
 
 interface RoomJpaRepository : JpaRepository<Room, UUID> {
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM Room r WHERE r.id = :id")
-    fun findForUpdate(id: UUID): Room?
-
     @Query(
         "SELECT CASE WHEN count(r) > 0 THEN true ELSE false END FROM Room r " +
             "WHERE r.roomTypeId = :roomTypeId AND r.active = true",
@@ -77,10 +73,12 @@ class JpaRoomsStore(
     override fun room(id: RoomId): Room? = rooms.findById(id.value).orElse(null)
 
     override fun roomForUpdate(id: RoomId): Room? =
-        rooms.findForUpdate(id.value)?.also {
-            // Já carregada nesta transação (por uma leitura anterior), a entidade traria o estado lido
-            // antes da trava: relê, agora com a linha travada.
-            entityManager.refresh(it)
+        entityManager.find(Room::class.java, id.value)?.also {
+            // Relê com a linha travada (`SELECT … FOR UPDATE`): já carregada nesta transação (por uma leitura
+            // anterior), a entidade traria o estado lido antes da trava, e uma consulta com trava que trouxesse outra
+            // versão seria recusada pelo Hibernate 7 como conflito (`412`; achado no M5 E02, B1: o check-in lê a UH
+            // antes de ocupá-la, e outro check-in simultâneo a muda no meio). Como o `folioForUpdate` do `billing`.
+            entityManager.refresh(it, LockModeType.PESSIMISTIC_WRITE)
         }
 
     override fun tryAdd(room: Room): Boolean = unlessViolated(RoomsConstraints.ROOM_NUMBER) { rooms.saveAndFlush(room) }

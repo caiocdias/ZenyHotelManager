@@ -2,7 +2,9 @@ package com.zeny.hotel.reservations
 
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.rooms.RoomsTestSupport
+import com.zeny.hotel.testsupport.CheckInRendezvousProbe
 import com.zeny.hotel.testsupport.InventoryListenersQuiescence
+import com.zeny.hotel.testsupport.RoomStatusFailureProbe
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import org.awaitility.Awaitility.await
@@ -43,6 +45,14 @@ class InventoryTestConfiguration {
 
     @Bean
     fun stayTransitionsProbeListener() = StayTransitionsProbeListener()
+
+    /** A falha forçada do check-in do `frontdesk` (M5 E02), inerte para as UHs não armadas. */
+    @Bean
+    fun roomStatusFailureProbe() = RoomStatusFailureProbe()
+
+    /** O encontro de dois check-ins na mesma UH (M5 E02, B1), inerte para as UHs não armadas. */
+    @Bean
+    fun checkInRendezvousProbe() = CheckInRendezvousProbe()
 }
 
 /** Uma linha do inventário lida direto do banco. */

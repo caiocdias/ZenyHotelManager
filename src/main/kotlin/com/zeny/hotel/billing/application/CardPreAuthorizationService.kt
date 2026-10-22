@@ -190,6 +190,24 @@ class CardPreAuthorizationService(
         input: PreAuthorizationInput,
     ): CardPreAuthorizationView {
         authorization.require(BillingPermissions.PAYMENTS_RECEIVE)
+        return registerOn(folioId, input)
+    }
+
+    /**
+     * O mesmo registro sem conferir a permissão, para a `BillingApi` (M5 E02, H12: a caução do check-in do
+     * `frontdesk`, que já se autorizou), na transação de quem chama.
+     */
+    @Audited(BillingAudit.REGISTER_PRE_AUTHORIZATION)
+    @Transactional
+    fun registerAuthorized(
+        folioId: FolioId,
+        input: PreAuthorizationInput,
+    ): CardPreAuthorizationView = registerOn(folioId, input)
+
+    private fun registerOn(
+        folioId: FolioId,
+        input: PreAuthorizationInput,
+    ): CardPreAuthorizationView {
         val references =
             CardPreAuthorization.references(input.nsu, input.authorizationCode, input.cardBrand, input.cardLast4)
         val folio = store.folioForUpdate(folioId) ?: throw folioNotFound()

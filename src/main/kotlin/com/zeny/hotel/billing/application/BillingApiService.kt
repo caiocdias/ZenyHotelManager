@@ -7,6 +7,7 @@ import com.zeny.hotel.billing.CashierShiftSummary
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwner
 import com.zeny.hotel.billing.FolioSummary
+import com.zeny.hotel.billing.NewCardPreAuthorization
 import com.zeny.hotel.billing.NewFolio
 import com.zeny.hotel.billing.NewPosting
 import com.zeny.hotel.billing.OwnerBalance
@@ -109,6 +110,23 @@ class BillingApiService(
 
     @Transactional(readOnly = true)
     override fun cashierShift(id: CashierShiftId): CashierShiftSummary? = cashier.shift(id)?.summary()
+
+    override fun registerCardPreAuthorization(
+        folioId: FolioId,
+        preAuthorization: NewCardPreAuthorization,
+    ): CardPreAuthorizationSummary =
+        preAuthorizations
+            .registerAuthorized(
+                folioId,
+                PreAuthorizationInput(
+                    preAuthorization.amount,
+                    preAuthorization.expiresAt,
+                    preAuthorization.nsu,
+                    preAuthorization.authorizationCode,
+                    preAuthorization.cardBrand,
+                    preAuthorization.cardLast4,
+                ),
+            ).summary()
 
     override fun cardPreAuthorizationsExpiring(
         from: Instant,

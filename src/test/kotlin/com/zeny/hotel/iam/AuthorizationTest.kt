@@ -252,6 +252,8 @@ class AuthorizationTest(
                 "reservations.blocks.read:ALL",
                 "reservations.blocks.manage:ALL",
                 "reservations.blocks.pickup:ALL",
+                "frontdesk.stays.checkin:ALL",
+                "frontdesk.stays.undocheckin:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

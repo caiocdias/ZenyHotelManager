@@ -2,6 +2,7 @@ package com.zeny.hotel.rooms.application
 
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.AreaSummary
+import com.zeny.hotel.rooms.CheckInOccupation
 import com.zeny.hotel.rooms.GuestServiceFlag
 import com.zeny.hotel.rooms.OutOfOrderId
 import com.zeny.hotel.rooms.OutOfOrderKind
@@ -122,6 +123,23 @@ class RoomsApiService(
         guestCount: Int,
         source: RoomStatusSource,
     ): RoomStatus = changer.change(id, source) { room, now -> room.markOccupied(guestCount, now) }.status()
+
+    @Audited(RoomsAudit.MARK_OCCUPIED)
+    @Transactional
+    override fun markOccupiedIfReady(
+        id: RoomId,
+        guestCount: Int,
+        source: RoomStatusSource,
+    ): CheckInOccupation {
+        var ready = false
+        // A RN-05 conferida com a linha travada pelo changer (a mudança concorrente já confirmada é vista).
+        val view =
+            changer.change(id, source) { room, now ->
+                ready = room.isReadyForCheckIn(overlays.current(id)?.kind)
+                if (ready) room.markOccupied(guestCount, now) else emptyList()
+            }
+        return CheckInOccupation(ready, view.status())
+    }
 
     @Audited(RoomsAudit.MARK_VACANT)
     @Transactional

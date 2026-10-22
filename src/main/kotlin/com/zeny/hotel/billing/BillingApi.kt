@@ -98,6 +98,21 @@ interface BillingApi {
     fun cashierShift(id: CashierShiftId): CashierShiftSummary?
 
     /**
+     * Registra na conta a caução [preAuthorization] feita numa maquininha não integrada (RF-CTA-08 no recorte manual;
+     * M5 E02, H12: a caução opcional do check-in), na transação de quem chama, auditada
+     * `billing.card-pre-authorization.register` em nome do ator corrente, com as mesmas regras de
+     * `POST /api/v1/folios/{folioId}/card-pre-authorizations`, **menos a permissão** (quem chama já se autorizou): a
+     * conta travada e aberta (inexistente `404 FOLIO_NOT_FOUND`, encerrada `409 FOLIO_CLOSED`); valor de 0,01 a
+     * 1.000.000,00, validade depois de agora e até 90 dias, autorização obrigatória e os dados da maquininha sem número
+     * de cartão (`400 PRE_AUTHORIZATION_INVALID` com o campo). **Não muda o saldo** nem a versão da conta e não exige
+     * turno de caixa (só a captura, que é pagamento, exige). Precisa de um usuário autenticado (registra quem fez).
+     */
+    fun registerCardPreAuthorization(
+        folioId: FolioId,
+        preAuthorization: NewCardPreAuthorization,
+    ): CardPreAuthorizationSummary
+
+    /**
      * As cauções ainda não encerradas (nem capturadas por inteiro nem liberadas) com a validade em [from] (inclusive) a
      * [to] (exclusive), em ordem de validade, com a situação calculada agora (`EXPIRED` as já vencidas; M3 E09): para o
      * fechamento do dia (M6) listar e a renovação (M7). Até 1000. Não confere permissão.

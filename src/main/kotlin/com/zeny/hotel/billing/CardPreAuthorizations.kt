@@ -56,3 +56,20 @@ data class CardPreAuthorizationSummary(
     val capturableAmount: Money,
     val expiresAt: Instant,
 )
+
+/**
+ * Uma caução nova pela [BillingApi.registerCardPreAuthorization] (M5 E02, H12): o valor autorizado, a validade na
+ * adquirente, o código de autorização (obrigatório) e, opcionais, o NSU, a bandeira e os 4 últimos dígitos. **Nunca** o
+ * número do cartão nem o CVV (RNF-10).
+ */
+data class NewCardPreAuthorization(
+    val amount: Money,
+    val expiresAt: Instant,
+    val authorizationCode: String?,
+    val nsu: String? = null,
+    val cardBrand: String? = null,
+    val cardLast4: String? = null,
+) {
+    /** Sem os dados da maquininha. */
+    override fun toString(): String = "NewCardPreAuthorization(amount=$amount, expiresAt=$expiresAt)"
+}

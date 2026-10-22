@@ -2,6 +2,7 @@ package com.zeny.hotel
 
 import com.zeny.hotel.billing.BillingModule
 import com.zeny.hotel.checklists.ChecklistsModule
+import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
@@ -310,6 +311,36 @@ class ModularityTest {
                 "com.zeny.hotel.notifications",
             )
         reservations
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { name -> publicApis.any { name.startsWith("$it.") } }
+            .filter { it.substringBeforeLast('.') !in publicApis }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `frontdesk depends only on shared, hotel, reservations, rooms, guests, billing, files, by public APIs`() {
+        val frontdesk = modules.getModuleByName("frontdesk").orElseThrow()
+        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files")
+
+        // ARCHITECTURE §3.1 (camada Hospedagem), M5 E02: hotel (data operacional, fuso e política de early/late pela
+        // HotelApi), reservations (a reserva, a alocação e as transições pela ReservationsApi), rooms (RN-05 e a
+        // ocupação pela RoomsApi), guests (a identificação sem número e o alerta de restrição pela GuestsApi), billing
+        // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); nunca fnrh
+        // (camada acima) nem iam.
+        frontdesk
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            allowed.toList()
+        FrontdeskModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        val publicApis = (allowed - "shared").map { "com.zeny.hotel.$it" }.toSet()
+        frontdesk
             .getDirectDependencies(modules)
             .stream()
             .map { it.targetType.name }
