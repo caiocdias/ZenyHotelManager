@@ -39,6 +39,18 @@ interface GuestsApi {
     ): List<GuestSummary>
 
     /**
+     * Os ids dos perfis **ativos** cujo nome ou nome social contém cada palavra de [name] (sem diferenciar acento nem
+     * maiúsculas, como `GET /api/v1/guests?name=`), em ordem de nome, até [limit] (de 1 a [MAX_NAME_MATCHES]); só os
+     * ids, sem nenhum dado do perfil (M4 E12, H13: a busca de reservas por nome filtra as reservas por eles, sem
+     * guardar nome). Um termo que, normalizado, fica vazio não encontra nada. Um perfil mesclado ou anonimizado não
+     * volta.
+     */
+    fun findIdsByName(
+        name: String,
+        limit: Int,
+    ): List<GuestId>
+
+    /**
      * O alerta da lista de restrição (RF-HOS-04) para a reserva e o check-in: o motivo e desde quando; `null`
      * se o hóspede não está na lista (ou não existe). De um perfil mesclado, vale o do sobrevivente (que herdou a
      * restrição: a mesclagem nunca apaga um alerta), com o id dele em [RestrictionAlert.guestId].
@@ -73,6 +85,9 @@ interface GuestsApi {
      */
     fun fnrhData(id: GuestId): FnrhGuestData?
 }
+
+/** O máximo de ids que [GuestsApi.findIdsByName] devolve. */
+const val MAX_NAME_MATCHES = 1000
 
 @JvmInline
 value class GuestId(

@@ -7,6 +7,7 @@ import com.zeny.hotel.rates.GuaranteeType
 import com.zeny.hotel.rates.PackageCharge
 import com.zeny.hotel.rates.PackagePostingRhythm
 import com.zeny.hotel.rates.PackagePricing
+import com.zeny.hotel.rates.RatePlanCategory
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.reservations.BookingId
@@ -341,6 +342,12 @@ data class ReservationResponse(
     val provisionalUntil: Instant?,
     val roomTypeId: UUID,
     val ratePlanId: UUID,
+    @field:Schema(
+        description =
+            "Categoria do plano da reserva (Q-15), copiada na criação e na troca de plano: `NORMAL`, `COURTESY` " +
+                "(cortesia: conta na ocupação, não no ADR) ou `HOUSE_USE` (uso da casa: em nenhum dos dois).",
+    )
+    val ratePlanCategory: RatePlanCategory,
     val arrival: LocalDate,
     val departure: LocalDate,
     @field:Schema(description = "Day use: chegada = saída (não toma inventário).")
@@ -416,6 +423,7 @@ data class ReservationResponse(
             provisionalUntil = reservation.provisionalUntil,
             roomTypeId = reservation.roomTypeId.value,
             ratePlanId = reservation.ratePlanId.value,
+            ratePlanCategory = reservation.ratePlanCategory,
             arrival = reservation.arrival,
             departure = reservation.departure,
             dayUse = reservation.dayUse,

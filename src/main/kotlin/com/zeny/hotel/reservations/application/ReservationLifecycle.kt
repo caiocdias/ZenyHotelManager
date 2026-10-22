@@ -13,6 +13,7 @@ import com.zeny.hotel.rates.GuaranteePolicySummary
 import com.zeny.hotel.rates.GuaranteeType
 import com.zeny.hotel.rates.NightPrice
 import com.zeny.hotel.rates.PackagePricing
+import com.zeny.hotel.rates.RatePlanCategory
 import com.zeny.hotel.rates.RatePlanSummary
 import com.zeny.hotel.rates.RatesApi
 import com.zeny.hotel.rates.RatesErrorCodes
@@ -169,7 +170,7 @@ class ReservationViews(
  * pelo outbox ([ReservationChanged], [ReservationCancelled], [ReservationReactivated], [ReservationConfirmed]).
  */
 @Component
-@Suppress("LongParameterList", "TooManyFunctions") // as portas e os passos do ciclo de vida
+@Suppress("LongParameterList", "TooManyFunctions", "LargeClass") // as portas e os passos do ciclo de vida
 class ReservationLifecycle(
     private val store: BookingStore,
     private val rates: RatesApi,
@@ -247,6 +248,7 @@ class ReservationLifecycle(
             provisionalUntil = if (confirm) null else reservation.provisionalUntil,
             roomTypeId = command.roomTypeId,
             ratePlanId = command.ratePlanId,
+            ratePlanCategory = restay?.ratePlanCategory ?: reservation.ratePlanCategory,
             arrival = command.arrival,
             departure = command.departure,
             adults = command.adults,
@@ -272,6 +274,8 @@ class ReservationLifecycle(
         val cancellationTerms: CancellationTerms?,
         val guaranteeTerms: GuaranteeTerms?,
         val inventoryChanges: List<InventoryChange>,
+        /** A categoria do plano da estadia nova (Q-15; E12), copiada para as views de relatório. */
+        val ratePlanCategory: RatePlanCategory,
     )
 
     private fun restay(
@@ -324,6 +328,7 @@ class ReservationLifecycle(
                     null
                 },
             inventoryChanges = changes,
+            ratePlanCategory = plan.category,
         )
     }
 

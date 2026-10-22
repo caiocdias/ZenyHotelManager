@@ -266,6 +266,14 @@ object ReservationsErrorCodes {
     /** 422: o tipo de UH de uma faixa nova do bloqueio está desativado (o código do `rooms`). */
     val ROOM_TYPE_INACTIVE: ErrorCode = RoomsErrorCodes.ROOM_TYPE_INACTIVE
 
+    // --- Busca e listas (M4 E12) -----------------------------------------------------------------------------------
+
+    /**
+     * 422: a busca de reservas por nome encontra hóspedes demais (1000 perfis ou mais); acrescente outra palavra do
+     * nome.
+     */
+    val GUEST_NAME_TOO_BROAD = ErrorCode("GUEST_NAME_TOO_BROAD")
+
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
     // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,

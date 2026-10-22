@@ -203,6 +203,7 @@ class BookingCreation(
             provisionalUntil = initial.provisionalUntil,
             roomTypeId = request.roomTypeId,
             ratePlanId = draft.plan.id,
+            ratePlanCategory = draft.plan.category,
             arrival = request.arrival,
             departure = request.departure,
             adults = request.adults,

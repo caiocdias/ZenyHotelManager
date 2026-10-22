@@ -12,6 +12,7 @@ import com.zeny.hotel.rates.PackageCharge
 import com.zeny.hotel.rates.PackageId
 import com.zeny.hotel.rates.PackagePostingRhythm
 import com.zeny.hotel.rates.PackagePricing
+import com.zeny.hotel.rates.RatePlanCategory
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.reservations.BookingId
@@ -129,15 +130,16 @@ class JdbcBookingStore(
                     guarantee_policy_name,
                     guarantee_policy_version, guarantee_type, guarantee_deposit_percent, guarantee_due_days_before,
                     room_total, additional_packages_total, total, folio_id, approval_id, approved_by, version,
-                    created_at, created_by, updated_at, block_id)
+                    created_at, created_by, updated_at, block_id, rate_plan_category)
                 VALUES (:id, :code, :bookingId, :status, :provisionalUntil, :roomTypeId, :ratePlanId, :arrival,
                     :departure, :adults, CAST(:childAges AS integer[]), :segment, :specialRequests, :cancellationId,
                     :cancellationName, :cancellationVersion, :deadlineHours, :penaltyType, :penaltyPercent,
                     :penaltyNights, :penaltyAmount, :guaranteeId, :guaranteeName, :guaranteeVersion, :guaranteeType,
                     :depositPercent, :dueDaysBefore, :roomTotal, :additionalTotal, :total, :folioId, :approvalId,
-                    :approvedBy, :version, :createdAt, :createdBy, :createdAt, :blockId)
+                    :approvedBy, :version, :createdAt, :createdBy, :createdAt, :blockId, :ratePlanCategory)
                 """.trimIndent(),
             ).param("id", reservation.id.value)
+            .param("ratePlanCategory", reservation.ratePlanCategory.name)
             .param("blockId", reservation.blockId?.value)
             .param("code", reservation.code.toString())
             .param("bookingId", reservation.bookingId.value)
@@ -294,7 +296,8 @@ class JdbcBookingStore(
                 .sql(
                     """
                     UPDATE reservations.reservation SET status = :status, provisional_until = :provisionalUntil,
-                        room_type_id = :roomTypeId, rate_plan_id = :ratePlanId, arrival = :arrival,
+                        room_type_id = :roomTypeId, rate_plan_id = :ratePlanId,
+                        rate_plan_category = :ratePlanCategory, arrival = :arrival,
                         departure = :departure, adults = :adults, child_ages = CAST(:childAges AS integer[]),
                         segment = :segment, special_requests = :specialRequests,
                         cancellation_policy_id = :cancellationId, cancellation_policy_name = :cancellationName,
@@ -323,6 +326,7 @@ class JdbcBookingStore(
                 .param("provisionalUntil", reservation.provisionalUntil?.utc())
                 .param("roomTypeId", reservation.roomTypeId.value)
                 .param("ratePlanId", reservation.ratePlanId.value)
+                .param("ratePlanCategory", reservation.ratePlanCategory.name)
                 .param("arrival", reservation.arrival)
                 .param("departure", reservation.departure)
                 .param("adults", reservation.adults)
@@ -693,6 +697,7 @@ class JdbcBookingStore(
         provisionalUntil = rs.instant("provisional_until"),
         roomTypeId = RoomTypeId(rs.uuid("room_type_id")),
         ratePlanId = RatePlanId(rs.uuid("rate_plan_id")),
+        ratePlanCategory = RatePlanCategory.valueOf(rs.getString("rate_plan_category")),
         arrival = rs.getObject("arrival", LocalDate::class.java),
         departure = rs.getObject("departure", LocalDate::class.java),
         adults = rs.getInt("adults"),

@@ -9,8 +9,10 @@ import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.guests.GuestPreferences
 import com.zeny.hotel.guests.GuestSummary
 import com.zeny.hotel.guests.GuestsApi
+import com.zeny.hotel.guests.MAX_NAME_MATCHES
 import com.zeny.hotel.guests.RestrictionAlert
 import com.zeny.hotel.guests.domain.Guest
+import com.zeny.hotel.guests.domain.GuestsRules
 import com.zeny.hotel.shared.BlindIndex
 import com.zeny.hotel.shared.FieldCipher
 import org.springframework.stereotype.Service
@@ -43,6 +45,15 @@ class GuestsApiService(
     ): List<GuestSummary> =
         findGuestsByDocument(store, directory, blindIndex, DocumentCommand(type, issuingCountry, number))
             .map { it.summary() }
+
+    override fun findIdsByName(
+        name: String,
+        limit: Int,
+    ): List<GuestId> {
+        require(limit in 1..MAX_NAME_MATCHES) { "O limite vai de 1 a $MAX_NAME_MATCHES: $limit" }
+        val normalized = GuestsRules.searchKey(name).ifEmpty { return emptyList() }
+        return directory.searchGuests(GuestFilter(name = normalized), null, limit).map { GuestId(it.id) }
+    }
 
     override fun restrictionAlert(id: GuestId): RestrictionAlert? =
         current(id)?.takeIf { it.restricted }?.let {

@@ -7106,6 +7106,332 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reservations:
+    get:
+      description: "Os filtros combinam com \"e\" (os ausentes não filtram), em ordem\
+        \ de chegada, por cursor. `code`: o número da reserva (`R-…`); `bookingCode`:\
+        \ o da reserva agrupadora (`B-…`); `externalId`: o número da OTA; `name`:\
+        \ cada palavra como trecho do nome ou do nome social do titular ou de um hó\
+        spede da estadia, sem diferenciar acento nem maiúsculas (até 1000 perfis:\
+        \ mais que isso, 422 `GUEST_NAME_TOO_BROAD`); `from`/`to`: as estadias que\
+        \ tocam o período (do dia da chegada ao da saída, inclusive; fim antes do\
+        \ início, 400 `RESERVATION_PERIOD_INVALID`, campo `to`); `status`: uma ou\
+        \ mais situações. Para buscar por documento, use `POST /api/v1/reservations/search-by-document`\
+        \ (o número não vai na URL). Exige `reservations.reservations.read`."
+      operationId: searchReservations
+      parameters:
+      - description: "Número da reserva (`R-…`), exato."
+        in: query
+        name: code
+        required: false
+        schema:
+          type: string
+          maxLength: 30
+          minLength: 1
+      - description: "Número da reserva agrupadora (`B-…`), exato."
+        in: query
+        name: bookingCode
+        required: false
+        schema:
+          type: string
+          maxLength: 30
+          minLength: 1
+      - description: "Número da reserva na OTA (id externo), exato."
+        in: query
+        name: externalId
+        required: false
+        schema:
+          type: string
+          maxLength: 60
+          minLength: 1
+      - description: Trecho do nome do titular ou de um hóspede (de 2 a 200 caracteres).
+        in: query
+        name: name
+        required: false
+        schema:
+          type: string
+          maxLength: 200
+          minLength: 2
+      - description: "Início do período (data de negócio, inclusive)."
+        in: query
+        name: from
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: "Fim do período (data de negócio, inclusive)."
+        in: query
+        name: to
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Situações (repita o parâmetro ou separe por vírgula).
+        in: query
+        name: status
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - PROVISIONAL
+            - CONFIRMED
+            - IN_HOUSE
+            - CHECKED_OUT
+            - CANCELLED
+            - NO_SHOW
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Buscar reservas
+      tags:
+      - reservations
+  /api/v1/reservations/arrivals:
+    get:
+      description: "As reservas com a chegada na data, em qualquer situação menos\
+        \ `CANCELLED` e `NO_SHOW` (as que ainda vão chegar e as que já chegaram),\
+        \ em ordem de chegada e id, por cursor. `date` é uma data operacional do hotel;\
+        \ sem ela, a data operacional corrente (`HotelApi`), nunca a do relógio. Exige\
+        \ `reservations.reservations.read`."
+      operationId: listArrivals
+      parameters:
+      - in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Chegadas da data
+      tags:
+      - reservations
+  /api/v1/reservations/departures:
+    get:
+      description: "As reservas com a saída na data, em qualquer situação menos `CANCELLED`\
+        \ e `NO_SHOW`; na data operacional corrente, também as hospedadas com a saí\
+        da já passada (saída pendente, `departureOverdue`: o check-out nunca é automá\
+        tico). Em ordem de saída e id, por cursor. `date` é uma data operacional do\
+        \ hotel; sem ela, a data operacional corrente (`HotelApi`), nunca a do reló\
+        gio. Exige `reservations.reservations.read`."
+      operationId: listDepartures
+      parameters:
+      - in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Saídas da data
+      tags:
+      - reservations
+  /api/v1/reservations/deposit-shortfalls:
+    get:
+      description: "As reservas confirmadas com garantia por depósito cujo total lí\
+        quido de depósitos da conta (os recebimentos com `deposit` menos os reembolsos\
+        \ deles) ficou abaixo do que a política copiada exige (um reembolso depois\
+        \ da confirmação não a desfaz), em ordem de chegada. Exige `reservations.reservations.read`."
+      operationId: listDepositShortfalls
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DepositShortfallsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reservas com depósito abaixo do exigido
+      tags:
+      - reservations
+  /api/v1/reservations/expected-no-shows:
+    get:
+      description: "As reservas confirmadas (`CONFIRMED`; só a confirmada vira no-show)\
+        \ com a chegada na data que ainda não chegaram; na data operacional corrente,\
+        \ também as com a chegada já passada (`arrivalOverdue`: o fechamento do dia\
+        \ as marca como no-show). Em ordem de chegada e id, por cursor. `date` é uma\
+        \ data operacional do hotel; sem ela, a data operacional corrente (`HotelApi`),\
+        \ nunca a do relógio. Exige `reservations.reservations.read`."
+      operationId: listExpectedNoShows
+      parameters:
+      - in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: No-shows previstos da data
+      tags:
+      - reservations
+  /api/v1/reservations/in-house:
+    get:
+      description: "As reservas hospedadas (`IN_HOUSE`, a partir do check-in do M5)\
+        \ cuja estadia alcança a data (chegada até ela, saída a partir dela); na data\
+        \ operacional corrente, também as com a saída já passada (`departureOverdue`).\
+        \ Em ordem de chegada e id, por cursor. `date` é uma data operacional do hotel;\
+        \ sem ela, a data operacional corrente (`HotelApi`), nunca a do relógio. Exige\
+        \ `reservations.reservations.read`."
+      operationId: listInHouse
+      parameters:
+      - in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Hospedados na data
+      tags:
+      - reservations
   /api/v1/reservations/pending-guarantees:
     get:
       description: "As reservas que ainda devem a garantia, com o vencimento de `from`\
@@ -7164,6 +7490,54 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Garantias pendentes que vencem num intervalo
+      tags:
+      - reservations
+  /api/v1/reservations/search-by-document:
+    post:
+      description: "As reservas em que o hóspede do documento é titular ou hóspede\
+        \ da estadia, em ordem de chegada, por cursor. O documento vai no corpo, nunca\
+        \ na URL, e é procurado pelo índice cego do `guests` (só perfis ativos, sem\
+        \ decifrar nenhum documento). Número inválido para o tipo: 400 `DOCUMENT_NUMBER_INVALID`;\
+        \ país incoerente: 400 `DOCUMENT_COUNTRY_INVALID`. Exige `reservations.reservations.read`."
+      operationId: searchReservationsByDocument
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReservationDocumentSearchRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageReservationListItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Buscar reservas pelo documento de um hóspede
       tags:
       - reservations
   /api/v1/reservations/{id}:
@@ -14339,6 +14713,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageReservationListItemResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReservationListItemResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageRoleResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -14749,6 +15137,51 @@ components:
       - id
       - name
       - updatedAt
+    DepositShortfallResponse:
+      type: object
+      description: "Uma reserva confirmada com garantia por depósito cujo depósito\
+        \ líquido atual na conta ficou abaixo do que a política copiada exige (um\
+        \ reembolso depois da confirmação, ou a troca para um plano de depósito maior)."
+      properties:
+        depositReceived:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        guaranteedAt:
+          type: string
+          format: date-time
+        missing:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        requiredDeposit:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reservation:
+          $ref: "#/components/schemas/ReservationListItemResponse"
+      required:
+      - depositReceived
+      - guaranteedAt
+      - missing
+      - requiredDeposit
+      - reservation
+    DepositShortfallsResponse:
+      type: object
+      description: "As reservas com depósito abaixo do exigido, em ordem de chegada."
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DepositShortfallResponse"
+      required:
+      - items
     DeviceRequest:
       type: object
       description: Dispositivo de onde se entra.
@@ -16624,6 +17057,31 @@ components:
       required:
       - key
       - unlimited
+    ListedAssignmentResponse:
+      type: object
+      description: "A UH alocada de uma reserva na lista: a alocação ativa, com o\
+        \ número atual da UH."
+      properties:
+        doNotMove:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        reallocationRequired:
+          type: boolean
+          description: A UH entrou num OOO que atinge a estadia (realoque a reserva).
+        roomId:
+          type: string
+          format: uuid
+        roomNumber:
+          type: string
+          description: O número atual da UH; nulo se a UH não existe mais.
+          nullable: true
+      required:
+      - doNotMove
+      - id
+      - reallocationRequired
+      - roomId
     LocationHistoryEntryResponse:
       type: object
       description: Uma execução no histórico de um local.
@@ -19523,6 +19981,52 @@ components:
       - holderGuestId
       - reservation
       - restrictionAlerts
+    ReservationDocumentSearchRequest:
+      type: object
+      description: "A busca de reservas pelo documento de um hóspede (o número vai\
+        \ no corpo, nunca na URL)."
+      properties:
+        issuingCountry:
+          type: string
+          description: País emissor (ISO 3166-1 alfa-2); nos documentos brasileiros
+            pode ser omitido.
+          maxLength: 2
+          minLength: 0
+          nullable: true
+        number:
+          type: string
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        statuses:
+          type: array
+          description: "Só as reservas nestas situações (vazio: todas)."
+          items:
+            type: string
+            description: "Só as reservas nestas situações (vazio: todas)."
+            enum:
+            - PROVISIONAL
+            - CONFIRMED
+            - IN_HOUSE
+            - CHECKED_OUT
+            - CANCELLED
+            - NO_SHOW
+          maxItems: 6
+          minItems: 0
+        type:
+          type: string
+          enum:
+          - CPF
+          - RG
+          - CNH
+          - PASSPORT
+          - RNM
+          - FOREIGN_ID
+          nullable: true
+      required:
+      - number
+      - statuses
+      - type
     ReservationGuaranteeResponse:
       type: object
       description: "A última garantia registrada (na confirmação da pré-reserva ou\
@@ -19623,6 +20127,159 @@ components:
       - id
       - kind
       - occurredAt
+      - version
+    ReservationListItemResponse:
+      type: object
+      description: "Uma reserva numa busca ou lista operacional: o resumo para a recepç\
+        ão, sem as noites, os termos das políticas nem os pedidos especiais (o detalhe\
+        \ está em `GET /api/v1/reservations/{id}`). Os hóspedes vão só pelos ids (o\
+        \ nome está no `guests`)."
+      properties:
+        adults:
+          type: integer
+          format: int32
+        arrival:
+          type: string
+          format: date
+        arrivalOverdue:
+          type: boolean
+          description: "Confirmada com a chegada antes da data operacional corrente:\
+            \ chegada pendente (no-show previsto, que o fechamento do dia marca)."
+        blockId:
+          type: string
+          format: uuid
+          nullable: true
+        bookingCode:
+          type: string
+        bookingId:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          description: "Canal de venda (derivado da origem). A lista pode crescer\
+            \ (`x-extensible-enum`): trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - DIRECT
+          - WEBSITE
+          - OTA
+        children:
+          type: integer
+          format: int32
+        code:
+          type: string
+        dayUse:
+          type: boolean
+        departure:
+          type: string
+          format: date
+        departureOverdue:
+          type: boolean
+          description: "Hospedada com a saída antes da data operacional corrente:\
+            \ saída pendente (check-out em atraso)."
+        externalId:
+          type: string
+          description: "O número da reserva na OTA (id externo), se houver."
+          nullable: true
+        folioId:
+          type: string
+          format: uuid
+        holderGuestId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        origin:
+          type: string
+          description: "Origem da reserva. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - FRONT_DESK
+          - PHONE
+          - EMAIL
+          - WHATSAPP
+          - WEBSITE
+          - OTA
+          - OTHER
+        primaryGuestId:
+          type: string
+          format: uuid
+          description: O hóspede principal da estadia.
+          nullable: true
+        provisionalUntil:
+          type: string
+          format: date-time
+          nullable: true
+        ratePlanCategory:
+          type: string
+          description: "Categoria do plano (Q-15): `NORMAL`, `COURTESY` (cortesia:\
+            \ conta na ocupação, não no ADR) ou `HOUSE_USE` (uso da casa: em nenhum\
+            \ dos dois)."
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
+        ratePlanId:
+          type: string
+          format: uuid
+        roomAssignment:
+          allOf:
+          - $ref: "#/components/schemas/ListedAssignmentResponse"
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+        segment:
+          type: string
+          description: "Segmento de mercado. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+        status:
+          type: string
+          description: "Situação da reserva (SPEC §8.4). A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PROVISIONAL
+          - CONFIRMED
+          - IN_HOUSE
+          - CHECKED_OUT
+          - CANCELLED
+          - NO_SHOW
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        version:
+          type: integer
+          format: int64
+      required:
+      - adults
+      - arrival
+      - arrivalOverdue
+      - bookingCode
+      - bookingId
+      - channel
+      - children
+      - code
+      - dayUse
+      - departure
+      - departureOverdue
+      - folioId
+      - holderGuestId
+      - id
+      - origin
+      - ratePlanCategory
+      - ratePlanId
+      - roomTypeId
+      - segment
+      - status
+      - total
       - version
     ReservationRequest:
       type: object
@@ -19788,6 +20445,15 @@ components:
           type: string
           format: date-time
           nullable: true
+        ratePlanCategory:
+          type: string
+          description: "Categoria do plano da reserva (Q-15), copiada na criação e\
+            \ na troca de plano: `NORMAL`, `COURTESY` (cortesia: conta na ocupaçã\
+            o, não no ADR) ou `HOUSE_USE` (uso da casa: em nenhum dos dois)."
+          enum:
+          - NORMAL
+          - COURTESY
+          - HOUSE_USE
         ratePlanId:
           type: string
           format: uuid
@@ -19862,6 +20528,7 @@ components:
       - id
       - nightlyRates
       - penaltiesCharged
+      - ratePlanCategory
       - ratePlanId
       - roomTotal
       - roomTypeId

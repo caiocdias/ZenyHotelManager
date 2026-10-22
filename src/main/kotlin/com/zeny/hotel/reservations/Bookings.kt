@@ -7,6 +7,7 @@ import com.zeny.hotel.rates.CancellationPolicyId
 import com.zeny.hotel.rates.GuaranteePolicyId
 import com.zeny.hotel.rates.GuaranteeType
 import com.zeny.hotel.rates.PackageCharge
+import com.zeny.hotel.rates.RatePlanCategory
 import com.zeny.hotel.rates.RatePlanId
 import com.zeny.hotel.rates.SalesChannel
 import com.zeny.hotel.rooms.RoomTypeId
@@ -199,6 +200,12 @@ data class ReservationSummary(
     val provisionalUntil: Instant?,
     val roomTypeId: RoomTypeId,
     val ratePlanId: RatePlanId,
+    /**
+     * A categoria do plano da reserva (SPEC Q-15: cortesia conta na ocupação e não no ADR; uso da casa em nenhum dos
+     * dois), copiada do `rates` na criação e na troca de plano (M4 E12): a categoria de um plano é fixa desde a
+     * criação, e as views de relatório do `reservations` a leem daqui, sem ler o schema do `rates`.
+     */
+    val ratePlanCategory: RatePlanCategory,
     val arrival: LocalDate,
     val departure: LocalDate,
     val adults: Int,
