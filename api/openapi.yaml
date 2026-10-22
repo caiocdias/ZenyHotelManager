@@ -25,9 +25,6 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
-- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in\
-    \ e cotação de early check-in e late check-out."
-  name: frontdesk
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
@@ -40,6 +37,10 @@ tags:
   name: rooms
 - description: Informações sobre o servidor e a API.
   name: meta
+- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
+    \ cotação de early check-in e late check-out e walk-in (reserva, alocação e check-in\
+    \ numa transação)."
+  name: frontdesk
 - description: Sincronização offline do app operacional.
   name: sync
 - description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
@@ -11756,6 +11757,74 @@ paths:
       summary: Revogar uma sessão de um usuário
       tags:
       - iam
+  /api/v1/walk-ins:
+    post:
+      description: "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): cria a reserva\
+        \ agrupadora com uma reserva de origem `FRONT_DESK` (canal `DIRECT`), chegada\
+        \ na data operacional e o preço calculado pela tarifa (sem diária editada\
+        \ nem desconto), com os hóspedes já cadastrados; a pré-reserva (plano com\
+        \ garantia) é confirmada com a garantia que a política pede (cartão; o depó\
+        sito exige o depósito na conta, 422 `DEPOSIT_INSUFFICIENT`); aloca a UH escolhida\
+        \ e faz o check-in como `POST /api/v1/reservations/{id}/check-in` (publica\
+        \ `ReservationCreated` e `GuestCheckedIn`). Exige `frontdesk.stays.checkin`,\
+        \ `reservations.reservations.manage`, `reservations.assignments.manage` e\
+        \ `Idempotency-Key`. Recusas, sem nada gravado (nenhuma reserva, conta, unidade\
+        \ do inventário, alocação, caução nem ocupação): UH inexistente 400 `UNKNOWN_ROOM`;\
+        \ hóspede inexistente 400 `UNKNOWN_GUEST`, anonimizado 422 `GUEST_ANONYMIZED`,\
+        \ sem os dados mínimos 422 `GUEST_DATA_INCOMPLETE`; anexo da comprovação do\
+        \ menor inválido 422 `MINOR_AUTHORIZATION_ATTACHMENT_INVALID`; formato da\
+        \ reserva 400 `BOOKING_INVALID` ou `STAY_INVALID`, plano ou tipo inexistente\
+        \ 400 `UNKNOWN_RATE_PLAN`/`UNKNOWN_ROOM_TYPE` (com o campo do pedido); estadia\
+        \ não vendável no canal 422 com o código do primeiro motivo do `rates` e todos\
+        \ em `refusals`; sem unidade do tipo em alguma noite 409 `ROOM_TYPE_UNAVAILABLE`;\
+        \ UH de outro tipo 422 `ROOM_TYPE_MISMATCH`, desativada 422 `ROOM_INACTIVE`,\
+        \ em OOO 422 `ROOM_OUT_OF_ORDER`, já alocada a outra reserva 409 `ROOM_ALREADY_ASSIGNED`;\
+        \ UH não pronta 409 `ROOM_NOT_READY`; as recusas do check-in da reserva (RN-24:\
+        \ menor sem comprovação 422 `MINOR_AUTHORIZATION_REQUIRED`…) e da caução (400\
+        \ `PRE_AUTHORIZATION_INVALID` com o campo em `preAuthorization.…`). Responde\
+        \ 201 com o `Location` da reserva e o `ETag` dela."
+      operationId: createWalkIn
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WalkInRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WalkInResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: "Fazer o walk-in: criar a reserva, alocar a UH e fazer o check-in"
+      tags:
+      - frontdesk
 components:
   headers:
     IdempotentReplayed:
@@ -24445,6 +24514,142 @@ components:
       - active
       - id
       - name
+    WalkInRequest:
+      type: object
+      description: "O walk-in (RF-REC-02): a reserva criada na data operacional, a\
+        \ UH alocada e o check-in feito numa transação só. Os hóspedes já estão cadastrados\
+        \ no `guests` (`POST /api/v1/guests`); o preço é o calculado pela tarifa (sem\
+        \ diária editada nem desconto: o desconto, se houver, vem depois pelo `PUT\
+        \ /api/v1/reservations/{id}` com a aprovação de superior)."
+      properties:
+        adults:
+          type: integer
+          format: int32
+          description: O número de adultos (ao menos 1).
+          nullable: true
+        childAges:
+          type: array
+          description: A idade de cada criança em anos completos na chegada (até a
+            idade máxima do hotel).
+          items:
+            type: integer
+            format: int32
+            description: A idade de cada criança em anos completos na chegada (até
+              a idade máxima do hotel).
+        departure:
+          type: string
+          format: date
+          description: "A saída. A chegada é a data operacional; a saída igual a ela\
+            \ é um day use (sem pernoite, sem inventário)."
+          nullable: true
+        guestCount:
+          type: integer
+          format: int32
+          description: "O número de pessoas na UH (de 1 a 40, não abaixo da lista);\
+            \ nulo, o tamanho da lista."
+          maximum: 40
+          minimum: 1
+          nullable: true
+        guests:
+          type: array
+          description: "A lista **completa** dos hóspedes da estadia com os dados\
+            \ de check-in (exatamente um principal, até a ocupação), como no check-in\
+            \ de uma reserva."
+          items:
+            $ref: "#/components/schemas/CheckInGuestRequest"
+          maxItems: 40
+          minItems: 1
+          nullable: true
+        holderGuestId:
+          type: string
+          format: uuid
+          description: O titular da reserva; nulo = o hóspede principal.
+          nullable: true
+        preAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/CheckInPreAuthorizationRequest"
+          nullable: true
+        ratePlanId:
+          type: string
+          format: uuid
+          description: O plano tarifário (vendável no canal `DIRECT`).
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: A UH escolhida (alocada à reserva e ocupada no check-in).
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          description: O tipo de UH; nulo = o tipo da UH escolhida.
+          nullable: true
+        segment:
+          type: string
+          enum:
+          - LEISURE
+          - BUSINESS
+          - EVENT
+          - OTHER
+          nullable: true
+        specialRequests:
+          type: string
+          description: "Pedidos especiais (texto livre, até 1000)."
+          maxLength: 1000
+          minLength: 0
+          nullable: true
+      required:
+      - adults
+      - childAges
+      - departure
+      - guests
+      - ratePlanId
+      - roomId
+      - segment
+    WalkInResponse:
+      type: object
+      description: "O walk-in feito: a reserva agrupadora criada (origem `FRONT_DESK`),\
+        \ o total calculado, a reserva `IN_HOUSE`, a UH Ocupada, a caução registrada\
+        \ (nula sem caução) e os alertas da lista de restrição (dos hóspedes e do\
+        \ titular). O detalhe da reserva, com as noites e os termos, é `GET /api/v1/reservations/{id}`.\
+        \ Nenhum número de documento nem dado sensível."
+      properties:
+        bookingCode:
+          type: string
+          description: O número da reserva agrupadora.
+          example: B-2026-000123
+        bookingId:
+          type: string
+          format: uuid
+        holderGuestId:
+          type: string
+          format: uuid
+        preAuthorization:
+          allOf:
+          - $ref: "#/components/schemas/StayPreAuthorizationResponse"
+          nullable: true
+        reservation:
+          $ref: "#/components/schemas/StayReservationResponse"
+        restrictionAlerts:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayRestrictionAlertResponse"
+        room:
+          $ref: "#/components/schemas/StayRoomResponse"
+        total:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - bookingCode
+      - bookingId
+      - holderGuestId
+      - reservation
+      - restrictionAlerts
+      - room
+      - total
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

@@ -20,8 +20,8 @@ import java.util.UUID
 
 const val FRONTDESK_TAG = "frontdesk"
 const val FRONTDESK_TAG_DESCRIPTION =
-    "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in e cotação de early check-in e late " +
-        "check-out."
+    "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in, cotação de early check-in e late " +
+        "check-out e walk-in (reserva, alocação e check-in numa transação)."
 
 /**
  * A recepção sobre uma reserva (M5 E02): o check-in orquestrado (ARCHITECTURE §6.1), o desfazer check-in (sensível) e

@@ -223,7 +223,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 |---|---|---|---|---|
 | E01 | Transições de hospedagem em reservations | #concluida | — | `checkIn`, `undoCheckIn`, `checkOut`, `moveRoom`, alteração do hospedado, `assignRoom` na API pública e eventos de hospedagem |
 | E02 | Check-in orquestrado | #concluida | E01 | Módulo `frontdesk`, `POST /reservations/{id}/check-in` numa transação, desfazer check-in sensível e cotação de early/late |
-| E03 | Walk-in | #pendente | E02 | Reserva, alocação e check-in no mesmo fluxo |
+| E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
 | E04 | Check-out | #pendente | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
 | E05 | Troca de UH, extensão, redução e early check-in | #pendente | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
@@ -517,7 +517,7 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 ---
 
-## E03 — Walk-in — #pendente
+## E03 — Walk-in — #concluida
 
 **Objetivo:** criar a reserva, alocar a UH e fazer o check-in no mesmo fluxo (RF-REC-02), reutilizando `ReservationsApi.createBooking` e `assignRoom` e o caso de uso de check-in da E02, numa só transação.
 
@@ -588,12 +588,40 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para a próxima etapa: —
+- Snapshot inicial: `f6f3511716c2595523d5fa6af9b39b7d64385870` (tirado pelo orquestrador). Preparação: `git status` limpo; E02 `#concluida` (commit `87cbb62`) e o código bate com o handoff dela (`FrontdeskStayService` com o check-in, o desfazer e a cotação; `RoomsApi.markOccupiedIfReady`; `GuestsApi.identification`; `BillingApi.registerCardPreAuthorization`; `ReservationsApi.createBooking`, `assignRoom`, `confirmReservation` e `checkIn` como descritos). Sem investigação delegada (a estratégia da etapa não a pede; o adendo do orquestrador também não).
+- Arquivos alterados:
+  - **Novos (produção):** `src/main/kotlin/com/zeny/hotel/frontdesk/application/WalkInService.kt` (`WalkInCommand`, `WalkInOutcome`, `FrontdeskWalkInService`, `WalkInInvalidInputException`), `frontdesk/web/WalkInsController.kt` (`POST /api/v1/walk-ins`, `operationId` `createWalkIn`) e `frontdesk/web/WalkInDtos.kt` (`WalkInRequest`, `WalkInResponse`). Nenhuma migração (o `frontdesk` continua sem estado próprio).
+  - **Alterados (produção):** `frontdesk/application/CheckInService.kt` (os passos do check-in extraídos de `FrontdeskStayService` para o componente `CheckInSteps` — `reservation`, `prepareGuests`, `complete`, `requireOpenFolio`, `roomNumber` —, reusados pelo check-in da E02 e pelo walk-in, com a guarda "só na transação de escrita de quem chama"; `FrontdeskAudit.WALK_IN`), `frontdesk/FrontdeskModule.kt` (`rates` em `allowedDependencies`), `frontdesk/FrontdeskErrorCodes.kt` (`UNKNOWN_ROOM` reexportado), `frontdesk/web/StaysController.kt` (descrição da tag), `api/openapi.yaml` (+211 linhas, nenhuma removida), `docs/ARCHITECTURE.md` (§3.1: `frontdesk` → `rates`, só os tipos da `ReservationsApi`), `CLAUDE.md` (estado atual, a aresta nova na seção do check-in e a seção nova "Recepção: walk-in") e `README.md` (seção "API").
+  - **Testes:** novo `src/test/kotlin/com/zeny/hotel/frontdesk/FrontdeskWalkInApiTest.kt` (9 testes, no contexto dos testes das reservas e do check-in: `IamTestConfiguration` + `InventoryTestConfiguration`, `@EnableScenarios`); alterado `ModularityTest.kt` (o teste do `frontdesk` com `rates` e a conferência de que dele só se usam `RatePlanId` e `GuaranteeType`).
+- Decisões (todas **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**, depois de pesar prós e contras):
+  1. **Aresta `frontdesk` → `rates`, só por tipos.** `NewReservation.ratePlanId` é um `RatePlanId` do `rates` (e `GuaranteeTerms.type` um `GuaranteeType`): construir a reserva sem tocar o `rates` é impossível sem contornar a verificação de módulos. Escolhida: a aresta declarada em `allowedDependencies`, na ARCHITECTURE §3.1 e no `ModularityTest`, que confere que só esses dois tipos são usados (nenhuma chamada à `RatesApi`). Alternativas descartadas: uma fábrica na `ReservationsApi` que recebe o id do plano como `UUID` (esconderia a dependência do Modulith: o `frontdesk` continuaria usando um conceito do `rates`); um método de walk-in próprio no `reservations` (contra o escopo da etapa, que pede a `createBooking`). Ressalva: a §3.1 diz que depender da mesma camada (fora da Plataforma) exige inversão, mas a tabela já tem arestas na mesma camada (`reservations` → `rates`, `frontdesk` → `reservations`) e o grafo continua acíclico; a H24 citava "o `frontdesk` não depende de `rates`" pensando na `RatesApi` (preço e desconto), que continua sem uso.
+  2. **Pré-reserva confirmada no balcão.** Um plano com garantia faz a reserva nascer `PROVISIONAL`, e o check-in só aceita a confirmada. Escolhida: confirmar na mesma transação pela `ReservationsApi.confirmReservation` com a garantia que a política copiada pede — cartão (o hóspede está no balcão; a caução opcional é o registro do cartão) ou depósito, que é recusado com `422 DEPOSIT_INSUFFICIENT` (a conta acabou de nascer, então um plano com depósito antecipado não serve ao walk-in). Alternativas: recusar todo plano com garantia (impediria o walk-in nos planos comuns de balcão com garantia de cartão); um campo `guarantee` no pedido (redundante: a política já diz o meio). Publica `ReservationConfirmed` e grava o histórico `CONFIRM`.
+  3. **Três permissões.** Além das duas da H24, `reservations.assignments.manage`, como o check-in da E02 exige quando a UH vem no corpo (decisão 4 da E02: "o walk-in reusa"): o walk-in não amplia o que a alocação exige. A Recepcionista e o Gerente têm as três no modelo. Alternativa: só as duas (o walk-in alocaria sem a permissão de alocação).
+  4. **Titular opcional** (nulo = o hóspede principal, senão o primeiro da lista) e **tipo de UH opcional** (nulo = o da UH escolhida; diferente dela, `422 ROOM_TYPE_MISMATCH` da alocação, com tudo desfeito). A UH é obrigatória (o walk-in sempre ocupa uma). Os alertas de restrição incluem o titular quando ele não é hóspede.
+  5. **Conferências sem escrita antes da criação:** a UH existente (`400 UNKNOWN_ROOM`, campo `roomId`), o número de hóspedes e a identificação dos hóspedes e os anexos dos menores (H11) vêm antes da `createBooking`, para as recusas baratas não tomarem as travas do inventário. A RN-05 (UH pronta) e a RN-24 (comprovação do menor) são conferidas depois da criação, nos passos do check-in (a reserva precisa existir), e desfazem tudo.
+  6. **Campos do pedido nas recusas:** os `400` do `reservations` com `reservations[0].x` voltam como `x` (`WalkInInvalidInputException`, que mantém as propriedades do problema); os `422` da venda mantêm `refusals` e o `reservationIndex` (sempre 0).
+  7. **Ordem das travas:** inventário (as linhas do tipo, em ordem de data, pela `createBooking`) → trava consultiva da UH (`assignRoom`) → reserva → conta → linha da UH; a reserva e a conta nascem na transação (ninguém mais as trava), e inventário → UH é a ordem da alteração de reserva (E08 do M4). Dois walk-ins no mesmo tipo e datas se enfileiram no inventário; dois na mesma UH, na trava consultiva (o segundo recebe `409 ROOM_ALREADY_ASSIGNED`).
+  8. **Resposta própria** (`WalkInResponse`: `bookingId`, `bookingCode`, `holderGuestId`, `total` e o mesmo resumo do check-in) com `201`, `Location` da reserva e o `ETag` dela; trilha `frontdesk.stay.walk-in` com a entidade `frontdesk.stay` (`walkIn`, `bookingId`).
+- Validações executadas:
+  - **testes primeiro:** o `FrontdeskWalkInApiTest` foi escrito antes do controller e do caso de uso compilarem juntos; a primeira rodada falhou só numa asserção do próprio teste (a entrada `reservations.room-assignment.assign` da trilha tem o id da alocação, não o da reserva: trocada pela contagem de alocações da UH);
+  - `./gradlew test --tests 'com.zeny.hotel.frontdesk.*'` → verde (os 9 novos e os 16 da E02, depois da extração dos passos);
+  - **mutações** (aplicadas, rodadas e revertidas, o arquivo restaurado idêntico, conferido com `cmp`): sem `@Transactional` no `walkIn` → os 9 testes falham (a guarda do `CheckInSteps.complete` recusa fora da transação de escrita); sem a confirmação da pré-reserva → falha "a plan with a card guarantee is confirmed at the desk…";
+  - `./gradlew lint` → verde (depois de quebrar linhas longas e trocar o construtor de 8 parâmetros do apoio do teste por um mapa de contagens);
+  - `./gradlew updateOpenApi` → `api/openapi.yaml` com `POST /walk-ins` (`IdempotencyKey`), `WalkInRequest` e `WalkInResponse`, e a descrição da tag `frontdesk`; nenhuma linha removida;
+  - `.github/scripts/check-api-breaking.sh` → "Nenhuma mudança incompatível (nível ERR) em /api/v1" (contra `87cbb62`, o HEAD) e `.github/scripts/check-api-breaking.sh ffae917` → idem (contra o gate do M4);
+  - `./gradlew build` → BUILD SUCCESSFUL em 7 min 3 s (1215 testes em 148 classes, 0 falhas; `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), rodado depois do contrato e da documentação;
+  - snapshot depois da implementação (com este handoff): `56c3c36641344c6aea3010959f9364b0549b8f20` (`git diff --stat f6f3511716c2595523d5fa6af9b39b7d64385870` contra ele mostra os arquivos acima).
+- Parecer do verificador (orquestrador, 2026-10-22): **APROVADO** (6/6 critérios; `./gradlew build` 1215 testes, 0 falhas; oasdiff sem `ERR` contra `87cbb62` e `ffae917`; `FrontdeskCheckInApiTest` da E02 intocado e 17/17). As recusas de RN-05 e RN-24 e a falha forçada acontecem depois da `createBooking` e provam o rollback da reserva, da conta e da unidade; o walk-in não tem `nightlyRates` (sem desconto) e passa pela `isSellable` no canal `DIRECT`. Decisões avaliadas: a aresta `frontdesk` → `rates` só por tipos é coerente na prática (a tabela já tem `reservations` → `rates` e `frontdesk` → `reservations` na mesma camada; a trava do `ModularityTest` impede usar a `RatesApi`); a confirmação da pré-reserva e a extração para `CheckInSteps`, aceitas; a ordem das travas, sem ciclo com os outros caminhos. Ressalvas baixas, aceitas pelo orquestrador em nome do usuário (delegado) e deixadas como notas:
+  - garantia `CARD` gravada no walk-in sem declaração nem caução no pedido (o hóspede está presente e o check-in é imediato) — reavaliar no M7 (cartão integrado) se o walk-in deve exigir a `preAuthorization` quando a política copiada pede cartão;
+  - registrar na ARCHITECTURE §3.2, no gate E12, uma ordem interna da camada Hospedagem (`rates` < `reservations` < `frontdesk`) que justifique as três arestas da mesma camada como regra, não como ressalva por aresta;
+  - a H24 previa duas permissões; o walk-in exige três (`reservations.assignments.manage` também, coerente com a E02);
+  - não testado: um id de hóspede **mesclado** no pedido (a `createBooking` troca pelo sobrevivente, mas o check-in usa os ids originais; o esperado é uma recusa com rollback) — cobrir na E05 ou no gate E12;
+  - sem teste de concorrência próprio do walk-in (dois pela mesma UH ou pela última unidade): depende das garantias já testadas da E02 e do M4.
+- Notas para a próxima etapa:
+  - **E04 (check-out):** o walk-in deixa a reserva como qualquer outra hospedada (conta aberta, caução opcional ativa); nada de especial no check-out. Os passos comuns do check-in estão em `CheckInSteps`; para o check-out, um componente parecido evita duplicar a leitura da reserva e da conta.
+  - **E05:** um walk-in num plano com depósito é recusado (`422 DEPOSIT_INSUFFICIENT`); se o hotel quiser cobrar adiantado no balcão, o caminho é a reserva normal com o pagamento do depósito antes do check-in.
+  - **E08 (`fnrh`):** o walk-in publica `ReservationCreated` (e, num plano com cartão, `ReservationConfirmed`) e `GuestCheckedIn` na mesma transação, em ordem; o envio por evento trata o walk-in como uma reserva criada e já hospedada.
+  - **Gate (E12):** o walk-in entra no cenário do `MilestoneM5EndToEndTest` e no roteiro do compose (`POST /api/v1/walk-ins` com um hóspede cadastrado e a UH inspecionada).
 
 ---
 

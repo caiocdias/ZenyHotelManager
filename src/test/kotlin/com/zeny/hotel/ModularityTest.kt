@@ -320,15 +320,16 @@ class ModularityTest {
     }
 
     @Test
-    fun `frontdesk depends only on shared, hotel, reservations, rooms, guests, billing, files, by public APIs`() {
+    fun `frontdesk depends only on shared, hotel, reservations, rooms, guests, billing, files, rates, by APIs`() {
         val frontdesk = modules.getModuleByName("frontdesk").orElseThrow()
-        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files")
+        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates")
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M5 E02: hotel (data operacional, fuso e política de early/late pela
         // HotelApi), reservations (a reserva, a alocação e as transições pela ReservationsApi), rooms (RN-05 e a
         // ocupação pela RoomsApi), guests (a identificação sem número e o alerta de restrição pela GuestsApi), billing
-        // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); nunca fnrh
-        // (camada acima) nem iam.
+        // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); M5 E03: rates,
+        // só os tipos públicos que a ReservationsApi usa (o id do plano do walk-in e o tipo de garantia da política
+        // copiada), nunca a RatesApi; nunca fnrh (camada acima) nem iam.
         frontdesk
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -347,6 +348,13 @@ class ModularityTest {
             .filter { name -> publicApis.any { name.startsWith("$it.") } }
             .filter { it.substringBeforeLast('.') !in publicApis }
             .toList() shouldBe emptyList()
+        frontdesk
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.rates.") }
+            .toList()
+            .toSet() shouldBe setOf("com.zeny.hotel.rates.RatePlanId", "com.zeny.hotel.rates.GuaranteeType")
     }
 
     @Test

@@ -43,6 +43,7 @@ object FrontdeskErrorCodes {
     val ROOM_NOT_ASSIGNED: ErrorCode = ReservationsErrorCodes.ROOM_NOT_ASSIGNED
     val UNDO_CHECK_IN_EXPIRED: ErrorCode = ReservationsErrorCodes.UNDO_CHECK_IN_EXPIRED
     val UNKNOWN_GUEST: ErrorCode = ReservationsErrorCodes.UNKNOWN_GUEST
+    val UNKNOWN_ROOM: ErrorCode = ReservationsErrorCodes.UNKNOWN_ROOM
     val GUEST_ANONYMIZED: ErrorCode = ReservationsErrorCodes.GUEST_ANONYMIZED
     val FOLIO_CLOSED: ErrorCode = BillingErrorCodes.FOLIO_CLOSED
     val FOLIO_NOT_FOUND: ErrorCode = BillingErrorCodes.FOLIO_NOT_FOUND

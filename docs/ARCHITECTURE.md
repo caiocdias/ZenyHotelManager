@@ -116,7 +116,7 @@ flowchart LR
 | `billing` | CTA | Contas, lançamentos, roteamento, caixa, caução e contas a receber | shared, hotel, guests, notifications, payments, fiscal, printing |
 | `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, hotel, rooms, billing |
 | `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, notifications, printing |
-| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, hotel, files, reservations, rooms, guests, billing, payments, fiscal, printing |
+| `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, hotel, files, rates (só os tipos públicos da `ReservationsApi`), reservations, rooms, guests, billing, payments, fiscal, printing |
 | `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |
 | `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations, notifications |
 | `housekeeping` | GOV | Tarefas, distribuição, inspeção, achados e danos | shared, hotel, rooms, reservations, staff, checklists, billing, notifications |

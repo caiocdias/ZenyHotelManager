@@ -43,8 +43,10 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.SensitiveAction
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -53,6 +55,7 @@ import java.time.ZoneId
 object FrontdeskAudit {
     const val CHECK_IN = "frontdesk.stay.check-in"
     const val UNDO_CHECK_IN = "frontdesk.stay.undo-check-in"
+    const val WALK_IN = "frontdesk.stay.walk-in"
 
     /** A hospedagem (id = a reserva): o que a recepção fez, sem dado pessoal. */
     const val STAY = "frontdesk.stay"
@@ -112,19 +115,17 @@ data class EarlyLateQuote(
  * (`RoomsApi.markOccupiedIfReady`, que **trava a UH** e confere a RN-05 de novo com ela travada: dois check-ins
  * simultâneos na mesma UH nunca passam os dois, B1 da revisão humana). A reserva
  * é travada antes da conta e da UH, como no cancelamento (reserva → conta): sem deadlock com ele. Nenhum pacote nem o
- * early é lançado aqui (H14; a cobrança do early é da E05).
+ * early é lançado aqui (H14; a cobrança do early é da E05). Os passos ficam em [CheckInSteps], reusados pelo walk-in
+ * (E03, [FrontdeskWalkInService]).
  */
 @Service
-@Suppress("LongParameterList", "TooManyFunctions") // as APIs públicas que o check-in orquestra e um passo por função
 class FrontdeskStayService(
     private val reservations: ReservationsApi,
     private val rooms: RoomsApi,
-    private val guests: GuestsApi,
-    private val billing: BillingApi,
-    private val files: FilesApi,
     private val hotel: HotelApi,
     private val authorization: Authorization,
     private val audit: AuditContext,
+    private val steps: CheckInSteps,
 ) {
     @Audited(FrontdeskAudit.CHECK_IN)
     @Transactional
@@ -134,34 +135,12 @@ class FrontdeskStayService(
     ): CheckInOutcome {
         authorization.require(FrontdeskPermissions.STAYS_CHECK_IN)
         val guestCount = StayRules.guestCount(command.guestCount, command.guests.size)
-        val reservation = reservation(id)
+        val reservation = steps.reservation(id)
         val businessDate = hotel.currentBusinessDate()
         StayRules.requireCheckIn(reservation, businessDate)
-        requireOpenFolio(reservation.folioId)
-        val identifications = identify(command.guests, businessDate)
-        requireMinorAttachments(command.guests, identifications)
-        val alerts =
-            identifications.values
-                .map { it.id }
-                .distinct()
-                .mapNotNull { guests.restrictionAlert(it) }
-                .distinctBy { it.guestId }
-        val roomId = readyRoom(reservation, command.roomId)
-        val checkedIn = reservations.checkIn(id, CheckIn(command.guests))
-        val preAuthorization = command.preAuthorization?.let { registerPreAuthorization(checkedIn.folioId, it) }
-        val room = occupy(roomId, guestCount)
-        audit.created(FrontdeskAudit.STAY, id.value) {
-            mapOf(
-                "reservationId" to id.value,
-                "roomId" to roomId.value,
-                "guestCount" to guestCount,
-                "guestIds" to checkedIn.guests.map { it.guestId.value },
-                "preAuthorizationId" to preAuthorization?.id?.value,
-                "restrictionAlerts" to alerts.size,
-                "businessDate" to checkedIn.checkIn?.businessDate,
-            )
-        }
-        return CheckInOutcome(checkedIn, roomNumber(roomId), room, preAuthorization, alerts)
+        steps.requireOpenFolio(reservation.folioId)
+        val prepared = steps.prepareGuests(command.guests, businessDate)
+        return steps.complete(reservation, command, guestCount, prepared)
     }
 
     /**
@@ -181,7 +160,7 @@ class FrontdeskStayService(
         approvalToken: String?,
     ): UndoCheckInOutcome {
         authorization.require(FrontdeskPermissions.STAYS_CHECK_IN)
-        val reservation = reservation(id)
+        val reservation = steps.reservation(id)
         StayRules.requireUndo(reservation, hotel.currentBusinessDate())
         authorization.requireOrApproval(
             SensitiveAction(
@@ -200,7 +179,7 @@ class FrontdeskStayService(
             mapOf("status" to reservation.status.name, "roomId" to roomId.value),
             mapOf("status" to undone.status.name, "roomId" to roomId.value, "roomVacated" to true),
         )
-        return UndoCheckInOutcome(undone, roomNumber(roomId), room)
+        return UndoCheckInOutcome(undone, steps.roomNumber(roomId), room)
     }
 
     /**
@@ -212,7 +191,7 @@ class FrontdeskStayService(
     @Transactional(readOnly = true)
     fun earlyLateQuote(id: ReservationId): EarlyLateQuote {
         authorization.require(ReservationsPermissions.RESERVATIONS_READ)
-        val reservation = reservation(id)
+        val reservation = steps.reservation(id)
         val policy = hotel.policy()
         val zone = hotel.timezone()
         return EarlyLateQuote(
@@ -224,6 +203,119 @@ class FrontdeskStayService(
             lateCheckOut = EarlyLateQuotes.late(policy, reservation.departure, zone),
         )
     }
+}
+
+/** A identificação dos hóspedes do pedido (pelo índice da lista) e os alertas da lista de restrição. */
+data class PreparedGuests(
+    val identifications: Map<Int, GuestIdentification>,
+    val restrictionAlerts: List<RestrictionAlert>,
+)
+
+/**
+ * Os passos do check-in reusados pelo check-in de uma reserva (E02) e pelo walk-in (E03), **sempre na transação de
+ * escrita de quem chama** (o caso de uso auditado; fora dela, `IllegalStateException`). As conferências sem escrita
+ * ([reservation], [requireOpenFolio], [prepareGuests]) e o fim do check-in ([complete]: a UH alocada e pronta, a
+ * transição que trava a reserva, a caução que trava a conta e a ocupação que trava a UH, nessa ordem).
+ */
+@Component
+@Suppress("LongParameterList", "TooManyFunctions") // as APIs públicas que o check-in orquestra e um passo por função
+class CheckInSteps(
+    private val reservations: ReservationsApi,
+    private val rooms: RoomsApi,
+    private val guests: GuestsApi,
+    private val billing: BillingApi,
+    private val files: FilesApi,
+    private val authorization: Authorization,
+    private val audit: AuditContext,
+) {
+    /** A reserva lida sem trava; inexistente `404 RESERVATION_NOT_FOUND`. */
+    fun reservation(id: ReservationId): ReservationSummary =
+        reservations.reservation(id)
+            ?: throw NotFoundException(FrontdeskErrorCodes.RESERVATION_NOT_FOUND, "Reserva não encontrada.")
+
+    /**
+     * A identificação de cada hóspede do pedido sem número de documento (H11: `400 UNKNOWN_GUEST` com o campo,
+     * `422 GUEST_ANONYMIZED`, `422 GUEST_DATA_INCOMPLETE` com todos os incompletos), o anexo da comprovação de cada
+     * menor que o tem (`FilesApi.find`) e os alertas da lista de restrição dos hóspedes e de [alsoAlert] (o titular do
+     * walk-in), que não bloqueiam.
+     */
+    fun prepareGuests(
+        requested: List<CheckInGuest>,
+        businessDate: LocalDate,
+        alsoAlert: Collection<GuestId> = emptyList(),
+    ): PreparedGuests {
+        val identifications = identify(requested, businessDate)
+        requireMinorAttachments(requested, identifications)
+        val alerts =
+            (identifications.values.map { it.id } + alsoAlert)
+                .distinct()
+                .mapNotNull { guests.restrictionAlert(it) }
+                .distinctBy { it.guestId }
+        return PreparedGuests(identifications, alerts)
+    }
+
+    /**
+     * O fim do check-in da [reservation] (confirmada e já chegada, conferida por quem chama): a UH pedida alocada, se
+     * mudou (`ReservationsApi.assignRoom`, com `reservations.assignments.manage`; trava a reserva e a UH); a UH alocada
+     * (`409 ROOM_NOT_ASSIGNED`) e pronta (`RoomsApi.isReadyForCheckIn`, `409 ROOM_NOT_READY`); a transição
+     * (`ReservationsApi.checkIn`, que **trava a reserva** e confere a RN-24); a caução
+     * (`BillingApi.registerCardPreAuthorization`, que **trava a conta**); a ocupação (`RoomsApi.markOccupiedIfReady`,
+     * que **trava a UH** e confere a RN-05 de novo com ela travada: dois check-ins simultâneos na mesma UH nunca passam
+     * os dois, B1 da revisão humana da E02); e a hospedagem na trilha (`frontdesk.stay`, com [trail] acrescentado ao
+     * retrato).
+     */
+    fun complete(
+        reservation: ReservationSummary,
+        command: CheckInCommand,
+        guestCount: Int,
+        prepared: PreparedGuests,
+        trail: Map<String, Any?> = emptyMap(),
+    ): CheckInOutcome {
+        check(
+            TransactionSynchronizationManager.isActualTransactionActive() &&
+                !TransactionSynchronizationManager.isCurrentTransactionReadOnly(),
+        ) { "O check-in só é feito dentro da transação de escrita de quem chama" }
+        val id = reservation.id
+        val roomId = readyRoom(reservation, command.roomId)
+        val checkedIn = reservations.checkIn(id, CheckIn(command.guests))
+        val preAuthorization = command.preAuthorization?.let { registerPreAuthorization(checkedIn.folioId, it) }
+        val room = occupy(roomId, guestCount)
+        audit.created(FrontdeskAudit.STAY, id.value) {
+            mapOf(
+                "reservationId" to id.value,
+                "roomId" to roomId.value,
+                "guestCount" to guestCount,
+                "guestIds" to checkedIn.guests.map { it.guestId.value },
+                "preAuthorizationId" to preAuthorization?.id?.value,
+                "restrictionAlerts" to prepared.restrictionAlerts.size,
+                "businessDate" to checkedIn.checkIn?.businessDate,
+            ) + trail
+        }
+        return CheckInOutcome(checkedIn, roomNumber(roomId), room, preAuthorization, prepared.restrictionAlerts)
+    }
+
+    /**
+     * A conta da reserva aberta. Toda reserva nasce com a conta (aberta na mesma transação da criação) e uma conta
+     * nunca é apagada (trigger `billing.refuse_delete`), então a ausência é impossível na prática; ainda assim ela é
+     * uma recusa de domínio (`404 FOLIO_NOT_FOUND`), nunca um `500`. Encerrada: `409 FOLIO_CLOSED` (o check-in não a
+     * reabre).
+     */
+    fun requireOpenFolio(folioId: FolioId) {
+        val folio =
+            billing.folio(folioId)
+                ?: throw NotFoundException(
+                    FrontdeskErrorCodes.FOLIO_NOT_FOUND,
+                    "A conta da reserva não foi encontrada.",
+                )
+        if (folio.status == FolioStatus.CLOSED) {
+            throw ConflictException(
+                FrontdeskErrorCodes.FOLIO_CLOSED,
+                "A conta da reserva está encerrada: reabra-a antes do check-in.",
+            )
+        }
+    }
+
+    fun roomNumber(roomId: RoomId): String = checkNotNull(rooms.room(roomId)) { "UH inexistente" }.number
 
     /**
      * A UH do check-in: a pedida (alocada ou realocada antes, com `reservations.assignments.manage`, se difere da
@@ -259,31 +351,6 @@ class FrontdeskStayService(
         val occupation = rooms.markOccupiedIfReady(roomId, guestCount, RoomStatusSource.CHECK_IN)
         if (!occupation.ready) throw RoomNotReadyException(occupation.status)
         return occupation.status
-    }
-
-    private fun reservation(id: ReservationId): ReservationSummary =
-        reservations.reservation(id)
-            ?: throw NotFoundException(FrontdeskErrorCodes.RESERVATION_NOT_FOUND, "Reserva não encontrada.")
-
-    /**
-     * A conta da reserva aberta. Toda reserva nasce com a conta (aberta na mesma transação da criação) e uma conta
-     * nunca é apagada (trigger `billing.refuse_delete`), então a ausência é impossível na prática; ainda assim ela é
-     * uma recusa de domínio (`404 FOLIO_NOT_FOUND`), nunca um `500`. Encerrada: `409 FOLIO_CLOSED` (o check-in não a
-     * reabre).
-     */
-    private fun requireOpenFolio(folioId: FolioId) {
-        val folio =
-            billing.folio(folioId)
-                ?: throw NotFoundException(
-                    FrontdeskErrorCodes.FOLIO_NOT_FOUND,
-                    "A conta da reserva não foi encontrada.",
-                )
-        if (folio.status == FolioStatus.CLOSED) {
-            throw ConflictException(
-                FrontdeskErrorCodes.FOLIO_CLOSED,
-                "A conta da reserva está encerrada: reabra-a antes do check-in.",
-            )
-        }
     }
 
     /**
@@ -349,8 +416,6 @@ class FrontdeskStayService(
                 refused,
             )
         }
-
-    private fun roomNumber(roomId: RoomId): String = checkNotNull(rooms.room(roomId)) { "UH inexistente" }.number
 
     private fun unknownGuest(field: String) =
         InvalidInputException(
