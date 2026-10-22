@@ -9,7 +9,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 - [`docs/SPEC.md`](docs/SPEC.md): requisitos, regras de negócio, modelo de domínio, fases e questões em aberto.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): decisões arquiteturais, módulos, convenções de API, segurança, persistência e integrações.
 - [`docs/roadmaps/`](docs/roadmaps/README.md): plano de execução em 11 marcos (M0–M10), com um roadmap por marco.
-- [`CLAUDE.md`](CLAUDE.md): guia de trabalho para o Claude Code, com os mesmos comandos e convenções deste arquivo.
+- [`CLAUDE.md`](CLAUDE.md): guia mínimo para o Claude Code (projeto, comandos, roadmaps e git). A referência técnica detalhada (convenções, banco, segurança, cada módulo) fica no Second Brain do mantenedor, fora do repositório, carregada nas sessões pelo hook do `.claude/settings.json` (script `load-brain.py` da skill `development-roadmap`).
 
 ## Pré-requisitos
 
@@ -34,7 +34,7 @@ Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins 
 
 ## Banco de dados
 
-PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo no [`CLAUDE.md`](CLAUDE.md)).
+PostgreSQL 18, com um schema por módulo e migrações Flyway em `src/main/resources/db/migration/<módulo>/V<aaaa>_<mm>_<dd>_<hhmm>__<descricao>.sql` (passo a passo para um módulo novo na nota "Schemas, migrações e views de relatório" do Second Brain do projeto).
 
 O banco tem **dois papéis** (ARCHITECTURE §11):
 
@@ -74,7 +74,7 @@ Dados sensíveis são cifrados com AES-256-GCM (ARCHITECTURE §8.3). As chaves v
 export ZENY_ENCRYPTION_KEYS="dev:$(openssl rand -base64 32)" ZENY_ENCRYPTION_ACTIVE_KEY_ID=dev
 ```
 
-As mesmas chaves derivam (por HKDF) as chaves dos índices cegos, que permitem buscar por igualdade num campo cifrado (o número de documento do hóspede) sem decifrar a tabela. Na rotação, acrescente a chave nova e aponte a ativa para ela; um job re-cifra e reindexa os documentos de hóspede a cada hora (terminou quando a métrica `zeny_guests_documents_rekey_pending` chega a zero). Os outros valores cifrados ainda não têm job: mantenha a chave antiga até re-cifrá-los (passo a passo em "Chaves de cifragem" no [`CLAUDE.md`](CLAUDE.md)).
+As mesmas chaves derivam (por HKDF) as chaves dos índices cegos, que permitem buscar por igualdade num campo cifrado (o número de documento do hóspede) sem decifrar a tabela. Na rotação, acrescente a chave nova e aponte a ativa para ela; um job re-cifra e reindexa os documentos de hóspede a cada hora (terminou quando a métrica `zeny_guests_documents_rekey_pending` chega a zero). Os outros valores cifrados ainda não têm job: mantenha a chave antiga até re-cifrá-los (passo a passo em "Chaves de cifragem" na nota "Ambiente, banco, chaves e build" do Second Brain do projeto).
 
 ## Anexos (armazenamento S3)
 
@@ -187,7 +187,7 @@ Para só construir a imagem: `docker build -f docker/Dockerfile -t zeny-hotel-ma
 ## Observabilidade
 
 - Health: `GET /actuator/health/liveness` (processo vivo) e `GET /actuator/health/readiness` (pronto para tráfego; `DOWN` com o banco fora). São os únicos caminhos do actuator abertos, junto com o `/actuator/prometheus`; os demais endpoints não existem.
-- Métricas: `GET /actuator/prometheus`, só na rede interna do compose (`http://api:8080/actuator/prometheus`; o proxy responde 404). Além das técnicas (JVM, HTTP, pool do banco), `zeny_outbox_publications{state="pending|failed|abandoned"}` e `zeny_outbox_publications_oldest_age_seconds` medem o outbox de eventos (reenvio com backoff de 1 min a 1 h, abandono depois de 24 h e expurgo das concluídas depois de 7 dias), `zeny_realtime_connections` conta as conexões do canal de tempo real (uma publicação abandonada só volta pelo reenvio manual descrito no `CLAUDE.md`, "Eventos e jobs"); regras de alerta em [`docker/prometheus/alerts.yaml`](docker/prometheus/alerts.yaml).
+- Métricas: `GET /actuator/prometheus`, só na rede interna do compose (`http://api:8080/actuator/prometheus`; o proxy responde 404). Além das técnicas (JVM, HTTP, pool do banco), `zeny_outbox_publications{state="pending|failed|abandoned"}` e `zeny_outbox_publications_oldest_age_seconds` medem o outbox de eventos (reenvio com backoff de 1 min a 1 h, abandono depois de 24 h e expurgo das concluídas depois de 7 dias), `zeny_realtime_connections` conta as conexões do canal de tempo real (uma publicação abandonada só volta pelo reenvio manual descrito na nota "Eventos e jobs" do Second Brain do projeto); regras de alerta em [`docker/prometheus/alerts.yaml`](docker/prometheus/alerts.yaml).
 - Logs: no profile `prod`, uma linha JSON por evento (formato ECS), com `traceId` e `spanId` nas requisições e, nas autenticadas, `userId` e `deviceSessionId` (nunca login, senha ou token); o servidor aceita e propaga o cabeçalho `traceparent` (W3C). No `local`, texto legível.
 - Valores do banco não vão para o log: numa violação de restrição (login repetido, por exemplo), nem o servidor (`db` do compose com `log_error_verbosity=terse` e `log_min_error_statement=panic`) nem a aplicação (driver com `logServerErrorDetail=false`) registram o DETAIL do PostgreSQL, que traz os valores da linha.
 
@@ -244,7 +244,7 @@ Tarifas, disponibilidade e reservas (M4):
 - **Check-in orquestrado** (M5 E02, módulo `frontdesk`, a recepção): `POST /api/v1/reservations/{id}/check-in` (exige `frontdesk.stays.checkin` e `Idempotency-Key`) faz tudo numa transação só, tudo ou nada: confere os hóspedes (nacionalidade, data de nascimento e um documento aceito — o CPF do brasileiro adulto, o CPF ou o RG do brasileiro menor; passaporte, RNM ou identidade estrangeira do estrangeiro —, lidos sem o número; senão `422 GUEST_DATA_INCOMPLETE` com o que falta de cada um) e o anexo da comprovação do menor (foto ou PDF da autorização, vinculado ao perfil do menor; senão `422 MINOR_AUTHORIZATION_ATTACHMENT_INVALID`), exige a UH alocada (`409 ROOM_NOT_ASSIGNED`; com `roomId` no corpo, aloca ou realoca antes, com `reservations.assignments.manage`) e pronta (vaga, fora de OOO e inspecionada, ou limpa sem inspeção pendente; senão `409 ROOM_NOT_READY` com a situação da UH), faz a reserva hospedada (com as regras do menor), registra a caução opcional na conta da reserva (sem mudar o saldo) e ocupa a UH com o número de hóspedes, conferindo de novo se ela está pronta com a UH travada (dois check-ins simultâneos na mesma UH nunca passam os dois). Uma recusa em qualquer passo desfaz tudo. Os hóspedes na lista de restrição voltam em `restrictionAlerts`, sem bloquear. `POST /api/v1/reservations/{id}/undo-check-in` desfaz o check-in na mesma data operacional (`422 UNDO_CHECK_IN_EXPIRED` depois), como ação sensível (`frontdesk.stays.undocheckin` ou a aprovação de um superior, `403 APPROVAL_REQUIRED`): a reserva volta a confirmada com a UH alocada e a UH volta a Vaga sem sujar; a caução registrada fica (libere-a pelo `billing`). `GET /api/v1/reservations/{id}/early-late-quote` (`reservations.reservations.read`) cota o early check-in e o late check-out pela política vigente do hotel, no fuso dele (oferecido ou não, horário limite, valor e a janela em instantes); a cobrança vem no check-out e na E05. O `guests` ganhou a leitura dos documentos sem número (`GuestsApi.identification`) e o `billing`, o registro de caução sem permissão (`BillingApi.registerCardPreAuthorization`).
 - **Walk-in** (M5 E03, módulo `frontdesk`): `POST /api/v1/walk-ins` (exige `frontdesk.stays.checkin`, `reservations.reservations.manage`, `reservations.assignments.manage` e `Idempotency-Key`) cria a reserva de quem chega sem reserva (origem balcão, chegada na data operacional, preço calculado pela tarifa, sem desconto; os hóspedes já cadastrados no `guests`), confirma a pré-reserva de um plano com garantia de cartão (o de depósito é recusado, `422 DEPOSIT_INSUFFICIENT`), aloca a UH escolhida e faz o check-in com as mesmas regras e dados de `POST /api/v1/reservations/{id}/check-in` (inclusive a caução), tudo numa transação: sem unidade do tipo (`409 ROOM_TYPE_UNAVAILABLE`), com a venda recusada (`422` com `refusals`), com a UH não pronta (`409 ROOM_NOT_READY`), com um menor sem comprovação (`422`) ou com qualquer outra recusa, nada fica gravado. Responde `201` com a reserva hospedada, a UH ocupada, o total e os alertas de restrição (dos hóspedes e do titular).
 
-Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: [`CLAUDE.md`](CLAUDE.md).
+Como escrever um controller, lançar erro de domínio, paginar, marcar um endpoint idempotente, declarar e checar permissões e auditar um caso de uso: notas "Convenções de API", "Segurança, autenticação e autorização" e "Auditoria" do Second Brain do projeto.
 
 ## Integração contínua
 
@@ -285,4 +285,4 @@ Os limites são verificados em teste a cada build:
 
 ## Roadmaps
 
-O trabalho segue os roadmaps em [`docs/roadmaps/`](docs/roadmaps/README.md). Cada etapa tem um prompt pronto para o Claude Code, critérios de aceite e uma seção "Evidências e handoff" que registra o que foi feito.
+O trabalho segue os roadmaps em [`docs/roadmaps/`](docs/roadmaps/README.md). Cada etapa tem critérios de aceite e uma seção "Evidências e handoff" que registra o que foi feito; cada roadmap (M5 em diante) tem um "Prompt de execução" que roda um lote de etapas com o plugin superpowers numa branch `roadmap/<slug>`.

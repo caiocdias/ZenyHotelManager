@@ -1,6 +1,6 @@
 # Roadmap — M9 Suprimentos: estoque, compras, rouparia e fichas técnicas
 
-> Arquivo: `docs/roadmaps/roadmap-m9-suprimentos.md` · criado em 2026-10-13 · última revisão 2026-10-13
+> Arquivo: `docs/roadmaps/roadmap-m9-suprimentos.md` · branch de execução: `roadmap/m9-suprimentos` · criado em 2026-10-13 · última revisão 2026-10-22
 >
 > Marco 9 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M8 — Restaurante, distribuição e inauguração](roadmap-m8-restaurante-distribuicao.md) · próximo marco: [M10 — Comercial e gestão](roadmap-m10-comercial-gestao.md)
 >
@@ -8,16 +8,9 @@
 
 ## Como usar
 
-Duas formas, ambas na raiz do repositório:
+Cole o "Prompt de execução" numa sessão limpa do Claude Code, na raiz do repositório. Ele executa até 3 etapas em sequência na branch `roadmap/m9-suprimentos`, cada uma planejada e executada pelo plugin superpowers, e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
-- **Manual:** cole o prompt de uma etapa numa sessão limpa do Claude Code. Uma etapa por sessão.
-- **Automática:** cole o prompt da seção "Execução automática" numa sessão limpa; ela executa até 3 etapas em sequência, um subagente por etapa mais um verificador, e para para revisão. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto (registrados no `CLAUDE.md`) e o `docker` nas permissões do Claude Code.
-
-Etapas marcadas como paralelizáveis só devem rodar ao mesmo tempo em worktrees git separados; na mesma pasta, rode-as uma de cada vez.
-
-Em ambas, quem executa segue o "Protocolo de execução", atualiza a tag da etapa e preenche "Evidências e handoff". Não pule dependências. Revise e faça commit entre etapas ou lotes — nenhuma sessão faz commit por conta própria.
-
-**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, APIs públicas e convenções registrados nos handoffs de M0 a M8 e ajuste as etapas pendentes.
+**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, APIs públicas e convenções registrados nos handoffs de M0 a M8 e nas notas de tema do brain, e ajuste as etapas pendentes.
 
 ## Objetivo
 
@@ -29,8 +22,9 @@ Colocar custos e insumos sob controle (SPEC §9, Fase 3). Ao fim do marco, o hot
 - Regras de negócio: SPEC §6 RN-17 (saldo negativo nunca bloqueia saídas automáticas), RN-18 (custo médio ponderado móvel), RN-03 (imutabilidade financeira para lançamentos em conta), RN-12 (ações sensíveis).
 - Modelo de domínio: SPEC §8.2.13 (estoque e compras), §8.2.14 (rouparia e lavanderia), §8.2.15 (`Recipe`, `RecipeLine`), §8.2.11 (`ConsumeStockAction`, `LinenExchangeAction`), §8.2.12 (`WorkOrderPart`); eventos em §8.3 (`ChecklistCompleted`, `TabClosed`, `StockBelowMinimum`).
 - Arquitetura: ARCHITECTURE §3.1 — regra por camadas (um módulo pode depender de módulos de camada inferior da §3.2 e de qualquer módulo da Plataforma, sem ciclo; aresta nova é registrada na tabela na mesma mudança). `inventory` depende de `shared`, `checklists`, `files`, `notifications`; `linen` depende de `shared`, `rooms`, `checklists`, `inventory`, `reservations`, `billing`; `pos` depende de `inventory`; `maintenance` depende de `inventory`; `frontdesk` depende de `billing` e cuida dos itens de empréstimo, mas **não** pode depender de `inventory`, `linen` nem `housekeeping` (camada superior). ARCHITECTURE §6.2 descreve o fluxo `ChecklistCompleted` → `inventory`/`linen`. ARCHITECTURE §13: alertas de estoque mínimo por evento, com consolidação diária. ARCHITECTURE §14: XMLs de NF-e de entrada guardados em `files`.
-- Convenções herdadas (ler nos handoffs e no `CLAUDE.md`): M0 — API, erros RFC 9457, migrações por módulo, `Money`, IDs, `Idempotency-Key`, outbox, ShedLock; M1 — autorização, step-up, auditoria, `files`; M2 — checklists com ações no `ChecklistCompleted`, sincronização offline, notificações; M3 — `billing` (lançamentos por código); M4 — `reservations`; M5 — `frontdesk` (check-out); M6 — `maintenance` corretiva (OS sem peças), `reporting` via views `report_*`; M8 — `pos` (comandas, `TabClosed`, consumo interno sem baixa).
-- Comandos de build, teste e lint: os oficiais registrados no `CLAUDE.md` por M0 E01. Testes de integração com Testcontainers (base de M0 E02).
+- Convenções herdadas (ler nos handoffs e nas notas de tema do brain): M0 — API, erros RFC 9457, migrações por módulo, `Money`, IDs, `Idempotency-Key`, outbox, ShedLock; M1 — autorização, step-up, auditoria, `files`; M2 — checklists com ações no `ChecklistCompleted`, sincronização offline, notificações; M3 — `billing` (lançamentos por código); M4 — `reservations`; M5 — `frontdesk` (check-out); M6 — `maintenance` corretiva (OS sem peças), `reporting` via views `report_*`; M8 — `pos` (comandas, `TabClosed`, consumo interno sem baixa).
+- Comandos de build, teste e lint: os oficiais da tabela do `CLAUDE.md`. Testes de integração com Testcontainers (base de M0 E02).
+- Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Estado por marco`, `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Schemas, migrações e views de relatório`, `ZenyHotelManager - Tipos do kernel`, `ZenyHotelManager - Convenções de API`, `ZenyHotelManager - Segurança, autenticação e autorização`, `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Eventos e jobs`, `ZenyHotelManager - Sincronização offline`, `ZenyHotelManager - Testes de integração`, `ZenyHotelManager - Módulo files`, `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo rooms`, `ZenyHotelManager - Módulo checklists`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)` e `ZenyHotelManager - Hospedagem e recepção`. Os módulos de M6 a M8 que este marco usa (`maintenance`, `reporting`, `pos`, `printing`) ainda não têm nota no brain nesta revisão: valem os handoffs desses marcos e as capturas de atualização pendentes deles.
 - Pacote base `com.zeny.hotel` (hipótese herdada de M0 H1). Módulos novos deste marco: `inventory` e `linen` (a criar), cada um com schema e pasta de migração próprios conforme a convenção de M0 E02.
 
 ## Escopo
@@ -56,6 +50,7 @@ Colocar custos e insumos sob controle (SPEC §9, Fase 3). Ao fim do marco, o hot
 - Ajuste de estoque é ação sensível (RF-ACS-08): exige permissão ou step-up (M1).
 - Lançamentos em conta (lavanderia do hóspede, item de empréstimo não devolvido) passam pela API de `billing` com `Idempotency-Key`, nunca por escrita direta.
 - XMLs de NF-e de teste são fictícios; nada de dados reais de fornecedores no repositório.
+- Referência técnica nova (módulos `inventory` e `linen`, API de baixa, RN-17/RN-18, fichas técnicas, itens de empréstimo) vai para a captura de atualização do brain `ZenyHotelManager - atualização m9-suprimentos Eyy` de cada etapa, nunca para o `CLAUDE.md`; cada módulo novo propõe a sua nota de tema (`ZenyHotelManager - Módulo inventory`, `ZenyHotelManager - Módulo linen`). O `README.md` e o `docs/roadmaps/README.md` continuam sendo atualizados no repositório.
 
 ## Hipóteses e decisões em aberto
 
@@ -79,73 +74,73 @@ Colocar custos e insumos sob controle (SPEC §9, Fase 3). Ao fim do marco, o hot
 - [ ] Lavanderia terceirizada, lavanderia do hóspede (com lançamento em conta) e itens de empréstimo (com pendência no check-out) funcionam ponta a ponta.
 - [ ] Relatórios RF-EST-10 e RF-ROU-06 disponíveis com exportação CSV.
 - [ ] Build, testes, lint e verificação do contrato `api/openapi.yaml` passam; o contrato não tem *breaking change* em `/api/v1`.
+- [ ] Cada etapa publicou a captura de atualização do brain `ZenyHotelManager - atualização m9-suprimentos Eyy`, com as notas novas propostas `ZenyHotelManager - Módulo inventory` e `ZenyHotelManager - Módulo linen` e o estado do M9 para `ZenyHotelManager - Estado por marco`.
 
 ## Protocolo de execução
 
-Vale para toda etapa, executada manualmente ou pelo orquestrador. Cada etapa declara sua estratégia em "Estratégia de execução".
+Vale para toda execução deste roadmap. O planejamento e a execução de cada etapa são feitos pelo plugin superpowers; este protocolo diz como encadear as etapas e manter o roadmap em dia.
 
 **Papéis**
 
-- **Sessão principal** (no modo automático, o subagente implementador): a única que edita código e este roadmap. Implementa, testa, atualiza tags e handoff.
-- **Investigação** (subagente `Explore`, somente leitura): para material extenso que será lido mas não editado. Recebe as perguntas listadas na etapa e devolve um resumo com caminhos e linhas. Arquivos que serão editados são lidos diretamente pela sessão principal.
-- **Implementação paralela** (subagentes `general-purpose`, só na estratégia `paralela`): cada um recebe uma parte com os arquivos listados na etapa, disjuntos dos demais; roda só os testes focados da sua parte; não toca arquivos compartilhados (build, configuração, este roadmap).
-- **Verificação independente** (subagente `general-purpose` novo, que não participou da implementação): confere a etapa contra os critérios de aceite. Não edita nada.
+| Papel | Quem | Usa |
+|---|---|---|
+| Orquestrador | a sessão que recebeu o prompt de execução | este protocolo; atualiza tags e handoffs; publica as capturas de atualização do brain |
+| Planejador | o orquestrador | `superpowers:writing-plans` |
+| Implementador | subagente por tarefa | `superpowers:subagent-driven-development` (ou `superpowers:executing-plans`, sem subagentes) |
+| Revisor de tarefa | subagente novo por tarefa | revisão da `subagent-driven-development` |
+| Revisor final | subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
 
-**Estratégias:** `direta` — sem subagentes, a sessão principal valida · `padrão` — investigação quando indicada + verificação independente obrigatória · `paralela` — `padrão` + partes paralelas.
+Souls: nenhuma definida para estes papéis. Quando existir uma soul para um papel, ela se aplica a esse papel; até lá, valem os prompts padrão do superpowers.
 
-**Passo a passo**
+**Branch**
 
-1. **Preparação:** leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho deste roadmap, a seção da etapa e o handoff das dependências; rode `git status`. Confirme que as dependências estão `#concluida`, que a etapa não está `#bloqueada` e que o código bate com o handoff das dependências; se não, pare e relate.
-2. **Snapshot inicial:** registre o estado da árvore de trabalho, sem commit e sem alterar o índice do git:
+- Toda execução acontece no worktree/branch `roadmap/m9-suprimentos`, criado ou retomado com `superpowers:using-git-worktrees`. Nunca execute na branch principal (`main`).
+- Se a branch já existir com trabalho não integrado, continue nela. Se o lote anterior já foi integrado, crie a branch de novo a partir da `main` atualizada.
+- Este roadmap é atualizado dentro da branch: tags e handoffs viajam com o código.
 
-   ```bash
-   idx=$(mktemp -u); cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null; GIT_INDEX_FILE="$idx" git add -A && GIT_INDEX_FILE="$idx" git write-tree; rm -f "$idx"
-   ```
+**Por etapa**
 
-   Anote o hash impresso como "Snapshot inicial" no handoff da etapa (no modo automático, use o hash recebido do orquestrador em vez de tirar outro). Para ver tudo o que a etapa mudou, rode o mesmo comando de novo e compare: `git diff HASH_INICIAL HASH_ATUAL`. Se `git status` mostrar artefatos de build não ignorados, corrija o `.gitignore` antes do snapshot — senão o diff fica lento e poluído.
-3. **Início:** troque a tag da etapa para `#em-andamento` no índice e no título.
-4. **Investigação** (se a etapa listar perguntas): dispare um subagente `Explore` com essas perguntas.
-5. **Implementação:** quando os critérios descrevem comportamento verificável, escreva os testes primeiro e confirme que falham. Implemente em passos pequenos; na estratégia `paralela`, dispare as partes paralelas e integre-as. Rode as validações obrigatórias da etapa.
-6. **Verificação independente** (`padrão` e `paralela`): dispare um subagente `general-purpose` novo com o "Prompt do verificador" abaixo, trocando ETAPA pelo ID da etapa e HASH_INICIAL pelo snapshot. Se o parecer for REPROVADO, corrija e verifique de novo com um verificador novo. Após duas reprovações, pare e relate, mantendo `#em-andamento`.
-7. **Fechamento:** marque `#concluida` (índice e título) só com todos os critérios atendidos e, quando houver verificação, parecer APROVADO. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff" e responda com um resumo curto. Não faça commit, push ou deploy.
+1. **Escolha:** a primeira etapa, na ordem do documento, marcada `#pendente` e com todas as dependências `#concluida`. Etapas `#bloqueada` e as que dependem delas ficam para trás.
+2. **Conferência:** leia a seção da etapa, os handoffs das dependências e o código que eles citam. Se o código divergiu do que a etapa supõe, pare e relate.
+3. **Início:** troque a tag para `#em-andamento` (índice e título).
+4. **Plano:** use `superpowers:writing-plans`. A spec é a seção desta etapa mais os documentos citados em "Contexto confirmado"; as "Restrições e invariantes" entram como Global Constraints. Salve em `docs/superpowers/plans/AAAA-MM-DD-m9-suprimentos-eNN.md` (AAAA-MM-DD = a data do dia). A execução já está definida (abaixo): não pergunte ao usuário o método, apenas siga.
+5. **Execução:** use `superpowers:subagent-driven-development` com esse plano, incluindo a revisão final da etapa. Não invoque `superpowers:finishing-a-development-branch` ao fim da etapa: ele roda uma vez, no fim do lote.
+6. **Fechamento:** publique a captura de atualização do brain (bloco "Second Brain"). Marque `#concluida` (índice e título) só com a revisão final limpa e cada critério de aceite verificado com evidência. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff". Rulings do ledger que mudam contrato, escopo, segurança, dados ou algo caro de desfazer vão para "Decisões para o usuário".
 
-**Prompt do verificador**
+**Second Brain**
+
+Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain"; senão, ignore este bloco.
+
+- O contexto da sessão precisa trazer a linha `BRAIN: carregado (ZenyHotelManager)`, injetada pelo hook. Sem ela, pare e relate.
+- Na conferência de cada etapa, leia as notas de tema do brain ligadas a ela (pelo hub `ZenyHotelManager`) e as capturas pendentes do projeto que tratem do assunto: são a referência técnica do projeto. Num handoff antigo, "seção X do `CLAUDE.md`" é a nota de tema correspondente.
+- No fechamento de cada etapa que mudou algo descrito no brain (inclusive o estado do roadmap), o orquestrador publica em `00 Inbox/` do vault a captura `ZenyHotelManager - atualização m9-suprimentos Eyy`, com o texto novo ou alterado de cada nota afetada e qual nota ele substitui ou complementa, conforme o contrato de agente externo do vault (skill `second-brain`). Nunca edite notas do brain nem registre referência técnica no `CLAUDE.md`.
+
+**Paradas**
+
+O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+
+**Fim do lote**
+
+1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
+2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+
+## Prompt de execução
 
 ```text
-Você é o verificador independente da etapa ETAPA do roadmap docs/roadmaps/roadmap-m9-suprimentos.md. Você não participou da implementação e não deve editar nenhum arquivo.
-1. Leia CLAUDE.md, o cabeçalho do roadmap e a seção ETAPA inteira (objetivo, escopo, fora de escopo, estratégia, critérios de aceite, validação obrigatória).
-2. Veja o que mudou desde o início da etapa: gere um snapshot do estado atual com o comando da seção "Protocolo de execução" e rode git diff --stat HASH_INICIAL seguido do hash gerado; depois leia o diff completo dos arquivos relevantes.
-3. Rode todos os comandos da validação obrigatória da etapa e guarde a saída relevante.
-4. Para cada critério de aceite, decida APROVADO ou REPROVADO com evidência concreta (arquivo:linha, nome do teste, saída de comando). Critério sem evidência é REPROVADO.
-5. Ataque os pontos listados em "Foco do verificador" na etapa e aponte também: mudanças fora do escopo, testes que não exercitam o comportamento (passariam mesmo com o código errado), segredos ou dados pessoais expostos e violações das restrições do roadmap.
-Responda com: parecer geral (APROVADO só se todos os critérios forem APROVADO e não houver problema grave), tabela critério → resultado → evidência, problemas por gravidade e comandos executados.
-```
-
-## Execução automática
-
-Cole o prompt abaixo numa sessão limpa do Claude Code, na raiz do repositório. Ajuste o limite de etapas se quiser.
-
-```text
-Você é o orquestrador do roadmap docs/roadmaps/roadmap-m9-suprimentos.md neste repositório. Seu papel é coordenar subagentes, não implementar: não edite código e mantenha seu contexto enxuto (leia o roadmap e os relatórios dos subagentes, não o código).
+Execute o roadmap docs/roadmaps/roadmap-m9-suprimentos.md deste repositório seguindo a seção "Protocolo de execução" dele, com o plugin superpowers.
 
 Limite desta execução: no máximo 3 etapas concluídas.
 
-Preparação:
-1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho, o "Protocolo de execução" e o índice.
-2. Rode git status. Se alguma etapa estiver #em-andamento, pare e pergunte ao usuário como prosseguir — provavelmente é uma execução interrompida.
+1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho inteiro, o protocolo e o índice. Se o CLAUDE.md exigir o Second Brain, confira a linha BRAIN: carregado no contexto e leia o hub. Rode git status e git branch -a.
+2. Se alguma etapa estiver #em-andamento, retome-a a partir do ledger do superpowers e do handoff; não recomece tarefas já commitadas.
+3. Crie ou retome o worktree/branch roadmap/m9-suprimentos com superpowers:using-git-worktrees. Não trabalhe na branch principal.
+4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
+5. Pare nas paradas do protocolo ou ao atingir o limite.
+6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
 
-Repita, uma etapa por vez (nunca em paralelo):
-1. Escolha a primeira etapa, na ordem do documento, marcada #pendente e com todas as dependências #concluida. Etapas #bloqueada e as que dependem delas ficam para trás. Se não houver candidata, pare.
-2. Gere o snapshot inicial com o comando do protocolo e guarde o hash.
-3. Dispare um subagente general-purpose com o prompt da etapa copiado literalmente da seção dela, acrescido deste adendo: "Você está rodando como subagente do orquestrador; este adendo prevalece sobre o prompt acima. O snapshot inicial já foi tirado: use HASH e não tire outro. Não dispare subagentes: faça a investigação você mesmo, implemente em sequência as partes paralelas, se houver, e pule a verificação independente, que o orquestrador fará. Não marque a etapa como #concluida: ao terminar, deixe-a #em-andamento com 'Evidências e handoff' preenchido e relate o resultado das validações. Diante de bloqueio real, marque #bloqueada como o prompt manda." Substitua HASH pelo hash do passo 2.
-4. Se o subagente relatar bloqueio, divergência do plano ou validação falhando que não conseguiu resolver, pare.
-5. Qualquer que seja a estratégia, dispare um subagente general-purpose novo com o "Prompt do verificador" do protocolo (ETAPA e HASH_INICIAL preenchidos). Se REPROVADO, mande os problemas ao mesmo implementador, se puder retomá-lo; senão, dispare um implementador novo com o prompt da etapa, o adendo, o parecer do verificador e o handoff atual. Verifique de novo com um verificador novo; após duas reprovações, pare.
-6. Com o aceite, troque a tag da etapa para #concluida no índice e no título e acrescente ao handoff o parecer do verificador.
-7. Se a etapa tiver "Revisão humana: sim", pare para o usuário revisar.
+Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
 
-Pare também ao atingir o limite desta execução. Nunca faça commit, push ou deploy e não altere tags de etapas que não executou.
-
-Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio de cada uma, os arquivos alterados (git status --short) e o próximo passo sugerido — normalmente revisar e fazer commit antes da próxima execução.
+Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
 
 ## Índice de etapas
@@ -192,7 +187,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 **Por que agora:** todo o marco depende desses cadastros, e é a primeira etapa: confere que o M8 terminou e fixa o layout do módulo.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o gate de M8 `#concluida`. Não paralelizável (cria o módulo).
+**Dependências:** nenhuma dentro deste roadmap; exige o gate de M8 `#concluida`. Cria o módulo `inventory`.
 
 **Escopo:**
 
@@ -203,43 +198,6 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 - Endpoints REST de CRUD com paginação por cursor, `ETag` e desativação em vez de exclusão.
 
 **Fora de escopo:** saldos e movimentos (E02); mínimo/máximo por local (E03).
-
-**Passos de implementação:**
-
-1. Confirmar o gate de M8 e sincronizar caminhos com os handoffs.
-2. Escrever testes de integração dos endpoints (criação, validação de CNPJ, conversão de unidade, item duplicado por código → `409`).
-3. Implementar módulo, migrações, permissões e endpoints; regenerar `api/openapi.yaml`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual o layout de módulo, convenção de permissões e padrão de testes de integração registrados nos handoffs de M1 e M2?"; "como o `staff` expõe colaboradores na API pública?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: dependência de `inventory` para módulo de camada igual ou superior (fora da Plataforma) ou aresta nova não registrada na ARCHITECTURE §3.1; exclusão física de cadastros; escrita sem permissão.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E01 — "Cadastros de estoque" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e as hipóteses —, a seção E01 inteira, docs/SPEC.md §5.17 e §8.2.13 e a linha de inventory em docs/ARCHITECTURE.md §3.1. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que a última etapa (gate) de docs/roadmaps/roadmap-m8-restaurante-distribuicao.md está #concluida; se não estiver, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar o módulo inventory com itens (unidade, conversões, NCM, categoria), locais (incluindo carrinho de camareira vinculado a colaborador) e fornecedores com vínculos fornecedor ↔ item, com endpoints REST, permissões e migrações próprias. Não implemente saldos nem movimentos. Vincular o carrinho ao colaborador pode usar a API pública de staff (Plataforma, permitido pela regra por camadas da docs/ARCHITECTURE.md §3.1); se acrescentar essa dependência, registre a aresta na tabela §3.1.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E01 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume o layout de módulo, a convenção de permissões e o padrão de testes de integração registrados nos handoffs de M1 e M2;
-- escreva os testes de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em dependência que viole a regra por camadas ou não registrada na §3.1, exclusão física e escrita sem permissão.
-
-Critérios de aceite (detalhes na seção E01):
-- CRUD de itens, locais e fornecedores com paginação, ETag e desativação;
-- código de item duplicado → 409; CNPJ inválido → 400; escrita sem permissão → 403;
-- ModularityTest passa; build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -252,8 +210,12 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** primeira etapa do marco: o roadmap foi escrito antes do código, então confira antes que ele foi sincronizado (ver "Como usar"). H3: o carrinho de camareira é um `StockLocation` do tipo carrinho vinculado a um colaborador (`staff`, Plataforma) ou usuário; guarde só o id e, se `inventory` passar a depender de `staff`, registre a aresta na tabela da ARCHITECTURE §3.1. Regras em SPEC §5.17 e §8.2.13. Layout de módulo, permissões e testes seguem as notas `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Testes de integração`; CNPJ pelo tipo do kernel (`ZenyHotelManager - Tipos do kernel`); a `StaffApi` está em `ZenyHotelManager - Módulos hotel e staff`. A captura de atualização propõe a nota nova `ZenyHotelManager - Módulo inventory`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -263,11 +225,11 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -278,7 +240,7 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o núcleo do estoque; todas as baixas automáticas, compras e inventário escrevem por aqui. O contrato da API de baixa será usado por `checklists`, `maintenance`, `pos`, `linen` e `events`.
 
-**Dependências e paralelismo:** E01. Não paralelizável.
+**Dependências:** E01.
 
 **Escopo:**
 
@@ -291,44 +253,6 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 - Auditoria dos movimentos manuais (M1).
 
 **Fora de escopo:** alertas de mínimo (E03); ajuste de inventário (E04); recebimento por NF-e (E06).
-
-**Passos de implementação:**
-
-1. Testes de domínio do custo médio (sequências de entradas e saídas, inclusive com saldo negativo) e de idempotência por origem.
-2. Testes de integração de concorrência: duas baixas simultâneas no mesmo item/local mantêm o saldo correto.
-3. Implementar, regenerar contrato, documentar a API pública no `CLAUDE.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação: nenhuma; regras em RN-17, RN-18 e SPEC §8.2.13.
-- Partes paralelas: nenhuma.
-- Foco do verificador: custo médio errado após saldo negativo; baixa repetida pela mesma origem criando dois movimentos; `UPDATE` ou `DELETE` em movimentos; uso de `Double`; corrida entre baixas simultâneas.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E02 — "Movimentos, saldo e custo médio" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e as restrições —, a seção E02 inteira, o "Evidências e handoff" de E01 e RN-17 e RN-18 em docs/SPEC.md §6. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E01 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: registrar movimentos de estoque imutáveis (entrada, saída, perda com motivo, transferência com quem entregou e quem recebeu), manter o saldo por item e local, recalcular o custo médio ponderado móvel nas entradas e expor na API pública de inventory uma baixa idempotente por origem (sourceType, sourceId, linha) que nunca falha por saldo insuficiente. Não implemente alertas de mínimo, inventário nem NF-e.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E02 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva primeiro os testes de domínio do custo médio e os testes de integração de idempotência e concorrência, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em custo médio após saldo negativo, baixa duplicada pela mesma origem, movimentos alteráveis e corrida entre baixas.
-
-Critérios de aceite (detalhes na seção E02):
-- custo médio ponderado correto nas sequências de teste; saída com saldo insuficiente deixa saldo negativo sem erro;
-- mesma origem chamada duas vezes gera um único movimento; baixas simultâneas mantêm o saldo correto;
-- transferência registra quem entregou e quem recebeu; movimentos não aceitam UPDATE/DELETE;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, decisões sobre custo com saldo negativo, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -343,8 +267,12 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** o contrato da API de baixa será usado por `checklists` (E07), `maintenance` (E07), `pos` (E12), `linen` (E08) e `events` (M10): é o contrato que justifica a revisão humana. Decisões a registrar e levar à revisão humana: o custo médio de uma entrada com saldo negativo (a SPEC não tem regra; sugestão nos riscos) e a saída manual com saldo insuficiente (permitida, com alerta). Regras em RN-17, RN-18 e SPEC §8.2.13. Movimentos *append-only* seguem a convenção de `ZenyHotelManager - Schemas, migrações e views de relatório` (papel da aplicação só com `SELECT, INSERT`, bean `AppendOnlyTables` e trigger contra `UPDATE`/`DELETE`); a trava de contadores em ordem de chave do inventário de reservas (`ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`) é o precedente para baixas simultâneas sem deadlock. A captura leva a API pública de baixa para a nota `ZenyHotelManager - Módulo inventory`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -354,11 +282,11 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -369,7 +297,7 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Por que agora:** saldo negativo é permitido (RN-17), então o alerta é o controle que sobra; precisa existir antes das baixas automáticas em volume.
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E04, E05, E07, E08 e E12 (worktrees separados); conflito em migrações e na API pública de `inventory`.
+**Dependências:** E02. Independente de E04, E05, E07, E08 e E12 (mexem nas migrações e na API pública de `inventory`).
 
 **Escopo:**
 
@@ -380,44 +308,6 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 - Endpoint de sugestão de compra por fornecedor (vínculos de E01, prazo de entrega).
 
 **Fora de escopo:** criação automática do pedido de compra (E05 aceita a sugestão como rascunho só se for trivial; senão fica manual).
-
-**Passos de implementação:**
-
-1. Ler no handoff de M2 a API pública de `notifications` para criar notificação (H2); a aresta `inventory → notifications` já está na ARCHITECTURE §3.1.
-2. Testes de integração: cruzar o mínimo publica um evento; continuar abaixo não publica outro; voltar acima e cruzar de novo publica.
-3. Implementar configuração, evento, consolidação e sugestão.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual é a API pública de `notifications` para criar uma notificação por permissão ou papel, segundo o handoff de M2 e o código?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: alerta repetido a cada movimento; evento publicado fora da transação do movimento; `notifications` escutando evento de `inventory` (dependência invertida errada).
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E03 — "Estoque mínimo, alertas e sugestão de compra" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H2 —, a seção E03 inteira, o "Evidências e handoff" de E01 e E02 e RF-EST-07 em docs/SPEC.md §5.17. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: configurar mínimo e máximo por item e local, publicar StockBelowMinimum uma vez por cruzamento do mínimo (e quando o saldo fica negativo), consolidar os alertas diariamente e expor a sugestão de compra agrupada por fornecedor. O alerta chega ao almoxarife por um listener do próprio inventory que chama a API pública de notifications (dependência inventory → notifications já prevista na docs/ARCHITECTURE.md §3.1); notifications não escuta eventos de inventory.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E03 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume a API pública de notifications para criar notificação por permissão (handoff de M2);
-- escreva os testes de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em alerta repetido, evento fora da transação e notifications escutando evento de inventory.
-
-Critérios de aceite (detalhes na seção E03):
-- cruzar o mínimo publica um único StockBelowMinimum até o saldo voltar acima do mínimo;
-- o alerta chega a uma notificação do almoxarife (teste de módulo);
-- consolidação diária lista os itens abaixo do mínimo; sugestão de compra agrupa por fornecedor e completa até o máximo;
-- ModularityTest, build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -431,8 +321,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H2 decidida: o alerta chega ao almoxarife por um listener do próprio `inventory` que chama a `NotificationsApi` (destinatários por permissão, tipo declarado no catálogo do módulo, sem dado pessoal; ver `ZenyHotelManager - Módulo notifications`); `notifications` nunca escuta eventos de `inventory`, e a aresta `inventory → notifications` já está na ARCHITECTURE §3.1. RF-EST-07 em SPEC §5.17. A consolidação diária segue a convenção de jobs (`ZenyHotelManager - Eventos e jobs`) ou de listener de `BusinessDateAdvanced` adotada no M6 (ver o handoff do M6). E05 pode usar a sugestão de compra como rascunho do pedido.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -442,11 +336,11 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -457,7 +351,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** com saldo negativo permitido, o inventário é como o saldo volta à realidade (RN-17 "pede inventário").
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E03, E05, E07, E08 e E12 (worktrees separados); conflito em migrações de `inventory`.
+**Dependências:** E02. Independente de E03, E05, E07, E08 e E12 (mexem nas migrações de `inventory`).
 
 **Escopo:**
 
@@ -468,43 +362,6 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - Relatório de divergências por contagem (quantidade e valor).
 
 **Fora de escopo:** contagem offline no app (não está no escopo offline da ARCHITECTURE §9).
-
-**Passos de implementação:**
-
-1. Testes de integração: fechar sem permissão → `403 APPROVAL_REQUIRED`; com aprovação → ajustes gerados; contagem fechada não reabre.
-2. Implementar fluxo, ajustes e relatório.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma; convenção de step-up no handoff de M1.
-- Partes paralelas: nenhuma.
-- Foco do verificador: ajuste sem aprovação; movimentos ocorridos durante a contagem ignorados ou contados em dobro; contagem fechada editável.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E04 — "Inventário por local" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" —, a seção E04 inteira, o "Evidências e handoff" de E02, a convenção de step-up no handoff de M1 (docs/roadmaps/roadmap-m1-acesso-configuracao.md) e RF-EST-06 em docs/SPEC.md §5.17. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: contagem de inventário por local com esperado congelado na abertura, fechamento que gera ajustes valorizados pelo custo médio sob permissão ou step-up (ação sensível, auditada com solicitante e aprovador) e relatório de divergências em quantidade e valor. Não implemente contagem offline.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E04 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em ajuste sem aprovação, movimentos durante a contagem e contagem fechada editável.
-
-Critérios de aceite (detalhes na seção E04):
-- fechar sem permissão → 403 com code APPROVAL_REQUIRED; com X-Approval-Token válido → ajustes gerados e auditados;
-- movimentos ocorridos durante a contagem são tratados conforme a decisão registrada, com teste;
-- contagem fechada não aceita alterações (409); relatório de divergências em quantidade e valor;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -517,8 +374,12 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** o fechamento é ação sensível (RF-ACS-08, RF-EST-06): use a convenção de step-up de `ZenyHotelManager - Segurança, autenticação e autorização` (`requireOrApproval`, `X-Approval-Token`, `403 APPROVAL_REQUIRED`). Decisão a registrar no handoff: o tratamento dos movimentos entre a abertura e o fechamento (provável: recalcular o esperado no fechamento com os movimentos do período). Contagem offline fica fora (ARCHITECTURE §9).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -528,11 +389,11 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -543,7 +404,7 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Por que agora:** o recebimento por NF-e (E06) confere contra o pedido.
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E03, E04, E07, E08 e E12 (worktrees separados); conflito em migrações de `inventory`.
+**Dependências:** E02. Independente de E03, E04, E07, E08 e E12 (mexem nas migrações de `inventory`).
 
 **Escopo:**
 
@@ -555,42 +416,6 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Fora de escopo:** envio do pedido por e-mail ao fornecedor; recebimento por XML (E06).
 
-**Passos de implementação:**
-
-1. Testes de domínio das transições e de integração do recebimento parcial e total.
-2. Implementar, regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma.
-- Partes paralelas: nenhuma.
-- Foco do verificador: receber pedido cancelado; recebimento acima do pedido sem regra; entrada sem custo.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E05 — "Pedido de compra simples" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" —, a seção E05 inteira, o "Evidências e handoff" de E01 e E02 (e de E03, se concluída) e RF-EST-09 em docs/SPEC.md §5.17. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: pedido de compra com número legível, linhas de item, quantidade e preço, estados rascunho, enviado, recebido parcial, recebido e cancelado, e recebimento manual que gera entradas no estoque com o custo do pedido. Não implemente recebimento por XML de NF-e (E06) nem envio por e-mail.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E05 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de transição e de recebimento primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em receber pedido cancelado, recebimento acima do pedido e entrada sem custo.
-
-Critérios de aceite (detalhes na seção E05):
-- transições inválidas → 409 com code estável;
-- recebimento parcial muda para recebido parcial e o total para recebido, gerando entradas com custo;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
-
 **Critérios de aceite:**
 
 - [ ] Pedido recebe número legível sequencial.
@@ -601,22 +426,26 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** RF-EST-09 em SPEC §5.17. Número legível pelo gerador do kernel (`ZenyHotelManager - Tipos do kernel`). O rascunho a partir da sugestão de compra só entra se E03 já estiver concluída; senão, vira nota para E13/E14. O PDF do pedido só entra se o `printing` (M5) for alcançável por `inventory` pela regra por camadas; senão fica fora e registrado. Decisão a registrar no handoff: recebimento acima da quantidade do pedido (rejeitar ou aceitar com alerta).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
-- Nenhum relevante além dos do verificador.
+- Nenhum relevante além dos pontos de atenção da etapa: receber pedido cancelado, recebimento acima do pedido sem regra registrada e entrada sem custo.
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -627,7 +456,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a forma principal de entrada (RF-EST-03) e alimenta o custo médio com valores reais.
 
-**Dependências e paralelismo:** E05. Não paralelizável com E05.
+**Dependências:** E05.
 
 **Escopo:**
 
@@ -638,44 +467,6 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 - `post()` gera entradas (E02), atualiza o pedido (E05) e impede reimportar a mesma chave de acesso (`409`).
 
 **Fora de escopo:** validação de assinatura e consulta à SEFAZ; contas a pagar.
-
-**Passos de implementação:**
-
-1. Criar XMLs fictícios de teste (nota simples, nota com unidade de caixa, nota de outro layout).
-2. Testes: importação, vínculo memorizado na segunda nota, conferência com pedido, chave duplicada → `409`, layout inválido → `400` com `code` estável.
-3. Implementar parser, rascunho, vínculo e lançamento.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como `files` (M1) recebe upload, define finalidade e limita tipo e tamanho, segundo o handoff de M1?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: XXE no parser XML; mesma nota lançada duas vezes; custo unitário errado após conversão de unidade; XML real de terceiros no repositório.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E06 — "Recebimento por XML de NF-e" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H6 —, a seção E06 inteira, o "Evidências e handoff" de E01, E02 e E05, RF-EST-03 e RF-EST-09 em docs/SPEC.md §5.17 e docs/ARCHITECTURE.md §14. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E05 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: importar o XML da NF-e de entrada (modelo 55, layout 4.00), guardá-lo em files, criar o recebimento em rascunho, sugerir e memorizar o vínculo item do fornecedor ↔ item interno com conversão de unidade, conferir contra o pedido de compra e, ao lançar, gerar as entradas com custo e atualizar o pedido. Não valide assinatura nem consulte a SEFAZ. Use apenas XMLs fictícios nos testes.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E06 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como files recebe upload, finalidade e limites, segundo o handoff de M1;
-- escreva os testes primeiro (importação, vínculo memorizado, conferência, chave duplicada, layout inválido, XXE), implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em XXE, nota lançada duas vezes, custo após conversão de unidade e XML real no repositório.
-
-Critérios de aceite (detalhes na seção E06):
-- XML válido gera recebimento em rascunho com fornecedor e itens; a segunda nota do mesmo fornecedor reaproveita o vínculo;
-- lançar gera entradas com custo convertido e atualiza o pedido; mesma chave de acesso → 409;
-- XML com DOCTYPE/entidade externa é rejeitado; layout inválido → 400 com code estável;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -690,8 +481,12 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H6 (NF-e modelo 55, layout 4.00, `nfeProc`, sem assinatura nem SEFAZ); RF-EST-03 e RF-EST-09 em SPEC §5.17 e ARCHITECTURE §14. Armadilha: o catálogo de tipos do `files` só aceita PNG, JPEG, WebP e PDF, detectados pela assinatura do conteúdo (`ZenyHotelManager - Módulo files`): guardar o XML exige estender o `files` com o tipo XML e uma finalidade nova; o upload multipart não leva `@Idempotent`. O parser precisa recusar `DOCTYPE` e entidades externas (XXE). Só XMLs fictícios.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -701,11 +496,11 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -716,7 +511,7 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Por que agora:** fecha as ações de checklist previstas desde M2 e a pendência de peças deixada em M6.
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E03, E04, E05, E08 e E12 (worktrees separados); conflito com E08 se ambos alterarem o payload de `ChecklistCompleted` em `checklists`.
+**Dependências:** E02. Independente de E03, E04, E05, E08 e E12 (E08 também pode mexer no payload de `ChecklistCompleted` em `checklists`).
 
 **Escopo:**
 
@@ -726,44 +521,6 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 - Saldo negativo nunca bloqueia (RN-17); alerta de E03 se já existir.
 
 **Fora de escopo:** troca de enxoval (E08); baixa por ficha técnica (E12).
-
-**Passos de implementação:**
-
-1. Testes de módulo: `ChecklistCompleted` com `ConsumeStock` gera movimento; reentrega do mesmo evento não gera outro; sem carrinho vinculado → local padrão e alerta.
-2. Testes de integração da OS com peças (adicionar, remover, custo).
-3. Implementar listener e a parte de `maintenance`; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual o formato do `ChecklistCompleted` e das ações `ConsumeStock` publicado por `checklists` (handoff de M2)?"; "como a OS de `maintenance` registra custo e estados (handoff de M6)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: baixa duplicada na reentrega do evento; listener que falha e perde o evento; `checklists` passando a depender de `inventory`; custo da OS sem as peças.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E07 — "Baixas por checklist e por OS" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H3 —, a seção E07 inteira, o "Evidências e handoff" de E02, docs/ARCHITECTURE.md §6.2 e RF-CHK-05 e RF-MAN-06 em docs/SPEC.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: inventory escuta ChecklistCompleted e, para cada ação ConsumeStock, dá baixa no carrinho do executor de forma idempotente por (execução, item), usando o horário corrigido de execuções offline; maintenance registra peças da OS pela API de baixa de inventory, com remoção gerando movimento inverso e custo somado à OS. checklists não pode passar a depender de inventory. Não implemente troca de enxoval nem fichas técnicas.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E07 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume o formato do ChecklistCompleted e de ConsumeStock (handoff de M2) e como a OS registra custo e estados (handoff de M6);
-- escreva os testes de módulo e de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em baixa duplicada na reentrega, evento perdido, dependência invertida e custo da OS sem peças.
-
-Critérios de aceite (detalhes na seção E07):
-- ChecklistCompleted com ConsumeStock gera um movimento no carrinho do executor; reentrega não duplica;
-- sem carrinho vinculado, a baixa vai ao local padrão e gera alerta;
-- adicionar e remover peça da OS movimenta o estoque e atualiza o custo da OS;
-- ModularityTest, build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -776,8 +533,12 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H3 (carrinho do executor; sem carrinho, local padrão da governança com alerta); ARCHITECTURE §6.2; RF-CHK-05 e RF-MAN-06 na SPEC. O `ChecklistCompleted` publicado desde o M2 traz `actions` com o tipo `CONSUME_STOCK` (`stockItemId` e a `quantity` respondida), o executor e o `completedAt` já corrigido pela defasagem do aparelho; os consumidores deduplicam por `executionId` + `itemKey` + tipo. Armadilha decidida pelo usuário em 2026-10-16: a execução registrada à parte de uma rotina (`duplicateOf`) também publica o próprio evento com as ações, e quem consome decide se aplica (por exemplo, não baixar estoque em dobro) — registre a decisão no handoff. Ver `ZenyHotelManager - Módulo checklists` e `ZenyHotelManager - Sincronização offline`. A OS, os estados e o custo da OS vêm do handoff do M6 (`maintenance`).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -787,11 +548,11 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -802,7 +563,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Por que agora:** base da lavanderia terceirizada (E09) e do controle de perdas (RF-ROU-06).
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E03, E04, E05, E07 e E12 (worktrees separados); conflito com E07 se ambos alterarem `checklists`.
+**Dependências:** E02. Independente de E03, E04, E05, E07 e E12 (E07 também pode mexer em `checklists`).
 
 **Escopo:**
 
@@ -813,43 +574,6 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 - Reposição (H7): enxoval comprado sai do estoque via API de `inventory` e entra como disponível.
 
 **Fora de escopo:** romaneios (E09); lavanderia do hóspede (E10).
-
-**Passos de implementação:**
-
-1. Testes de domínio dos movimentos de status e de integração do listener (incluindo reentrega).
-2. Implementar módulo, endpoints e listener; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual o formato da ação `LinenExchange` no `ChecklistCompleted` (handoff de M2)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: troca duplicada na reentrega; quantidade total de um tipo mudando sem baixa ou reposição; reposição sem saída no estoque.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E08 — "Enxoval e ciclo de vida" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H7 —, a seção E08 inteira, o "Evidências e handoff" de E02, docs/SPEC.md §5.18 e §8.2.14 e a linha de linen em docs/ARCHITECTURE.md §3.1. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar o módulo linen com tipos de enxoval, enxoval-padrão por tipo de UH, quantidades por status, movimentos de status com motivo e origem, troca de enxoval idempotente a partir das ações LinenExchange do ChecklistCompleted, baixa com motivo e reposição a partir do estoque via API de inventory. Não implemente romaneios nem lavanderia do hóspede.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E08 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume o formato da ação LinenExchange no ChecklistCompleted (handoff de M2);
-- escreva os testes de domínio e de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em troca duplicada, total que muda sem baixa ou reposição e reposição sem saída no estoque.
-
-Critérios de aceite (detalhes na seção E08):
-- troca por checklist move retiradas para suja e colocadas para em uso, uma única vez por execução;
-- a soma por tipo só muda com baixa (descartada) ou reposição;
-- reposição gera saída no estoque e entrada como disponível;
-- ModularityTest, build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -862,8 +586,12 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H7 (reposição: o item sai do estoque pela API de `inventory` e entra como disponível em `linen`); SPEC §5.18 e §8.2.14 e a linha de `linen` na ARCHITECTURE §3.1. A ação do `ChecklistCompleted` é `LINEN_EXCHANGE` (`linenTypeId`, `movement` `REMOVED`/`PLACED` e a quantidade), com a mesma deduplicação e a mesma armadilha da execução registrada à parte (`duplicateOf`) descritas em E07 (`ZenyHotelManager - Módulo checklists`). Troca offline com saldo insuficiente: aceitar e sinalizar (RN-22). A captura de atualização propõe a nota nova `ZenyHotelManager - Módulo linen`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -873,11 +601,11 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -888,7 +616,7 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Por que agora:** completa o ciclo suja → lavanderia → disponível do enxoval.
 
-**Dependências e paralelismo:** E08. Pode correr em paralelo com E10 (worktrees separados); conflito em migrações de `linen`.
+**Dependências:** E08. Independente de E10 (as duas mexem nas migrações de `linen`).
 
 **Escopo:**
 
@@ -898,43 +626,6 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 - Resolução de faltantes: retorno tardio ou baixa como perdida.
 
 **Fora de escopo:** contas a pagar do fornecedor.
-
-**Passos de implementação:**
-
-1. Testes de integração: envio, retorno integral, retorno com faltantes e danificadas, custo por kg e por peça.
-2. Implementar; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma.
-- Partes paralelas: nenhuma.
-- Foco do verificador: faltantes sumindo do total; retorno registrado duas vezes; custo calculado em ponto flutuante.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E09 — "Lavanderia terceirizada" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" —, a seção E09 inteira, o "Evidências e handoff" de E08 e RF-ROU-03 em docs/SPEC.md §5.18. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E08 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: romaneio de envio à lavanderia terceirizada por peças e/ou kg (suja → na lavanderia), retorno com conferência (→ disponível, → em reparo para danificadas e manchadas, faltantes como divergência pendente), resolução de faltantes e custo pela tabela de preços do fornecedor. Não implemente contas a pagar.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E09 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em faltantes sumindo do total, retorno duplicado e custo em ponto flutuante.
-
-Critérios de aceite (detalhes na seção E09):
-- envio e retorno movimentam os status corretos; faltantes ficam pendentes até retorno tardio ou baixa;
-- retorno de romaneio já retornado → 409;
-- custo por peça e por kg calculado com Money;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -947,8 +638,12 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** RF-ROU-03 em SPEC §5.18. Romaneio por kg: conferência só em peças, kg só para o custo (ver riscos); valores sempre em `Money`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -958,11 +653,11 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -973,7 +668,7 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 **Por que agora:** é receita do hotel e depende só do módulo `linen` e das APIs de `reservations` e `billing`.
 
-**Dependências e paralelismo:** E08. Pode correr em paralelo com E09 (worktrees separados); conflito em migrações de `linen`.
+**Dependências:** E08. Independente de E09 (as duas mexem nas migrações de `linen`).
 
 **Escopo:**
 
@@ -983,43 +678,6 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 - Cancelamento antes do lançamento; depois do lançamento, a correção é estorno em `billing`.
 
 **Fora de escopo:** NFS-e da lavanderia (segue o fluxo fiscal de M7 pela conta).
-
-**Passos de implementação:**
-
-1. Testes de integração: pedido para reserva não hospedada → `409`; entrega lança na conta uma única vez; estados inválidos → `409`.
-2. Implementar; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como `billing` expõe o lançamento por código e origem e qual código de lançamento usar (handoff de M3)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: lançamento duplicado; escrita direta em tabela de `billing`; dados pessoais do hóspede expostos em endpoints do app operacional (RN-13).
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E10 — "Lavanderia do hóspede" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e as restrições —, a seção E10 inteira, o "Evidências e handoff" de E08 e RF-ROU-05 em docs/SPEC.md §5.18. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E08 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: pedido de lavanderia do hóspede vinculado a reserva hospedada, com itens da tabela de preços, estados recolhido → enviado → retornado → entregue e lançamento do total na conta pela API de billing, idempotente e com origem lavanderia. Não acesse tabelas de billing diretamente e não exponha dados pessoais do hóspede a perfis operacionais (RN-13).
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E10 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como billing expõe o lançamento por código e origem (handoff de M3);
-- escreva os testes de integração primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em lançamento duplicado, escrita direta em billing e exposição de dados pessoais.
-
-Critérios de aceite (detalhes na seção E10):
-- pedido para reserva não hospedada → 409;
-- o total é lançado na conta uma única vez, com origem lavanderia;
-- transições inválidas → 409; cancelamento após lançamento exige estorno em billing;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1032,8 +690,12 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** RF-ROU-05 em SPEC §5.18; RN-13. O código de lançamento de lavanderia já existe (`TransactionCodeKey.LAUNDRY`, código `LAVANDERIA`) e há a origem de lançamento de lavanderia (`ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`); a `BillingApi.post` é chamada em processo, sem `Idempotency-Key`: a idempotência do lançamento vem do estado do pedido (e do `@Idempotent` do endpoint que o dispara). A reserva hospedada e a conta da reserva vêm da `ReservationsApi` (`ZenyHotelManager - Hospedagem e recepção`). Decisão a registrar: o momento do lançamento (sugestão: na entrega).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1043,11 +705,11 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1058,7 +720,7 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a última funcionalidade da Fase 3 e não depende das demais etapas deste marco.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o gate de M8 `#concluida`. Pode correr em paralelo com qualquer etapa de `inventory` (worktrees separados); conflito com nenhuma, salvo `CLAUDE.md`.
+**Dependências:** nenhuma dentro deste roadmap; exige o gate de M8 `#concluida`. Independente das etapas de `inventory` e `linen`.
 
 **Escopo:**
 
@@ -1067,44 +729,6 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 - Recado à governança para entregar o item antes da chegada pode reutilizar os recados de M5 (RF-REC-07), que também são do `frontdesk`.
 
 **Fora de escopo:** controle de estoque dos itens em `inventory` (são ativos de empréstimo, não insumos); visão dos empréstimos no app da governança.
-
-**Passos de implementação:**
-
-1. Ler no handoff de M5 como o check-out valida pré-condições e onde acrescentar a nova pendência.
-2. Testes: empréstimo indisponível → `409`; check-out com item pendente sem decisão → `409`; cobrança lança na conta uma única vez; check-out sem itens emprestados se comporta como antes.
-3. Implementar catálogo, empréstimo, devolução e a conferência no check-out; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como o check-out de `frontdesk` (handoff de M5) valida pré-condições e lança valores na conta via `billing`?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: check-out concluído com item pendente sem decisão; cobrança duplicada em repetição da requisição; regressão no check-out sem itens; `frontdesk` dependendo de módulo de camada superior (`housekeeping`, `inventory`, `linen`).
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E11 — "Itens de empréstimo" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H4 —, a seção E11 inteira, RF-REC-06 e RF-REC-09 em docs/SPEC.md §5.8 e a linha de frontdesk em docs/ARCHITECTURE.md §3.1. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que a última etapa (gate) de docs/roadmaps/roadmap-m8-restaurante-distribuicao.md está #concluida; se não estiver, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: itens de empréstimo por UH e reserva no módulo frontdesk (catálogo, entrega, devolução, disponibilidade) e, no check-out, conferência dos itens não devolvidos, exigindo decisão (devolvido, cobrar na conta via billing com Idempotency-Key ou baixar como perda) antes de concluir. Não use housekeeping nem inventory; o check-out sem itens emprestados deve continuar idêntico.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E11 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como o check-out de frontdesk valida pré-condições e lança valores na conta (handoff de M5);
-- escreva os testes primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md, incluindo a suíte inteira de frontdesk;
-- verificação independente com o Prompt do verificador, com foco em check-out concluído com pendência, cobrança duplicada e regressão no check-out sem itens.
-
-Critérios de aceite (detalhes na seção E11):
-- empréstimo de item sem disponibilidade → 409; devolução restaura a disponibilidade;
-- check-out com item pendente sem decisão → 409 com code estável; com decisão, conclui;
-- cobrança lança na conta uma única vez; check-out sem itens inalterado;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1117,8 +741,12 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H4 decidida: os itens de empréstimo ficam no `frontdesk`, sem porta e sem `housekeeping`, `inventory` nem `linen`. RF-REC-06 e RF-REC-09 em SPEC §5.8 e a linha de `frontdesk` na ARCHITECTURE §3.1. Leia no handoff do M5 e em `ZenyHotelManager - Hospedagem e recepção` como o check-out orquestrado confere pré-condições e lança na conta; a cobrança vai pela `BillingApi` em processo, com a idempotência no endpoint (`@Idempotent`). O recado à governança pode reutilizar os recados de RF-REC-07 do `frontdesk`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1128,11 +756,11 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1143,7 +771,7 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Por que agora:** completa o PDV de M8 com custo; é pré-requisito do CMV de A&B (E13) e da baixa de eventos em M10.
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E03, E04, E05, E07 e E08 (worktrees separados); sem conflito de arquivos com `inventory` além da API pública.
+**Dependências:** E02. Independente de E03, E04, E05, E07 e E08 (sem arquivos em comum com `inventory` além da API pública).
 
 **Escopo:**
 
@@ -1154,43 +782,6 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 - Custo teórico por produto (soma dos insumos pelo custo médio) e CMV por período e ponto de venda (consulta ou view `report_*`).
 
 **Fora de escopo:** baixa de A&B de eventos (M10).
-
-**Passos de implementação:**
-
-1. Testes: fechar comanda com produto com ficha gera baixa proporcional; reentrega não duplica; item cancelado não baixa; consumo interno baixa sem lançamento financeiro.
-2. Implementar ficha técnica, listener, API pública e custo teórico/CMV; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "como `pos` (M8) publica `TabClosed`, que dados leva e como trata itens cancelados, transferidos e consumo interno?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: `inventory` escutando `TabClosed` (ciclo); baixa duplicada; CMV calculado com custo atual em vez do custo do movimento; uso de ponto flutuante em quantidades.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E12 — "Fichas técnicas e baixa por venda" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H5 —, a seção E12 inteira, o "Evidências e handoff" de E02, RF-PDV-07 e RF-PDV-10 em docs/SPEC.md §5.19 e §8.2.15. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: fichas técnicas (insumos, quantidades, rendimento) nos produtos do pos; um listener do próprio pos para TabClosed dá baixa idempotente por (comanda, item) no local de estoque do ponto de venda via API de inventory; consumo interno e cortesia baixam sem faturar; API pública de baixa por ficha a partir de quantidades (para eventos em M10); custo teórico por produto e CMV por período e ponto de venda. inventory não pode escutar TabClosed (criaria ciclo).
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E12 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como pos publica TabClosed e trata itens cancelados, transferidos e consumo interno (handoff de M8);
-- escreva os testes primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em ciclo pos ↔ inventory, baixa duplicada, CMV com custo errado e ponto flutuante.
-
-Critérios de aceite (detalhes na seção E12):
-- comanda fechada baixa os insumos proporcionalmente uma única vez; itens cancelados não baixam;
-- consumo interno baixa sem lançamento financeiro;
-- custo teórico e CMV usam o custo dos movimentos; ModularityTest sem ciclo;
-- build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa e para M10) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1204,8 +795,12 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** H5 decidida: a baixa por ficha técnica é feita por um listener do próprio `pos` para o seu `TabClosed`, que chama a API de `inventory`; `inventory` nunca escuta `TabClosed` (criaria ciclo). RF-PDV-07 e RF-PDV-10 em SPEC §5.19 e §8.2.15; o formato do `TabClosed` (itens cancelados, transferidos, consumo interno) vem do handoff do M8. A API pública de baixa por ficha a partir de quantidades é contrato para `events` no M10 (RF-EVT-10): registre-a nas notas para o M10. Decisão a registrar: modificadores que alteram insumos (fora, salvo se triviais).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1215,11 +810,11 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1230,7 +825,7 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Por que agora:** depende dos dados de todas as etapas de estoque, rouparia e PDV.
 
-**Dependências e paralelismo:** E03, E04, E06, E07, E09, E10, E12. Não paralelizável.
+**Dependências:** E03, E04, E06, E07, E09, E10, E12.
 
 **Escopo:**
 
@@ -1239,42 +834,6 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 - Exportação CSV (RF-REL-07), seguindo o padrão de M6.
 
 **Fora de escopo:** indicadores gerenciais (M10); XLSX se M6 não o tiver implementado.
-
-**Passos de implementação:**
-
-1. Testes de integração com dados semeados que conferem os números de cada relatório contra cálculo manual.
-2. Implementar views e endpoints; regenerar contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual o padrão de views `report_*`, endpoints e exportação CSV de `reporting` (handoff de M6)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: `reporting` lendo tabelas internas; denominador "UH ocupada" diferente do usado em M6; relatório sem permissão.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E13 — "Relatórios de suprimentos" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H8 —, a seção E13 inteira, o "Evidências e handoff" de E03, E04, E06, E07, E09, E10 e E12, RF-EST-10 e RF-ROU-06 em docs/SPEC.md e docs/ARCHITECTURE.md §11 (leitura para relatórios). Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que essas dependências estão #concluida e que o código bate com o handoff delas; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: views report_* em inventory, linen e pos e endpoints em reporting para posição por local, movimentação, consumo de amenities por UH ocupada, CMV de A&B, giro do enxoval, perdas e custo de lavanderia por UH ocupada, filtráveis por período e local, com exportação CSV. reporting só lê views report_*, nunca tabelas internas.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E13 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume o padrão de views report_*, endpoints e CSV de reporting (handoff de M6);
-- escreva os testes de integração com dados semeados primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em leitura de tabelas internas, denominador de UH ocupada divergente de M6 e acesso sem permissão.
-
-Critérios de aceite (detalhes na seção E13):
-- cada relatório confere com cálculo manual em teste de integração;
-- reporting consulta só views report_*; exportação CSV disponível;
-- acesso sem permissão → 403; build, testes e verificação do contrato passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E13 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1287,8 +846,12 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (CLAUDE.md) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H8: `reporting` lê só views `report_*` publicadas por `inventory`, `linen` e `pos` (ARCHITECTURE §11), com a convenção de nome, contrato, privilégios e o teste com um papel que só lê as views de `ZenyHotelManager - Schemas, migrações e views de relatório`. O denominador "UH ocupada" precisa ser o das estatísticas diárias do M6 (as noites com `counts_in_occupancy` em `reservations.report_room_nights`, Q-15; ver `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)` e o handoff do M6). Exportação CSV no padrão do M6 (RF-REL-07). Leia os handoffs de E03, E04, E06, E07, E09, E10 e E12.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1298,11 +861,11 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1313,54 +876,16 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério de entrada do marco M10.
 
-**Dependências e paralelismo:** E11, E13 (que dependem transitivamente de todas as demais). Não paralelizável.
+**Dependências:** E11, E13 (que dependem transitivamente de todas as demais).
 
 **Escopo:**
 
 - Rodar build, testes, lint, verificação do contrato e oasdiff numa cópia limpa.
 - Teste ponta a ponta (de integração): NF-e de entrada → transferência para o carrinho → checklist com baixa e troca de enxoval → romaneio de lavanderia → comanda com ficha técnica → relatório de CMV e consumo por UH ocupada.
 - Conferir cada item da "Definição global de pronto".
-- Atualizar `CLAUDE.md` (módulos `inventory` e `linen`, API de baixa, regras RN-17/RN-18) e registrar a conclusão do M9 no histórico de `docs/roadmaps/README.md`.
+- Publicar a captura de atualização do brain (estado do M9; módulos `inventory` e `linen`, API de baixa, regras RN-17/RN-18) e registrar a conclusão do M9 no histórico de `docs/roadmaps/README.md`.
 
 **Fora de escopo:** funcionalidade nova. Problemas voltam à etapa de origem (reabrir com `#em-andamento` e registrar no handoff dela), salvo ajustes triviais de documentação.
-
-**Passos de implementação:**
-
-1. Escrever e rodar o teste ponta a ponta.
-2. Rodar tudo do zero numa cópia limpa e marcar cada item da definição de pronto com evidência.
-3. Atualizar `CLAUDE.md` e o histórico do README dos marcos.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação: nenhuma.
-- Partes paralelas: nenhuma.
-- Foco do verificador: item da definição de pronto sem evidência; teste ponta a ponta que usa atalhos (escrita direta em tabelas) em vez das APIs; dependências de módulo que violem a regra por camadas da ARCHITECTURE §3.1 ou não estejam registradas na tabela.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E14 — "Gate do marco M9" do roadmap docs/roadmaps/roadmap-m9-suprimentos.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a "Definição global de pronto" —, a seção E14 inteira e o "Evidências e handoff" de todas as etapas E01 a E13. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E01 a E13 estão #concluida; se não, ou se o código divergiu do plano, pare e relate.
-
-Objetivo: escrever um teste de integração ponta a ponta do fluxo de suprimentos (NF-e de entrada, transferência ao carrinho, checklist com baixa e troca de enxoval, romaneio de lavanderia, comanda com ficha técnica, relatórios) usando só as APIs, e verificar numa cópia limpa, sem caches nem estado local, cada item da definição global de pronto do M9 com evidência. Não implemente funcionalidade nova: problemas voltam à etapa de origem, salvo ajustes triviais de documentação.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E14 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva e rode o teste ponta a ponta; rode do zero, numa cópia limpa, os comandos oficiais de build, teste e lint do CLAUDE.md, a verificação do contrato e o oasdiff;
-- atualize CLAUDE.md (inventory, linen, API de baixa, RN-17 e RN-18) e registre a conclusão do M9 no histórico de docs/roadmaps/README.md;
-- verificação independente com o Prompt do verificador, com foco em item sem evidência, atalhos no teste ponta a ponta e dependências que violem a regra por camadas ou não estejam registradas na §3.1.
-
-Critérios de aceite (detalhes na seção E14):
-- teste ponta a ponta passa usando só APIs públicas;
-- todos os itens da definição global de pronto marcados com evidência numa cópia limpa;
-- CLAUDE.md atualizado; histórico do README dos marcos registra o M9.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E14 (snapshot, verificações, resultados, parecer do verificador, notas para o marco M10) e responda com um resumo curto. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1368,12 +893,16 @@ No fim, preencha "Evidências e handoff" de E14 (snapshot, verificações, resul
 - [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
 - [ ] oasdiff não aponta *breaking change* em `/api/v1` em relação ao fim do M8.
 - [ ] Toda dependência de módulo acrescentada neste marco segue a regra por camadas e está registrada na tabela da ARCHITECTURE §3.1.
-- [ ] `CLAUDE.md` documenta `inventory`, `linen`, a API de baixa e as regras RN-17/RN-18; `docs/roadmaps/README.md` registra a conclusão do M9.
+- [ ] A captura de atualização do brain `ZenyHotelManager - atualização m9-suprimentos E14` foi publicada, e as capturas do marco documentam `inventory`, `linen`, a API de baixa e as regras RN-17/RN-18; `docs/roadmaps/README.md` registra a conclusão do M9.
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build, teste e lint (CLAUDE.md) numa cópia limpa → sucesso.
+- Comandos oficiais de build, teste e lint (tabela do `CLAUDE.md`) numa cópia limpa → sucesso.
 - Verificação do contrato `api/openapi.yaml` e oasdiff → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** leia o handoff de todas as etapas E01 a E13. O teste ponta a ponta usa só endpoints e APIs públicas, sem escrita direta em tabelas. O oasdiff compara com o fim do M8. A captura de atualização desta etapa leva o estado do M9 para `ZenyHotelManager - Estado por marco` e confere que as notas propostas `ZenyHotelManager - Módulo inventory` e `ZenyHotelManager - Módulo linen` cobrem a API de baixa e as regras RN-17/RN-18. Problemas voltam à etapa de origem (reabrir com `#em-andamento` e registrar no handoff dela).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1383,11 +912,12 @@ No fim, preencha "Evidências e handoff" de E14 (snapshot, verificações, resul
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
 - Notas para o marco M10: —
 
 ---
@@ -1396,3 +926,4 @@ No fim, preencha "Evidências e handoff" de E14 (snapshot, verificações, resul
 
 - 2026-10-13 — roadmap criado (antes do código existir; sincronizar antes da primeira etapa).
 - 2026-10-13 — aplicadas as decisões da entrevista sobre SPEC × ARCHITECTURE: regra por camadas na §3.1 (restrições, definição de pronto e gate); H2 decidida (`inventory` → `notifications`, E03 não pergunta mais); H3 aceita vínculo com `staff`; H4 decidida (itens de empréstimo no `frontdesk`, E11 reescrita sem porta nem `housekeeping`, revisão humana removida); H5 confirmada (listener do `pos` para `TabClosed`).
+- 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m9-suprimentos`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.

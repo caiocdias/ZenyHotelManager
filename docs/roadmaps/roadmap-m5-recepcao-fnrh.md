@@ -1,6 +1,6 @@
 # Roadmap — M5 Recepção, FNRH e impressão
 
-> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · branch de execução: `roadmap/m5-recepcao-fnrh` · criado em 2026-10-13 · última revisão 2026-10-22
 >
 > Marco 5 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M4 — Tarifas, disponibilidade e reservas](roadmap-m4-tarifas-reservas.md) · próximo marco: [M6 — Operação diária e fechamento](roadmap-m6-operacao-fechamento.md)
 >
@@ -8,14 +8,7 @@
 
 ## Como usar
 
-Duas formas, ambas na raiz do repositório:
-
-- **Manual:** cole o prompt de uma etapa numa sessão limpa do Claude Code. Uma etapa por sessão.
-- **Automática:** cole o prompt da seção "Execução automática" numa sessão limpa; ela executa até 3 etapas em sequência, um subagente por etapa mais um verificador, e para para revisão. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão no `CLAUDE.md`, e o Docker é necessário para os testes de integração).
-
-Etapas marcadas como paralelizáveis só devem rodar ao mesmo tempo em worktrees git separados; na mesma pasta, rode-as uma de cada vez.
-
-Em ambas, quem executa segue o "Protocolo de execução", atualiza a tag da etapa e preenche "Evidências e handoff". Não pule dependências. Revise e faça commit entre etapas ou lotes — nenhuma sessão faz commit por conta própria.
+Cole o "Prompt de execução" numa sessão limpa do Claude Code, na raiz do repositório. Ele executa até 3 etapas em sequência na branch `roadmap/m5-recepcao-fnrh`, cada uma planejada e executada pelo plugin superpowers, e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Sincronizado com o código em 2026-10-22**, depois do gate do M4 (commit `ffae917`): caminhos, comandos, convenções, APIs públicas e pendências vêm do `CLAUDE.md`, do código e dos handoffs de `docs/roadmaps/roadmap-m4-tarifas-reservas.md` (principalmente as "Notas para o marco M5" da E13 e as notas para o M5 das etapas E07 a E12, inclusive o "Ajuste D" da E10). Nenhuma etapa nova, removida ou renumerada; E01 a E08 e E10 a E12 seguem `#pendente` e a E09 segue `#bloqueada` (a Q-12 continua sem credencial). Mudanças de escopo: a cotação de early/late saiu da E01 para a E02 (o preço é a política do `hotel`, e quem cobra é o `frontdesk`); a E08 passou a depender também da E02 (o critério do check-in com o Serpro fora do ar usa o endpoint dela); a E10 passou a ter revisão humana (cria o segundo mecanismo de autenticação do sistema). H1 a H4 foram confirmadas no código, a H9 caiu (o M1 não tem credencial de serviço) e há hipóteses novas (H10 a H24). As decisões que cabiam ao usuário (P1 a P12 da sincronização) foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a); a P7 (H14) com uma ressalva, aplicada à E04 (o check-out lança o que o fechamento nunca lançará); e a revisão humana da E10 foi mantida.
 
@@ -29,11 +22,11 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - Modelo de domínio: SPEC §8.2.6 (`Reservation` com `checkIn()`, `checkOut()`, `moveRoom(room, reason)`, `changeStay(arrival, departure)` e `markNoShow()`; `StayGuest` com `primary`, `travelReason`, `transportMode`, `checkedInAt`, `checkedOutAt`; `MinorAuthorization` com `proofType`, `relationship`, `validUntil` e o responsável; `RoomAssignment`; `Trace` com `department`, `dueOn`, `text`, `resolvedAt`), §8.2.17 (`FnrhSubmission` com `operation`, `status`, `attempts`, `lastError`, `remoteId`, `sentAt`; porta `FnrhGateway` com `registerStay`, `checkIn`, `checkOut`, `noShow`, `cancel`), §8.2.18 (`PrintAgent` com `name`, `lastSeenAt`, `tokenHash`; `Printer` com `name`, `kind`, `address`; `PrintJob` com `documentType`, `status`, `attempts`, `createdAt`). Máquina de estados da reserva em §8.4 (`Confirmed → InHouse` no check-in, `InHouse → Confirmed` ao desfazer, sensível e no mesmo dia, `InHouse → CheckedOut`). Eventos em §8.3 (`GuestCheckedIn`/`GuestCheckedOut` consumidos por FNRH e Governança; `RoomMoved` pela Governança; `ReservationCreated`/`Changed`/`Cancelled` pela FNRH).
 - Módulos e dependências (ARCHITECTURE §3.1 e §3.2, conferidos em 2026-10-22): `frontdesk` (camada Hospedagem) → `shared`, `reservations`, `rooms`, `guests`, `billing`, `payments`, `fiscal`, `printing` na tabela; pela **regra por camadas** ele também pode usar a Plataforma (`hotel` para a data operacional e a política de early/late, `staff` para os setores dos recados, `files` para conferir o anexo da autorização do menor), acrescentando cada aresta à tabela e ao `ModularityTest` na etapa que a usar (o `fiscal` e o `payments` não são usados no M5). `fnrh` (camada "Integração governamental", acima da Hospedagem) → `shared`, `hotel`, `reservations`, `guests`, `notifications`, já na tabela; `frontdesk` **não** pode chamar `fnrh` (camada acima): o `fnrh` reage aos eventos de `reservations`. `printing` (Plataforma) → `shared`, `hotel`, já na tabela (a aresta `printing` → `hotel` não precisa ser acrescentada); `billing` → `printing` e `reservations` → `printing` já estão na tabela, `frontdesk` → `printing` também. `printing` e `notifications` nunca escutam eventos de negócio. Nenhum dos três importa `iam` (o `ModularityTest` barra: só `staff` e `notifications` usam a `IamApi`). Fluxo do check-in em §6.1, step-up em §6.3, integrações em §12 (porta + adaptador, outbox, retry com backoff, idempotência, log redigido, WireMock, painel de saúde), impressão em §14 (agente com credencial de serviço, SSE, ESC/POS ou PDF, confirmação e reenvio) e D13, credenciais de serviço em §8.1 ("o agente de impressão e integrações de entrada usam credenciais de serviço próprias, com permissões mínimas"), cifragem em §8.3, escopo offline em §9 ("Recepção, contas e PDV exigem conexão").
 - Documentação oficial da API FNRH v2.4 (Serpro/MTur): link em SPEC §11 (PDF no gov.br); nada dela está no repositório.
-- Base técnica herdada de M0 a M4 (fonte: `CLAUDE.md`, código e handoffs; conferida no código em 2026-10-22):
+- Base técnica herdada de M0 a M4 (fonte: notas de tema do Second Brain, código e handoffs; conferida no código em 2026-10-22):
   - **Módulos existentes** em `src/main/kotlin/com/zeny/hotel/`: `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates` e `reservations`. `frontdesk`, `fnrh` e `printing` **não existem** (a criar, com um `…Module.kt` na raiz com `@PackageInfo` e `@ApplicationModule(allowedDependencies = …)`, como `reservations/ReservationsModule.kt`, hoje com `["shared", "hotel", "rooms", "rates", "guests", "billing", "notifications"]`). O `ModularityTest` (`src/test/kotlin/com/zeny/hotel/ModularityTest.kt`) tem um teste por módulo com as dependências diretas exatas e só pela API pública: cada módulo novo ganha o seu, e cada aresta nova atualiza o teste do módulo. Regras de camadas em `src/test/kotlin/com/zeny/hotel/architecture/LayerRules.kt` (`writeUseCasesAreAudited`, `offlineCommandHandlersAreAudited`).
   - **Comandos oficiais** na tabela do `CLAUDE.md`: `./gradlew build` (compilação, testes, `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), `./gradlew test` (um só: `--tests '…'`), `./gradlew lint`, `./gradlew ktlintFormat`, `./gradlew checkOpenApi`, `./gradlew updateOpenApi`, `docker compose -f docker/compose.yaml up -d --build` e `.github/scripts/check-api-breaking.sh`. Versões só em `gradle/libs.versions.toml` (WireMock `3.13.2` já está lá, como `testImplementation(libs.wiremock.standalone)`; nenhuma biblioteca de PDF, HTML ou ESC/POS ainda).
   - **Migrações:** uma pasta por módulo em `src/main/resources/db/migration/` (hoje `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates`, `reservations`), versão por data e hora em UTC, uma migração de `GRANT` ao `"${app_role}"` por pasta (modelo `reservations/V2026_10_20_2316__grant_reservations_to_app_role.sql`). A última versão aplicada é **`V2026_10_22_0427`** (`reservations`, índice dos no-shows previstos): toda migração nova precisa de timestamp posterior (`outOfOrder` desligado). `MigrationConventionTest` barra objeto, FK, trigger, `INSERT` ou `GRANT` fora do schema do módulo. *Append-only*: só `SELECT, INSERT`, bean `AppendOnlyTables` do módulo e trigger contra `UPDATE`/`DELETE` até do dono (modelo `reservations.reservation_history_immutable`); exclusão física proibida por trigger (`reservations.refuse_delete`).
-  - **Views `report_*`** (seção "Schemas e migrações" do `CLAUDE.md`; modelos `billing/V2026_10_20_0347__create_billing_report_views.sql` e `reservations/V2026_10_22_0351__create_reservation_report_views.sql`): uma linha por fato, ids opacos, sem texto livre nem dado de hóspede, contrato no comentário da migração, `GRANT SELECT` e `REVOKE` por view, provadas com um papel que só as lê.
+  - **Views `report_*`** (nota `ZenyHotelManager - Schemas, migrações e views de relatório` do brain; modelos `billing/V2026_10_20_0347__create_billing_report_views.sql` e `reservations/V2026_10_22_0351__create_reservation_report_views.sql`): uma linha por fato, ids opacos, sem texto livre nem dado de hóspede, contrato no comentário da migração, `GRANT SELECT` e `REVOKE` por view, provadas com um papel que só as lê.
   - **Portas do kernel** (raiz de `com.zeny.hotel.shared`): `CurrentActor`, `Authorization` (`require`, `grantOrNull`, `scopeFilter`, `limit`, `requireOrApproval`), `SensitiveAction`/`LimitAmount`/`APPROVAL_TOKEN_HEADER`, `@Audited`/`AuditContext`/`AppendOnlyTables`, `ModulePermissions` (códigos `PermissionCode` em segmentos que começam por minúscula, **sem hífen**, regex `[a-z][a-z0-9]*(\.[a-z][a-zA-Z0-9]*)+`; `RoleTemplate` `MANAGER`, `RECEPTIONIST`, `FINANCE`…), `Money`, `Percent`, `DocumentNumberGenerator`, `UuidV7`/`TypedId`, `PageParams`/`CursorPage`, `ETags`, `@Idempotent`, `@ExtensibleEnum`, `FieldCipher`/`EncryptedStringConverter` (credenciais), `ContentCipher` (bytes), `TokenSealer`, `BlindIndex`, `RealtimePublisher` (tópicos de **usuário**, presos ao access token) e `Clock` UTC.
   - **APIs públicas para o M5** (todas sem checar permissão: quem chama já se autorizou):
     - `ReservationsApi` (`reservations/ReservationsApi.kt`): `createBooking(NewBooking)` (o walk-in; sem permissão nem step-up do desconto), `cancelReservation`, `confirmReservation`, `pendingGuarantees`, `createBlock`, `block`, `releaseUnused`, `blocksDueForRelease`, `booking(id)` (`BookingSummary` com `holderGuestId`, `origin`, `channel` e `externalId`, o número da OTA para a RF-FNRH-07), `reservation(id)`, `inventory`, `recountInventory`. **Não há** `assignRoom` na API pública (só `POST /api/v1/reservations/{id}/assign-room`, com permissão), nem transição de check-in, desfazer, check-out, troca de UH de hospedado ou alteração de hospedado (a alteração e a alocação aceitam só `PROVISIONAL`/`CONFIRMED`: `409 RESERVATION_TRANSITION_NOT_ALLOWED` e `409 ROOM_ASSIGNMENT_NOT_ALLOWED`). `ReservationStatus` já tem `IN_HOUSE` e `CHECKED_OUT` (sem transição que os grave); `ReservationSummary` traz `guests` (`StayGuestSummary(guestId, primary)`, sem os dados de check-in), `nightlyRates` (`NightlyRateSummary` com os `PackageCharge` e o `transactionCodeId` de cada pacote), `folioId`, `roomAssignment` (`RoomAssignmentSummary` com a UH, "não mover" e a marca de realocação) e `version`. `RoomAssignmentEndReason` (`UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`, `RESERVATION_CHANGED`) e `RoomAssignmentReason` são `x-extensible-enum` nas respostas; acrescentar um motivo de soltura exige atualizar o `CHECK room_assignment_release_ck`. Os gatilhos adiados `room_assignment_reservation_active` (alocação ativa só de reserva `PROVISIONAL`, `CONFIRMED` ou `IN_HOUSE`) e `reservation_assignment_released` (cancelada ou no-show sem alocação ativa) valem no commit. Eventos em `reservations/ReservationsEvents.kt`: `AvailabilityChanged`, `ReservationCreated`, `ReservationChanged`, `ReservationCancelled`, `ReservationReactivated`, `ReservationConfirmed` — só ids, datas, contagens e situações, **sem autor**, todos **sem consumidor de produção** (o outbox só grava a publicação quando há listener). Listas operacionais (`/api/v1/reservations/arrivals`, `/departures`, `/in-house`, `/expected-no-shows`) e views `report_reservations`/`report_room_nights` já contam `IN_HOUSE`; `GuestActiveStayCheck` também.
@@ -49,6 +42,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
   - **Web e contrato:** `@ApiV1Controller`, `@Operation(operationId)` único, `@Tag` do módulo; erros por família com códigos na API pública do módulo; referência inexistente `400 UNKNOWN_…` com o campo, desativada `422 …_INACTIVE`; número de documento nunca na URL; `api/openapi.yaml` regenerado por `./gradlew updateOpenApi`; `ApiSecurityTest` testa todo `/api/**` sem token e só aceita `security: []` nos públicos.
   - **Apoio de testes:** `IntegrationTest`, `asUser(userId, sessionId)`, `MutableClockConfiguration`, `IamTestSupport` (roles, usuários, `setPin`, `call(…, approvalToken = …)`), `RoomsTestSupport`, `GuestsTestSupport`, `BillingTestSupport`, `ReservationsTestSupport` (tipos de UH e hóspedes próprios, sem documentos; `blockBody`, `createBlock`, `pickUp`…), `InventoryListenersQuiescence.await(jdbc)` (antes de baixar `/sync/changes` ou de esperar os listeners de OOO), `FilesTestSupport`, `FcmTestServer` (WireMock). O banco é compartilhado: cada teste cria os próprios tipos de UH e hóspedes, as datas partem de `HotelApi.currentBusinessDate()`, e o relógio movido com o `MutableClock` é devolvido no fim. Testes ponta a ponta dos marcos na raiz do pacote de testes (`MilestoneM3EndToEndTest`, `MilestoneM4EndToEndTest`).
   - **Gates:** os gates do M1 a M4 conferiram tudo numa cópia limpa (`git archive`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`) e num `docker compose` isolado (`-p` próprio, `--env-file` no scratchpad gerado do `docker/.env.example`, porta própria, profile `prod`, pelo proxy, `down -v` no fim), por roteiro `curl`, com o oasdiff contra o gate anterior.
+- Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Estado por marco`, `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Hospedagem e recepção` (transições de hospedagem e `frontdesk`), `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)`, `ZenyHotelManager - Módulo rates`, `ZenyHotelManager - Módulo rooms`, `ZenyHotelManager - Módulo guests`, `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo files`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Segurança, autenticação e autorização`, `ZenyHotelManager - Convenções de API`, `ZenyHotelManager - Tipos do kernel`, `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Schemas, migrações e views de relatório`, `ZenyHotelManager - Eventos e jobs`, `ZenyHotelManager - Tempo real (SSE)`, `ZenyHotelManager - Testes de integração` e `ZenyHotelManager - Docker, observabilidade e CI` (o gate). Leia também as capturas pendentes do projeto que o hook lista; os comandos oficiais continuam na tabela do `CLAUDE.md`.
 - **Pendências herdadas do M4 e onde entram aqui:**
   - check-in grava `IN_HOUSE`, exige UH alocada que **continue ativa e do tipo da reserva** (Ajuste D 1 da E10: `RoomRegistryChanged` não solta alocações) e `ReservationsApi.assignRoom` sem permissão para o check-in e o walk-in (Ajuste D 4) → **E01**;
   - check-out, inclusive o antecipado, solta ou encerra a alocação **na mesma transação** (Ajuste D 2: senão o gatilho adiado recusa e a alocação esquecida bloqueia a UH nas datas seguintes) → **E01**;
@@ -94,7 +88,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - Credenciais da FNRH cifradas (`FieldCipher`) e tokens de agente só como hash; nunca no repositório, no log nem na resposta (o token do agente aparece uma única vez, na criação ou na rotação).
 - RN-01: data operacional pela `HotelApi.currentBusinessDate()`; instantes pelo `Clock`; horários de early/late no fuso do hotel.
 - RN-13 e privacidade: eventos com ids, datas e situações; notificações sem nome, documento ou contato de hóspede; trilha sem texto livre (recados, motivos) nem dado pessoal (H10 do M3).
-- Migrações novas com timestamp posterior a `V2026_10_22_0427`; cada etapa atualiza o "Estado atual" e a seção do módulo no `CLAUDE.md` e a seção "API" do `README.md`; contrato regenerado e `.github/scripts/check-api-breaking.sh` sem mudança `ERR`.
+- Migrações novas com timestamp posterior a `V2026_10_22_0427`; cada etapa publica no Second Brain a captura `ZenyHotelManager - atualização m5-recepcao-fnrh Eyy` (o estado e o texto novo ou alterado das notas de tema afetadas; cada módulo novo propõe a sua nota de tema, `ZenyHotelManager - Módulo fnrh` e `ZenyHotelManager - Módulo printing`, e o `frontdesk` continua em `ZenyHotelManager - Hospedagem e recepção`) e atualiza a seção "API" do `README.md`; contrato regenerado e `.github/scripts/check-api-breaking.sh` sem mudança `ERR`.
 
 ## Hipóteses e decisões em aberto
 
@@ -126,7 +120,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 | D1 | **Credencial de homologação da FNRH e Cadastur ativo (SPEC Q-12).** Ainda em aberto em 2026-10-22: nenhuma credencial fornecida. | Sem credencial não há homologação real com o Serpro. | E09 (bloqueada até decidir) |
 | D2 | **Decidido em 2026-10-13 (dono + printing):** cada módulo dono de um documento monta os dados, checa a própria permissão e chama a API pública de `printing` para renderizar (PDF ou ESC/POS) e enfileirar: `frontdesk` → ficha de registro, `billing` → extrato, `reservations` → confirmação. `printing` compõe o cabeçalho do hotel pela API pública de `hotel` (aresta já na tabela §3.1; falta a `HotelApi.profile()`, H18). Não há porta em `shared` para documentos. | — | E11 |
 
-**Decisões abertas para a entrevista de cada etapa** (dependem da investigação; a sessão da etapa devolve os pontos ao orquestrador, que entrevista o usuário):
+**Decisões abertas para a entrevista de cada etapa** (dependem da investigação; o orquestrador as registra em "Decisões para o usuário" no handoff da etapa e as apresenta no fim do lote como entrevista):
 
 - **E01:** check-in de chegada atrasada (chegada antes da data operacional, sem no-show ainda) e check-out com a saída já passada; o que o desfazer check-in faz com a ocupação e a governança da UH e com o early e a caução já registrados.
 - **E05:** troca de UH para outro tipo (upgrade) com a tarifa mantida ou recalculada e o inventário das noites restantes; alteração da ocupação do hospedado.
@@ -149,70 +143,69 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 
 ## Protocolo de execução
 
-Vale para toda etapa, executada manualmente ou pelo orquestrador. Cada etapa declara sua estratégia em "Estratégia de execução".
+Vale para toda execução deste roadmap. O planejamento e a execução de cada etapa são feitos pelo plugin superpowers; este protocolo diz como encadear as etapas e manter o roadmap em dia.
 
 **Papéis**
 
-- **Sessão principal** (no modo automático, o subagente implementador): a única que edita código e este roadmap. Implementa, testa, atualiza tags e handoff.
-- **Investigação** (subagente `Explore`, somente leitura): para material extenso que será lido mas não editado. Recebe as perguntas listadas na etapa e devolve um resumo com caminhos e linhas. Arquivos que serão editados são lidos diretamente pela sessão principal.
-- **Implementação paralela** (subagentes `general-purpose`, só na estratégia `paralela`): cada um recebe uma parte com os arquivos listados na etapa, disjuntos dos demais; roda só os testes focados da sua parte; não toca arquivos compartilhados (build, configuração, este roadmap).
-- **Verificação independente** (subagente `general-purpose` novo, que não participou da implementação): confere a etapa contra os critérios de aceite. Não edita nada.
+| Papel | Quem | Usa |
+|---|---|---|
+| Orquestrador | a sessão que recebeu o prompt de execução | este protocolo; atualiza tags e handoffs; publica as capturas de atualização do brain |
+| Planejador | o orquestrador | `superpowers:writing-plans` |
+| Implementador | subagente por tarefa | `superpowers:subagent-driven-development` (ou `superpowers:executing-plans`, sem subagentes) |
+| Revisor de tarefa | subagente novo por tarefa | revisão da `subagent-driven-development` |
+| Revisor final | subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
 
-**Estratégias:** `direta` — sem subagentes, a sessão principal valida · `padrão` — investigação quando indicada + verificação independente obrigatória · `paralela` — `padrão` + partes paralelas.
+Souls: nenhuma definida para estes papéis. Quando existir uma soul para um papel, ela se aplica a esse papel; até lá, valem os prompts padrão do superpowers.
 
-**Passo a passo**
+**Branch**
 
-1. **Preparação:** leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho deste roadmap, a seção da etapa e o handoff das dependências; rode `git status`. Confirme que as dependências estão `#concluida`, que a etapa não está `#bloqueada` e que o código bate com o handoff das dependências; se não, pare e relate.
-2. **Snapshot inicial:** registre o estado da árvore de trabalho, sem commit e sem alterar o índice do git:
+- Toda execução acontece no worktree/branch `roadmap/m5-recepcao-fnrh`, criado ou retomado com `superpowers:using-git-worktrees`. Nunca execute na branch principal (`main`).
+- Se a branch já existir com trabalho não integrado, continue nela. Se o lote anterior já foi integrado, crie a branch de novo a partir da `main` atualizada.
+- Este roadmap é atualizado dentro da branch: tags e handoffs viajam com o código.
 
-   ```bash
-   idx=$(mktemp -u); cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null; GIT_INDEX_FILE="$idx" git add -A && GIT_INDEX_FILE="$idx" git write-tree; rm -f "$idx"
-   ```
+**Por etapa**
 
-   Anote o hash impresso como "Snapshot inicial" no handoff da etapa (no modo automático, use o hash recebido do orquestrador em vez de tirar outro). Para ver tudo o que a etapa mudou, rode o mesmo comando de novo e compare: `git diff HASH_INICIAL HASH_ATUAL`. Se `git status` mostrar artefatos de build não ignorados, corrija o `.gitignore` antes do snapshot — senão o diff fica lento e poluído.
-3. **Início:** troque a tag da etapa para `#em-andamento` no índice e no título.
-4. **Investigação** (se a etapa listar perguntas): dispare um subagente `Explore` com essas perguntas.
-5. **Implementação:** quando os critérios descrevem comportamento verificável, escreva os testes primeiro e confirme que falham. Implemente em passos pequenos; na estratégia `paralela`, dispare as partes paralelas e integre-as. Rode as validações obrigatórias da etapa.
-6. **Verificação independente** (`padrão` e `paralela`): dispare um subagente `general-purpose` novo com o "Prompt do verificador" abaixo, trocando ETAPA pelo ID da etapa e HASH_INICIAL pelo snapshot. Se o parecer for REPROVADO, corrija e verifique de novo com um verificador novo. Após duas reprovações, pare e relate, mantendo `#em-andamento`.
-7. **Fechamento:** marque `#concluida` (índice e título) só com todos os critérios atendidos e, quando houver verificação, parecer APROVADO. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff" e responda com um resumo curto. Não faça commit, push ou deploy.
+1. **Escolha:** a primeira etapa, na ordem do documento, marcada `#pendente` e com todas as dependências `#concluida`. Etapas `#bloqueada` e as que dependem delas ficam para trás.
+2. **Conferência:** leia a seção da etapa, os handoffs das dependências e o código que eles citam. Se o código divergiu do que a etapa supõe, pare e relate.
+3. **Início:** troque a tag para `#em-andamento` (índice e título).
+4. **Plano:** use `superpowers:writing-plans`. A spec é a seção desta etapa mais os documentos citados em "Contexto confirmado"; as "Restrições e invariantes" entram como Global Constraints. Salve em `docs/superpowers/plans/AAAA-MM-DD-m5-recepcao-fnrh-eNN.md` (AAAA-MM-DD = a data do dia). A execução já está definida (abaixo): não pergunte ao usuário o método, apenas siga.
+5. **Execução:** use `superpowers:subagent-driven-development` com esse plano, incluindo a revisão final da etapa. Não invoque `superpowers:finishing-a-development-branch` ao fim da etapa: ele roda uma vez, no fim do lote.
+6. **Fechamento:** publique a captura de atualização do brain (bloco "Second Brain"). Marque `#concluida` (índice e título) só com a revisão final limpa e cada critério de aceite verificado com evidência. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff". Rulings do ledger que mudam contrato, escopo, segurança, dados ou algo caro de desfazer vão para "Decisões para o usuário".
 
-**Prompt do verificador**
+**Second Brain**
+
+Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain"; senão, ignore este bloco.
+
+- O contexto da sessão precisa trazer a linha `BRAIN: carregado (ZenyHotelManager)`, injetada pelo hook. Sem ela, pare e relate.
+- Na conferência de cada etapa, leia as notas de tema do brain ligadas a ela (pelo hub `ZenyHotelManager`) e as capturas pendentes do projeto que tratem do assunto: são a referência técnica do projeto. Num handoff antigo, "seção X do `CLAUDE.md`" é a nota de tema correspondente.
+- No fechamento de cada etapa que mudou algo descrito no brain (inclusive o estado do roadmap), o orquestrador publica em `00 Inbox/` do vault a captura `ZenyHotelManager - atualização m5-recepcao-fnrh Eyy`, com o texto novo ou alterado de cada nota afetada e qual nota ele substitui ou complementa, conforme o contrato de agente externo do vault (skill `second-brain`). Nunca edite notas do brain nem registre referência técnica no `CLAUDE.md`.
+
+**Paradas**
+
+O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+
+**Fim do lote**
+
+1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
+2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+
+## Prompt de execução
 
 ```text
-Você é o verificador independente da etapa ETAPA do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md. Você não participou da implementação e não deve editar nenhum arquivo.
-1. Leia CLAUDE.md (se existir), o cabeçalho do roadmap e a seção ETAPA inteira (objetivo, escopo, fora de escopo, estratégia, critérios de aceite, validação obrigatória).
-2. Veja o que mudou desde o início da etapa: gere um snapshot do estado atual com o comando da seção "Protocolo de execução" e rode git diff --stat HASH_INICIAL seguido do hash gerado; depois leia o diff completo dos arquivos relevantes.
-3. Rode todos os comandos da validação obrigatória da etapa e guarde a saída relevante.
-4. Para cada critério de aceite, decida APROVADO ou REPROVADO com evidência concreta (arquivo:linha, nome do teste, saída de comando). Critério sem evidência é REPROVADO.
-5. Ataque os pontos listados em "Foco do verificador" na etapa e aponte também: mudanças fora do escopo, testes que não exercitam o comportamento (passariam mesmo com o código errado), segredos ou dados pessoais expostos e violações das restrições do roadmap.
-Responda com: parecer geral (APROVADO só se todos os critérios forem APROVADO e não houver problema grave), tabela critério → resultado → evidência, problemas por gravidade e comandos executados.
-```
-
-## Execução automática
-
-Cole o prompt abaixo numa sessão limpa do Claude Code, na raiz do repositório. Ajuste o limite de etapas se quiser.
-
-```text
-Você é o orquestrador do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md neste repositório. Seu papel é coordenar subagentes, não implementar: não edite código e mantenha seu contexto enxuto (leia o roadmap e os relatórios dos subagentes, não o código).
+Execute o roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md deste repositório seguindo a seção "Protocolo de execução" dele, com o plugin superpowers.
 
 Limite desta execução: no máximo 3 etapas concluídas.
 
-Preparação:
-1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho, o "Protocolo de execução" e o índice.
-2. Rode git status. Se alguma etapa estiver #em-andamento, pare e pergunte ao usuário como prosseguir — provavelmente é uma execução interrompida.
+1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho inteiro, o protocolo e o índice. Se o CLAUDE.md exigir o Second Brain, confira a linha BRAIN: carregado no contexto e leia o hub. Rode git status e git branch -a.
+2. Se alguma etapa estiver #em-andamento, retome-a a partir do ledger do superpowers e do handoff; não recomece tarefas já commitadas.
+3. Crie ou retome o worktree/branch roadmap/m5-recepcao-fnrh com superpowers:using-git-worktrees. Não trabalhe na branch principal.
+4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
+5. Pare nas paradas do protocolo ou ao atingir o limite.
+6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
 
-Repita, uma etapa por vez (nunca em paralelo):
-1. Escolha a primeira etapa, na ordem do documento, marcada #pendente e com todas as dependências #concluida. Etapas #bloqueada e as que dependem delas ficam para trás. Se não houver candidata, pare.
-2. Gere o snapshot inicial com o comando do protocolo e guarde o hash.
-3. Dispare um subagente general-purpose com o prompt da etapa copiado literalmente da seção dela, acrescido deste adendo: "Você está rodando como subagente do orquestrador; este adendo prevalece sobre o prompt acima. O snapshot inicial já foi tirado: use HASH e não tire outro. Não dispare subagentes: faça a investigação você mesmo, implemente em sequência as partes paralelas, se houver, e pule a verificação independente, que o orquestrador fará. Não marque a etapa como #concluida: ao terminar, deixe-a #em-andamento com 'Evidências e handoff' preenchido e relate o resultado das validações. Diante de bloqueio real, marque #bloqueada como o prompt manda." Substitua HASH pelo hash do passo 2.
-4. Se o subagente relatar bloqueio, divergência do plano ou validação falhando que não conseguiu resolver, pare.
-5. Qualquer que seja a estratégia, dispare um subagente general-purpose novo com o "Prompt do verificador" do protocolo (ETAPA e HASH_INICIAL preenchidos). Se REPROVADO, mande os problemas ao mesmo implementador, se puder retomá-lo; senão, dispare um implementador novo com o prompt da etapa, o adendo, o parecer do verificador e o handoff atual. Verifique de novo com um verificador novo; após duas reprovações, pare.
-6. Com o aceite, troque a tag da etapa para #concluida no índice e no título e acrescente ao handoff o parecer do verificador.
-7. Se a etapa tiver "Revisão humana: sim", pare para o usuário revisar.
+Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
 
-Pare também ao atingir o limite desta execução. Nunca faça commit, push ou deploy e não altere tags de etapas que não executou.
-
-Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio de cada uma, os arquivos alterados (git status --short) e o próximo passo sugerido — normalmente revisar e fazer commit antes da próxima execução.
+Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
 
 ## Índice de etapas
@@ -280,7 +273,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 3. Escrever testes de integração (Testcontainers) com `Scenario` para os eventos, o `EXCLUDE` na troca e na extensão, o inventário na redução e no check-out antecipado (inclusive do pick-up) e os gatilhos adiados.
 4. Implementar, regenerar o contrato (o `PUT` muda de descrição; os `enum` de soltura e de histórico ganham valores) e atualizar `CLAUDE.md` e `README.md`.
 
-**Estratégia de execução:** `padrão` · Revisão humana: não
+**Revisão humana:** não (executada no formato antigo, estratégia `padrão`)
 
 - Investigação (`Explore`): "como `ReservationLifecycle`, `RoomAssignments`, `BlockUnits` e `RoomTypeInventory` do `reservations` implementam a alteração, o cancelamento, a alocação e o inventário, e o que os gatilhos `room_assignment_reservation_active`, `reservation_assignment_released`, `room_assignment_guarded` e `room_assignment_release_ck` exigem?"; "que regras SPEC §5.8 (RF-REC-01, 04, 05, 08), §8.2.6 e §8.4 impõem a check-in, check-out, troca de UH e mudança de estadia?".
 - Partes paralelas: nenhuma.
@@ -408,7 +401,7 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, o
 2. Criar o módulo, os acréscimos à `GuestsApi` e à `BillingApi`, os casos de uso e o controller.
 3. Regenerar o contrato, atualizar a ARCHITECTURE §3.1, o `ModularityTest`, o `CLAUDE.md` e o `README.md`.
 
-**Estratégia de execução:** `padrão` · Revisão humana: sim
+**Revisão humana:** sim (executada no formato antigo, estratégia `padrão`)
 
 - Investigação (`Explore`): "como `GuestsApi`/`GuestsStore` guardam o tipo, o país e o sufixo dos documentos e como `billing` registra a caução (`CardPreAuthorizationService`), para expor ambos sem permissão e sem decifrar?"; "o que RF-REC-01, RF-REC-08, RN-05, RN-11, RN-24 e ARCHITECTURE §6.1 e §6.3 exigem?".
 - Partes paralelas: nenhuma.
@@ -534,7 +527,7 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 1. Testes de integração: walk-in completo; sem disponibilidade → nada criado (nenhuma reserva, conta, caução, inventário); UH não pronta → nada criado; menor sem comprovação → nada criado; repetição com a mesma `Idempotency-Key` → mesma resposta, uma única reserva; sem a permissão de reservas → `403`.
 2. Implementar o caso de uso e o endpoint; atualizar `CLAUDE.md` e `README.md`.
 
-**Estratégia de execução:** `padrão` · Revisão humana: não
+**Revisão humana:** não (executada no formato antigo, estratégia `padrão`)
 
 - Investigação: nenhuma; o padrão está no handoff da E02 e na seção "Reservas e reservas agrupadoras" do `CLAUDE.md`.
 - Partes paralelas: nenhuma.
@@ -631,50 +624,13 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** fecha o ciclo da estadia e publica `GuestCheckedOut`, consumido pela FNRH (E08) e pela governança (M6).
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E06 (worktree separado); conflito em `api/openapi.yaml`, `FrontdeskPermissions` e `CLAUDE.md`.
+**Dependências:** E02. Independente de E05 e E06 (informativo: as três mexem em `api/openapi.yaml` e `FrontdeskPermissions`).
 
 **Escopo:** `frontdesk` (caso de uso e endpoint, `@Idempotent`, `frontdesk.stays.checkout`), `BillingApi` (método novo de liberação de caução sem permissão, com as regras do `…/release`; `balanceOf`, `closeFolio`, `post` com o código da H13), `ReservationsApi.checkOut` e `RoomsApi.markVacant(CHECK_OUT)`. Ordem: cobranças pendentes da estadia (abaixo) → late check-out aceito (o valor da cotação enviado e ainda vigente, senão `409 EARLY_LATE_FEE_CHANGED`) → `BillingApi.balanceOf(FolioOwner(RESERVATION, id))` com `settled` (senão `409 FOLIO_BALANCE_NOT_ZERO` com o saldo de cada conta no problema) → liberação das cauções `ACTIVE`/`PARTIALLY_CAPTURED` (a captura, que é pagamento e exige turno, foi feita antes pelo endpoint do `billing`) → `closeFolio` de cada conta aberta → `checkOut` → UH Vaga + Suja. Reserva fora de `IN_HOUSE` → `409 RESERVATION_TRANSITION_NOT_ALLOWED` (o código da E01). Até o M6 as diárias não são lançadas por ninguém: os testes lançam as diárias pela `BillingApi.post` para ter saldo.
 
 - **Cobranças que o fechamento nunca lançará** (H14, ressalva decidida em 2026-10-22): o fechamento do M6 só lança para quem está hospedado na data, então uma estadia que termina antes do fechamento da data operacional da chegada — o **day use** e qualquer **check-out no mesmo dia da chegada** — sairia sem a diária e sem os pacotes dessa data. Antes de conferir o saldo, o check-out lança, pela `BillingApi.post` na conta da reserva (o roteamento vale como em qualquer lançamento), a **diária congelada** da noite (`NightlyRateSummary.roomAmount` no código `ROOM_CHARGE`; inclusos e hospedagem conforme o lançamento separado do fechamento, RF-FIS-04, a combinar com o M6) e os pacotes `ON_ARRIVAL`/`DAILY` dessa data (`PackageCharge` com o `transactionCodeId` de cada um), com a origem `END_OF_DAY` (a cobrança é a que o fechamento faria; `PostingSource` é `enum` fechado) ou a que a etapa justificar no handoff. **Uma vez só:** cada cobrança leva uma chave de idempotência pelo vínculo com a reserva, a data e a cobrança (diária, ou o pacote); repetir o check-out, ou o fechamento do M6 depois, não lança de novo. A `BillingApi` não tem lançamento idempotente por chave: acréscimo mínimo nesta etapa, sem quebrar contrato — `NewPosting` ganha uma chave de origem opcional (ex.: `sourceReference`, texto curto sem dado pessoal, como `reservations.reservation:<id>:2026-11-02:room`) gravada no lançamento com um índice único parcial em `billing.posting`, e a `BillingApi.post` devolve o lançamento já existente com a mesma chave em vez de gravar outro (a conferência e a gravação sob a trava da conta). Nas demais estadias (pernoite com check-out em data posterior à chegada) nada é lançado aqui: o fechamento de cada noite já lançou.
 
-**Fora de escopo:** emissão de nota (M7); transferência para contas a receber (M10 — registrar no `CLAUDE.md` que o check-out só aceita saldo zero por pagamento até lá); tarefa de limpeza de saída (M6, por evento).
-
-**Passos de implementação:**
-
-1. Testes de integração: day use e check-out no mesmo dia da chegada lançam a diária congelada e os pacotes `ON_ARRIVAL`/`DAILY` da data uma vez só (repetição idempotente do check-out e uma segunda chamada da `BillingApi.post` com a mesma chave não lançam de novo; nada lançado num pernoite com check-out em data posterior); check-out com saldo zero; saldo devedor e credor numa das contas (inclusive uma conta roteada da reserva); caução capturada antes e a sobra liberada; caução vencida; late check-out cotado e lançado, sem cotação (nada cobrado) e com o valor mudado; check-out antecipado; repetição idempotente; conta encerrada recusando lançamento depois.
-2. Implementar o caso de uso, o endpoint e o método novo da `BillingApi`; atualizar `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como `billing` libera a caução (`CardPreAuthorizationService.release`), calcula `balanceOf` e encerra a conta, e quais travas cada um toma, para o check-out encadear tudo sem deadlock?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: day use ou check-out no mesmo dia da chegada que sai sem a diária ou os pacotes, ou que os lança duas vezes; chave de idempotência com dado pessoal; check-out aceito com saldo diferente de zero em alguma conta; late cobrado sem cotação ou com valor diferente; caução ativa que sobra numa conta encerrada; alocação ou UH que ficam ocupadas; parte persistida quando um passo falha.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E04 — "Check-out" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", o "Fora de escopo" e as hipóteses H12 e H13 —, a seção E04 inteira e o "Evidências e handoff" de E01 e E02. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar POST /api/v1/reservations/{id}/check-out (@Idempotent) em frontdesk: no day use e no check-out no mesmo dia da chegada, lança antes a diária congelada e os pacotes ON_ARRIVAL/DAILY da data, uma vez só, por uma chave de idempotência nova e opcional na BillingApi.post (H14); lança o late check-out só com o valor cotado e ainda vigente (RN-11), exige BillingApi.balanceOf settled (RN-06), libera as cauções ativas por um método novo da BillingApi, encerra as contas pela BillingApi.closeFolio, chama ReservationsApi.checkOut e deixa a UH Vago + Sujo, tudo numa transação. Não emita nota fiscal (M7) nem transfira saldo para contas a receber (M10).
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E04 para #em-andamento no índice e no título;
-- investigação: um subagente Explore responde à pergunta da seção E04;
-- escreva os testes de integração primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E04.
-
-Critérios de aceite (detalhes na seção E04):
-- saldo diferente de zero em qualquer conta → 409 FOLIO_BALANCE_NOT_ZERO com o saldo por conta, nada alterado;
-- sucesso deixa reserva CHECKED_OUT, cauções liberadas, contas encerradas, alocação encerrada, UH Vago + Sujo e publica GuestCheckedOut;
-- late check-out lançado só com o preço cotado; limitação de contas a receber documentada no CLAUDE.md;
-- ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
+**Fora de escopo:** emissão de nota (M7); transferência para contas a receber (M10 — registrar na captura de atualização do brain que o check-out só aceita saldo zero por pagamento até lá); tarefa de limpeza de saída (M6, por evento).
 
 **Critérios de aceite:**
 
@@ -685,7 +641,7 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 - [ ] Lançamento em conta encerrada depois do check-out é rejeitado (`409 FOLIO_CLOSED`).
 - [ ] Late check-out lançado com o valor cotado pela política vigente; sem o aceite não há cobrança; valor diferente do vigente → `409 EARLY_LATE_FEE_CHANGED`; hotel sem oferta → `422 EARLY_LATE_NOT_OFFERED`.
 - [ ] Repetição com a mesma `Idempotency-Key` → a resposta guardada, sem segundo lançamento.
-- [ ] `CLAUDE.md` registra que, até o M10, o check-out só aceita saldo zero por pagamento.
+- [ ] A captura de atualização do brain registra que, até o M10, o check-out só aceita saldo zero por pagamento.
 - [ ] `./gradlew build` verde e oasdiff sem `ERR`.
 
 **Validação obrigatória:**
@@ -693,21 +649,30 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Leia as notas para a E04 nos handoffs de E01 (o day use do check-out no dia da chegada deixa a noite da chegada para esta etapa), E02 (nota **B4** da revisão humana: depois de um desfazer, a caução do primeiro check-in continua ativa e um novo check-in registra outra; o check-out lista e libera **todas** as ativas; avaliar um aviso no check-in quando a conta já tem caução ativa) e E03 (os passos comuns do check-in estão em `CheckInSteps`; um componente parecido evita duplicar a leitura da reserva e da conta). Hipóteses H12, H13 e H14.
+- Antes de encadear a liberação da caução (`CardPreAuthorizationService.release` do `billing`), o `balanceOf` e o `closeFolio`, confira que travas cada um toma, para o check-out não criar deadlock com o check-in e os pagamentos.
+- A chave de idempotência da H14 não pode levar dado pessoal: só ids, a data e o tipo da cobrança.
+- Cenários que o roadmap já previa além dos critérios: conta roteada da reserva com saldo, caução capturada antes com a sobra liberada, caução vencida e check-out antecipado.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
 - Saldo com roteamento entre contas (RF-CTA-04): usar sempre o saldo oficial do `billing` (`balanceOf`), nunca recalcular no `frontdesk`.
 - Ordem das travas: a conta é travada pelo `billing` em cada chamada; trave a reserva antes e registre a ordem no handoff para o walk-in e a troca de UH seguirem a mesma.
-- **Nota obrigatória para o M6** (registrar no handoff e no `CLAUDE.md`): o fechamento não lança de novo o que o check-out já lançou — usa a **mesma chave de idempotência** (reserva, data e cobrança) na `BillingApi.post`.
+- **Nota obrigatória para o M6** (registrar no handoff e na captura de atualização do brain): o fechamento não lança de novo o que o check-out já lançou — usa a **mesma chave de idempotência** (reserva, data e cobrança) na `BillingApi.post`.
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -718,7 +683,7 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Por que agora:** completa as operações de estadia em curso usando as transições da E01 e a cotação da E02.
 
-**Dependências e paralelismo:** E02. Pode correr em paralelo com E06 (worktree separado); conflito em `api/openapi.yaml` e no check-in do `frontdesk`.
+**Dependências:** E02. Independente de E04 e E06 (informativo: mexe em `api/openapi.yaml` e no check-in do `frontdesk`).
 
 **Escopo:** `frontdesk`:
 
@@ -727,43 +692,6 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 - Early check-in no check-in da E02: campo opcional com o valor da cotação; lançado pela `BillingApi.post` (H13) na mesma transação só se aceito e ainda vigente (`409 EARLY_LATE_FEE_CHANGED`; sem oferta `422 EARLY_LATE_NOT_OFFERED`).
 
 **Fora de escopo:** tarefa de limpeza na UH de origem (M6, por `RoomMoved`).
-
-**Passos de implementação:**
-
-1. Testes de integração: troca para UH pronta; para UH não pronta; mantendo tarifa; recalculando (as noites passadas intactas); troca para UH alocada a outra reserva; extensão sem disponibilidade; extensão com a UH alocada a outra reserva; redução; early aceito e lançado, não aceito, com valor mudado.
-2. Implementar casos de uso e endpoint; atualizar `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma; regras em RF-REC-03, 04 e 05 e nos handoffs de E01 e E02.
-- Partes paralelas: nenhuma.
-- Foco do verificador: troca para UH não pronta; preço recalculado sem a diferença na resposta ou mudando noite passada; UH de origem que fica Ocupada; early cobrado sem o aceite; parte persistida quando um passo falha.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E05 — "Troca de UH, extensão, redução e early check-in" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H13 —, a seção E05 inteira e o "Evidências e handoff" de E01 e E02. Leia também RF-REC-03, RF-REC-04, RF-REC-05 e RN-11 em docs/SPEC.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar em frontdesk POST /api/v1/reservations/{id}/room-moves (@Idempotent, If-Match; UH destino pronta, origem Vago + Sujo, destino Ocupada, motivo, tarifa mantida ou recalculada com a diferença na resposta, RoomMoved pela E01), cobrir de ponta a ponta a extensão e a redução do hospedado pelo PUT da E01 e acrescentar ao check-in a cobrança opcional do early check-in com o valor cotado e ainda vigente. Não gere tarefas de limpeza (M6).
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E05 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de integração primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E05.
-
-Critérios de aceite (detalhes na seção E05):
-- troca para UH não pronta → 409 ROOM_NOT_READY; troca válida publica RoomMoved, origem Vago + Sujo e destino Ocupada;
-- extensão sem disponibilidade → 409 com code estável e nada alterado; redução devolve inventário;
-- early check-in só é lançado com a cotação aceita e vigente;
-- ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -779,6 +707,16 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Leia RF-REC-03, RF-REC-04, RF-REC-05 e RN-11 em `docs/SPEC.md`, a H13 e as notas para a E05 nos handoffs de E01, E02 e E03.
+- Decisões que a E01 deixou para esta etapa (também em "Decisões abertas para a entrevista de cada etapa"): a `moveRoom` só troca para o **mesmo tipo** (outro tipo é `422 ROOM_TYPE_MISMATCH`; o upgrade precisaria trocar o `roomTypeId` da reserva e mover o inventário das noites restantes numa só `apply`); a ocupação do hospedado está fixa (`409 IN_HOUSE_STAY_FIXED`); e a redução da saída pelo `PUT` passa pelas restrições de venda (`relevantRefusals`: estadia mínima e CTD podem recusá-la com `422`, enquanto o check-out antecipado nunca é recusado) — decidir se valem para quem já está em casa. Cada uma vai para "Decisões para o usuário".
+- A UH de destino é ocupada com `RoomsApi.markOccupiedIfReady` (a corrida B1 da E02: dois check-ins, ou uma troca e um check-in, na mesma UH); a cobrança do early usa a mesma cotação da E02 (`EarlyLateQuotes.early`).
+- Pendência de teste da E03: um id de hóspede mesclado no pedido do walk-in (a `createBooking` troca pelo sobrevivente, mas o check-in usa o id original; o esperado é uma recusa com rollback) — cobrir aqui ou no gate E12.
+- Preço congelado (RN-14): as noites passadas nunca mudam no recálculo.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -787,11 +725,11 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -802,45 +740,11 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a última funcionalidade de recepção da Fase 1 e independe do fluxo financeiro.
 
-**Dependências e paralelismo:** E02 (módulo `frontdesk` criado). Paralelizável com E03, E04 e E05 em worktrees separados; conflito em `api/openapi.yaml`, `FrontdeskPermissions` e `CLAUDE.md`.
+**Dependências:** E02 (módulo `frontdesk` criado). Independente de E04 e E05 (informativo: mexe em `api/openapi.yaml` e `FrontdeskPermissions`).
 
 **Escopo:** `frontdesk` — recado com setor (`StaffApi.departments()`, aresta `frontdesk` → `staff` na ARCHITECTURE §3.1 e no `ModularityTest`; inexistente `400 UNKNOWN_DEPARTMENT`), vencimento (data de negócio), texto (até 500), vínculo a reserva (`ReservationsApi.reservation`) **ou** UH (`RoomsApi.room`) — nenhum ou os dois `400` —, responsável opcional e resolução (quem e quando). Endpoints pela convenção: `POST /api/v1/traces` (201), `GET /api/v1/traces` (filtros `departmentId`, `dueOn`, `status`, `reservationId`, `roomId`; cursor), `GET /{id}` (`ETag`), `PUT /{id}` (`If-Match`), `POST /{id}/resolve` (resolvido de novo `409 TRACE_ALREADY_RESOLVED`). Permissões `frontdesk.traces.read`/`manage` (H20). Migração no schema `frontdesk`, sem `DELETE` (trigger que recusa). Trilha sem o texto (texto livre, H10 do M3).
 
 **Fora de escopo:** notificação push dos recados: a SPEC não pede (RF-NOT-01 não lista recados).
-
-**Passos de implementação:**
-
-1. Testes de integração de criação, listagem filtrada com cursor, edição com `If-Match` e resolução.
-2. Implementar; atualizar ARCHITECTURE §3.1, `ModularityTest`, `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `direta` · Revisão humana: não
-
-- Investigação: nenhuma.
-- Partes paralelas: nenhuma.
-- Foco do verificador: escrita sem permissão; texto do recado na trilha ou no log; recado com os dois vínculos ou nenhum.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E06 — "Recados" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H20 —, a seção E06 inteira, o "Evidências e handoff" de E02 e RF-REC-07 em docs/SPEC.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: implementar recados em frontdesk em /api/v1/traces — criação vinculada a reserva ou UH com setor do staff, listagem filtrada por setor, data e situação com cursor, edição com If-Match e resolução com usuário e instante —, com migração no schema frontdesk, sem DELETE, permissões frontdesk.traces.read e manage e a trilha sem o texto. Não envie notificações push.
-
-Siga o Protocolo de execução com a estratégia direta:
-- tire o snapshot inicial e troque a tag de E06 para #em-andamento no índice e no título;
-- sem subagentes: escreva os testes de integração primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize ARCHITECTURE §3.1 (frontdesk → staff), ModularityTest, CLAUDE.md e README.md.
-
-Critérios de aceite (detalhes na seção E06):
-- criação, listagem filtrada, edição e resolução cobertas por testes de integração;
-- escrita auditada (sem o texto) e protegida por permissão;
-- ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, decisões, comandos e resultados, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -855,6 +759,10 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** não
+
+**Notas para o plano:** leia RF-REC-07 em `docs/SPEC.md` e a H20 (nomes das permissões). O `frontdesk` não tinha estado próprio até a E03 (nenhuma tabela nem migração): se o schema ainda não existir, a pasta de migrações dele e a migração de `GRANT` ao papel da aplicação nascem aqui, com timestamp posterior à última aplicada. O texto do recado também fica fora do log.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -863,11 +771,11 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -878,7 +786,7 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a primeira integração externa de saída com credencial do hotel e fixa o padrão de porta + adaptador + log de integração da ARCHITECTURE §12 que M7 e M8 vão repetir (o FCM do M2 já usa WireMock, `FcmTestServer`, e é o modelo de adaptador).
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o gate do M4 `#concluida`. Paralelizável com E01 a E06 e E10 em worktree separado; conflito em `api/openapi.yaml`, `ModularityTest`, ARCHITECTURE e `CLAUDE.md`.
+**Dependências:** nenhuma dentro deste roadmap; exige o gate do M4 `#concluida`. Independente das etapas de recepção e da E10 (informativo: mexe em `api/openapi.yaml`, `ModularityTest` e ARCHITECTURE).
 
 **Escopo:** pacote `fnrh` (a criar), `FnrhModule.kt` com `allowedDependencies` = `shared`, `hotel`, `guests` (e `reservations`/`notifications` na E08), o teste dele no `ModularityTest`:
 
@@ -892,44 +800,6 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 - `HotelApi.profile()` (dados cadastrais, Cadastur) se o payload da FNRH exigir algum dado do hotel; senão, fica para a E11.
 
 **Fora de escopo:** disparo por eventos e fila (E08); chamadas reais ao Serpro (E09).
-
-**Passos de implementação:**
-
-1. Investigar a documentação v2.4 (H6) e registrar no handoff os endpoints, campos, autenticação, headers e códigos de erro usados.
-2. Escrever testes de contrato com WireMock para cada operação, conferindo URL, Basic Auth, `cpf_solicitante` e corpo, e os erros de validação, `401` e timeout.
-3. Implementar configuração, CPF por usuário, domínios, validador, porta, adaptador, log, status e métrica; atualizar `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore` ou leitura da documentação oficial com acesso à web): "quais endpoints, autenticação, headers, campos obrigatórios e códigos de erro a API FNRH v2.4 define para reserva, hóspede, check-in, check-out, no-show, cancelamento, pré-check-in e domínios?"; "como o `notifications` estruturou o `FcmPushGateway` (porta, adaptador, propriedades, timeouts, WireMock) e o que ARCHITECTURE §12 e §8.3 exigem de integrações e credenciais?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: credencial ou CPF em texto claro no banco, no log ou numa resposta; dado de RN-19 ou número de documento no log de integração; `cpf_solicitante` ausente em alguma chamada; stubs WireMock que não conferem headers e corpo; `fnrh` importando `iam` ou um `HealthIndicator` na readiness.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E07 — "Configuração, domínios e adaptador Serpro da FNRH" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Contexto confirmado", o "Protocolo de execução", as restrições e as hipóteses H5, H6, H20, H21 e H22 —, a seção E07 inteira, docs/SPEC.md §5.9 e §8.2.17 e docs/ARCHITECTURE.md §12. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que o gate do M4 em docs/roadmaps/roadmap-m4-tarifas-reservas.md está #concluida; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar o módulo fnrh com credenciais cifradas, CPF solicitante padrão e por usuário, domínios oficiais com cache e leitura para o cliente, validação local (documento, IBGE, nacionalidade) com erros por campo, a porta FnrhGateway com o adaptador REST do Serpro (Basic Auth, header cpf_solicitante, timeouts, erros tipados), log de integração redigido, GET /api/v1/fnrh/status e uma métrica zeny_fnrh, tudo testado com WireMock a partir da documentação v2.4. Não ligue eventos, não faça chamadas reais ao Serpro e não importe iam.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E07 para #em-andamento no índice e no título;
-- investigação: um subagente Explore (ou você, se precisar de acesso à web) responde às perguntas da seção E07; registre o levantamento da API no handoff;
-- escreva os testes de contrato WireMock primeiro (sucesso, erro de validação, 401, timeout), implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize ModularityTest, CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E07.
-
-Critérios de aceite (detalhes na seção E07):
-- cada operação de FnrhGateway tem teste WireMock que confere URL, Basic Auth, cpf_solicitante e corpo;
-- credenciais e CPFs gravados cifrados e nunca devolvidos em claro;
-- validação local rejeita documento, IBGE e nacionalidade inválidos com erros por campo;
-- log de integração sem dados de RN-19; ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, levantamento da API, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -946,6 +816,17 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, l
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Leia `docs/SPEC.md` §5.9 e §8.2.17, `docs/ARCHITECTURE.md` §12 e §8.3 e as hipóteses H5, H6, H20, H21 e H22.
+- A documentação oficial da API FNRH v2.4 não está no repositório (link na SPEC §11): o plano precisa de acesso à web ou do PDF em `docs/` (H6). Levante os endpoints, a autenticação, os headers, os campos obrigatórios e os códigos de erro de reserva, hóspede, check-in, check-out, no-show, cancelamento, pré-check-in e domínios, e registre o levantamento no handoff.
+- O modelo de adaptador é o `FcmPushGateway` do `notifications` (porta, adaptador, propriedades, timeouts) com o `FcmTestServer` (WireMock); os stubs WireMock conferem headers e corpo, e ficam nomeados pela versão da API.
+- Nota da E02 (B2): conferir na v2.4 se o menor brasileiro só com RG é aceito; se não for, registrar em "Decisões para o usuário".
+- Decisões abertas desta etapa (em "Decisões abertas para a entrevista de cada etapa"): as operações e os campos exatos da v2.4 (pré-check-in, reserva antes da chegada) e onde fica a URL base.
+- O módulo novo pede uma nota de tema nova na captura de atualização do brain: `ZenyHotelManager - Módulo fnrh`.
+
 **Bloqueios:** Nenhum bloqueio conhecido. Se a documentação v2.4 estiver inacessível à sessão, registre o bloqueio com a ação "usuário fornece o PDF da documentação em `docs/` ou um link acessível; registrar a decisão em H6 e trocar a tag para `#pendente`".
 
 **Riscos e mitigação:**
@@ -954,11 +835,11 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, l
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -969,7 +850,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, l
 
 **Por que agora:** a FNRH é obrigatória (SPEC §5.9); com os eventos da E01, o check-in da E02 e o adaptador da E07, o envio pode ser ligado.
 
-**Dependências e paralelismo:** E01, E02, E07. Não paralelizável com E07.
+**Dependências:** E01, E02, E07.
 
 **Escopo:** `fnrh` (`allowedDependencies` ganha `reservations` e `notifications`, já na ARCHITECTURE §3.1):
 
@@ -980,45 +861,6 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, l
 - **Alerta de falha** (RF-FNRH-03, RF-NOT-01): quando uma submissão vira `FAILED` ou `INVALID`, o próprio caso de uso chama `NotificationsApi.notify` com o tipo `notifications.integration-failure` (obrigatório no painel) para `NotificationRecipients.withPermission(fnrh.submissions.manage)`, com o código da reserva e a operação, **sem** nome nem documento do hóspede.
 
 **Fora de escopo:** chamadas reais (E09); no-show (M6, H15); expurgo de dados sensíveis (M10).
-
-**Passos de implementação:**
-
-1. Testes de módulo: cada evento gera a submissão certa; evento reentregue (listener chamado de novo) não duplica.
-2. Testes de integração com WireMock: sucesso grava ID remoto; falha temporária reagenda com backoff (com o `MutableClock`); falha permanente fica pendente e visível; ordem check-in → check-out respeitada; menor com o responsável; reserva de OTA com o número externo; dado inválido fica `INVALID` com os erros e sem chamada ao Serpro.
-3. Teste: com o WireMock devolvendo `503`, o check-in da E02 conclui com `200`; a submissão que vira `FAILED` gera uma notificação sem dado pessoal para quem tem a permissão.
-4. Implementar listeners, job, endpoints, view, métrica e alerta; atualizar `ModularityTest`, `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma; padrão nos handoffs da E01 e da E07 e no `PushDispatchListener` do `notifications` (envio idempotente com registro *append-only*).
-- Partes paralelas: nenhuma.
-- Foco do verificador: falha da FNRH afetando o check-in; submissão duplicada; dado sensível persistido fora do `guests` (tabela, log, trilha, notificação, view); check-out enviado antes do check-in; listener que envia na transação do evento.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E08 — "Envio assíncrono e pendências da FNRH" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições e as hipóteses H4, H5, H15, H16, H21 e H22 —, a seção E08 inteira e o "Evidências e handoff" de E01, E02 e E07. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E01, E02 e E07 estão #concluida e que o código bate com o handoff delas; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: ligar fnrh aos eventos de reservations (criação, alteração, cancelamento, reativação, confirmação, check-in, desfazer check-in e check-out) com listeners que só gravam FnrhSubmission idempotentes, enviadas por um job com ShedLock (adiado nos testes), retry com backoff, limite e ordem por reserva, validação local antes do envio e o CPF solicitante pela H5; guardar IDs remotos, vincular menores ao responsável, enviar o número da OTA, expor GET /api/v1/fnrh/submissions e o retry manual, a view fnrh.report_submissions, a métrica de pendentes e o alerta notifications.integration-failure sem dado de hóspede. Falha de envio nunca afeta check-in ou check-out. No-show fica para o M6.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E08 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de módulo e de integração com WireMock primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize ModularityTest, CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E08.
-
-Critérios de aceite (detalhes na seção E08):
-- cada evento gera exatamente uma submissão; reentrega não duplica;
-- sucesso grava o ID remoto; falha temporária reagenda com backoff; falha permanente aparece nas pendências e notifica sem dado pessoal;
-- check-in com o Serpro (WireMock) fora do ar conclui normalmente; check-out nunca sai antes do check-in;
-- ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1039,6 +881,15 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Hipóteses H4, H5, H15, H16, H21 e H22; leia os handoffs de E01, E02, E03 e E07. Das notas deles: os dados de check-in vêm da `ReservationsApi.reservation` (`guests[].travelReason`, `transportMode`, `minorAuthorization`); o check-in nunca chama o `fnrh`, e a regra mínima do check-in não substitui a validação local da FNRH (H21); o walk-in publica `ReservationCreated` (e, num plano com cartão, `ReservationConfirmed`) e `GuestCheckedIn` na mesma transação, em ordem, e é tratado como reserva criada e já hospedada.
+- Modelo de envio idempotente com registro *append-only*: o `PushDispatchListener` do `notifications`. O listener só grava a submissão; o envio nunca acontece na transação do evento.
+- Decisões abertas desta etapa (em "Decisões abertas para a entrevista de cada etapa"): quais eventos geram envio (reserva criada sem documentos completos, alteração, reativação, desfazer check-in) e o limite de tentativas.
+- O texto novo vai à nota de tema `ZenyHotelManager - Módulo fnrh` (proposta na E07) e à `ZenyHotelManager - Eventos e jobs` (os listeners novos de produção e o job) pela captura de atualização do brain.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -1048,11 +899,11 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1063,47 +914,11 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Por que agora:** os stubs da E07 vêm da documentação; só a homologação confirma o contrato real antes da operação do hotel.
 
-**Dependências e paralelismo:** E08. Não paralelizável.
+**Dependências:** E08.
 
 **Escopo:** configuração das credenciais de homologação pela API de configuração da E07 (ou variável de ambiente, conforme a E07 decidir; nunca no repositório); roteiro de homologação em `docs/` (a criar) com os casos executados e os IDs remotos obtidos; ajustes no adaptador e nos stubs WireMock para refletir o comportamento real.
 
 **Fora de escopo:** credenciais de produção e operação real.
-
-**Passos de implementação:**
-
-1. Confirmar que D1 foi decidida e as credenciais estão disponíveis fora do repositório.
-2. Executar o roteiro, registrar respostas e corrigir divergências no adaptador e nos stubs.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação: nenhuma.
-- Partes paralelas: nenhuma.
-- Foco do verificador: credencial ou dado pessoal real no repositório, nos stubs ou no roteiro; stubs não atualizados após divergência real.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E09 — "Homologação da FNRH com o Serpro" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a decisão D1 —, a seção E09 inteira e o "Evidências e handoff" de E07 e E08. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E08 está #concluida, que D1 está decidida e que o usuário forneceu as credenciais de homologação fora do repositório; se não, mantenha a etapa #bloqueada e relate.
-
-Objetivo: executar contra o ambiente de homologação do Serpro os envios de reserva, hóspedes, check-in, check-out e cancelamento (e no-show, se o M6 já o publicar), ajustar o adaptador e os stubs WireMock às divergências reais e registrar o roteiro e os resultados num documento em docs/. Nunca grave credenciais nem dados pessoais reais no repositório; use dados de teste.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E09 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- execute o roteiro, corrija divergências com testes WireMock atualizados e rode ./gradlew build;
-- verificação independente com o Prompt do verificador, com foco em credencial ou dado real no repositório e stubs desatualizados.
-
-Critérios de aceite (detalhes na seção E09):
-- todas as operações do roteiro executadas com sucesso na homologação, com IDs remotos registrados;
-- divergências corrigidas no adaptador e refletidas nos stubs;
-- nenhuma credencial ou dado pessoal real no repositório; ./gradlew build verde.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, roteiro e resultados, comandos, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1116,6 +931,10 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, r
 
 - `./gradlew build` → sucesso.
 - Inspeção manual do diff e do roteiro em busca de credenciais e dados reais.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** antes de planejar, confirme que a D1 foi decidida e que o usuário forneceu as credenciais de homologação fora do repositório; leia os handoffs de E07 e E08. Use só dados de teste: credenciais e dados pessoais reais nunca entram no repositório, nos stubs nem no roteiro.
 
 **Bloqueios:**
 
@@ -1130,11 +949,11 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, r
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1145,54 +964,17 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, r
 
 **Por que agora:** a ficha de registro, o extrato e a confirmação (E11) e, depois, as comandas de produção do PDV (M8) dependem da fila de impressão.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o gate do M4 `#concluida`. Paralelizável com E01 a E08 em worktree separado; conflito em `gradle/libs.versions.toml` (se a etapa precisar de biblioteca), `SecurityConfiguration`, `ApiSecurityTest`, `api/openapi.yaml` e `CLAUDE.md`.
+**Dependências:** nenhuma dentro deste roadmap; exige o gate do M4 `#concluida`. Independente de E01 a E08 (informativo: mexe em `gradle/libs.versions.toml`, se precisar de biblioteca, `SecurityConfiguration`, `ApiSecurityTest` e `api/openapi.yaml`).
 
 **Escopo:** pacote `printing` (a criar), `PrintingModule.kt` com `allowedDependencies` = `shared` (o `hotel` entra na E11), o teste dele no `ModularityTest`:
 
 - `PrintAgent` (nome, último contato, hash SHA-256 do token) e `Printer` (nome, tipo `THERMAL_ESCPOS` ou `A4_PDF`, endereço na LAN, agente) — SPEC §8.2.18; endpoints de administração com `printing.agents.manage` (H20); geração e rotação do token exibido uma única vez; desativação revoga.
-- **Autenticação do agente** (H23, revisão humana): token opaco com prefixo próprio numa `SecurityFilterChain` separada, só para `/api/v1/print-agents/me/**`, com o mínimo (receber e confirmar os próprios jobs); um token de agente noutro caminho e um JWT de usuário no caminho do agente são recusados; esquema de segurança próprio no contrato e o `ApiSecurityTest` atualizado (nenhum endpoint vira público).
+- **Autenticação do agente** (H23; é o motivo da parada desta etapa para revisão): token opaco com prefixo próprio numa `SecurityFilterChain` separada, só para `/api/v1/print-agents/me/**`, com o mínimo (receber e confirmar os próprios jobs); um token de agente noutro caminho e um JWT de usuário no caminho do agente são recusados; esquema de segurança próprio no contrato e o `ApiSecurityTest` atualizado (nenhum endpoint vira público).
 - `PrintJob` com tipo de documento, impressora, conteúdo renderizado (PDF ou ESC/POS) **cifrado pelo `ContentCipher`** no schema `printing` com teto de tamanho (H17), situação (`PENDING`, `SENT`, `PRINTED`, `FAILED`, `x-extensible-enum` na resposta), tentativas e uma posição crescente; criação pela API pública do módulo (`PrintingApi`, para a E11) e por `POST /api/v1/print-jobs` com conteúdo já renderizado (`printing.jobs.manage`); `GET /api/v1/print-jobs` (`printing.jobs.read`) sem o conteúdo.
 - **Entrega ao agente:** `GET /api/v1/print-agents/me/jobs/stream` (SSE próprio do `printing`, com `Last-Event-ID` = a posição do job; na reconexão, os pendentes depois dela, lidos do banco) e `GET /api/v1/print-agents/me/jobs?wait=…` (long-poll); conteúdo do job por `GET /api/v1/print-agents/me/jobs/{id}/content`; `POST /api/v1/print-agents/me/jobs/{id}/ack` com sucesso ou falha.
 - Job com ShedLock (adiado nos testes) que reenvia jobs não confirmados após timeout configurável e marca falha após o limite; o conteúdo é apagado depois da confirmação mais um prazo (`zeny.printing.*`).
 
 **Fora de escopo:** renderização de documentos e templates (E11); o software do agente (outro repositório).
-
-**Passos de implementação:**
-
-1. Testes de integração: agente autenticado recebe só jobs das suas impressoras (SSE e long-poll); sem token ou com token revogado → `401`; token de agente fora de `/api/v1/print-agents/me/**` → recusado; JWT de usuário no caminho do agente → recusado; ack muda a situação; job sem ack é reenviado (`MutableClock`) e falha após o limite; reconexão com `Last-Event-ID` entrega os pendentes; token rotacionado invalida o anterior; conteúdo cifrado na coluna.
-2. Implementar entidades, migração, cadeia de segurança, endpoints, SSE, long-poll e job; atualizar `ModularityTest`, `ApiSecurityTest`, `CLAUDE.md` e `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "como `SecurityConfiguration`, `ApiSecurityTest` e o `OpenApiConfiguration` montam a cadeia e o esquema de segurança, e como o `RealtimeHub`/`StreamController` do `shared` implementam SSE (virtual threads, heartbeat, encerramento), para uma cadeia e um stream próprios do agente?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: agente acessando jobs de outro agente ou endpoints fora da impressão; JWT de usuário aceito no caminho do agente; token guardado em claro ou no log; conteúdo do job em claro no banco; job perdido quando o agente reconecta; endpoint de usuário que ficou público.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E10 — "Agentes, impressoras e fila de impressão" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Contexto confirmado", o "Protocolo de execução" e as hipóteses H17, H20 e H23 —, a seção E10 inteira, docs/SPEC.md §5.22 e §8.2.18 e docs/ARCHITECTURE.md §8.1, §14 e D13. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que o gate do M4 em docs/roadmaps/roadmap-m4-tarifas-reservas.md está #concluida; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar o módulo printing (dependendo só de shared) com cadastro de agentes e impressoras, token de agente guardado como hash e exibido uma vez, uma cadeia de segurança própria só para /api/v1/print-agents/me/**, fila de PrintJob com o conteúdo cifrado pelo ContentCipher, entregue por SSE próprio (Last-Event-ID = posição do job) e long-poll, ack pelo agente e reenvio de jobs não confirmados por um job com ShedLock. Não renderize documentos (E11) e não torne nenhum endpoint público.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E10 para #em-andamento no índice e no título;
-- investigação: um subagente Explore responde à pergunta da seção E10;
-- escreva os testes de integração primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize ModularityTest, ApiSecurityTest, CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E10.
-
-Critérios de aceite (detalhes na seção E10):
-- agente recebe só jobs das próprias impressoras, por SSE e por long-poll; sem token → 401; token de agente fora do caminho do agente e JWT de usuário no caminho do agente recusados;
-- ack muda a situação; job sem ack é reenviado após o timeout e falha após o limite; reconexão com Last-Event-ID entrega os pendentes;
-- token só como hash; rotação invalida o anterior; conteúdo cifrado no banco;
-- ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1209,6 +991,16 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
 
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Leia `docs/SPEC.md` §5.22 e §8.2.18, `docs/ARCHITECTURE.md` §8.1, §14 e D13 e as hipóteses H17, H20 e H23.
+- Modelos no código: a cadeia e o esquema de segurança de `SecurityConfiguration`, `ApiSecurityTest` e `OpenApiConfiguration`; o SSE do `shared` (`RealtimeHub`, `StreamController`: *virtual threads*, *heartbeat*, encerramento) — o stream do agente é próprio do `printing`, porque o do `shared` exige usuário e sessão de dispositivo.
+- O isolamento das duas cadeias se prova testando cada combinação token × caminho (a ordem das cadeias e o `securityMatcher` decidem quem atende).
+- Decisões abertas desta etapa (em "Decisões abertas para a entrevista de cada etapa"): teto de tamanho do conteúdo, prazo de guarda e tempo de reenvio do job não confirmado.
+- O módulo novo pede uma nota de tema nova na captura de atualização do brain: `ZenyHotelManager - Módulo printing`; o segundo mecanismo de autenticação vai também à `ZenyHotelManager - Segurança, autenticação e autorização`.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -1218,11 +1010,11 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1233,7 +1025,7 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Por que agora:** a RF-REC-01 prevê imprimir a ficha no check-in, e a recepção precisa entregar extrato e confirmação na Fase 1.
 
-**Dependências e paralelismo:** E02, E10. Não paralelizável (toca `printing`, `frontdesk`, `billing`, `reservations`, `hotel`, `files` e `guests`).
+**Dependências:** E02, E10.
 
 **Escopo:**
 
@@ -1242,47 +1034,9 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
   - `frontdesk`: ficha de registro (estadia, hóspedes com nome, nacionalidade, data de nascimento, endereço se houver e o documento **mascarado** pela leitura da H11, motivo de viagem; nada de RN-19), com endpoint de PDF e `POST …/registration-card/print`;
   - `billing`: extrato em PDF a partir do extrato JSON existente (`GET /api/v1/folios/{id}/statement`, a prévia `GUEST` para o hóspede), com endpoint de PDF e de impressão e a permissão `billing.folios.read`;
   - `reservations`: confirmação com as políticas copiadas na reserva e os textos e horários da `HotelApi.policy()` (RN-11), com endpoint de PDF e de impressão e a permissão `reservations.reservations.read`.
-- Os caminhos exatos (rota própria ou `Accept: application/pdf`) seguem a convenção de API do `CLAUDE.md`; a etapa decide e registra no handoff (o contrato precisa descrever a resposta binária).
+- Os caminhos exatos (rota própria ou `Accept: application/pdf`) seguem a convenção de API (nota "ZenyHotelManager - Convenções de API" do brain); a etapa decide e registra no handoff (o contrato precisa descrever a resposta binária).
 
 **Fora de escopo:** comandas de produção e cupons do PDV (M8); relatórios do fechamento (M6, em `reporting`); porta em `shared` para documentos (descartada por D2); envio por e-mail.
-
-**Passos de implementação:**
-
-1. Testes: cada módulo dono monta os dados certos e aplica sua permissão; PDF gerado contém os campos-chave (extração de texto); ESC/POS contém o texto e o comando de corte; documento sem permissão → `403`; ficha e demais documentos nunca contêm RN-19 nem número inteiro de documento; dados do hotel vindos da `HotelApi` (mudados pela API no teste e devolvidos no fim); `printing` sem dependência de módulo de negócio nem listener.
-2. Implementar a API de renderização e impressão, os acréscimos à `HotelApi` e à `FilesApi`, os templates e os endpoints nos módulos donos.
-3. Atualizar a ARCHITECTURE §3.1 (`printing` → `files`), o `ModularityTest` e o `CLAUDE.md` (como um módulo registra um template e imprime) e o `README.md`.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "que campos RF-REC-01, RF-CTA-12, RF-RES-12, RN-11 e RF-CFG-01/02 exigem na ficha, no extrato e na confirmação?"; "como a E10 expôs a fila de `PrintJob`, como o `billing` monta o extrato JSON (`FolioStatementService`) e como `hotel` e `files` guardam o logotipo e o conteúdo sensível?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: `printing` dependendo de módulo de negócio ou escutando eventos; documento acessível sem a permissão do módulo dono; dado de RN-19 ou documento inteiro em PDF ou no job; dados do hotel fixos no código ou no template; a leitura nova da `FilesApi` servindo anexo sem conferir quem chama.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E11 — "Documentos: ficha, extrato e confirmação" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições, a decisão D2 e as hipóteses H8, H11, H17 e H18 —, a seção E11 inteira, a regra por camadas em docs/ARCHITECTURE.md §3.1 e o "Evidências e handoff" de E02 e E10. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 e E10 estão #concluida e que o código bate com o handoff delas; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: no modelo dono + printing (D2), criar em printing a API pública render e print sobre templates registrados pelos módulos donos, com o cabeçalho do hotel por uma HotelApi.profile() nova e o logotipo por uma leitura de conteúdo nova na FilesApi (aresta printing → files); implementar a ficha de registro em frontdesk (documento mascarado), o extrato em PDF em billing a partir do extrato JSON existente e a confirmação com as políticas e os textos da RN-11 em reservations, cada um com endpoint de PDF e de impressão e checando a própria permissão. printing não conhece dados de negócio nem escuta eventos; nenhum documento contém dados de RN-19 nem número inteiro de documento. Não crie porta em shared para documentos.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E11 para #em-andamento no índice e no título;
-- investigação: um subagente Explore responde às perguntas da seção E11;
-- escreva os testes primeiro, implemente, rode ./gradlew updateOpenApi, ./gradlew build e .github/scripts/check-api-breaking.sh e atualize ARCHITECTURE §3.1, ModularityTest, CLAUDE.md e README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E11.
-
-Critérios de aceite (detalhes na seção E11):
-- os três documentos saem em PDF e em PrintJob ESC/POS ou A4, com os campos-chave verificados por teste;
-- documento sem a permissão do módulo dono → 403; nenhum dado de RN-19 nem documento inteiro;
-- ModularityTest passa com printing dependendo só de shared, hotel e files;
-- ARCHITECTURE §3.1 e CLAUDE.md atualizados; ./gradlew build verde e oasdiff sem ERR.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1292,12 +1046,23 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 - [ ] Nenhum documento contém raça/cor, deficiência nem número inteiro de documento (a ficha mostra o mascarado; teste).
 - [ ] Dados do hotel nos documentos vêm da `HotelApi.profile()` e o logotipo da `FilesApi`, não de texto fixo (teste muda os dados pela API e os vê no PDF).
 - [ ] `ModularityTest` passa; `printing` depende só de `shared`, `hotel` e `files` e não tem listener de eventos de outros módulos.
-- [ ] A tabela da ARCHITECTURE §3.1 inclui `printing` → `files`; o `CLAUDE.md` explica como registrar template e imprimir; `./gradlew build` verde e oasdiff sem `ERR`.
+- [ ] A tabela da ARCHITECTURE §3.1 inclui `printing` → `files`; a captura de atualização do brain explica como registrar template e imprimir; `./gradlew build` verde e oasdiff sem `ERR`.
 
 **Validação obrigatória:**
 
 - `./gradlew build` → sucesso.
 - `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Leia a decisão D2, as hipóteses H8, H11, H17 e H18, a regra por camadas da `docs/ARCHITECTURE.md` §3.1 e os handoffs de E02 e E10.
+- Campos de cada documento: RF-REC-01 (ficha), RF-CTA-12 (extrato), RF-RES-12 e RN-11 (confirmação) e RF-CFG-01/02 (dados do hotel) em `docs/SPEC.md`. O extrato em PDF parte do JSON do `FolioStatementService`; o logotipo e o conteúdo sensível estão descritos nas notas de tema `ZenyHotelManager - Módulos hotel e staff` e `ZenyHotelManager - Módulo files`.
+- Nota da E02: a `GuestsApi.identification` já dá os documentos mascarados para a ficha.
+- A leitura nova de conteúdo na `FilesApi` não pode servir anexo sem conferir quem chama.
+- Testes que mudam os dados do hotel pela API devolvem o original no fim (o banco é compartilhado).
+- Decisões abertas desta etapa (em "Decisões abertas para a entrevista de cada etapa"): os caminhos dos PDFs (rota própria ou negociação por `Accept`) e o que a ficha mostra do documento.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1308,11 +1073,11 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1323,7 +1088,7 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério de entrada do marco M6.
 
-**Dependências e paralelismo:** E03, E04, E05, E06, E08, E11 (as etapas-folha, que cobrem transitivamente E01, E02, E07 e E10). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
+**Dependências:** E03, E04, E05, E06, E08, E11 (as etapas-folha, que cobrem transitivamente E01, E02, E07 e E10). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
 
 **Escopo:**
 
@@ -1331,59 +1096,30 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 - Teste de integração ponta a ponta do marco (`MilestoneM5EndToEndTest`, na raiz do pacote de testes, com os modelos de role do boot): reserva → alocação → check-in com menor autorizado e caução → submissão FNRH enviada (WireMock) → ficha em `PrintJob` → troca de UH → lançamento e pagamento manual → extrato → check-out com a caução liberada e as contas encerradas → submissão de check-out; walk-in; desfazer check-in com aprovação; o Serpro fora do ar sem afetar o check-in.
 - Roteiro `curl` contra um `docker compose` isolado (`-p` próprio, `--env-file` no scratchpad gerado do `docker/.env.example`, porta própria, profile `prod`, pelo proxy, `down -v` no fim; sem tocar no `docker/.env` do usuário), modelo no handoff da E13 do M4: o mesmo cenário com os modelos de role; as publicações dos eventos de reserva e de hospedagem `COMPLETED` no listener do `fnrh`; a FNRH apontada para um WireMock avulso na rede do projeto, se viável (senão, a fila de pendências mostra a submissão e o envio fica nos testes); um agente simulado por `curl` no SSE do agente recebendo e confirmando o job da ficha; logs do `prod` sem documento, nome de hóspede, credencial da FNRH nem token de agente.
 - Conferir cada item da "Definição global de pronto"; registrar o estado da E09.
-- Revisar `CLAUDE.md` (APIs públicas, eventos, portas e views do marco) e a seção "API" do `README.md`; registrar a conclusão do M5 no histórico de revisões de `docs/roadmaps/README.md`.
+- Revisar as notas do projeto no brain e as capturas pendentes, publicando a captura de atualização com as correções (APIs públicas, eventos, portas e views do marco) e a seção "API" do `README.md`; registrar a conclusão do M5 no histórico de revisões de `docs/roadmaps/README.md`.
 
 **Fora de escopo:** funcionalidades novas. Problemas encontrados voltam para a etapa de origem (reabrir com `#em-andamento` e registrar no handoff dela), salvo ajustes triviais de documentação.
-
-**Passos de implementação:**
-
-1. Escrever o teste ponta a ponta do marco.
-2. Rodar tudo do zero numa cópia limpa e o roteiro no compose isolado, registrando a evidência de cada item.
-3. Revisar documentação e atualizar o README dos marcos.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação: nenhuma; o modelo do roteiro é o handoff da E13 de `docs/roadmaps/roadmap-m4-tarifas-reservas.md`.
-- Partes paralelas: nenhuma.
-- Foco do verificador: item sem evidência; cenário ponta a ponta que pula módulos com mocks (só a FNRH em WireMock); listener do `fnrh` não mostrado no compose; dado de hóspede ou credencial exposto em endpoint, view, job de impressão ou log; dependência fora da ARCHITECTURE §3.1; pendência da E09 omitida.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E12 — "Gate do marco M5" do roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a "Definição global de pronto" —, a seção E12 inteira, o "Evidências e handoff" de todas as etapas E01 a E11 e, como modelo de roteiro, o handoff da E13 de docs/roadmaps/roadmap-m4-tarifas-reservas.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E03, E04, E05, E06, E08 e E11 estão #concluida; se não, ou se o código divergiu do plano, pare e relate.
-
-Objetivo: escrever o teste ponta a ponta do marco (MilestoneM5EndToEndTest: reserva, alocação, check-in com menor autorizado e caução, FNRH em WireMock, ficha em PrintJob, troca de UH, lançamento e pagamento, extrato, check-out, walk-in, desfazer com aprovação, Serpro fora do ar), verificar numa cópia limpa, sem caches nem estado local, cada item da definição global de pronto do M5 e rodar o roteiro num docker compose isolado pelo proxy, com as publicações dos eventos concluídas pelo listener do fnrh e um agente de impressão simulado. Registre o estado da E09 como pendência obrigatória se ela não estiver concluída. Não implemente funcionalidade nova: problemas voltam à etapa de origem, salvo ajustes triviais de documentação.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E12 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva o teste ponta a ponta, rode do zero numa cópia limpa ./gradlew clean build, clean test (ao menos três rodadas), lint e checkOpenApi, rode .github/scripts/check-api-breaking.sh contra ffae917, suba o compose isolado (-p próprio, env no scratchpad, porta própria, prod) e registre a evidência de cada item; derrube com down -v;
-- revise o CLAUDE.md e o README.md e registre a conclusão do M5 no histórico de docs/roadmaps/README.md;
-- verificação independente com o Prompt do verificador, com o foco listado na seção E12.
-
-Critérios de aceite (detalhes na seção E12):
-- todos os itens da definição global de pronto marcados com evidência numa cópia limpa e, onde o compose alcança, no roteiro;
-- teste ponta a ponta passa sem mocks entre módulos (só a FNRH em WireMock);
-- docs/roadmaps/README.md registra a conclusão do M5 e o estado de E09.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E12 (snapshot, verificações, resultados, parecer do verificador, notas para o marco M6) e responda com um resumo curto. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
 - [ ] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa e, onde o compose alcança, no roteiro pelo proxy (inclusive as publicações de `ReservationCreated` e `GuestCheckedIn` concluídas pelo listener do `fnrh`).
 - [ ] O teste ponta a ponta passa usando os módulos reais (só a FNRH em WireMock), nas três rodadas.
 - [ ] O estado de E09 está registrado: concluída, ou pendência obrigatória antes da operação real, com a ação de desbloqueio.
-- [ ] `CLAUDE.md` e `README.md` coerentes com o código; `docs/roadmaps/README.md` registra a conclusão do M5 no histórico de revisões.
+- [ ] Notas do projeto no brain (com as capturas pendentes) e `README.md` coerentes com o código; `docs/roadmaps/README.md` registra a conclusão do M5 no histórico de revisões.
 
 **Validação obrigatória:**
 
 - `./gradlew clean build`, `clean test`, `lint` e `checkOpenApi` numa cópia limpa, sem cache → sucesso; `.github/scripts/check-api-breaking.sh ffae917` → nenhuma mudança `ERR`.
 - `docker compose -p` isolado `-f docker/compose.yaml up -d --build` → readiness `UP` e roteiro concluído; `down -v` em seguida.
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- O modelo do roteiro é o handoff da E13 de `docs/roadmaps/roadmap-m4-tarifas-reservas.md`; leia também os handoffs de E01 a E11. A "cópia limpa" é a do commit da ponta da branch `roadmap/m5-recepcao-fnrh` (o antigo "snapshot").
+- Pendência de teste da E03, se a E05 não a cobriu: um id de hóspede mesclado no pedido do walk-in deve ser recusado com rollback.
+- O cenário ponta a ponta usa os módulos reais; só a FNRH fica em WireMock. O que o compose não alcança fica com a evidência dos testes da cópia limpa, registrada no handoff.
+- Na captura de atualização do brain, além das correções, o estado do marco vai para `ZenyHotelManager - Estado por marco`.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1394,12 +1130,12 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, verificações, resul
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para o marco M6: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa (marco M6): —
 
 ---
 
@@ -1409,3 +1145,4 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, verificações, resul
 - 2026-10-13 — aplicada a regra por camadas da ARCHITECTURE §3.1 e as decisões da entrevista: H7 virou D2 (dono + printing) e E11 foi reescrita sem porta em `shared`, com `printing` → `hotel` para o cabeçalho; E08 ganhou o alerta de falha via `notifications` (RF-FNRH-03, RF-NOT-01); contexto e restrições atualizados (`frontdesk` → `hotel`, `printing`). Recados seguem sem push porque a SPEC não pede.
 - 2026-10-22 — sincronizado com o código depois do gate do M4 (commit `ffae917`, depois de `d68e1e3` da E12; CI da E12 verde no run `39723562893`, a do gate em andamento no run `39730633697`). Cabeçalho com o pré-requisito atendido e o aviso "escrito antes do código" trocado pela nota de sincronização. "Contexto confirmado" reescrito com os módulos existentes, a última migração (`V2026_10_22_0427`), os comandos oficiais, as convenções (views `report_*`, `AppendOnlyTables`, `requireOrApproval`, `@Idempotent`, `x-extensible-enum`, códigos de permissão sem hífen, actuator restrito), o apoio de testes, os gates e as APIs públicas reais (`ReservationsApi` sem `assignRoom` nem transições de hospedagem e com eventos sem autor e sem consumidor; `BillingApi` com `balanceOf`/`closeFolio` e sem registro nem liberação de caução, `key` e `source` como `enum` fechado; `RoomsApi` com `isReadyForCheckIn`, `markOccupied` e `markVacant(CHECK_OUT)`; `GuestsApi` sem documentos fora da `fnrhData`; `HotelApi` sem `profile()`; `FilesApi` sem conteúdo; SSE do `shared` só de usuário; sem credencial de serviço), mais as pendências do M4 com a etapa de cada uma e as que passam adiante. Hipóteses: H1 a H4 confirmadas no código, H9 caiu (substituída pela H23), H22 confirmada no código e H19 na documentação; novas H10 a H24 (H5 refeita), as decididas pelo usuário marcadas "provisória" com a opção recomendada (P1 a P12 da sincronização); D1 continua em aberto. Etapas: E01 (dados de check-in e `MinorAuthorization` no `reservations`, RN-24 no domínio, check-out antecipado com a alocação encerrada, `assignRoom` na API pública, alteração do hospedado pelo `PUT`, eventos com `performedBy`; a cotação de early/late saiu para a E02), E02 (módulo `frontdesk` com as arestas `hotel` e `files`, leitura de documentos sem número na `GuestsApi`, caução pela `BillingApi`, cotação de early/late, desfazer com step-up, códigos de permissão sem hífen), E03 (`createBooking` + `assignRoom` + check-in, hóspedes já cadastrados, sem desconto), E04 (late pelo código `ROOM_CHARGE`, `balanceOf`, liberação de caução e `closeFolio`), E05 (troca de UH pelo `frontdesk`, extensão e redução pelo `PUT` da E01, cobrança do early no check-in), E06 (endpoints pela convenção, aresta `frontdesk` → `staff`), E07 (status e métrica no lugar do health, CPF por usuário, domínios para o cliente), E08 (dependência nova da E02; job com ShedLock, ordem, `INVALID`, view `fnrh.report_submissions`, tipo `notifications.integration-failure`; no-show para o M6), E09 (evidência e ação de desbloqueio reconfirmadas; segue `#bloqueada`), E10 (cadeia de segurança e SSE próprios do agente, conteúdo cifrado; revisão humana passou a sim), E11 (`HotelApi.profile()`, leitura de conteúdo na `FilesApi` com `printing` → `files`, extrato PDF a partir do JSON existente, ficha com documento mascarado) e E12 (cópia limpa, oasdiff contra `ffae917`, `MilestoneM5EndToEndTest` e compose isolado com o listener do `fnrh` e um agente simulado); validações trocadas pelos comandos oficiais (`./gradlew build` e o oasdiff). Nenhuma etapa nova, removida ou renumerada; tags inalteradas (E09 `#bloqueada`, as demais `#pendente`).
 - 2026-10-22 — decisões da sincronização (P1 a P12) **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a), tirada a marca de provisória das H5, H10 a H18, H21, H23 e H24. A P7 (H14) com ressalva: a E04 passou a lançar, no day use e no check-out no mesmo dia da chegada, a diária congelada e os pacotes `ON_ARRIVAL`/`DAILY` da data antes de conferir o saldo, uma vez só, por uma chave de idempotência opcional nova na `BillingApi.post` (acréscimo mínimo sem quebrar contrato), com teste e a nota para o M6 de usar a mesma chave. Revisão humana da E10 mantida (segundo mecanismo de autenticação). CI do push do gate do M4 verde no run `39730633697` (build, oasdiff e imagem): ressalva do cabeçalho retirada. Tags inalteradas.
+- 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m5-recepcao-fnrh`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.

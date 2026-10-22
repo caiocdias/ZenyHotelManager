@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/development-roadmap/scripts/load-brain.py\" ZenyHotelManager SessionStart",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/development-roadmap/scripts/load-brain.py\" ZenyHotelManager SubagentStart",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

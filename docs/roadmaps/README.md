@@ -4,7 +4,7 @@
 
 O desenvolvimento do servidor está dividido em **11 marcos**. Cada marco entrega um conjunto de módulos do monólito modular que funciona sozinho, com build e testes verdes. O marco seguinte só acrescenta código: não reabre o que o anterior entregou.
 
-Cada marco tem seu próprio roadmap, com etapas pequenas, prompts prontos para o Claude Code e um gate final. O gate de um marco é o critério de entrada do próximo.
+Cada marco tem seu próprio roadmap, com etapas pequenas e um gate final. Desde 2026-10-22, M5 a M10 seguem o formato da skill `development-roadmap`: um único "Prompt de execução" por roadmap, que executa um lote de etapas na branch `roadmap/<slug>`, cada etapa planejada e executada pelo plugin superpowers (M0 a M4, concluídos, ficaram no formato antigo, com um prompt por etapa). O gate de um marco é o critério de entrada do próximo.
 
 ## Mapa dos marcos
 
@@ -41,8 +41,8 @@ Duas exceções controladas à regra "um marco por vez", registradas nos própri
 
 1. **Um marco por vez.** Comece o marco N só quando o gate do marco N−1 estiver `#concluida`.
 2. **Sincronize antes de começar.** Os roadmaps de M1 em diante foram escritos antes do código existir. Antes de executar a primeira etapa de um marco, peça ao Claude Code para atualizar aquele roadmap com a skill `development-roadmap`, conferindo caminhos, comandos e convenções reais registrados nos handoffs dos marcos anteriores.
-3. **Comandos oficiais** de build, teste e lint são definidos na etapa E01 de M0 e registrados no `CLAUDE.md` e no `README.md` da raiz. Os roadmaps seguintes mandam lê-los lá.
-4. **Commits ficam com você.** Nenhuma sessão faz commit, push ou deploy. Revise e faça commit entre etapas ou lotes.
+3. **Comandos oficiais** de build, teste e lint são definidos na etapa E01 de M0 e registrados no `CLAUDE.md` e no `README.md` da raiz. Os roadmaps seguintes mandam lê-los lá. Desde 2026-10-22 (M5, depois da E03) o resto da referência técnica que os roadmaps citam como "seção do `CLAUDE.md`" vive no Second Brain (nota de projeto `ZenyHotelManager` e notas de tema, carregadas pelo hook do `.claude/settings.json`, que roda o `load-brain.py` da skill `development-roadmap`), e o orquestrador de cada lote publica, no fechamento de cada etapa que muda algo descrito no brain, a captura `ZenyHotelManager - atualização <slug> Eyy` no `00 Inbox/` do brain (M5 a M10 já trazem isso no protocolo; "atualizar o `CLAUDE.md`" num handoff antigo quer dizer essa captura).
+4. **Integração fica com você.** A execução de um roadmap commita por tarefa só na branch `roadmap/<slug>` (o superpowers); nenhuma sessão faz merge, PR, push ou deploy sem a sua decisão, tomada no fim de cada lote com `superpowers:finishing-a-development-branch` (decisão do usuário, 2026-10-22). Fora dos roadmaps, commit só a pedido.
 5. **Questões em aberto** da SPEC §10 que travam etapas aparecem como `#bloqueada` no roadmap do marco afetado, com a ação de desbloqueio.
 
 ## Questões em aberto que travam marcos

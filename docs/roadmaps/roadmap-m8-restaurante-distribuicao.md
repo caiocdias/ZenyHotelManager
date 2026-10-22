@@ -1,6 +1,6 @@
 # Roadmap — M8 Restaurante, distribuição e inauguração
 
-> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · criado em 2026-10-13 · última revisão 2026-10-15
+> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · branch de execução: `roadmap/m8-restaurante-distribuicao` · criado em 2026-10-13 · última revisão 2026-10-22
 >
 > Marco 8 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · anterior: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md) · próximo: [M9 — Suprimentos](roadmap-m9-suprimentos.md)
 >
@@ -8,16 +8,11 @@
 
 ## Como usar
 
-Duas formas, ambas na raiz do repositório:
+Cole o "Prompt de execução" numa sessão limpa do Claude Code, na raiz do repositório. Ele executa até 3 etapas em sequência na branch `roadmap/m8-restaurante-distribuicao`, cada uma planejada e executada pelo plugin superpowers, e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
-- **Manual:** cole o prompt de uma etapa numa sessão limpa do Claude Code. Uma etapa por sessão.
-- **Automática:** cole o prompt da seção "Execução automática" numa sessão limpa; ela executa até 3 etapas em sequência, um subagente por etapa mais um verificador, e para para revisão. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão no `CLAUDE.md`, mais `docker`).
+**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, comandos e convenções registrados nos handoffs de M0–M7 e nas notas de tema do brain e ajuste as etapas pendentes.
 
-**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, comandos e convenções registrados nos handoffs de M0–M7 e ajuste as etapas pendentes.
-
-Etapas marcadas como paralelizáveis só devem rodar ao mesmo tempo em worktrees git separados; na mesma pasta, rode-as uma de cada vez. Este marco tem três trilhas independentes: restaurante (E01–E06), distribuição (E07–E09) e implantação (E10–E11).
-
-Em ambas, quem executa segue o "Protocolo de execução", atualiza a tag da etapa e preenche "Evidências e handoff". Não pule dependências. Revise e faça commit entre etapas ou lotes — nenhuma sessão faz commit por conta própria.
+Este marco tem três trilhas independentes: restaurante (E01–E06), distribuição (E07–E09) e implantação (E10–E11). Num lote, as etapas rodam em sequência na mesma branch; a independência entre trilhas é só informativa.
 
 ## Objetivo
 
@@ -30,9 +25,10 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 - Requisitos não funcionais: RNF-01, RNF-02, RNF-04 (≤ 2 s em tempo real), RNF-06 (p95 < 300 ms com ~30 usuários), RNF-07 (backup, RPO ≤ 1h, RTO ≤ 4h, restauração testada), RNF-08 (TLS) — SPEC §7.
 - Modelo de domínio: SPEC §8.2.15 (`Outlet`, `ProductionStation`, `MenuCategory`, `MenuItem`, `Modifier`, `DiningTable`, `Tab`, `TabItem`, `ProductionTicket`, `BreakfastAttendance`) e §8.2.17 (`ChannelConnection`, `Channel`, `RoomTypeMapping`, `RatePlanMapping`, `AriUpdate`, `InboundBookingMessage`, `ChannelManagerProvider`). Eventos `TabClosed`, `AvailabilityChanged`, `RatesChanged`, `RestrictionsChanged`: SPEC §8.3.
 - Arquitetura: `pos` depende de `shared`, `hotel`, `staff`, `billing`, `payments`, `fiscal`, `inventory`, `reservations`, `printing`; `distribution` depende de `shared`, `rooms`, `rates`, `reservations` (ARCHITECTURE §3.1). Tempo real com tópicos `tabs` e `production` (§10). Integrações e modo pull (§12). Jobs (§13). Impressão (§14). Implantação, nuvem × local e backup (§15.1–15.3). Observabilidade (§16). Riscos Q-05/Q-06 (§18). Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação (ex.: `pos` → `rates`), desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança.
-- Convenções herdadas (ler nos handoffs e no `CLAUDE.md`): M0 (API, erros, `Money`, idempotência, outbox, ShedLock, Docker/compose com o serviço `backup` reservado, CI), M1 (autorização, limites, step-up, auditoria, `hotel`, `staff`), M2 (SSE, notificações), M3 (`billing`: contas, lançamentos, turnos de caixa, pontos de caixa), M4 (`rates`, `reservations`, disponibilidade), M5 (`printing`, padrão de integração da FNRH), M6 (relatórios operacionais), M7 (`payments` Pix e cartão, API de NFC-e em `fiscal`).
+- Convenções herdadas (ler nos handoffs e nas notas de tema do brain): M0 (API, erros, `Money`, idempotência, outbox, ShedLock, Docker/compose com o serviço `backup` reservado, CI), M1 (autorização, limites, step-up, auditoria, `hotel`, `staff`), M2 (SSE, notificações), M3 (`billing`: contas, lançamentos, turnos de caixa, pontos de caixa), M4 (`rates`, `reservations`, disponibilidade), M5 (`printing`, padrão de integração da FNRH), M6 (relatórios operacionais), M7 (`payments` Pix e cartão, API de NFC-e em `fiscal`).
 - Caminhos previstos (a criar, sob o pacote base `com.zeny.hotel`, hipótese herdada de M0): `pos/` e `distribution/` com `domain/`, `application/`, `infrastructure/`, `web/`; migrações nas pastas `pos` e `distribution` de `src/main/resources/db/migration/`; `docker/compose.yaml` e `docker/` para backup e proxy.
-- Comandos de build, teste e lint: os oficiais registrados no `CLAUDE.md` (definidos em M0 E01).
+- Comandos de build, teste e lint: os oficiais da tabela do `CLAUDE.md` (definidos em M0 E01).
+- Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Arquitetura e estrutura de módulos` (estrutura de módulo, `ModularityTest`, regra por camadas), `ZenyHotelManager - Schemas, migrações e views de relatório` (migrações, privilégios, *append-only*, views `report_*`), `ZenyHotelManager - Tipos do kernel` (`Money`, `Percent`, ids, cifragem), `ZenyHotelManager - Convenções de API` (controllers, erros, cursor, `ETag`, `Idempotency-Key`, contrato), `ZenyHotelManager - Segurança, autenticação e autorização` (permissões, `OWN`, limites, step-up, endpoints públicos), `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Tempo real (SSE)` (tópicos `tabs` e `production`), `ZenyHotelManager - Sincronização offline`, `ZenyHotelManager - Eventos e jobs` (outbox, listeners, ShedLock), `ZenyHotelManager - Testes de integração`, `ZenyHotelManager - Docker, observabilidade e CI` (compose, proxy, métricas e alertas), `ZenyHotelManager - Ambiente, banco, chaves e build` (papéis do banco, chaves e rotação, segredos), `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Módulo guests`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)` (inclui o `payments`), `ZenyHotelManager - Módulo rates`, `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Hospedagem e recepção` e `ZenyHotelManager - Estado por marco`. Os módulos dos marcos M5 a M7 que ainda não têm nota de tema (`printing`, `fnrh`, `housekeeping`, `reporting`, `fiscal`, o `payments` integrado) são lidos nos handoffs desses marcos e nas capturas pendentes do projeto.
 
 ## Escopo
 
@@ -54,6 +50,7 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 - **Taxa de serviço (RN-10):** opcional, removível com registro, separada na conta, não é receita do hotel.
 - **Segredos:** credenciais do channel manager, do backup e certificados ficam fora do repositório (variáveis de ambiente ou Docker secrets).
 - **Minimização (RN-13):** tela de produção e impressões de produção não mostram dados pessoais do hóspede além do número da UH.
+- **Documentação:** a referência técnica nunca volta ao `CLAUDE.md`. Cada etapa que muda algo descrito no brain fecha com a captura `ZenyHotelManager - atualização m8-restaurante-distribuicao Eyy` (em `00 Inbox/` do vault), com o texto novo ou alterado das notas de tema afetadas; os módulos novos propõem as notas `ZenyHotelManager - Módulo pos` e `ZenyHotelManager - Módulo distribution`, e a implantação (E10, E11) altera `ZenyHotelManager - Docker, observabilidade e CI` e `ZenyHotelManager - Ambiente, banco, chaves e build`. O `README.md` continua sendo atualizado no repositório.
 
 ## Hipóteses e decisões em aberto
 
@@ -74,7 +71,7 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 - **Implantação com TLS:** o SSE (`GET /api/v1/stream`, M2 E04) passa pelo proxy público: conferir `flush_interval` sem buffer e o tempo limite de conexões longas no Caddy com TLS (e em qualquer balanceador da nuvem), com o heartbeat do M2.
 - **Log de acesso sem query string** (herdado do M3 E01, decisão do usuário em 2026-10-16): a busca de hóspedes leva nome e e-mail na query string (`GET /api/v1/guests?name=…&email=…`) e o cursor leva o nome normalizado; ao configurar o Caddy com TLS e a observabilidade de produção (E11), não ligar log de acesso com a query string, nem no proxy nem na aplicação (o número de documento já vai no corpo, `POST /api/v1/guests/search-by-document`).
-- **Re-cifragem na rotação de chaves** (herdado do M3 E01): o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede; os outros valores cifrados (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token` e os anexos sensíveis no bucket) ainda não têm job, então uma chave só sai do anel depois de re-cifrá-los (procedimento em "Chaves de cifragem" no `CLAUDE.md`).
+- **Re-cifragem na rotação de chaves** (herdado do M3 E01): o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede; os outros valores cifrados (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token` e os anexos sensíveis no bucket) ainda não têm job, então uma chave só sai do anel depois de re-cifrá-los (procedimento em "Chaves de cifragem" na nota de tema `ZenyHotelManager - Ambiente, banco, chaves e build`).
 - **Taxa de serviço padrão do hotel** (herdado do M3 E11, decisão do usuário em 2026-10-20): o hotel nasce com a taxa de serviço padrão em 0% (`HotelApi.taxSettings().serviceChargeRate`), e o código `AB` não tem percentual próprio, então sem configurar nada nenhum consumo de A&B leva a taxa. Na implantação, o administrador define o percentual em `PUT /api/v1/hotel/tax-settings` (`serviceChargeRate`, com `If-Match`; `hotel.settings.manage`), e o `pos` (E04) informa o do ponto de venda quando diferente; o passo entra no checklist de inauguração da E13.
 - **Segredos de implantação:** as `ZENY_FCM_*` (credencial da conta de serviço do FCM, M2 E09) entram com as demais credenciais da implantação, fora do repositório; vazias, o push fica desligado.
 
@@ -90,70 +87,69 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 ## Protocolo de execução
 
-Vale para toda etapa, executada manualmente ou pelo orquestrador. Cada etapa declara sua estratégia em "Estratégia de execução".
+Vale para toda execução deste roadmap. O planejamento e a execução de cada etapa são feitos pelo plugin superpowers; este protocolo diz como encadear as etapas e manter o roadmap em dia.
 
 **Papéis**
 
-- **Sessão principal** (no modo automático, o subagente implementador): a única que edita código e este roadmap. Implementa, testa, atualiza tags e handoff.
-- **Investigação** (subagente `Explore`, somente leitura): para material extenso que será lido mas não editado. Recebe as perguntas listadas na etapa e devolve um resumo com caminhos e linhas. Arquivos que serão editados são lidos diretamente pela sessão principal.
-- **Implementação paralela** (subagentes `general-purpose`, só na estratégia `paralela`): cada um recebe uma parte com os arquivos listados na etapa, disjuntos dos demais; roda só os testes focados da sua parte; não toca arquivos compartilhados (build, configuração, este roadmap).
-- **Verificação independente** (subagente `general-purpose` novo, que não participou da implementação): confere a etapa contra os critérios de aceite. Não edita nada.
+| Papel | Quem | Usa |
+|---|---|---|
+| Orquestrador | a sessão que recebeu o prompt de execução | este protocolo; atualiza tags e handoffs; publica as capturas de atualização do brain |
+| Planejador | o orquestrador | `superpowers:writing-plans` |
+| Implementador | subagente por tarefa | `superpowers:subagent-driven-development` (ou `superpowers:executing-plans`, sem subagentes) |
+| Revisor de tarefa | subagente novo por tarefa | revisão da `subagent-driven-development` |
+| Revisor final | subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
 
-**Estratégias:** `direta` — sem subagentes, a sessão principal valida · `padrão` — investigação quando indicada + verificação independente obrigatória · `paralela` — `padrão` + partes paralelas.
+Souls: nenhuma definida para estes papéis. Quando existir uma soul para um papel, ela se aplica a esse papel; até lá, valem os prompts padrão do superpowers.
 
-**Passo a passo**
+**Branch**
 
-1. **Preparação:** leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho deste roadmap, a seção da etapa e o handoff das dependências; rode `git status`. Confirme que as dependências estão `#concluida`, que a etapa não está `#bloqueada` e que o código bate com o handoff das dependências; se não, pare e relate.
-2. **Snapshot inicial:** registre o estado da árvore de trabalho, sem commit e sem alterar o índice do git:
+- Toda execução acontece no worktree/branch `roadmap/m8-restaurante-distribuicao`, criado ou retomado com `superpowers:using-git-worktrees`. Nunca execute na branch principal (`main`).
+- Se a branch já existir com trabalho não integrado, continue nela. Se o lote anterior já foi integrado, crie a branch de novo a partir da `main` atualizada.
+- Este roadmap é atualizado dentro da branch: tags e handoffs viajam com o código.
 
-   ```bash
-   idx=$(mktemp -u); cp "$(git rev-parse --git-path index)" "$idx" 2>/dev/null; GIT_INDEX_FILE="$idx" git add -A && GIT_INDEX_FILE="$idx" git write-tree; rm -f "$idx"
-   ```
+**Por etapa**
 
-   Anote o hash impresso como "Snapshot inicial" no handoff da etapa (no modo automático, use o hash recebido do orquestrador em vez de tirar outro). Para ver tudo o que a etapa mudou, rode o mesmo comando de novo e compare: `git diff HASH_INICIAL HASH_ATUAL`. Se `git status` mostrar artefatos de build não ignorados, corrija o `.gitignore` antes do snapshot — senão o diff fica lento e poluído.
-3. **Início:** troque a tag da etapa para `#em-andamento` no índice e no título.
-4. **Investigação** (se a etapa listar perguntas): dispare um subagente `Explore` com essas perguntas.
-5. **Implementação:** quando os critérios descrevem comportamento verificável, escreva os testes primeiro e confirme que falham. Implemente em passos pequenos; na estratégia `paralela`, dispare as partes paralelas e integre-as. Rode as validações obrigatórias da etapa.
-6. **Verificação independente** (`padrão` e `paralela`): dispare um subagente `general-purpose` novo com o "Prompt do verificador" abaixo, trocando ETAPA pelo ID da etapa e HASH_INICIAL pelo snapshot. Se o parecer for REPROVADO, corrija e verifique de novo com um verificador novo. Após duas reprovações, pare e relate, mantendo `#em-andamento`.
-7. **Fechamento:** marque `#concluida` (índice e título) só com todos os critérios atendidos e, quando houver verificação, parecer APROVADO. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff" e responda com um resumo curto. Não faça commit, push ou deploy.
+1. **Escolha:** a primeira etapa, na ordem do documento, marcada `#pendente` e com todas as dependências `#concluida`. Etapas `#bloqueada` e as que dependem delas ficam para trás.
+2. **Conferência:** leia a seção da etapa, os handoffs das dependências e o código que eles citam. Se o código divergiu do que a etapa supõe, pare e relate.
+3. **Início:** troque a tag para `#em-andamento` (índice e título).
+4. **Plano:** use `superpowers:writing-plans`. A spec é a seção desta etapa mais os documentos citados em "Contexto confirmado"; as "Restrições e invariantes" entram como Global Constraints. Salve em `docs/superpowers/plans/AAAA-MM-DD-m8-restaurante-distribuicao-eNN.md` (AAAA-MM-DD = a data do dia). A execução já está definida (abaixo): não pergunte ao usuário o método, apenas siga.
+5. **Execução:** use `superpowers:subagent-driven-development` com esse plano, incluindo a revisão final da etapa. Não invoque `superpowers:finishing-a-development-branch` ao fim da etapa: ele roda uma vez, no fim do lote.
+6. **Fechamento:** publique a captura de atualização do brain (bloco "Second Brain"). Marque `#concluida` (índice e título) só com a revisão final limpa e cada critério de aceite verificado com evidência. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff". Rulings do ledger que mudam contrato, escopo, segurança, dados ou algo caro de desfazer vão para "Decisões para o usuário".
 
-**Prompt do verificador**
+**Second Brain**
+
+Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain"; senão, ignore este bloco.
+
+- O contexto da sessão precisa trazer a linha `BRAIN: carregado (ZenyHotelManager)`, injetada pelo hook. Sem ela, pare e relate.
+- Na conferência de cada etapa, leia as notas de tema do brain ligadas a ela (pelo hub `ZenyHotelManager`) e as capturas pendentes do projeto que tratem do assunto: são a referência técnica do projeto. Num handoff antigo, "seção X do `CLAUDE.md`" é a nota de tema correspondente.
+- No fechamento de cada etapa que mudou algo descrito no brain (inclusive o estado do roadmap), o orquestrador publica em `00 Inbox/` do vault a captura `ZenyHotelManager - atualização m8-restaurante-distribuicao Eyy`, com o texto novo ou alterado de cada nota afetada e qual nota ele substitui ou complementa, conforme o contrato de agente externo do vault (skill `second-brain`). Nunca edite notas do brain nem registre referência técnica no `CLAUDE.md`.
+
+**Paradas**
+
+O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+
+**Fim do lote**
+
+1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
+2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+
+## Prompt de execução
 
 ```text
-Você é o verificador independente da etapa ETAPA do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md. Você não participou da implementação e não deve editar nenhum arquivo.
-1. Leia CLAUDE.md, o cabeçalho do roadmap e a seção ETAPA inteira (objetivo, escopo, fora de escopo, estratégia, critérios de aceite, validação obrigatória).
-2. Veja o que mudou desde o início da etapa: gere um snapshot do estado atual com o comando da seção "Protocolo de execução" e rode git diff --stat HASH_INICIAL seguido do hash gerado; depois leia o diff completo dos arquivos relevantes.
-3. Rode todos os comandos da validação obrigatória da etapa e guarde a saída relevante.
-4. Para cada critério de aceite, decida APROVADO ou REPROVADO com evidência concreta (arquivo:linha, nome do teste, saída de comando). Critério sem evidência é REPROVADO.
-5. Ataque os pontos listados em "Foco do verificador" na etapa e aponte também: mudanças fora do escopo, testes que não exercitam o comportamento (passariam mesmo com o código errado), segredos ou dados pessoais expostos e violações das restrições do roadmap.
-Responda com: parecer geral (APROVADO só se todos os critérios forem APROVADO e não houver problema grave), tabela critério → resultado → evidência, problemas por gravidade e comandos executados.
-```
-
-## Execução automática
-
-Cole o prompt abaixo numa sessão limpa do Claude Code, na raiz do repositório. Ajuste o limite de etapas se quiser.
-
-```text
-Você é o orquestrador do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md neste repositório. Seu papel é coordenar subagentes, não implementar: não edite código e mantenha seu contexto enxuto (leia o roadmap e os relatórios dos subagentes, não o código).
+Execute o roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md deste repositório seguindo a seção "Protocolo de execução" dele, com o plugin superpowers.
 
 Limite desta execução: no máximo 3 etapas concluídas.
 
-Preparação:
-1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho, o "Protocolo de execução" e o índice.
-2. Rode git status. Se alguma etapa estiver #em-andamento, pare e pergunte ao usuário como prosseguir — provavelmente é uma execução interrompida.
+1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho inteiro, o protocolo e o índice. Se o CLAUDE.md exigir o Second Brain, confira a linha BRAIN: carregado no contexto e leia o hub. Rode git status e git branch -a.
+2. Se alguma etapa estiver #em-andamento, retome-a a partir do ledger do superpowers e do handoff; não recomece tarefas já commitadas.
+3. Crie ou retome o worktree/branch roadmap/m8-restaurante-distribuicao com superpowers:using-git-worktrees. Não trabalhe na branch principal.
+4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
+5. Pare nas paradas do protocolo ou ao atingir o limite.
+6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
 
-Repita, uma etapa por vez (nunca em paralelo):
-1. Escolha a primeira etapa, na ordem do documento, marcada #pendente e com todas as dependências #concluida. Etapas #bloqueada e as que dependem delas ficam para trás. Se não houver candidata, pare.
-2. Gere o snapshot inicial com o comando do protocolo e guarde o hash.
-3. Dispare um subagente general-purpose com o prompt da etapa copiado literalmente da seção dela, acrescido deste adendo: "Você está rodando como subagente do orquestrador; este adendo prevalece sobre o prompt acima. O snapshot inicial já foi tirado: use HASH e não tire outro. Não dispare subagentes: faça a investigação você mesmo, implemente em sequência as partes paralelas, se houver, e pule a verificação independente, que o orquestrador fará. Não marque a etapa como #concluida: ao terminar, deixe-a #em-andamento com 'Evidências e handoff' preenchido e relate o resultado das validações. Diante de bloqueio real, marque #bloqueada como o prompt manda." Substitua HASH pelo hash do passo 2.
-4. Se o subagente relatar bloqueio, divergência do plano ou validação falhando que não conseguiu resolver, pare.
-5. Qualquer que seja a estratégia, dispare um subagente general-purpose novo com o "Prompt do verificador" do protocolo (ETAPA e HASH_INICIAL preenchidos). Se REPROVADO, mande os problemas ao mesmo implementador, se puder retomá-lo; senão, dispare um implementador novo com o prompt da etapa, o adendo, o parecer do verificador e o handoff atual. Verifique de novo com um verificador novo; após duas reprovações, pare.
-6. Com o aceite, troque a tag da etapa para #concluida no índice e no título e acrescente ao handoff o parecer do verificador.
-7. Se a etapa tiver "Revisão humana: sim", pare para o usuário revisar.
+Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
 
-Pare também ao atingir o limite desta execução. Nunca faça commit, push ou deploy e não altere tags de etapas que não executou.
-
-Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio de cada uma, os arquivos alterados (git status --short) e o próximo passo sugerido — normalmente revisar e fazer commit antes da próxima execução.
+Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
 
 ## Índice de etapas
@@ -194,7 +190,7 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 
 **Por que agora:** comandas, produção e fechamento dependem desses cadastros.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho. Pode correr em paralelo com E07 e E10 (em worktrees separados); conflito possível só em `api/openapi.yaml`.
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho (gate de M7 ou a exceção controlada). Independente de E07 e E10; conflito possível só em `api/openapi.yaml`.
 
 **Escopo:**
 
@@ -205,43 +201,6 @@ Ao parar, responda com: etapas concluídas e seus pareceres, a etapa atual e seu
 - Endpoints CRUD em `/api/v1` com paginação por cursor e `ETag`.
 
 **Fora de escopo:** ficha técnica e local de estoque (M9); comandas (E02).
-
-**Passos de implementação:**
-
-1. Confirmar o pré-requisito (gate de M7 ou a exceção do cabeçalho).
-2. Escrever testes de API para os cadastros, incluindo validações (preço negativo, perfil fiscal inexistente, setor inexistente).
-3. Implementar módulo, migrações, permissões e endpoints; regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "o que SPEC §5.19 e §8.2.15 definem para pontos de venda e cardápio?"; "como M1 registra permissões no catálogo e como M3/M5/M7 expõem ponto de caixa, impressoras e perfis fiscais para referência por ID (handoffs)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: `pos` acessando tabelas de outros módulos em vez da API pública; preço em ponto flutuante; escrita sem permissão.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E01 — "Pontos de venda e cardápio" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Pré-requisito", o "Protocolo de execução" e as restrições — e a seção E01 inteira. Confirme o pré-requisito: o gate E12 de docs/roadmaps/roadmap-m7-pagamentos-fiscal.md está #concluida, ou, pela exceção do cabeçalho, M7 E01 a E08 estão #concluida e só os adaptadores reais aguardam Q-05; se nenhum dos dois, pare e relate sem implementar. Rode git status e preserve mudanças preexistentes que não sejam suas. Se o código divergiu do plano, pare e relate.
-
-Objetivo: criar o módulo pos com pontos de venda (tipo, horários, ponto de caixa, impressoras de produção, taxa de serviço), mesas, setores de produção, categorias, produtos com preço por ponto de venda, disponibilidade, perfil fiscal e setor, e modificadores, com permissões no catálogo, auditoria e endpoints CRUD em /api/v1. Referências a outros módulos são por ID via API pública. Não implemente comandas nem ficha técnica.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E01 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume SPEC §5.19 e §8.2.15 e como M1, M3, M5 e M7 expõem permissões, pontos de caixa, impressoras e perfis fiscais (handoffs);
-- escreva os testes de API primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em acesso a tabelas de outros módulos, preço em ponto flutuante e escrita sem permissão.
-
-Critérios de aceite (detalhes na seção E01):
-- CRUD de pontos de venda, mesas, setores, categorias, produtos e modificadores coberto por testes de API;
-- referência a perfil fiscal, ponto de caixa ou impressora inexistente → erro com code estável;
-- escrita sem permissão → 403; verificação de módulos, build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -254,8 +213,16 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Validação obrigatória:**
 
-- Comandos oficiais de build e teste (no `CLAUDE.md`) → sucesso.
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato `api/openapi.yaml` → sem diff pendente e sem *breaking change*.
+
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Confirme o pré-requisito antes de planejar: gate E12 do M7 `#concluida` ou, pela exceção do cabeçalho, M7 E01 a E08 `#concluida`; senão, pare e relate.
+- Ponto de caixa (`billing`), impressoras (`printing`, M5) e perfil fiscal (`fiscal`, M7) são referenciados só por ID e conferidos pela API pública de cada módulo, nunca pelas tabelas; `printing` e `fiscal` ainda não têm nota de tema no brain, então a forma de consulta vem dos handoffs de M5 e M7 (e das capturas pendentes). O ponto de caixa e a taxa de serviço do `billing` estão nas notas `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)` e `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`.
+- Pontos de atenção da revisão: `pos` acessando tabelas de outros módulos, preço em ponto flutuante e escrita sem permissão.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -265,11 +232,11 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -280,7 +247,7 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o agregado central do PDV; produção e fechamento operam sobre ele.
 
-**Dependências e paralelismo:** E01. Não paralelizável com E03–E06 (mesmo agregado `Tab`).
+**Dependências:** E01. Mesmo agregado `Tab` de E03–E06 (não paralelizável com elas).
 
 **Escopo:**
 
@@ -292,43 +259,6 @@ No fim, preencha "Evidências e handoff" de E01 (snapshot, arquivos alterados, d
 - Concorrência com `ETag`/`If-Match`; publicação de eventos de alteração para o tópico `tabs` (consumido em E03).
 
 **Fora de escopo:** envio à produção (E03); fechamento e pagamento (E04).
-
-**Passos de implementação:**
-
-1. Escrever testes de domínio e de API das operações e das regras de escopo e step-up.
-2. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação: nenhuma; regras em SPEC §5.19 e §8.2.15 e convenções de escopo e step-up no handoff de M1.
-- Partes paralelas: nenhuma.
-- Foco do verificador: item cancelado após envio sem aprovação; garçom vendo comanda de outro sem permissão `ALL`; divisão que perde ou duplica itens; preço alterado retroativamente quando o cardápio muda.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E02 — "Comandas" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e as restrições —, a seção E02 inteira e o "Evidências e handoff" de E01. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E01 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: implementar o agregado Tab do módulo pos — abrir por mesa, balcão ou UH (validando hóspede hospedado via reservations), lançar itens com preço congelado, modificadores e observações, transferir itens, juntar e dividir comandas e cancelar itens, exigindo step-up e motivo depois do envio à produção — com escopo OWN para garçom, ETag/If-Match e eventos para o tópico tabs. Não implemente produção nem fechamento.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E02 para #em-andamento no índice e no título;
-- sem investigação delegada;
-- escreva os testes de domínio e de API primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em cancelamento sem aprovação, garçom vendo comanda alheia, divisão que perde itens e preço retroativo.
-
-Critérios de aceite (detalhes na seção E02):
-- abrir, lançar, transferir, juntar, dividir e cancelar cobertos por testes;
-- cancelamento de item enviado sem aprovação → 403 APPROVAL_REQUIRED;
-- comanda por UH sem hóspede hospedado → erro com code estável;
-- build, testes e verificação do contrato oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -346,6 +276,14 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Escopo `OWN`, step-up (`requireOrApproval` com `X-Approval-Token`) e a repetição com outra `Idempotency-Key` seguem a nota `ZenyHotelManager - Segurança, autenticação e autorização`; o vínculo garçom ↔ usuário vem da `StaffApi.employeeOfUser` (nota `ZenyHotelManager - Módulos hotel e staff`).
+- O hóspede hospedado na UH vem da `ReservationsApi` (reserva `IN_HOUSE` com a alocação ativa; notas `ZenyHotelManager - Hospedagem e recepção` e `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`), nunca das tabelas de `reservations`.
+- Pontos de atenção da revisão: cancelamento após o envio sem aprovação, garçom vendo comanda alheia sem `ALL`, divisão que perde ou duplica itens, preço retroativo.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -354,11 +292,11 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -369,7 +307,7 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 
 **Por que agora:** sem produção o restaurante não opera; depende das comandas (E02).
 
-**Dependências e paralelismo:** E02. Não paralelizável com E04 (mesmo agregado `Tab`).
+**Dependências:** E02. Mesmo agregado `Tab` de E04 (não paralelizável com ela).
 
 **Escopo:**
 
@@ -380,43 +318,6 @@ No fim, preencha "Evidências e handoff" de E02 (snapshot, arquivos alterados, d
 - Reimpressão de ticket.
 
 **Fora de escopo:** fechamento (E04); baixa de estoque por ficha técnica (M9).
-
-**Passos de implementação:**
-
-1. Escrever testes de módulo: envio gera tickets por setor, job de impressão criado, evento SSE emitido, transições de estado do item.
-2. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como M2 registra tópicos SSE e filtra por permissão (handoff de M2)?"; "como M5 cria jobs de impressão e templates ESC/POS em `printing` (handoff de M5)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: ticket impresso duas vezes num reenvio; nome do hóspede no ticket ou no evento SSE; usuário sem permissão recebendo o tópico `production`.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E03 — "Produção: impressão e tela em tempo real" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições e as hipóteses H2 e H3 —, a seção E03 inteira e o "Evidências e handoff" de E02. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E02 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: ao enviar a comanda à produção, gerar um ticket por setor, criar o job de impressão ESC/POS no printing do M5 com template sem dados pessoais, publicar nos tópicos SSE tabs e production (padrão do M2, filtrados por permissão) e oferecer endpoints para a tela de produção listar tickets e mudar o estado do item (pedido, em preparo, pronto, entregue), com reimpressão. Não implemente fechamento nem baixa de estoque.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E03 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como M2 registra tópicos SSE e como M5 cria jobs e templates de impressão (handoffs);
-- escreva os testes de módulo primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em impressão duplicada, dado pessoal no ticket ou no SSE e tópico sem filtro de permissão.
-
-Critérios de aceite (detalhes na seção E03):
-- envio gera um ticket por setor e um job de impressão por impressora configurada;
-- evento no tópico production chega a usuário com permissão e não chega a quem não tem;
-- transições de estado do item cobertas por teste;
-- build, testes e verificação do contrato oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -432,6 +333,13 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Hipóteses H2 e H3: o registro de tópicos (`RealtimeTopic` com a permissão de leitura), a publicação dentro da transação de escrita e o payload só com `type`, `id` e `version` seguem a nota `ZenyHotelManager - Tempo real (SSE)`; os testes SSE usam contexto `RANDOM_PORT` e o `SseTestClient` (mesma nota). O `printing` é do M5 e ainda não tem nota de tema: jobs e templates vêm do handoff do M5 e das capturas pendentes.
+- Pontos de atenção da revisão: ticket impresso duas vezes num reenvio, nome do hóspede no ticket ou no evento, usuário sem permissão recebendo o tópico `production`.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -440,11 +348,11 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -455,7 +363,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a etapa que movimenta dinheiro e emite nota no restaurante; depende de comandas e produção.
 
-**Dependências e paralelismo:** E03. Não paralelizável com E05 (mesmo agregado `Tab`).
+**Dependências:** E03. Mesmo agregado `Tab` de E05 (não paralelizável com ela).
 
 **Escopo:**
 
@@ -468,44 +376,6 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - Consumo interno e cortesia: fecham sem pagamento e sem faturar, com motivo e permissão; a baixa de estoque fica para M9.
 
 **Fora de escopo:** lançamento no quarto (E05); baixa de estoque (M9).
-
-**Passos de implementação:**
-
-1. Ler os handoffs de M3 (turno de caixa), M7 E02/E03 (Pix e cartão) e M7 E08 (NFC-e).
-2. Escrever testes de módulo: fechamento com dois meios de pagamento, sem turno de caixa, com taxa removida, com desconto acima do limite, NFC-e solicitada após `TabClosed`, cortesia.
-3. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "como `billing` exige turno de caixa e registra pagamentos de PDV (handoff de M3)?"; "como chamar Pix, cartão e a API de NFC-e (handoffs de M7 E02, E03 e E08)?"; "como limites de desconto são lidos do contexto de autorização (handoff de M1)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: comanda fechada com saldo diferente de zero; taxa de serviço contabilizada como receita do hotel; NFC-e emitida duas vezes ao reprocessar `TabClosed`; desconto acima do limite sem aprovação; `fiscal` ou `payments` passando a depender de `pos`.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E04 — "Fechamento de comanda, taxa de serviço e NFC-e" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições e as hipóteses H1 e H6 —, a seção E04 inteira e o "Evidências e handoff" de E03. Leia RF-PDV-05, RF-PDV-09, RF-PDV-10, RF-CTA-14 e RN-10 em docs/SPEC.md. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E03 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: fechar comandas com um ou mais pagamentos (dinheiro com troco, Pix e cartão via payments, registro manual) com Idempotency-Key e turno de caixa aberto do ponto de venda, divisão entre pessoas, taxa de serviço separada e removível com registro, desconto validado contra o limite ou com step-up, publicação de TabClosed e NFC-e solicitada por um listener do próprio pos chamando a API pública de fiscal, além de consumo interno e cortesia com motivo, sem faturar. fiscal e payments não podem passar a depender de pos.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E04 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume turno de caixa e pagamentos em billing (M3), chamadas de Pix, cartão e NFC-e (M7 E02, E03, E08) e limites de desconto (M1);
-- escreva os testes de módulo primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em saldo diferente de zero, taxa de serviço como receita, NFC-e duplicada, desconto sem aprovação e violação do grafo de módulos.
-
-Critérios de aceite (detalhes na seção E04):
-- fechamento com dois meios de pagamento e troco coberto por teste; sem turno de caixa → erro com code estável;
-- taxa de serviço separada, removível com registro; desconto acima do limite sem aprovação → 403 APPROVAL_REQUIRED;
-- TabClosed reprocessado não emite segunda NFC-e;
-- verificação de módulos, build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -525,6 +395,16 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Hipóteses H1 e H6. Leia RF-PDV-05, RF-PDV-09, RF-PDV-10, RF-CTA-14 e RN-10 em `docs/SPEC.md` e os handoffs de M7 E02/E03 (Pix e cartão) e M7 E08 (NFC-e); `payments` e `fiscal` integrados ainda não têm nota de tema além da do M3.
+- A taxa de serviço já existe no `billing` desde o M3 E06 (lançamento separado no `TX-SERVICO`, percentual informado pelo módulo de origem em `NewPosting.serviceChargeRate`, grupo `SERVICE_CHARGE` como repasse, remoção a pedido com motivo fixo): reuse essa regra em vez de criar outra (nota `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`). A taxa padrão do hotel nasce em 0% (nota herdada no cabeçalho).
+- O turno de caixa se exige com `BillingApi.requireOpenShift(user)`, que trava o turno na transação de quem chama (trave o turno antes da conta), e os recebimentos manuais seguem o fluxo da M3 E08 (nota `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)`). O limite de desconto é lido por `authorization.limit` e a ação sensível por `requireOrApproval` (nota `ZenyHotelManager - Segurança, autenticação e autorização`).
+- O listener de `TabClosed` é `@ApplicationModuleListener` e precisa ser idempotente: o outbox reentrega (nota `ZenyHotelManager - Eventos e jobs`).
+- Pontos de atenção da revisão: saldo diferente de zero, taxa de serviço como receita, NFC-e duplicada no reprocessamento, desconto sem aprovação, `fiscal` ou `payments` passando a depender de `pos`.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -533,11 +413,11 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -548,7 +428,7 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 
 **Por que agora:** completa o fluxo de A&B dos hóspedes e alimenta a NFC-e agrupada no check-out de M7 E08.
 
-**Dependências e paralelismo:** E04. Não paralelizável com E06 (relatórios dependem destes dados).
+**Dependências:** E04. Os relatórios de E06 dependem destes dados (não paralelizável com ela).
 
 **Escopo:**
 
@@ -557,44 +437,6 @@ No fim, preencha "Evidências e handoff" de E04 (snapshot, arquivos alterados, d
 - `BreakfastAttendance`: lista do dia a partir das estadias com café incluso (H5), marcação de presença e número de pessoas; quem não tem incluso gera comanda no ponto de venda de café da manhã.
 
 **Fora de escopo:** relatórios (E06).
-
-**Passos de implementação:**
-
-1. Confirmar H5; se `reservations` não expuser a inclusão de café por data, acrescentar a consulta na API pública de `reservations`.
-2. Escrever testes de módulo: lançamento no quarto com e sem hóspede hospedado, acima do crédito, repetição com a mesma chave; lista de café, presença e cobrança.
-3. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como `billing` lança itens com origem e valida limite de crédito (handoff de M3)?"; "como `reservations` expõe hóspede hospedado por UH e planos/pacotes com café (handoff de M4)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: lançamento duplicado na conta; lançamento em reserva já encerrada; NFC-e emitida no fechamento e de novo no check-out; nome do hóspede exposto a perfis sem permissão.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E05 — "Lançamento no quarto e café da manhã" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições e as hipóteses H5 e H6 —, a seção E05 inteira e o "Evidências e handoff" de E04. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E04 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: lançar a comanda na conta do quarto, validando hóspede hospedado via reservations e crédito da conta via billing, com cada item lançado com origem PDV, taxa de serviço separada, Idempotency-Key e marcação para a NFC-e agrupada no check-out; e operar o café da manhã com lista diária de hóspedes com direito, presença e cobrança de quem não tem incluso. Se reservations não expuser a inclusão de café por data, acrescente essa consulta à API pública dele.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E05 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume como billing lança itens e valida crédito (M3) e como reservations expõe hóspede hospedado e café incluso (M4);
-- escreva os testes de módulo primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em lançamento duplicado, reserva encerrada, NFC-e em dobro e dado pessoal exposto.
-
-Critérios de aceite (detalhes na seção E05):
-- lançamento no quarto com hóspede hospedado gera lançamentos detalhados na conta;
-- sem hóspede hospedado ou acima do crédito → erro com code estável; repetição com a mesma chave não duplica;
-- lista de café, presença e cobrança de quem não tem incluso cobertas por teste;
-- build, testes e verificação do contrato oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -610,6 +452,15 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Confirme a H5 antes de planejar: se a `ReservationsApi` não expuser por data se a estadia inclui café (pelo plano ou pacote), acrescente essa consulta à API pública de `reservations` (dependência permitida); a regra de café incluso fica em `reservations`/`rates`, e o `pos` só consulta. As noites congeladas já trazem os pacotes da noite com o código de lançamento (nota `ZenyHotelManager - Módulo rates`, "Preço e vendabilidade de uma estadia"), e o regime de alimentação é do plano (`MealPlan`). Pendência do M4 E11: a tarifa do grupo não aplica os pacotes do plano, então uma reserva de pick-up num plano com café incluso não tem o pacote nas noites.
+- Armadilha: no `billing`, o limite de crédito da conta **não bloqueia** lançamento (a conta só sinaliza `creditLimitExceeded`; nota `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`); o critério "acima do limite de crédito → erro" precisa da conferência no `pos` antes de lançar, ou de uma decisão registrada.
+- O lançamento usa `BillingApi.post` com a origem `POS` e o percentual de taxa do ponto de venda em `NewPosting.serviceChargeRate`; a conta pode ter regra de roteamento que desvia o item (mesma nota). Leia o handoff do M7 E08 sobre a NFC-e agrupada do check-out.
+- Pontos de atenção da revisão: lançamento duplicado, lançamento em reserva já encerrada, NFC-e no fechamento e de novo no check-out, nome do hóspede exposto a perfis sem permissão.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -618,11 +469,11 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -633,7 +484,7 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 
 **Por que agora:** fecha a trilha do restaurante e é necessário para o rateio da taxa aos colaboradores desde a inauguração.
 
-**Dependências e paralelismo:** E05. Pode correr em paralelo com E07–E11 (em worktrees separados); conflito possível só em `api/openapi.yaml`.
+**Dependências:** E05. Independente de E07–E11; conflito possível só em `api/openapi.yaml`.
 
 **Escopo:**
 
@@ -642,43 +493,6 @@ No fim, preencha "Evidências e handoff" de E05 (snapshot, arquivos alterados, d
 - Taxa de serviço: arrecadado por período, por colaborador e por ponto de venda, retenção configurável e valor a ratear; remoções registradas.
 
 **Fora de escopo:** CMV e custo teórico (M9); KPIs gerenciais (M10).
-
-**Passos de implementação:**
-
-1. Ler o handoff de M6 sobre o padrão de relatórios e views de leitura.
-2. Escrever testes de integração com dados conhecidos e totais esperados.
-3. Implementar views, endpoints e exportação; regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "qual padrão de views `report_*`, endpoints e exportação M6 estabeleceu em `reporting` (handoff de M6)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: `reporting` lendo tabelas internas do `pos` em vez das views; cortesias somadas como venda; taxa removida contada como arrecadada; data de negócio errada nas vendas após meia-noite.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E06 — "Relatórios do PDV e da taxa de serviço" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H6 —, a seção E06 inteira e o "Evidências e handoff" de E04 e E05. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E05 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: publicar views de leitura pos.report_* e os relatórios do PDV (vendas por produto, categoria, garçom e período, ticket médio) e da taxa de serviço (arrecadado por colaborador e ponto de venda, retenção configurável, valor a ratear, remoções), com filtros e exportação CSV/XLSX no padrão de relatórios estabelecido no M6. reporting só lê as views, nunca tabelas internas do pos.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E06 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume o padrão de views, endpoints e exportação do reporting (handoff de M6);
-- escreva os testes de integração com totais esperados primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em leitura de tabelas internas, cortesia somada como venda, taxa removida contada e data de negócio errada.
-
-Critérios de aceite (detalhes na seção E06):
-- relatórios de vendas e de taxa de serviço batem com os totais esperados dos dados de teste;
-- cortesias e taxa removida tratadas corretamente;
-- exportação CSV/XLSX funcionando; build, testes e verificação do contrato oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -695,6 +509,14 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Hipótese H6 (Q-08). O padrão de `reporting`, endpoints e exportação vem do handoff do M6 (o `reporting` ainda não tem nota de tema); nome, forma, contrato no comentário, privilégios só `SELECT` e a prova com um papel que só lê as views seguem a nota `ZenyHotelManager - Schemas, migrações e views de relatório`.
+- A taxa de serviço lançada na conta (inclusive a do quarto, E05) e as remoções já aparecem em `billing.report_postings` (`pass_through`, vínculos da taxa; nota `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)`): decida e registre qual view é a fonte de cada parte do relatório para não contar a mesma taxa duas vezes.
+- Pontos de atenção da revisão: `reporting` lendo tabelas internas do `pos`, cortesia somada como venda, taxa removida contada como arrecadada, data de negócio errada após a meia-noite.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -703,11 +525,11 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -718,7 +540,7 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 
 **Por que agora:** a porta e o envio de ARI podem ser construídos sem o fornecedor; com a escolha (D1), só falta o adaptador.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho. Pode correr em paralelo com E01–E06 e E10 (em worktrees separados); conflito possível só em `api/openapi.yaml`.
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho. Independente de E01–E06 e E10; conflito possível só em `api/openapi.yaml`.
 
 **Escopo:**
 
@@ -729,44 +551,6 @@ No fim, preencha "Evidências e handoff" de E06 (snapshot, arquivos alterados, d
 - Provedor falso com WireMock; endpoints de configuração e mapeamento protegidos por permissão.
 
 **Fora de escopo:** recebimento de reservas (E08); adaptador real (E09).
-
-**Passos de implementação:**
-
-1. Confirmar o pré-requisito e ler os handoffs de M4 (eventos e consultas de disponibilidade e tarifas) e M5 (padrão de integração).
-2. Escrever testes de módulo: alteração de disponibilidade gera ARI coalescido, falha do provedor reenvia com backoff, ressincronização envia todo o horizonte, tipo de UH sem mapeamento não é enviado e gera alerta.
-3. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "o que SPEC §5.21 e §8.2.17 e ARCHITECTURE §12 exigem?"; "quais eventos e consultas de disponibilidade e tarifas `reservations` e `rates` expõem (handoff de M4)?"; "como as APIs públicas de HotelRunner e Omnibees modelam ARI, para que a porta sirva aos dois?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: ARI enviado fora de ordem sobrescrevendo valor mais novo; envio perdido quando o provedor falha; `reservations` ou `rates` passando a depender de `distribution`; credencial em claro.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E07 — "Porta do channel manager e envio de ARI" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Pré-requisito", o "Protocolo de execução" e as restrições — e a seção E07 inteira. Confirme o pré-requisito: o gate E12 de docs/roadmaps/roadmap-m7-pagamentos-fiscal.md está #concluida, ou, pela exceção do cabeçalho, M7 E01 a E08 estão #concluida; se nenhum dos dois, pare e relate sem implementar. Leia os handoffs de M4 sobre eventos de disponibilidade e tarifas e de M5 sobre o padrão de integração. Rode git status e preserve mudanças preexistentes que não sejam suas. Se o código divergiu do plano, pare e relate.
-
-Objetivo: criar o módulo distribution (depende de shared, rooms, rates, reservations e notifications para alertas; acrescente distribution → notifications à tabela da docs/ARCHITECTURE.md §3.1 se usar diretamente) com a porta ChannelManagerProvider, ChannelConnection com credenciais cifradas, mapeamentos de tipos de UH e planos, listeners de AvailabilityChanged, RatesChanged e RestrictionsChanged que geram AriUpdate coalescidos, job de envio com ShedLock, retry com backoff, log redigido, ressincronização completa sob demanda e provedor falso testado com WireMock. Não implemente recebimento de reservas nem adaptador real.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E07 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume SPEC §5.21 e §8.2.17, ARCHITECTURE §12, os eventos e consultas de M4 e como HotelRunner e Omnibees modelam ARI;
-- escreva os testes de módulo primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em ARI fora de ordem, envio perdido, dependência invertida e credencial em claro.
-
-Critérios de aceite (detalhes na seção E07):
-- alteração de disponibilidade, tarifa ou restrição gera ARI coalescido enviado ao provedor falso;
-- falha do provedor reenvia com backoff sem perder nem reordenar atualizações;
-- ressincronização completa envia todo o horizonte configurado;
-- verificação de módulos, build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -784,6 +568,16 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Confirme o pré-requisito (gate do M7 ou a exceção do cabeçalho). Leia SPEC §5.21 e §8.2.17, ARCHITECTURE §12 e o handoff do M5 sobre o padrão de integração (FNRH: outbox, retry, log redigido, painel de saúde). A porta precisa servir a HotelRunner e a Omnibees (D1 em aberto): confira como as APIs públicas dos dois modelam ARI.
+- Os três eventos não levam valores: `AvailabilityChanged` só traz tipo e período (o consumidor relê os contadores pela `ReservationsApi.inventory`), `RatesChanged` traz os planos derivados afetados (os derivados são calculados na leitura e não têm linhas próprias; preços efetivos pela `RatesApi.rateCalendar`) e `RestrictionsChanged` os campos mudados (notas `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)` e `ZenyHotelManager - Módulo rates`). Até aqui não têm consumidor de produção, então o outbox só passa a gravar as publicações quando os listeners desta etapa existirem.
+- Semântica das restrições para o channel manager, decidida pelo usuário em 2026-10-20 (nota `ZenyHotelManager - Módulo rates`, "Restrições de venda"): `closed` fecha qualquer noite da estadia; CTA e CTD só na data exata (o CTD é o da data de saída); estadia mínima e máxima "on arrival" (um channel manager que use "through" recebe a da chegada); a restrição do tipo de UH substitui a geral campo a campo; as restrições são de cada plano (o derivado não herda as do base).
+- Credenciais com o `FieldCipher`/`EncryptedStringConverter` (nota `ZenyHotelManager - Tipos do kernel`); listeners idempotentes e job com `@SchedulerLock` e uma constante de adiamento no `@IntegrationTest` (notas `ZenyHotelManager - Eventos e jobs` e `ZenyHotelManager - Testes de integração`); o alerta usa o tipo `notifications.integration-failure`, sem dado de hóspede (nota `ZenyHotelManager - Módulo notifications`). A aresta `distribution` → `notifications` entra na tabela da ARCHITECTURE §3.1 se for usada.
+- Pontos de atenção da revisão: ARI fora de ordem sobrescrevendo valor mais novo, envio perdido quando o provedor falha, `reservations` ou `rates` passando a depender de `distribution`, credencial em claro.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -792,11 +586,11 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -807,7 +601,7 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 
 **Por que agora:** completa a trilha de distribuição com o provedor falso; o adaptador real (E09) só troca a ponta.
 
-**Dependências e paralelismo:** E07. Não paralelizável com E09.
+**Dependências:** E07. Não paralelizável com E09.
 
 **Escopo:**
 
@@ -818,44 +612,6 @@ No fim, preencha "Evidências e handoff" de E07 (snapshot, arquivos alterados, d
 - Painel de saúde: últimas sincronizações, pendências, erros e reprocessamento manual de mensagem com falha.
 
 **Fora de escopo:** adaptador real (E09).
-
-**Passos de implementação:**
-
-1. Confirmar H4 e, se preciso, acrescentar canal, comissão e quem cobra à API pública de `reservations`.
-2. Escrever testes de módulo: reserva nova por pull e por webhook, mensagem repetida, alteração, cancelamento, reserva que excede a disponibilidade, reprocessamento manual.
-3. Implementar e regenerar o contrato.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "como `reservations` cria, altera e cancela reservas pela API pública e onde guarda canal e origem (handoff de M4)?"; "como o padrão de integração de M5 expõe painel de saúde e reprocessamento?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: reserva duplicada por mensagem repetida ou por pull e webhook ao mesmo tempo; overbooking por reserva de OTA; mensagem com erro descartada sem alerta; dado de cartão da OTA gravado.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E08 — "Recebimento de reservas e painel de saúde" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução", as restrições e a hipótese H4 —, a seção E08 inteira e o "Evidências e handoff" de E07. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E07 está #concluida e que o código bate com o handoff dela; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: receber reservas novas, alteradas e canceladas do channel manager por job de pull com ShedLock ou por webhook autenticado (selecionados por configuração), processando InboundBookingMessage de forma idempotente pelo ID externo, criando ou alterando a reserva pela API pública de reservations com canal, comissão e quem cobra, sem overbooking, e entregar log de sincronização, alertas e painel de saúde com reprocessamento manual. Se reservations não aceitar canal, comissão e quem cobra, acrescente-os à API pública dele. Não implemente o adaptador real.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E08 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume a API pública de reservations para criar, alterar e cancelar (M4) e o painel de saúde e reprocessamento do padrão de integração de M5;
-- escreva os testes de módulo primeiro, implemente, regenere api/openapi.yaml e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em reserva duplicada, overbooking, mensagem descartada sem alerta e dado de cartão gravado.
-
-Critérios de aceite (detalhes na seção E08):
-- reserva nova, alteração e cancelamento por pull e por webhook cobertos por teste;
-- mensagem repetida ou recebida pelos dois modos não duplica a reserva;
-- reserva sem disponibilidade não é criada e gera alerta;
-- painel de saúde e reprocessamento manual funcionando; build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -872,6 +628,16 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Confirme a H4 antes de planejar: a reserva agrupadora já guarda a origem (`OTA` vende no canal `OTA`) e o número externo (`externalId`), mas comissão e quem cobra não aparecem nas notas de tema; se faltarem, acrescente-os à API pública de `reservations` (dependência permitida).
+- A `ReservationsApi` tem os caminhos sem permissão feitos para o channel manager: `createBooking` (sem step-up do desconto; o channel manager grava a diária da OTA como diária editada), `cancelReservation` e `confirmReservation(id, method)` (garantia `CARD` só informada, sem dado do cartão até o M7). A alteração da reserva **não** está na API pública (só `PUT /api/v1/reservations/{id}` com `If-Match`): a alteração vinda da OTA precisa de um caminho novo na `ReservationsApi`. A tomada do inventário recusa com `409 ROOM_TYPE_UNAVAILABLE` sem gravar nada (notas `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)` e `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`).
+- O titular e os hóspedes precisam existir no `guests` antes da reserva (`createBooking` recebe ids): a criação do perfil a partir da mensagem da OTA e a busca de duplicado são parte do plano (nota `ZenyHotelManager - Módulo guests`).
+- O webhook é chamado pelo provedor, sem access token de usuário: um endpoint público exige mudar `SecurityConfiguration.PUBLIC_API_ENDPOINTS` e o `ApiSecurityTest`, e o `@Idempotent` (por usuário) não serve: a idempotência é pelo ID externo (nota `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Convenções de API`). O painel de saúde e o reprocessamento seguem o padrão de integração do M5 (handoff); o actuator não expõe indicadores novos (nota `ZenyHotelManager - Docker, observabilidade e CI`).
+- Pontos de atenção da revisão: reserva duplicada por mensagem repetida ou por pull e webhook ao mesmo tempo, overbooking por reserva de OTA, mensagem com erro descartada sem alerta, dado de cartão da OTA gravado.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -880,11 +646,11 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -895,48 +661,11 @@ No fim, preencha "Evidências e handoff" de E08 (snapshot, arquivos alterados, d
 
 **Por que agora:** é a primeira integração real com o channel manager; o hotel abre com OTAs (SPEC §9).
 
-**Dependências e paralelismo:** E08. Pode correr em paralelo com E10–E12 (em worktrees separados); conflito de edição na configuração de integrações.
+**Dependências:** E08. Independente de E10–E12; conflito de edição possível na configuração de integrações.
 
 **Escopo:** adaptador (a criar em `distribution/infrastructure/`), autenticação, mapeamento de erros, testes de contrato com WireMock a partir da documentação, mapeamentos iniciais de tipos de UH e planos, roteiro de homologação com reserva de teste de ponta a ponta.
 
 **Fora de escopo:** certificação comercial com o fornecedor (prazo externo; registrar no handoff se aplicável).
-
-**Passos de implementação:**
-
-1. Confirmar D1 registrada e credenciais de homologação disponíveis.
-2. Escrever testes de contrato.
-3. Implementar e executar o roteiro de homologação: ARI enviado e visível no extranet do provedor, reserva de teste recebida, alterada e cancelada.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "quais endpoints, autenticação, formatos de ARI e de reserva, modos push/pull e limites de chamadas a documentação do channel manager escolhido define?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: segredo no repositório; erro do provedor tratado como sucesso; mapeamento que envia disponibilidade de um tipo para outro.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E09 — "Adaptador real do channel manager" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a decisão D1 —, a seção E09 inteira e o "Evidências e handoff" de E07 e E08. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E08 está #concluida, que E09 está #pendente (não #bloqueada) e que D1 registra o channel manager escolhido; se não, pare e relate sem implementar. Se o código divergiu do plano, pare e relate.
-
-Objetivo: implementar o adaptador do channel manager escolhido atrás da porta ChannelManagerProvider (autenticação, envio de ARI, recebimento de reservas por pull se suportado ou webhook, confirmação, mapeamento de erros), com testes de contrato em WireMock baseados na documentação oficial, mapeamentos iniciais de tipos de UH e planos e roteiro de homologação executado com credenciais fora do repositório.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E09 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume endpoints, autenticação, formatos, modos push/pull e limites do channel manager escolhido;
-- escreva os testes de contrato primeiro, implemente, rode os comandos oficiais de build e teste do CLAUDE.md e o roteiro de homologação;
-- verificação independente com o Prompt do verificador, com foco em segredo no repositório, erro tratado como sucesso e mapeamento trocado.
-
-Critérios de aceite (detalhes na seção E09):
-- testes de contrato passam;
-- ARI visível no provedor e reserva de teste recebida, alterada e cancelada, com evidência no handoff;
-- nenhum segredo no repositório; build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -949,6 +678,14 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 - Comandos oficiais de build e teste → sucesso.
 - Roteiro de homologação → evidências registradas (IDs de reserva de teste, sem dados pessoais).
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Só planeje com a D1 registrada e as credenciais de homologação disponíveis. O roteiro de homologação (ARI visível no extranet do provedor, reserva de teste recebida, alterada e cancelada) é executado com credenciais fora do repositório e conta como critério, não como passo opcional.
+- Leia os handoffs de E07 e E08: o adaptador entra atrás da porta delas e os testes de contrato partem do mesmo WireMock. Sendo a Omnibees, a certificação do conector tem prazo externo (ARCHITECTURE §18).
+- Pontos de atenção da revisão: segredo no repositório, erro do provedor tratado como sucesso, mapeamento que envia a disponibilidade de um tipo para outro.
 
 **Bloqueios:**
 
@@ -963,11 +700,11 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -978,7 +715,7 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 
 **Por que agora:** o hotel não pode abrir sem backup testado, seja na nuvem ou no hotel; o procedimento é o mesmo nos dois casos.
 
-**Dependências e paralelismo:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho. Pode correr em paralelo com E01–E09 (em worktrees separados); conflito possível em `docker/compose.yaml`.
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho. Independente de E01–E09; conflito possível em `docker/compose.yaml`.
 
 **Escopo:**
 
@@ -990,44 +727,6 @@ No fim, preencha "Evidências e handoff" de E09 (snapshot, arquivos alterados, d
 - Métrica e alerta de backup atrasado (ARCHITECTURE §16).
 
 **Fora de escopo:** destino externo de produção e credenciais reais (dependem de D2 e do usuário; configurados em E11).
-
-**Passos de implementação:**
-
-1. Escrever o script de teste de restauração primeiro e confirmar que falha sem backup.
-2. Configurar o serviço `backup`, o espelhamento e a métrica.
-3. Executar o ciclo completo: dados de teste, backup, perda simulada, restauração em ambiente separado, verificação; medir o tempo.
-4. Documentar o procedimento.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "o que ARCHITECTURE §15.1–15.3 e §16 e RNF-07 exigem?"; "como pgBackRest e WAL-G configuram arquivamento contínuo para S3 e restauração em ponto no tempo com PostgreSQL 18 em container?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: restauração que só funciona com o volume original; segredo do storage no repositório; RPO acima de 1h por configuração de arquivamento; bucket de arquivos fora do backup.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E10 — "Backup contínuo e restauração testada" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Pré-requisito", o "Protocolo de execução" e a hipótese H7 — e a seção E10 inteira. Confirme o pré-requisito: o gate E12 de docs/roadmaps/roadmap-m7-pagamentos-fiscal.md está #concluida, ou, pela exceção do cabeçalho, M7 E01 a E08 estão #concluida; se nenhum dos dois, pare e relate sem implementar. Leia o handoff de M0 E06 sobre o compose. Rode git status e preserve mudanças preexistentes que não sejam suas. Se o código divergiu do plano, pare e relate.
-
-Objetivo: adicionar o serviço backup ao docker/compose.yaml com pgBackRest ou WAL-G (base diária e WAL contínuo para storage compatível com S3, simulado em desenvolvimento por um segundo MinIO), espelhar o bucket de arquivos, expor métrica e alerta de backup atrasado, escrever docs/operacao/backup-e-restauracao.md e um script que restaura num ambiente separado e verifica a integridade. Não configure destino nem credenciais de produção, que dependem da decisão D2.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E10 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume ARCHITECTURE §15.1–15.3 e §16, RNF-07 e a configuração de arquivamento contínuo e restauração em ponto no tempo do pgBackRest e do WAL-G;
-- escreva o script de teste de restauração primeiro, implemente, execute o ciclo completo medindo o tempo e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em restauração dependente do volume original, segredo no repositório, RPO acima de 1h e bucket fora do backup.
-
-Critérios de aceite (detalhes na seção E10):
-- ciclo backup → perda simulada → restauração em ambiente separado executado com sucesso e tempo medido abaixo de 4h;
-- WAL arquivado com intervalo que garante RPO ≤ 1h;
-- bucket de arquivos espelhado; procedimento documentado; nenhum segredo no repositório.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, decisões — inclusive a ferramenta escolhida —, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1045,6 +744,15 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 - Comandos oficiais de build e teste → sucesso.
 - `docker compose -f docker/compose.yaml down` ao final.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Confirme o pré-requisito (gate do M7 ou a exceção do cabeçalho) e leia o handoff do M0 E06 sobre o compose. Hipótese H7: registre no handoff a ferramenta escolhida (pgBackRest ou WAL-G).
+- O compose, o MinIO (imagem `pgsty/minio`, preparado por `docker/storage/init-storage.sh`), as variáveis sem padrão (`${VAR:?…}`) do `docker/.env`, os dois papéis do banco e as regras de alerta em `docker/prometheus/alerts.yaml` estão nas notas `ZenyHotelManager - Docker, observabilidade e CI` e `ZenyHotelManager - Ambiente, banco, chaves e build`.
+- Armadilha: os anexos sensíveis estão cifrados no bucket e várias colunas do banco estão cifradas com o anel `ZENY_ENCRYPTION_KEYS`; uma restauração só é útil com as mesmas chaves (e as JWT), então o procedimento precisa dizer onde elas ficam guardadas fora do servidor.
+- Pontos de atenção da revisão: restauração que só funciona com o volume original, segredo do storage no repositório, RPO acima de 1h por configuração de arquivamento, bucket de arquivos fora do backup.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -1053,11 +761,11 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1068,7 +776,7 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o último passo de infraestrutura antes da inauguração; depende do backup (E10).
 
-**Dependências e paralelismo:** E10. Pode correr em paralelo com E09 e E12 (em worktrees separados); conflito possível em `docker/compose.yaml`.
+**Dependências:** E10. Independente de E09 e E12; conflito possível em `docker/compose.yaml`.
 
 **Escopo:**
 
@@ -1082,43 +790,6 @@ No fim, preencha "Evidências e handoff" de E10 (snapshot, arquivos alterados, d
 - Smoke test no ambiente final: readiness `UP` via TLS, login, um evento SSE.
 
 **Fora de escopo:** provisionamento do servidor ou contratação da VPS (ação do usuário).
-
-**Passos de implementação:**
-
-1. Confirmar D2 registrada e o ambiente-alvo disponível.
-2. Escrever o override, a documentação e o smoke test.
-3. Implantar no ambiente-alvo e executar o smoke test e um teste de restauração com o destino real.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "o que ARCHITECTURE §15.1–15.3 e RNF-01, RNF-02 e RNF-08 exigem para o modelo decidido?"; "quais integrações precisam mudar de modo (webhook × polling) e como cada uma é configurada (handoffs de M5, M7 e deste marco)?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: segredo no repositório ou no override; porta aberta desnecessária no servidor do hotel; integração ainda em modo webhook sem rota de entrada; Swagger ou actuator sensível expostos em produção.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E11 — "Ambiente de produção: nuvem ou hotel" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a decisão D2 —, a seção E11 inteira e o "Evidências e handoff" de E10. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E10 está #concluida, que E11 está #pendente (não #bloqueada) e que D2 registra se o servidor roda na nuvem ou no hotel; se não, pare e relate sem implementar. Se o código divergiu do plano, pare e relate.
-
-Objetivo: preparar a produção no modelo decidido conforme docs/ARCHITECTURE.md §15.2 — override de compose com profile prod, TLS (Let's Encrypt na nuvem; rede local com túnel opcional no hotel), modo de cada integração (webhook ou pull/polling), segredos por Docker secrets ou variáveis do host, destino real do backup — e escrever docs/operacao/implantacao.md com instalação, atualização, rotação de chaves, verificação e rollback, mais um smoke test no ambiente final. Nenhum segredo entra no repositório.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E11 para #em-andamento no índice e no título;
-- investigação: um subagente Explore resume ARCHITECTURE §15.1–15.3, RNF-01, RNF-02 e RNF-08 e como cada integração troca entre webhook e polling (handoffs de M5, M7 e deste marco);
-- escreva o smoke test primeiro, implemente, implante no ambiente-alvo, rode o smoke test e um teste de restauração com o destino real, e rode os comandos oficiais de build e teste do CLAUDE.md;
-- verificação independente com o Prompt do verificador, com foco em segredo no repositório, porta aberta desnecessária, integração sem rota de entrada e endpoints sensíveis expostos.
-
-Critérios de aceite (detalhes na seção E11):
-- smoke test passa no ambiente final via TLS;
-- todas as integrações configuradas no modo compatível com o modelo decidido;
-- restauração com o destino real de backup executada; documentação de implantação completa; nenhum segredo no repositório.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy além do ambiente-alvo autorizado pelo usuário.
-```
 
 **Critérios de aceite:**
 
@@ -1135,6 +806,16 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 - Teste de restauração com o destino real → sucesso, tempo registrado.
 - Comandos oficiais de build e teste → sucesso.
 
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Só planeje com a D2 registrada e o ambiente-alvo disponível; a implantação vai só ao ambiente-alvo autorizado pelo usuário (efeito fora da branch: parada do superpowers). Leia o handoff de E10 e, para o modo de cada integração (webhook × polling), os handoffs de M5, M7 e deste marco.
+- Aplique as notas herdadas do cabeçalho: SSE pelo proxy com TLS (`flush_interval` sem buffer e tempo limite das conexões longas), log de acesso **sem query string** no proxy e na aplicação, segredos `ZENY_FCM_*` com os demais e a taxa de serviço padrão em 0% (para o checklist da E13).
+- Pendências atribuídas a esta etapa nas notas de tema e ainda fora do Escopo (decidir com o usuário se entram): a re-cifragem dos valores que ainda usam uma chave antiga, que não tem job (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token`, os anexos sensíveis no bucket; nota `ZenyHotelManager - Ambiente, banco, chaves e build`, "Chaves de cifragem"), e o `idle_in_transaction_session_timeout` e o restante da configuração do PostgreSQL de produção (nota `ZenyHotelManager - Sincronização offline`, "Cursor sem perda").
+- Swagger UI e `/v3/api-docs` já ficam desligados no `prod`, e o actuator só expõe liveness, readiness e prometheus (o proxy responde 404 ao prometheus); o critério confere isso no ambiente final (notas `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Docker, observabilidade e CI`). A dívida das migrações (`ZENY_DB_MIGRATION_*`) está na nota `ZenyHotelManager - Ambiente, banco, chaves e build`.
+- Pontos de atenção da revisão: segredo no repositório ou no override, porta aberta desnecessária no servidor do hotel, integração ainda em webhook sem rota de entrada, Swagger ou actuator sensível expostos.
+
 **Bloqueios:**
 
 - **Causa:** não está decidido se o servidor roda na nuvem ou no hotel (SPEC Q-06).
@@ -1148,11 +829,11 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1163,7 +844,7 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 
 **Por que agora:** com PDV e distribuição prontos, o sistema tem a carga de operação real da inauguração.
 
-**Dependências e paralelismo:** E06, E08. Pode correr em paralelo com E09–E11 (em worktrees separados); conflito possível em configurações de pool e cache.
+**Dependências:** E06, E08. Independente de E09–E11; conflito possível em configurações de pool e cache.
 
 **Escopo:**
 
@@ -1173,44 +854,6 @@ No fim, preencha "Evidências e handoff" de E11 (snapshot, arquivos alterados, d
 - Relatório em `docs/operacao/desempenho.md` (a criar) com resultados e ajustes feitos.
 
 **Fora de escopo:** teste de carga em produção (pode ser repetido em E11 ou E13 pelo usuário).
-
-**Passos de implementação:**
-
-1. Criar massa de dados e scripts de carga.
-2. Rodar contra o compose local, medir p95 por operação e latência SSE.
-3. Corrigir gargalos (índices, consultas N+1, pool) com testes de regressão quando houver mudança de código.
-4. Registrar resultados no documento.
-
-**Estratégia de execução:** `padrão` · Revisão humana: não
-
-- Investigação (`Explore`): "quais operações são as mais frequentes por perfil (recepção, governança, garçom) segundo a SPEC §3.1 e os módulos implementados?"; "há consultas sem índice nas tabelas de disponibilidade, contas e comandas?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: medição feita com cache quente ou sem concorrência real; latência SSE medida só no servidor; dados pessoais reais na massa de teste; otimização que quebra regra de negócio.
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E12 — "Teste de desempenho e tempo real" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Protocolo de execução" e a hipótese H8 —, a seção E12 inteira e o "Evidências e handoff" de E06 e E08. Leia RNF-04 e RNF-06 em docs/SPEC.md §7. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E06 e E08 estão #concluida e que o código bate com o handoff delas; se não, ou se o código divergiu do plano, pare e relate sem implementar.
-
-Objetivo: criar em perf/ scripts de carga com massa sintética para 30 UHs (sem dados pessoais reais) cobrindo painel de UHs, disponibilidade, reserva, check-in, comanda e sincronização offline; medir p95 por operação com ~30 usuários simultâneos e a latência ponta a ponta de eventos SSE no cliente; corrigir gargalos com testes de regressão; registrar resultados em docs/operacao/desempenho.md.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E12 para #em-andamento no índice e no título;
-- investigação: um subagente Explore levanta as operações mais frequentes por perfil e consultas sem índice em disponibilidade, contas e comandas;
-- implemente scripts e massa, meça, corrija gargalos e rode os comandos oficiais de build e teste do CLAUDE.md após cada ajuste de código;
-- verificação independente com o Prompt do verificador, com foco em medição sem concorrência real, latência SSE medida só no servidor, dados pessoais reais e otimização que quebra regra de negócio.
-
-Critérios de aceite (detalhes na seção E12):
-- p95 < 300 ms em todas as operações do cenário com ~30 usuários simultâneos;
-- eventos SSE chegam ao cliente em até 2 s no p95;
-- resultados e ajustes registrados em docs/operacao/desempenho.md; build e testes oficiais passam.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, decisões, comandos e resultados, parecer do verificador, notas para a próxima etapa) e responda com um resumo curto de mudanças, validações e pendências. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1226,6 +869,14 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 - Execução dos scripts de carga contra o compose local → métricas dentro dos limites.
 - Comandos oficiais de build e teste → sucesso.
 
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Hipótese H8 (k6 ou Gatling). Leia RNF-04 e RNF-06 na SPEC §7 e os handoffs de E06 e E08; as operações mais frequentes por perfil vêm da SPEC §3.1.
+- A cotação já tem medição dentro dos testes (`QuotePerformanceTest`, M4 E06: p95 de 21 a 43 ms com 30 UHs e 730 dias; nota `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`), útil como linha de base e modelo de massa. O canal SSE manda mensagens só depois do commit, com *heartbeat* e buffer em memória por tópico (nota `ZenyHotelManager - Tempo real (SSE)`): a latência é medida no cliente, não no servidor.
+- Pontos de atenção da revisão: medição com cache quente ou sem concorrência real, latência SSE medida só no servidor, dados pessoais reais na massa, otimização que quebra regra de negócio.
+
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
@@ -1234,11 +885,11 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
 - Notas para a próxima etapa: —
 
 ---
@@ -1249,7 +900,7 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério da SPEC §9 ("Para a inauguração, o mínimo são as Fases 0, 1 e 2") e a entrada do marco M9.
 
-**Dependências e paralelismo:** E09, E11, E12 (que cobrem transitivamente todas as demais). Não paralelizável.
+**Dependências:** E09, E11, E12 (que cobrem transitivamente todas as demais). Não paralelizável.
 
 **Escopo:**
 
@@ -1260,44 +911,6 @@ No fim, preencha "Evidências e handoff" de E12 (snapshot, arquivos alterados, d
 - Atualizar `docs/roadmaps/README.md` registrando a conclusão do M8 no histórico de revisões.
 
 **Fora de escopo:** funcionalidade nova. Problemas voltam para a etapa de origem (reabrir com `#em-andamento` e registrar no handoff dela), salvo ajustes triviais de documentação.
-
-**Passos de implementação:**
-
-1. Conferir os gates anteriores e rodar as validações numa cópia limpa.
-2. Executar o cenário ponta a ponta e registrar as evidências.
-3. Escrever o checklist de inauguração e revisá-lo com o usuário.
-4. Marcar a definição global de pronto e atualizar o README dos marcos.
-
-**Estratégia de execução:** `padrão` · Revisão humana: sim
-
-- Investigação (`Explore`): "quais itens de definição de pronto e pendências registradas nos gates de M0 a M7 ainda dependem de ação do usuário?".
-- Partes paralelas: nenhuma.
-- Foco do verificador: item da definição de pronto sem evidência; cenário executado só com adaptadores falsos; gate de marco anterior não concluído; checklist sem itens legais (FNRH, fiscal, LGPD).
-
-**Prompt para uma sessão limpa:**
-
-```text
-Execute a etapa E13 — "Gate de inauguração (Fases 0–2)" do roadmap docs/roadmaps/roadmap-m8-restaurante-distribuicao.md, neste repositório.
-
-Antes de alterar qualquer coisa, leia CLAUDE.md (e AGENTS.md, se existir), o cabeçalho do roadmap — incluindo o "Pré-requisito", o "Protocolo de execução" e a "Definição global de pronto" —, a seção E13 inteira e o "Evidências e handoff" de todas as etapas E01 a E12. Rode git status e preserve mudanças preexistentes que não sejam suas. Confirme que E01 a E12 estão #concluida e que os gates de M0 a M7 estão #concluida nos roadmaps de docs/roadmaps/; se não, ou se o código divergiu do plano, pare e relate.
-
-Objetivo: verificar que o servidor está pronto para inaugurar: validações oficiais numa cópia limpa, cenário ponta a ponta das Fases 0–2 no ambiente de produção ou homologação equivalente com fornecedores reais (reserva da OTA, check-in com FNRH e caução, tarefa offline, consumo no restaurante com NFC-e e no quarto, fechamento do dia, check-out com NFS-e e captura, conciliação, backup e restauração), checklist de inauguração em docs/operacao/checklist-inauguracao.md revisado com o usuário e conclusão do M8 registrada no histórico de docs/roadmaps/README.md. Não implemente funcionalidade nova: problemas voltam à etapa de origem.
-
-Siga o Protocolo de execução com a estratégia padrão:
-- tire o snapshot inicial e troque a tag de E13 para #em-andamento no índice e no título;
-- investigação: um subagente Explore levanta, nos gates de M0 a M7, pendências que ainda dependem de ação do usuário;
-- rode os comandos oficiais de build e teste do CLAUDE.md e a verificação do contrato numa cópia limpa, execute o cenário e registre a evidência de cada item;
-- verificação independente com o Prompt do verificador, com foco em item sem evidência, cenário com adaptador falso, gate anterior não concluído e checklist sem itens legais.
-
-Critérios de aceite (detalhes na seção E13):
-- gates de M0 a M7 concluídos e definição global de pronto marcada com evidência;
-- cenário ponta a ponta executado com fornecedores reais;
-- checklist de inauguração escrito e revisado com o usuário; README dos marcos atualizado.
-
-Não declare sucesso com validação falhando ou não executada. Marque #concluida só com todos os critérios atendidos e parecer APROVADO do verificador; diante de impedimento real, marque #bloqueada e registre causa, evidência, impacto e ação de desbloqueio em "Bloqueios".
-
-No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resultados, parecer do verificador, notas para o marco M9) e responda com um resumo curto. Não faça commit, push ou deploy.
-```
 
 **Critérios de aceite:**
 
@@ -1312,6 +925,15 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 - Comandos oficiais de build, teste e verificação do contrato numa cópia limpa → sucesso.
 - Cenário ponta a ponta → evidências registradas.
 
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Leia o "Evidências e handoff" de todas as etapas E01 a E12 e, nos gates de M0 a M7, as pendências que ainda dependem de ação do usuário; o checklist de inauguração é revisado com o usuário (entrevista), não só escrito.
+- Convenção dos gates anteriores (handoffs dos gates de M1 a M4 nos roadmaps; resumo na nota `ZenyHotelManager - Estado por marco`): validação numa cópia limpa (`git archive`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`), cenário num `docker compose` isolado (`-p` próprio, `--env-file` gerado do `docker/.env.example` fora do repositório, profile `prod`, pelo proxy, `down -v` no fim), oasdiff contra o gate anterior e o cenário do marco também como teste de integração na raiz do pacote de testes (como `MilestoneM3EndToEndTest` e `MilestoneM4EndToEndTest`).
+- A captura de atualização do brain desta etapa leva o estado do marco (M8 concluído, inauguração) para a nota `ZenyHotelManager - Estado por marco`.
+- Pontos de atenção da revisão: item da definição de pronto sem evidência, cenário executado só com adaptadores falsos, gate de marco anterior não concluído, checklist sem itens legais (FNRH, fiscal, LGPD).
+
 **Bloqueios:** Nenhum bloqueio conhecido. Esta etapa só fica disponível depois que E09 e E11 forem desbloqueadas e concluídas.
 
 **Riscos e mitigação:**
@@ -1320,12 +942,12 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 
 **Evidências e handoff:**
 
-- Snapshot inicial: —
-- Arquivos alterados: —
-- Decisões: —
-- Validações executadas: —
-- Parecer do verificador: —
-- Notas para o marco M9: —
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa (marco M9): —
 
 ---
 
@@ -1336,3 +958,4 @@ No fim, preencha "Evidências e handoff" de E13 (snapshot, verificações, resul
 - 2026-10-14 — E11 recebe duas pendências do M1 E04, decididas pelo usuário: migrações num job de uso único com o dono dos schemas (a `api` deixa de receber `ZENY_DB_MIGRATION_*`) e a decisão entre trilha de auditoria e métrica para o login com usuário inexistente. Nenhuma tag mudou.
 - 2026-10-15 — notas herdadas do M2 acrescentadas em "Hipóteses e decisões em aberto" (SSE pelo proxy com TLS e `ZENY_FCM_*` como segredos de implantação). Nenhuma etapa reescrita; tags inalteradas.
 - 2026-10-20 — nota herdada do gate do M3 (E11, decisão do usuário): configurar a taxa de serviço padrão do hotel, que nasce em 0%, na implantação; acrescentada às notas herdadas e ao checklist de inauguração da E13. Tags inalteradas.
+- 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m8-restaurante-distribuicao`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
