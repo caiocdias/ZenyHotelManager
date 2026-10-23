@@ -129,6 +129,21 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E10:** teto de tamanho do conteúdo, prazo de guarda e o tempo de reenvio do job não confirmado.
 - **E11:** caminhos dos PDFs (rota própria ou negociação por `Accept`) e o que a ficha mostra do documento.
 
+**Decisões do lote E04 a E06** (entrevista do fim do lote). O usuário estava ausente e delegou toda interação em 2026-10-23, pedindo a opção recomendada depois de uma avaliação mais minuciosa dos prós e contras. Por isso, todas as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-23**. O detalhe e as alternativas estão no handoff de cada etapa.
+
+- **E04 (a) Pacotes inclusos:** lançados à parte da hospedagem, cada um no código dele, e sem taxa de serviço. O M6 precisa seguir a mesma regra. Alternativa descartada: a diária inteira no `ROOM_CHARGE`, que mistura receitas (RF-FIS-04), ou os inclusos com taxa de serviço, que passam do preço informado (RN-11).
+- **E04 (b) Problema de saldo:** o `409 FOLIO_BALANCE_NOT_ZERO` traz o saldo já com as cobranças que o check-out lançaria. Alternativa descartada: o saldo sem elas, com que o hóspede pagaria e seria recusado de novo.
+- **E04 (c) Cauções vencidas:** também são liberadas no check-out.
+- **E05 (a) Upgrade para outro tipo de UH:** fica para depois. É uma pendência de produto fora da Definição de pronto do M5. Quando entrar, troca o tipo da reserva e move o inventário das noites restantes numa etapa própria.
+- **E05 (b) Ocupação do hospedado:** continua fixa.
+- **E05 (c) Redução da saída:** a redução de quem já está hospedado não passa pelas restrições de venda.
+- **E05 (d) Origem da troca de UH:** registrada como `CHECK_OUT` no histórico da UH.
+- **E05 (e) Early check-in:** também no walk-in.
+- **E05 (f) `ReservationSearchApiTest` intermitente:** aceitar `reservation_arrival_idx` ou `reservation_stay_period_idx` no filtro "period". Ainda não aplicado: é uma pendência para a próxima sessão de manutenção ou para o gate E12.
+- **E06 (a) Responsável:** um usuário vinculado a um colaborador.
+- **E06 (b) Resolver o recado:** permissão própria, para Gerente, Recepcionista, Governanta, Manutenção, Comercial/Eventos, Caixa A&B e Cozinha/Bar.
+- **E06 (c) Vínculo do recado:** fixo depois de criado.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
@@ -691,7 +706,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
   - **D7, permissão:** `frontdesk.stays.checkout` (Gerente e Recepcionista, não sensível).
   - O `frontdesk` passa a usar também os tipos `PackageId` e `PackageCharge` do `rates`, sem `RatesApi` (`ModularityTest` e ARCHITECTURE §3.1).
   - O apoio de testes comum fica em `FrontdeskTestSupport`.
-- Decisões para o usuário (entrevista no fim do lote):
+- Decisões para o usuário (decididas pela opção recomendada em nome do usuário, ausente e delegado, 2026-10-23; ver "Decisões do lote E04 a E06"):
   - **(a) Pacotes inclusos:** lançados à parte da hospedagem e sem taxa de serviço (D2). O M6 precisa seguir a mesma regra.
   - **(b) Problema do saldo:** mostra o saldo já com as cobranças que o check-out lançaria (D5).
   - **(c) Cauções vencidas:** também são liberadas no check-out (D6).
@@ -786,7 +801,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
   - **Ordem das recusas da troca:** a UH não pronta (`409`) vem antes do outro tipo (`422`). A mesma UH pula a conferência de prontidão para dar `422 ROOM_MOVE_SAME_ROOM`.
   - **Check-out com a reserva alterada:** `409 RESERVATION_CHANGED`, um código novo do `frontdesk`, porque o check-out não recebe `If-Match`.
   - **Walk-in com um hóspede mesclado:** dá `201` com o sobrevivente em tudo (pendência da E03, coberta por teste).
-- **Decisões para o usuário** (entrevista no fim do lote):
+- **Decisões para o usuário** (decididas pela opção recomendada em nome do usuário, ausente e delegado, 2026-10-23; ver "Decisões do lote E04 a E06"):
   - **(a) Upgrade para outro tipo de UH:** fica para depois. Quando entrar, troca o tipo da reserva e move o inventário das noites restantes.
   - **(b) Ocupação do hospedado:** continua fixa.
   - **(c) Redução sem restrições de venda.**
@@ -871,7 +886,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
   - **D5, situação:** `OPEN` ou `RESOLVED`, calculada.
   - **D6, texto:** de 1 a 500 caracteres, aparado.
   - **Fora dos modelos padrão:** os modelos de setor que ficaram de fora (Camareira, Garçom, Almoxarife, Financeiro) recebem acesso por concessão do administrador.
-- **Decisões para o usuário** (entrevista no fim do lote):
+- **Decisões para o usuário** (decididas pela opção recomendada em nome do usuário, ausente e delegado, 2026-10-23; ver "Decisões do lote E04 a E06"):
   - (a) responsável como usuário com colaborador;
   - (b) a permissão de resolver separada e os modelos que a recebem;
   - (c) o vínculo fixo.
@@ -1253,3 +1268,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-22 — sincronizado com o código depois do gate do M4 (commit `ffae917`, depois de `d68e1e3` da E12; CI da E12 verde no run `39723562893`, a do gate em andamento no run `39730633697`). Cabeçalho com o pré-requisito atendido e o aviso "escrito antes do código" trocado pela nota de sincronização. "Contexto confirmado" reescrito com os módulos existentes, a última migração (`V2026_10_22_0427`), os comandos oficiais, as convenções (views `report_*`, `AppendOnlyTables`, `requireOrApproval`, `@Idempotent`, `x-extensible-enum`, códigos de permissão sem hífen, actuator restrito), o apoio de testes, os gates e as APIs públicas reais (`ReservationsApi` sem `assignRoom` nem transições de hospedagem e com eventos sem autor e sem consumidor; `BillingApi` com `balanceOf`/`closeFolio` e sem registro nem liberação de caução, `key` e `source` como `enum` fechado; `RoomsApi` com `isReadyForCheckIn`, `markOccupied` e `markVacant(CHECK_OUT)`; `GuestsApi` sem documentos fora da `fnrhData`; `HotelApi` sem `profile()`; `FilesApi` sem conteúdo; SSE do `shared` só de usuário; sem credencial de serviço), mais as pendências do M4 com a etapa de cada uma e as que passam adiante. Hipóteses: H1 a H4 confirmadas no código, H9 caiu (substituída pela H23), H22 confirmada no código e H19 na documentação; novas H10 a H24 (H5 refeita), as decididas pelo usuário marcadas "provisória" com a opção recomendada (P1 a P12 da sincronização); D1 continua em aberto. Etapas: E01 (dados de check-in e `MinorAuthorization` no `reservations`, RN-24 no domínio, check-out antecipado com a alocação encerrada, `assignRoom` na API pública, alteração do hospedado pelo `PUT`, eventos com `performedBy`; a cotação de early/late saiu para a E02), E02 (módulo `frontdesk` com as arestas `hotel` e `files`, leitura de documentos sem número na `GuestsApi`, caução pela `BillingApi`, cotação de early/late, desfazer com step-up, códigos de permissão sem hífen), E03 (`createBooking` + `assignRoom` + check-in, hóspedes já cadastrados, sem desconto), E04 (late pelo código `ROOM_CHARGE`, `balanceOf`, liberação de caução e `closeFolio`), E05 (troca de UH pelo `frontdesk`, extensão e redução pelo `PUT` da E01, cobrança do early no check-in), E06 (endpoints pela convenção, aresta `frontdesk` → `staff`), E07 (status e métrica no lugar do health, CPF por usuário, domínios para o cliente), E08 (dependência nova da E02; job com ShedLock, ordem, `INVALID`, view `fnrh.report_submissions`, tipo `notifications.integration-failure`; no-show para o M6), E09 (evidência e ação de desbloqueio reconfirmadas; segue `#bloqueada`), E10 (cadeia de segurança e SSE próprios do agente, conteúdo cifrado; revisão humana passou a sim), E11 (`HotelApi.profile()`, leitura de conteúdo na `FilesApi` com `printing` → `files`, extrato PDF a partir do JSON existente, ficha com documento mascarado) e E12 (cópia limpa, oasdiff contra `ffae917`, `MilestoneM5EndToEndTest` e compose isolado com o listener do `fnrh` e um agente simulado); validações trocadas pelos comandos oficiais (`./gradlew build` e o oasdiff). Nenhuma etapa nova, removida ou renumerada; tags inalteradas (E09 `#bloqueada`, as demais `#pendente`).
 - 2026-10-22 — decisões da sincronização (P1 a P12) **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a), tirada a marca de provisória das H5, H10 a H18, H21, H23 e H24. A P7 (H14) com ressalva: a E04 passou a lançar, no day use e no check-out no mesmo dia da chegada, a diária congelada e os pacotes `ON_ARRIVAL`/`DAILY` da data antes de conferir o saldo, uma vez só, por uma chave de idempotência opcional nova na `BillingApi.post` (acréscimo mínimo sem quebrar contrato), com teste e a nota para o M6 de usar a mesma chave. Revisão humana da E10 mantida (segundo mecanismo de autenticação). CI do push do gate do M4 verde no run `39730633697` (build, oasdiff e imagem): ressalva do cabeçalho retirada. Tags inalteradas.
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m5-recepcao-fnrh`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
+- 2026-10-23 — lote E04 a E06 executado com o superpowers na branch `roadmap/m5-recepcao-fnrh` (check-out, troca de UH, extensão, redução e early check-in, recados). As três etapas estão `#concluida`, com handoffs preenchidos e as capturas de atualização do brain publicadas. As decisões do lote foram tomadas pela opção recomendada em nome do usuário (ausente, delegado) e registradas em "Hipóteses e decisões em aberto". As demais tags não mudaram.
