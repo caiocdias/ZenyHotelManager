@@ -14,6 +14,9 @@ import com.zeny.hotel.shared.TemplateGrant
  * Check-in (E02): [STAYS_CHECK_IN] faz o check-in de uma reserva confirmada (Gerente e Recepcionista; não sensível);
  * [STAYS_UNDO_CHECK_IN] desfaz o check-in na mesma data operacional, **sensível** (RF-ACS-08, RN-12), sem limite, só
  * com o Gerente no modelo: a Recepcionista pede a aprovação de um superior. Desfazer exige também [STAYS_CHECK_IN].
+ *
+ * Check-out (E04): [STAYS_CHECK_OUT] faz o check-out de uma reserva hospedada (Gerente e Recepcionista; não sensível,
+ * decisão D7): só com todas as contas da reserva em saldo zero, sem nenhuma permissão do `billing`.
  */
 object FrontdeskPermissions : ModulePermissions {
     override val module = "frontdesk"
@@ -23,6 +26,9 @@ object FrontdeskPermissions : ModulePermissions {
 
     /** Desfazer o check-in na mesma data operacional (sensível). */
     val STAYS_UNDO_CHECK_IN = PermissionCode("frontdesk.stays.undocheckin")
+
+    /** Fazer o check-out de uma reserva hospedada. */
+    val STAYS_CHECK_OUT = PermissionCode("frontdesk.stays.checkout")
 
     private val all = TemplateGrant(ALL)
 
@@ -40,6 +46,12 @@ object FrontdeskPermissions : ModulePermissions {
                 setOf(ALL),
                 sensitive = true,
                 templates = mapOf(RoleTemplate.MANAGER to all),
+            ),
+            PermissionDefinition(
+                STAYS_CHECK_OUT,
+                "Fazer o check-out de uma reserva hospedada",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
             ),
         )
 }

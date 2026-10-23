@@ -37,12 +37,13 @@ tags:
   name: rooms
 - description: Informações sobre o servidor e a API.
   name: meta
-- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
-    \ cotação de early check-in e late check-out e walk-in (reserva, alocação e check-in\
-    \ numa transação)."
-  name: frontdesk
 - description: Sincronização offline do app operacional.
   name: sync
+- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
+    \ cotação de early check-in e late check-out, walk-in (reserva, alocação e check-in\
+    \ numa transação) e check-out orquestrado numa transação (cobranças da noite da\
+    \ chegada, late, saldo zero, cauções, contas e UH)."
+  name: frontdesk
 - description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
   name: guests
 - description: Trilha de auditoria das escritas.
@@ -7836,6 +7837,77 @@ paths:
       summary: Fazer o check-in de uma reserva confirmada
       tags:
       - frontdesk
+  /api/v1/reservations/{id}/check-out:
+    post:
+      description: "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): lança as\
+        \ cobranças da noite da chegada (só no day use ou no pernoite que sai no dia\
+        \ em que chegou: a hospedagem sem os pacotes inclusos e cada pacote da noite,\
+        \ no código dele, origem `END_OF_DAY`, uma vez só por noite mesmo se o check-out\
+        \ for repetido) e o late cotado (`lateCheckOutFee`, no código da diária, origem\
+        \ `MANUAL`), confere o saldo de todas as contas da reserva, libera as cauç\
+        ões não encerradas (inclusive as vencidas), encerra as contas, faz a reserva\
+        \ `CHECKED_OUT` (o antecipado devolve as noites seguintes ao inventário; a\
+        \ alocação é encerrada; publica `GuestCheckedOut`) e deixa a UH Vaga e Suja\
+        \ (RN-09). Exige `frontdesk.stays.checkout` e `Idempotency-Key`; o corpo é\
+        \ opcional (`lateCheckOutFee` não positivo ou com mais de duas casas: 400\
+        \ `VALIDATION_FAILED`). Na ordem: inexistente 404 `RESERVATION_NOT_FOUND`;\
+        \ só uma hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `CHECK_OUT`);\
+        \ late não oferecido pela política vigente 422 `EARLY_LATE_NOT_OFFERED`; valor\
+        \ diferente do vigente (a política mudou desde a cotação) 409 `EARLY_LATE_FEE_CHANGED`,\
+        \ com `currentFee`; alguma conta da reserva com saldo diferente de zero (RN-06;\
+        \ uma devedora e outra credora não se anulam) 409 `FOLIO_BALANCE_NOT_ZERO`,\
+        \ com `folios` (`folioId`, `number`, `status`, `balance`) e `total`, já com\
+        \ as cobranças da noite da chegada e o late: pagar esse saldo libera o check-out\
+        \ seguinte (com outra `Idempotency-Key`). Até o M10 o check-out só aceita\
+        \ saldo zero por pagamento (sem contas a receber); a captura da caução é feita\
+        \ antes, pelo `billing`; a nota fiscal é do M7."
+      operationId: checkOutReservation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckOutRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckOutResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Fazer o check-out de uma reserva hospedada
+      tags:
+      - frontdesk
   /api/v1/reservations/{id}/confirm:
     post:
       description: "Registra a garantia recebida: confirma a pré-reserva ainda na\
@@ -13536,6 +13608,105 @@ components:
       - reservation
       - restrictionAlerts
       - room
+    CheckOutFolioResponse:
+      type: object
+      description: Uma conta da reserva encerrada pelo check-out.
+      properties:
+        folioId:
+          type: string
+          format: uuid
+        number:
+          type: string
+          description: "Número legível: prefixo, ano e sequência."
+          example: R-2026-000123
+          pattern: "^[A-Z]{1,5}-\\d{4}-\\d{6,}$"
+        status:
+          type: string
+          enum:
+          - OPEN
+          - CLOSED
+      required:
+      - folioId
+      - number
+      - status
+    CheckOutPostingResponse:
+      type: object
+      description: "Um lançamento feito pelo check-out, na conta final (depois do\
+        \ roteamento)."
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional do lançamento.
+        folioId:
+          type: string
+          format: uuid
+        postingId:
+          type: string
+          format: uuid
+        transactionCodeId:
+          type: string
+          format: uuid
+      required:
+      - amount
+      - businessDate
+      - folioId
+      - postingId
+      - transactionCodeId
+    CheckOutRequest:
+      type: object
+      description: "O check-out (corpo opcional): o valor do late check-out que foi\
+        \ cotado ao hóspede (`GET /api/v1/reservations/{id}/early-late-quote`, RN-11).\
+        \ Sem ele, nenhum late é cobrado."
+      properties:
+        lateCheckOutFee:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+    CheckOutResponse:
+      type: object
+      description: "O check-out feito: a reserva `CHECKED_OUT`, a UH Vaga e Suja,\
+        \ as cobranças da noite da chegada (no day use ou no pernoite que sai no dia\
+        \ em que chegou: a hospedagem sem os pacotes inclusos e cada pacote, no có\
+        digo dele), o late cobrado (nulo sem late), as cauções liberadas e as contas\
+        \ encerradas. Nenhum dado do hóspede."
+      properties:
+        closedFolios:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckOutFolioResponse"
+        lateCheckOut:
+          allOf:
+          - $ref: "#/components/schemas/CheckOutPostingResponse"
+          nullable: true
+        releasedPreAuthorizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/StayPreAuthorizationResponse"
+        reservation:
+          $ref: "#/components/schemas/StayReservationResponse"
+        room:
+          $ref: "#/components/schemas/StayRoomResponse"
+        stayCharges:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckOutPostingResponse"
+      required:
+      - closedFolios
+      - releasedPreAuthorizations
+      - reservation
+      - room
+      - stayCharges
     ChecklistAnswerDto:
       type: object
       description: "Uma resposta: a chave do item e só o campo do tipo dele — `check`\

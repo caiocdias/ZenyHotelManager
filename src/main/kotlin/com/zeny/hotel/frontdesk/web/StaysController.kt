@@ -1,5 +1,6 @@
 package com.zeny.hotel.frontdesk.web
 
+import com.zeny.hotel.frontdesk.application.FrontdeskCheckOutService
 import com.zeny.hotel.frontdesk.application.FrontdeskStayService
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
@@ -21,17 +22,20 @@ import java.util.UUID
 const val FRONTDESK_TAG = "frontdesk"
 const val FRONTDESK_TAG_DESCRIPTION =
     "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in, cotação de early check-in e late " +
-        "check-out e walk-in (reserva, alocação e check-in numa transação)."
+        "check-out, walk-in (reserva, alocação e check-in numa transação) e check-out orquestrado numa transação " +
+        "(cobranças da noite da chegada, late, saldo zero, cauções, contas e UH)."
 
 /**
  * A recepção sobre uma reserva (M5 E02): o check-in orquestrado (ARCHITECTURE §6.1), o desfazer check-in (sensível) e
- * a cotação de early/late (RN-11). Os caminhos ficam sob `/reservations/{id}`, como ações da reserva.
+ * a cotação de early/late (RN-11); desde a E04, o check-out orquestrado. Os caminhos ficam sob `/reservations/{id}`,
+ * como ações da reserva.
  */
 @ApiV1Controller
 @RequestMapping("/reservations")
 @Tag(name = FRONTDESK_TAG, description = FRONTDESK_TAG_DESCRIPTION)
 class StaysController(
     private val stays: FrontdeskStayService,
+    private val checkOuts: FrontdeskCheckOutService,
 ) {
     @PostMapping("/{id}/check-in")
     @Idempotent
@@ -97,6 +101,42 @@ class StaysController(
             .ok()
             .eTag(ETags.of(outcome.reservation.version))
             .body(UndoCheckInResponse.of(outcome))
+    }
+
+    @PostMapping("/{id}/check-out")
+    @Idempotent
+    @Operation(
+        operationId = "checkOutReservation",
+        summary = "Fazer o check-out de uma reserva hospedada",
+        description =
+            "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): lança as cobranças da noite da chegada (só no " +
+                "day use ou no pernoite que sai no dia em que chegou: a hospedagem sem os pacotes inclusos e cada " +
+                "pacote da noite, no código dele, origem `END_OF_DAY`, uma vez só por noite mesmo se o check-out " +
+                "for repetido) e o late cotado (`lateCheckOutFee`, no código da diária, origem `MANUAL`), confere o " +
+                "saldo de todas as contas da reserva, libera as cauções não encerradas (inclusive as vencidas), " +
+                "encerra as contas, faz a reserva `CHECKED_OUT` (o antecipado devolve as noites seguintes ao " +
+                "inventário; a alocação é encerrada; publica `GuestCheckedOut`) e deixa a UH Vaga e Suja (RN-09). " +
+                "Exige `frontdesk.stays.checkout` e `Idempotency-Key`; o corpo é opcional (`lateCheckOutFee` não " +
+                "positivo ou com mais de duas casas: 400 `VALIDATION_FAILED`). Na ordem: inexistente 404 " +
+                "`RESERVATION_NOT_FOUND`; só uma hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação " +
+                "`CHECK_OUT`); late não oferecido pela política vigente 422 `EARLY_LATE_NOT_OFFERED`; valor " +
+                "diferente do vigente (a política mudou desde a cotação) 409 `EARLY_LATE_FEE_CHANGED`, com " +
+                "`currentFee`; alguma conta da reserva com saldo diferente de zero (RN-06; uma devedora e outra " +
+                "credora não se anulam) 409 `FOLIO_BALANCE_NOT_ZERO`, com `folios` (`folioId`, `number`, `status`, " +
+                "`balance`) e `total`, já com as cobranças da noite da chegada e o late: pagar esse saldo libera o " +
+                "check-out seguinte (com outra `Idempotency-Key`). Até o M10 o check-out só aceita saldo zero por " +
+                "pagamento (sem contas a receber); a captura da caução é feita antes, pelo `billing`; a nota fiscal " +
+                "é do M7.",
+    )
+    fun checkOut(
+        @PathVariable id: UUID,
+        @Valid @RequestBody(required = false) request: CheckOutRequest?,
+    ): ResponseEntity<CheckOutResponse> {
+        val outcome = checkOuts.checkOut(ReservationId(id), (request ?: CheckOutRequest.NONE).toCommand())
+        return ResponseEntity
+            .ok()
+            .eTag(ETags.of(outcome.reservation.version))
+            .body(CheckOutResponse.of(outcome))
     }
 
     @GetMapping("/{id}/early-late-quote")
