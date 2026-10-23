@@ -217,7 +217,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E01 | Transições de hospedagem em reservations | #concluida | — | `checkIn`, `undoCheckIn`, `checkOut`, `moveRoom`, alteração do hospedado, `assignRoom` na API pública e eventos de hospedagem |
 | E02 | Check-in orquestrado | #concluida | E01 | Módulo `frontdesk`, `POST /reservations/{id}/check-in` numa transação, desfazer check-in sensível e cotação de early/late |
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
-| E04 | Check-out | #em-andamento | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
+| E04 | Check-out | #concluida | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
 | E05 | Troca de UH, extensão, redução e early check-in | #pendente | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
 
@@ -618,7 +618,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E04 — Check-out — #em-andamento
+## E04 — Check-out — #concluida
 
 **Objetivo:** implementar `POST /api/v1/reservations/{id}/check-out` (RF-REC-06 sem nota fiscal nem contas a receber): lança as cobranças da estadia que o fechamento nunca lançará (H14), cobra o late check-out só com o preço informado antes (RN-11, H13), exige saldo zero em todas as contas da reserva (RN-06), libera as cauções ainda ativas (H12), encerra as contas, passa a reserva a `CHECKED_OUT` (inclusive o check-out antecipado da E01) e a UH a Vaga + Suja (RN-09).
 
@@ -668,12 +668,38 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-10-22-m5-recepcao-fnrh-e04.md` (5 tarefas; decisões D1 a D7 no plano), executado com `superpowers:subagent-driven-development` (implementador e revisor por tarefa, revisão final no modelo mais capaz, uma rodada de correção e re-revisão).
+- Commits (branch `roadmap/m5-recepcao-fnrh`, a partir de `68a2a37`): `1955898` (início e plano), `b944c4a` (lançamento idempotente por `sourceReference` na `BillingApi`, migração `billing/V2026_10_22_2330__add_posting_source_reference.sql`), `27c1ab1` (`BillingApi.unsettledCardPreAuthorizations` e `releaseCardPreAuthorization`), `7ad294c` (regras puras `frontdesk/domain/CheckOutRules.kt`), `99c5bd7` (`FrontdeskCheckOutService`, `POST /api/v1/reservations/{id}/check-out`, `frontdesk.stays.checkout`, contrato, README, ARCHITECTURE §3.1), `51a0533` (ajustes da revisão final), mais o commit deste fechamento.
+- Revisão final: **pronta para integrar**, 0 crítico, 0 importante, 6 menores. Três menores corrigidos em `51a0533`, com re-revisão limpa: os pacotes inclusos vão sem taxa de serviço e a resposta passa a trazer `serviceCharge`; o KDoc da `BillingApi` foi atualizado; e há teste do antecipado depois da chegada. Os outros três ficaram como notas (abaixo). Todos os menores adiados das revisões por tarefa foram triados como não bloqueantes.
+- Critérios verificados (testes `FrontdeskCheckOutApiTest` 13, `CheckOutDomainTest` 9, `PostingSourceReferenceTest` 5 e 2 novos em `CardPreAuthorizationsApiTest`):
+  - [x] **Cobranças da H14:** o day use e a saída no dia da chegada lançam a noite da chegada (hospedagem sem os inclusos, mais cada pacote), uma vez só. A repetição do check-out e uma `BillingApi.post` com a mesma chave não duplicam. O pernoite que sai depois da chegada não lança nada.
+  - [x] Saldo devedor ou credor → `409 FOLIO_BALANCE_NOT_ZERO`, com `folios` e `total` já com as cobranças pendentes e o late, e nada alterado (estado conferido no banco).
+  - [x] Fora de `IN_HOUSE` → `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
+  - [x] **Sucesso:** reserva `CHECKED_OUT`, todas as cauções em aberto `RELEASED` (vencida, de check-in desfeito e capturada em parte, B4), contas encerradas, alocação encerrada, UH Vaga + Suja e `GuestCheckedOut` publicado.
+  - [x] Lançamento em conta encerrada depois do check-out → `409 FOLIO_CLOSED`.
+  - [x] **Late check-out:** cobrado pelo valor cotado e vigente; sem o campo, nada é cobrado; com a política alterada, `409 EARLY_LATE_FEE_CHANGED`; sem oferta, `422 EARLY_LATE_NOT_OFFERED`.
+  - [x] A mesma `Idempotency-Key` devolve a resposta guardada, sem segundo lançamento. Sem a chave, `400 IDEMPOTENCY_KEY_REQUIRED`. Sem a permissão, `403`.
+  - [x] Captura do brain com "até o M10, saldo zero só por pagamento" (ver abaixo).
+  - [x] `./gradlew build` → BUILD SUCCESSFUL em 7 min 8 s (1244 testes em 151 classes, 0 falhas). `.github/scripts/check-api-breaking.sh` (contra `68a2a37`) e `… ffae917` → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+- **Decisões tomadas** (pela opção recomendada, em nome do usuário, delegado ao orquestrador, 2026-10-23; registradas no plano e no ledger):
+  - **D1, ordem das travas:** reserva → inventário → conta(s) → UH. O caso de uso confere tudo sem trava, chama `ReservationsApi.checkOut` primeiro e depois as cobranças, o saldo, as cauções, o encerramento e a UH. O resultado é o da ordem de negócio do roadmap, porque tudo está numa transação.
+  - **D2, cobranças da H14:** só quando a data operacional é a da chegada. A hospedagem `roomAmount − includedPackagesAmount` vai no `ROOM_CHARGE`, e cada pacote da noite no código dele. Os inclusos vão **sem taxa de serviço** (ajuste da revisão final, RN-11), e os adicionais seguem o código. A origem é `END_OF_DAY`.
+  - **D3, chave sem dado pessoal:** `reservations.reservation:<id>:<data>:room` e `…:package:<packageId>`. O late não leva chave.
+  - **D4, late:** `lateCheckOutFee` opcional, tipado como dinheiro em texto (como os outros valores da API, não `number`), lançado no `ROOM_CHARGE` como "Late check-out", origem `MANUAL`.
+  - **D5, saldo:** o problema do saldo traz o saldo depois das cobranças pendentes, então o cliente paga exatamente o valor mostrado e repete o check-out (com outra chave, porque o `409` fica guardado).
+  - **D6, cauções:** liberadas todas as não encerradas, inclusive `EXPIRED`.
+  - **D7, permissão:** `frontdesk.stays.checkout` (Gerente e Recepcionista, não sensível).
+  - O `frontdesk` passa a usar também os tipos `PackageId` e `PackageCharge` do `rates`, sem `RatesApi` (`ModularityTest` e ARCHITECTURE §3.1).
+  - O apoio de testes comum fica em `FrontdeskTestSupport`.
+- Decisões para o usuário (entrevista no fim do lote):
+  - **(a) Pacotes inclusos:** lançados à parte da hospedagem e sem taxa de serviço (D2). O M6 precisa seguir a mesma regra.
+  - **(b) Problema do saldo:** mostra o saldo já com as cobranças que o check-out lançaria (D5).
+  - **(c) Cauções vencidas:** também são liberadas no check-out (D6).
+- Notas para a próxima etapa:
+  - **Nota obrigatória para o M6:** o fechamento não lança de novo o que o check-out lançou. Ele usa a **mesma chave** na `BillingApi.post`, separa os inclusos da hospedagem e lança os inclusos sem taxa de serviço. A repetição é silenciosa: a `BillingApi` devolve o lançamento existente, seja qual for o valor pedido, e o M6 deve conferir o valor ou registrar o aviso. A repetição também calcula o roteamento antes da busca: uma regra nova que feche o destino pode recusá-la.
+  - Até o M10, o check-out só aceita saldo zero por pagamento (sem contas a receber). A captura da caução é feita antes, pelo `billing`.
+  - **E05 (troca de UH):** siga a ordem reserva → conta(s) → UH. Risco residual: o check-out trava as contas da reserva uma a uma, não em ordem de id. Um lançamento roteado simultâneo numa segunda conta da reserva pode dar deadlock, com `500` em um dos lados (raro; travar todas as contas em ordem de id resolveria). Na mesma janela, o `409` de saldo pode vir do `billing`, sem `folios`.
+  - **Gate (E12):** o check-out entra no `MilestoneM5EndToEndTest` e no roteiro do compose.
 
 ---
 
