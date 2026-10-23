@@ -222,9 +222,14 @@ class StayTransitions(
 
     // --- Check-out ------------------------------------------------------------------------------------------------
 
-    fun checkOut(id: ReservationId): ReservationSummary {
+    fun checkOut(
+        id: ReservationId,
+        expectedVersion: Long?,
+    ): ReservationSummary {
         requireWriteTransaction()
         val reservation = locked(id)
+        // A versão lida pelo chamador vale contra a reserva já travada (M5 E05, como na troca): outra alteração é 412.
+        expectedVersion?.let { requireCurrentVersion(it, reservation.version) }
         ReservationTransitions.require(ReservationAction.CHECK_OUT, reservation.status)
         val businessDate = hotel.currentBusinessDate()
         val plan = CheckOutPlan.of(reservation, businessDate)
@@ -420,7 +425,10 @@ class StayTransitionsService(
 
     @Audited(ReservationsAudit.CHECK_OUT)
     @Transactional
-    fun checkOut(id: ReservationId): ReservationSummary = transitions.checkOut(id)
+    fun checkOut(
+        id: ReservationId,
+        expectedVersion: Long?,
+    ): ReservationSummary = transitions.checkOut(id, expectedVersion)
 
     @Audited(ReservationsAudit.MOVE_ROOM)
     @Transactional

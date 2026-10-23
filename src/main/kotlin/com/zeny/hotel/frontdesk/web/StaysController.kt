@@ -133,9 +133,12 @@ class StaysController(
                 "`RESERVATION_NOT_FOUND`; só uma hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação " +
                 "`CHECK_OUT`); late não oferecido pela política vigente 422 `EARLY_LATE_NOT_OFFERED`; valor " +
                 "diferente do vigente (a política mudou desde a cotação) 409 `EARLY_LATE_FEE_CHANGED`, com " +
-                "`currentFee`; alguma conta da reserva com saldo diferente de zero (RN-06; uma devedora e outra " +
-                "credora não se anulam) 409 `FOLIO_BALANCE_NOT_ZERO`, com `folios` (`folioId`, `number`, `status`, " +
-                "`balance`) e `total`, já com as cobranças da noite da chegada e o late: pagar esse saldo libera o " +
+                "`currentFee`; a reserva mudou entre a leitura e a trava dela (outra recepção alterou, trocou a " +
+                "UH ou fez o check-out ao mesmo tempo; o pedido não tem `If-Match`) 409 `RESERVATION_CHANGED`, " +
+                "nada muda: leia de novo e repita; alguma conta da reserva com saldo diferente de zero (RN-06; " +
+                "uma devedora e outra credora não se anulam) 409 `FOLIO_BALANCE_NOT_ZERO`, com `folios` " +
+                "(`folioId`, `number`, `status`, `balance`) e `total`, já com as cobranças da noite da chegada e " +
+                "o late: pagar esse saldo libera o " +
                 "check-out seguinte (com outra `Idempotency-Key`). Até o M10 o check-out só aceita saldo zero por " +
                 "pagamento (sem contas a receber); a captura da caução é feita antes, pelo `billing`; a nota fiscal " +
                 "é do M7.",
@@ -164,12 +167,14 @@ class StaysController(
                 "ocupa a de destino com o mesmo número de hóspedes; publica `RoomMoved`. Devolve a soma das noites " +
                 "restantes antes e depois e a diferença (nada é lançado na conta). Exige `frontdesk.stays.move`, " +
                 "`Idempotency-Key` e `If-Match` com o `ETag` da reserva (428 sem ele; 412 com outra versão, " +
-                "conferida com a reserva travada). Na ordem: inexistente 404 `RESERVATION_NOT_FOUND`; só uma " +
+                "conferida na leitura e de novo com a reserva travada). Na ordem: inexistente 404 " +
+                "`RESERVATION_NOT_FOUND`; outra versão 412 `PRECONDITION_FAILED`; só uma " +
                 "hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`); UH inexistente 400 " +
                 "`UNKNOWN_ROOM` (campo `roomId`); UH não pronta (RN-05: ativa, vaga, fora de OOO e inspecionada, " +
                 "ou limpa sem inspeção pendente; conferida de novo com a UH travada ao ocupar: uma troca e um " +
                 "check-in, ou duas trocas, simultâneos na mesma UH nunca passam os dois) 409 `ROOM_NOT_READY`, com " +
-                "a situação dela; motivo `INITIAL` 400 `ROOM_MOVE_INVALID`; a versão (412 `PRECONDITION_FAILED`); " +
+                "a situação dela; motivo `INITIAL` 400 `ROOM_MOVE_INVALID`; a versão mudada até a trava (412 " +
+                "`PRECONDITION_FAILED`); " +
                 "a estadia já terminada 422 `RESERVATION_STAY_ENDED`; o recálculo da reserva de um bloqueio 409 " +
                 "`ROOM_BLOCK_RESERVATION_STAY_FIXED`; a mesma UH 422 `ROOM_MOVE_SAME_ROOM`; outro tipo de UH 422 " +
                 "`ROOM_TYPE_MISMATCH` (a troca para outro tipo ainda não é aceita); OOO no período novo 422 " +

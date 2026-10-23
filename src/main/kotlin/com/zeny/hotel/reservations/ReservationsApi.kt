@@ -143,9 +143,14 @@ interface ReservationsApi {
      * data operacional antes da saída): a saída passa à data operacional, as noites seguintes voltam ao inventário (ou
      * ao bloqueio do pick-up) e as que ficam guardam o preço congelado; no próprio dia da chegada, a
      * estadia vira day use
-     * na data. A alocação é encerrada na mesma transação (motivo `CHECKED_OUT`). Publica [GuestCheckedOut].
+     * na data. A alocação é encerrada na mesma transação (motivo `CHECKED_OUT`). Com [expectedVersion] (a da reserva
+     * que o chamador leu), a versão é conferida contra a da reserva já travada: diferente é `412 PRECONDITION_FAILED` e
+     * nada muda (M5 E05, como na [moveRoom]); nulo não confere. Publica [GuestCheckedOut].
      */
-    fun checkOut(id: ReservationId): ReservationSummary
+    fun checkOut(
+        id: ReservationId,
+        expectedVersion: Long? = null,
+    ): ReservationSummary
 
     /**
      * A troca de UH do hospedado (M5 E01; RF-REC-04), auditada `reservations.reservation.move-room`, **sem conferir

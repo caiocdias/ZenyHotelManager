@@ -135,6 +135,18 @@ class EarlyLateFeeChangedException(
 }
 
 /**
+ * `409 RESERVATION_CHANGED`: a reserva travada não é mais a lida (outra recepção alterou, trocou a UH ou fez o
+ * check-out entre a leitura e a trava; M5 E05). Converte o `412` da `ReservationsApi`, porque o pedido não tem
+ * `If-Match`; nada muda.
+ */
+class ReservationChangedException :
+    ConflictException(
+        FrontdeskErrorCodes.RESERVATION_CHANGED,
+        "A reserva mudou durante a operação (outra recepção alterou, trocou a UH ou fez o check-out). Leia de novo " +
+            "e repita.",
+    )
+
+/**
  * `409 FOLIO_BALANCE_NOT_ZERO` no check-out (RN-06, D5): cada conta da reserva com o saldo (calculado depois das
  * cobranças pendentes e do late) e o total. Só ids, números de conta, situações e valores.
  */

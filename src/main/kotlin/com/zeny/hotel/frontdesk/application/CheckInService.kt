@@ -154,8 +154,8 @@ class FrontdeskStayService(
         StayRules.requireCheckIn(reservation, businessDate)
         steps.requireOpenFolio(reservation.folioId)
         val prepared = steps.prepareGuests(command.guests, businessDate)
-        steps.acceptedEarlyFee(reservation, command.earlyCheckInFee)
-        return steps.complete(reservation, command, guestCount, prepared)
+        val earlyFee = steps.acceptedEarlyFee(reservation, command.earlyCheckInFee)
+        return steps.complete(reservation, command, guestCount, prepared, earlyFee)
     }
 
     /**
@@ -274,7 +274,7 @@ class CheckInSteps(
      * O early check-in aceito (RN-11, H13): o [quotedFee] conferido com a política vigente para a chegada da
      * [reservation] no fuso do hotel (`EarlyLateFeeRules`: nulo sem valor; `422 EARLY_LATE_NOT_OFFERED`;
      * `409 EARLY_LATE_FEE_CHANGED`). Sem escrita: quem chama o confere antes de qualquer uma e repassa o resultado ao
-     * [CheckInCommand.earlyCheckInFee] do [complete].
+     * `acceptedEarlyFee` do [complete] (o único valor que ele lança).
      */
     fun acceptedEarlyFee(
         reservation: ReservationSummary,
@@ -298,17 +298,19 @@ class CheckInSteps(
      * (`409 ROOM_NOT_ASSIGNED`) e pronta (`RoomsApi.isReadyForCheckIn`, `409 ROOM_NOT_READY`); a transição
      * (`ReservationsApi.checkIn`, que **trava a reserva** e confere a RN-24); a caução
      * (`BillingApi.registerCardPreAuthorization`, que **trava a conta**); o early check-in já aceito em
-     * [CheckInCommand.earlyCheckInFee] (`BillingApi.post`, `ROOM_CHARGE`, origem `MANUAL`, também na conta, depois da
-     * caução); a ocupação (`RoomsApi.markOccupiedIfReady`,
-     * que **trava a UH** e confere a RN-05 de novo com ela travada: dois check-ins simultâneos na mesma UH nunca passam
-     * os dois, B1 da revisão humana da E02); e a hospedagem na trilha (`frontdesk.stay`, com [trail] acrescentado ao
-     * retrato).
+     * [acceptedEarlyFee], o devolvido pela conferência (nunca o [CheckInCommand.earlyCheckInFee] sem conferir;
+     * `BillingApi.post`, `ROOM_CHARGE`, origem `MANUAL`, também na conta, depois da caução); a ocupação
+     * (`RoomsApi.markOccupiedIfReady`, que **trava a UH** e confere a RN-05 de novo com ela travada: dois check-ins
+     * simultâneos na mesma UH nunca passam os dois, B1 da revisão humana da E02); e a hospedagem na trilha
+     * (`frontdesk.stay`, com [trail] acrescentado ao retrato).
      */
+    @Suppress("LongParameterList") // o early aceito vem à parte do pedido: só o conferido é lançado
     fun complete(
         reservation: ReservationSummary,
         command: CheckInCommand,
         guestCount: Int,
         prepared: PreparedGuests,
+        acceptedEarlyFee: Money?,
         trail: Map<String, Any?> = emptyMap(),
     ): CheckInOutcome {
         check(
@@ -319,7 +321,7 @@ class CheckInSteps(
         val roomId = readyRoom(reservation, command.roomId)
         val checkedIn = reservations.checkIn(id, CheckIn(command.guests))
         val preAuthorization = command.preAuthorization?.let { registerPreAuthorization(checkedIn.folioId, it) }
-        val earlyCheckIn = command.earlyCheckInFee?.let { postEarlyCheckIn(checkedIn.folioId, it) }
+        val earlyCheckIn = acceptedEarlyFee?.let { postEarlyCheckIn(checkedIn.folioId, it) }
         val room = occupy(roomId, guestCount)
         audit.created(FrontdeskAudit.STAY, id.value) {
             mapOf(

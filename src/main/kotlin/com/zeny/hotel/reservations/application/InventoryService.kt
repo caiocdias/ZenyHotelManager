@@ -239,7 +239,10 @@ class ReservationsApiService(
 
     override fun undoCheckIn(id: ReservationId): ReservationSummary = stays.undoCheckIn(id)
 
-    override fun checkOut(id: ReservationId): ReservationSummary = stays.checkOut(id)
+    override fun checkOut(
+        id: ReservationId,
+        expectedVersion: Long?,
+    ): ReservationSummary = stays.checkOut(id, expectedVersion)
 
     override fun moveRoom(
         id: ReservationId,

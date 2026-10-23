@@ -579,6 +579,34 @@ class StayTransitionsApiTest(
     }
 
     @Test
+    fun `checking out an in-house guest with a stale expected version is refused under the lock`() {
+        val (type, rooms) = inventory.roomTypeWithRooms(1, today)
+        val plan = planFor(type)
+        val adult = guest()
+        val id = ReservationId(created(type, plan, today, today.plusDays(2), adult).id())
+        reservationsApi.assignRoom(id, RoomId(rooms.single()))
+        reservationsApi.checkIn(id, CheckIn(listOf(primary(adult))))
+        val version = support.reservation(id.value)["reservation"]["version"].asLong()
+
+        shouldThrow<PreconditionFailedException> {
+            transactions.executeWithoutResult { reservationsApi.checkOut(id, expectedVersion = version - 1) }
+        }
+        // Nada mudou: hospedada, com a UH alocada, as noites vendidas e sem GuestCheckedOut.
+        support.status(id.value) shouldBe "IN_HOUSE"
+        assignments(id.value).single().let {
+            it["roomId"].asString() shouldBe rooms.single().toString()
+            it["releaseReason"].isNull shouldBe true
+        }
+        inventory.row(type, today.plusDays(1))!!.sold shouldBe 1
+        support.reservation(id.value)["reservation"]["version"].asLong() shouldBe version
+        support.lifecyclePublications(GuestCheckedOut::class.java, id.value, LISTENER).shouldBeEmpty()
+
+        transactions.executeWithoutResult { reservationsApi.checkOut(id, expectedVersion = version) }
+        support.status(id.value) shouldBe "CHECKED_OUT"
+        support.reservation(id.value)["reservation"]["version"].asLong() shouldBe version + 1
+    }
+
+    @Test
     fun `an in-house stay is shortened despite sale restrictions, an extension still checks them`() {
         val (type, rooms) = inventory.roomTypeWithRooms(1, today)
         val plan = planFor(type)

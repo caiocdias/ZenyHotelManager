@@ -107,7 +107,7 @@ class FrontdeskWalkInService(
         val holder =
             command.holderGuestId ?: (command.guests.firstOrNull { it.primary } ?: command.guests.first()).guestId
         val prepared = steps.prepareGuests(command.guests, businessDate, alsoAlert = listOf(holder))
-        steps.acceptedEarlyFee(businessDate, command.earlyCheckInFee)
+        val earlyFee = steps.acceptedEarlyFee(businessDate, command.earlyCheckInFee)
         val booking = create(command, holder, command.roomTypeId ?: room.roomTypeId, businessDate)
         val reservation = confirmed(booking.reservations.single())
         StayRules.requireCheckIn(reservation, businessDate)
@@ -123,6 +123,7 @@ class FrontdeskWalkInService(
                 ),
                 guestCount,
                 prepared,
+                earlyFee,
                 trail = mapOf("walkIn" to true, "bookingId" to booking.id.value),
             )
         return WalkInOutcome(checkNotNull(reservations.booking(booking.id)) { "Walk-in sem a reserva criada" }, checkIn)

@@ -4,6 +4,7 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.reservations.GuestCheckedIn
+import com.zeny.hotel.reservations.GuestCheckedOut
 import com.zeny.hotel.reservations.InventoryTestConfiguration
 import com.zeny.hotel.reservations.ReservationsTestSupport
 import com.zeny.hotel.reservations.RoomMoved
@@ -20,6 +21,7 @@ import com.zeny.hotel.testsupport.MutableClockConfiguration
 import com.zeny.hotel.testsupport.RoomStatusFailureProbe
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -44,7 +46,8 @@ import java.util.concurrent.TimeUnit
  * alocação nova, a origem Vaga e Suja, o destino ocupado com o mesmo número de hóspedes, `RoomMoved` e a trilha; a
  * falha forçada no fim, que não deixa nada), a tarifa mantida e a recalculada só nas noites restantes com a diferença
  * (D8, Review Focus 3), as recusas sem nada mudado, a corrida pela mesma UH com outra troca ou com um check-in (Review
- * Focus 1), o `If-Match` conferido com a reserva travada (D5, Review Focus 2), a idempotência e a permissão. O contexto
+ * Focus 1), a corrida com o check-out da mesma reserva (a segunda a travar é recusada; revisão final), o `If-Match`
+ * conferido com a reserva travada (D5, Review Focus 2), a idempotência e a permissão. O contexto
  * dos testes das reservas com o relógio mutável (o mesmo do `FrontdeskCheckOutApiTest`).
  */
 @IntegrationTest
@@ -200,6 +203,11 @@ class FrontdeskRoomMoveApiTest(
     fun `a forced failure at the end leaves nothing`() {
         val stay = frontdesk.stay(rooms = 2)
         val (origin, destination) = stay.rooms
+        // A troca muda as UHs em ordem crescente de id (texto): a origem vem antes, então a vaga dela já está escrita
+        // quando o destino falha, e o que segue prova que ela é desfeita.
+        withClue("a origem precede o destino na ordem da troca") {
+            (origin.toString() < destination.toString()) shouldBe true
+        }
         val booked = stay.checkedIn()
         stay.ready(destination)
         val before = snapshot(booked.id, stay.rooms)
@@ -292,6 +300,89 @@ class FrontdeskRoomMoveApiTest(
                     movedNothing(moving, origin)
                 }
                 roomsApi.status(RoomId(target))!!.guestCount shouldBe 1
+            }
+        }
+    }
+
+    @Test
+    @Suppress("LongMethod") // as duas ordens da corrida e o que cada perdedor não pode deixar
+    fun `a check-out racing a room move of the same stay never frees the wrong room`() {
+        CheckInRendezvousProbe.StayStep.entries.forEach { late ->
+            withClue("$late trava a reserva por último") {
+                // O check-out e a troca leem a reserva sem trava; um a trava e muda primeiro e o outro, com a leitura
+                // velha, a trava depois (o encontro no CheckInRendezvousProbe): sempre recusado, sem mudar nada.
+                val stay = frontdesk.stay(rooms = 2)
+                val (origin, destination) = stay.rooms
+                val booked = stay.checkedIn()
+                stay.ready(destination)
+                // A noite da chegada, que o check-out no mesmo dia lança, já paga: só a corrida o recusa.
+                frontdesk.pay(booked.folio, frontdesk.cashier(), "400.00")
+                val etag = support.etag(booked.id)
+                CheckInRendezvousProbe.stays[booked.id] = CheckInRendezvousProbe.ArmedStay(late)
+                val (moved, checkedOut) =
+                    try {
+                        race(
+                            listOf(
+                                { moveRaw(booked.id, destination, ifMatch = etag) },
+                                {
+                                    billing.call(
+                                        POST,
+                                        "/api/v1/reservations/${booked.id}/check-out",
+                                        iam.asAdmin(),
+                                        null,
+                                        UuidV7.generate().toString(),
+                                    )
+                                },
+                            ),
+                        )
+                    } finally {
+                        CheckInRendezvousProbe.stays.remove(booked.id)
+                    }
+
+                val origins = roomsApi.status(RoomId(origin))!!
+                val destinations = roomsApi.status(RoomId(destination))!!
+                if (moved.status == 200) {
+                    late shouldBe CheckInRendezvousProbe.StayStep.CHECK_OUT
+                    // A troca venceu: o check-out leu a UH de origem e foi recusado sem cobrar, quitar nem vagar nada.
+                    frontdesk.Response(checkedOut).problem(409, "RESERVATION_CHANGED")
+                    support.status(booked.id) shouldBe "IN_HOUSE"
+                    support.reservation(booked.id)["reservation"]["roomAssignment"]["roomId"].asString() shouldBe
+                        destination.toString()
+                    destinations.occupancy.name shouldBe "OCCUPIED"
+                    origins.occupancy.name shouldBe "VACANT"
+                    origins.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
+                    billing.folio(booked.folio)["status"].asString() shouldBe "OPEN"
+                    support.postings(booked.folio).shouldBeEmpty()
+                    support.historyKinds(booked.id) shouldContainExactly listOf("CHECK_IN", "ROOM_MOVE")
+                    support.lifecyclePublications(GuestCheckedOut::class.java, booked.id, LISTENER).shouldBeEmpty()
+                } else {
+                    late shouldBe CheckInRendezvousProbe.StayStep.MOVE_ROOM
+                    // O check-out venceu: a troca, com a versão velha, foi recusada sem tocar no destino.
+                    with(billing) { checkedOut.expect(200) }
+                    moved.status shouldBeIn listOf(409, 412)
+                    frontdesk
+                        .Response(moved)
+                        .problem(
+                            moved.status,
+                            if (moved.status == 409) "RESERVATION_TRANSITION_NOT_ALLOWED" else "PRECONDITION_FAILED",
+                        )
+                    support.status(booked.id) shouldBe "CHECKED_OUT"
+                    origins.occupancy.name shouldBe "VACANT"
+                    origins.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
+                    destinations.occupancy.name shouldBe "VACANT"
+                    destinations.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+                    assignments(booked.id).map { it.roomId } shouldContainExactly listOf(origin)
+                    support.historyKinds(booked.id) shouldContainExactly listOf("CHECK_IN", "CHECK_OUT")
+                    support.lifecyclePublications(RoomMoved::class.java, booked.id, LISTENER).shouldBeEmpty()
+                }
+                // Em nenhuma ordem fica UH ocupada sem a reserva hospedada nela.
+                listOf(origin to origins, destination to destinations)
+                    .filter { (_, status) -> status.occupancy.name == "OCCUPIED" }
+                    .forEach { (room, _) ->
+                        support.status(booked.id) shouldBe "IN_HOUSE"
+                        support.reservation(booked.id)["reservation"]["roomAssignment"]["roomId"].asString() shouldBe
+                            room.toString()
+                    }
             }
         }
     }

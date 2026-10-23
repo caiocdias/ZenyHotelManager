@@ -23,7 +23,7 @@ import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.Money
-import com.zeny.hotel.shared.StaleVersionException
+import com.zeny.hotel.shared.requireCurrentVersion
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -60,8 +60,9 @@ data class RoomMoveOutcome(
  * **numa transação só**: qualquer recusa desfaz tudo (a alocação nova e a encerrada, as noites recalculadas, a origem
  * vaga, o destino ocupado, as entradas da trilha e os eventos do outbox).
  *
- * **Ordem** (e das travas): a permissão; a reserva lida sem trava (inexistente `404`; só uma hospedada,
- * `409 RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`); a UH nova existente (`400 UNKNOWN_ROOM`, campo
+ * **Ordem** (e das travas): a permissão; a reserva lida sem trava (inexistente `404`; a versão do `If-Match`
+ * diferente da lida, `412`; só uma hospedada, `409 RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`); a UH nova
+ * existente (`400 UNKNOWN_ROOM`, campo
  * `roomId`) e pronta pela RN-05 sem trava (`RoomsApi.isReadyForCheckIn`, `409 ROOM_NOT_READY` com a situação dela; a
  * própria UH atual passa adiante, para o `reservations` recusar com `422 ROOM_MOVE_SAME_ROOM`); a origem é a UH
  * alocada lida, e o número de hóspedes dela (`RoomsApi.status`) é o que o destino recebe; a troca
@@ -94,6 +95,8 @@ class FrontdeskRoomMoveService(
     ): RoomMoveOutcome {
         authorization.require(FrontdeskPermissions.STAYS_MOVE)
         val reservation = steps.reservation(id)
+        // Um `If-Match` velho já é 412 na leitura, antes das conferências; a `moveRoom` confere de novo sob a trava.
+        requireCurrentVersion(command.expectedVersion, reservation.version)
         StayRules.requireMoveRoom(reservation)
         val destination = room(command.roomId)
         val origin = checkNotNull(reservation.roomAssignment) { "Hospedada sem UH alocada" }.roomId
@@ -105,10 +108,6 @@ class FrontdeskRoomMoveService(
 
         val moved =
             reservations.moveRoom(id, RoomMove(destination.id, command.reason, command.tariff), command.expectedVersion)
-        // A reserva travada é a lida (a origem e as noites de antes valem): outra alteração entre as duas é 412.
-        if (moved.version != reservation.version + 1) {
-            throw StaleVersionException(reservation.version, moved.version - 1)
-        }
         val statuses =
             listOf(origin, destination.id).sortedBy { it.value.toString() }.associateWith { roomId ->
                 if (roomId == origin) {

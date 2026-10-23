@@ -14,6 +14,7 @@ import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.frontdesk.FrontdeskPermissions
 import com.zeny.hotel.frontdesk.domain.EarlyLateFeeRules
 import com.zeny.hotel.frontdesk.domain.EarlyLateQuotes
+import com.zeny.hotel.frontdesk.domain.ReservationChangedException
 import com.zeny.hotel.frontdesk.domain.StayCharge
 import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.frontdesk.domain.StayNotSettledException
@@ -30,6 +31,7 @@ import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
+import com.zeny.hotel.shared.StaleVersionException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -63,16 +65,17 @@ data class CheckOutOutcome(
  * ([StayCharges.pending], só no day use ou no pernoite que sai no dia em que chegou) e o late aceito pela política
  * **vigente** no fuso do hotel ([EarlyLateFeeRules.acceptedFee]: `422 EARLY_LATE_NOT_OFFERED`,
  * `409 EARLY_LATE_FEE_CHANGED`), calculados sobre a reserva lida **antes** da transição e recusados antes de qualquer
- * escrita; a transição (`ReservationsApi.checkOut`, que **trava a reserva**, devolve ao inventário as noites do
- * antecipado e encerra a alocação); as cobranças (`BillingApi.post`, cada uma com a chave da noite: uma repetição nunca
- * cobra de novo, H14; a hospedagem e os pacotes inclusos sem taxa de serviço, taxa zero, e os adicionais com a regra
- * do código, RN-11) e o late no código `ROOM_CHARGE`, que **travam a conta**; o saldo de todas as contas da reserva
- * pela `BillingApi.balanceOf` (nunca recalculado aqui), já com as cobranças e o late: alguma conta com saldo,
- * `409 FOLIO_BALANCE_NOT_ZERO` com o saldo de cada conta e o total (RN-06; até o M10 só se quita por pagamento, sem
- * contas a receber); as cauções não encerradas de cada conta liberadas (inclusive as vencidas e as de um check-in
- * desfeito, D6); as contas abertas encerradas; e a UH Vaga e Suja (`RoomsApi.markVacant` com a origem `CHECK_OUT`,
- * RN-09), que **trava a UH**. A reserva é travada antes da conta e da UH, como no check-in e no cancelamento: sem
- * deadlock com eles. A captura da caução é feita antes, pelo `billing`; a nota fiscal é do M7.
+ * escrita; a transição (`ReservationsApi.checkOut`, que **trava a reserva**, confere com ela travada a versão lida,
+ * `409 RESERVATION_CHANGED` se outra troca de UH, alteração ou check-out chegou antes, M5 E05, devolve ao inventário as
+ * noites do antecipado e encerra a alocação); as cobranças (`BillingApi.post`, cada uma com a chave da noite: uma
+ * repetição nunca cobra de novo, H14; a hospedagem e os pacotes inclusos sem taxa de serviço, taxa zero, e os
+ * adicionais com a regra do código, RN-11) e o late no código `ROOM_CHARGE`, que **travam a conta**; o saldo de todas
+ * as contas da reserva pela `BillingApi.balanceOf` (nunca recalculado aqui), já com as cobranças e o late: alguma conta
+ * com saldo, `409 FOLIO_BALANCE_NOT_ZERO` com o saldo de cada conta e o total (RN-06; até o M10 só se quita por
+ * pagamento, sem contas a receber); as cauções não encerradas de cada conta liberadas (inclusive as vencidas e as de um
+ * check-in desfeito, D6); as contas abertas encerradas; e a UH Vaga e Suja (`RoomsApi.markVacant` com a origem
+ * `CHECK_OUT`, RN-09), que **trava a UH**. A reserva é travada antes da conta e da UH, como no check-in e no
+ * cancelamento: sem deadlock com eles. A captura da caução é feita antes, pelo `billing`; a nota fiscal é do M7.
  */
 @Service
 @Suppress("LongParameterList") // as APIs públicas que o check-out orquestra
@@ -103,7 +106,7 @@ class FrontdeskCheckOutService(
                 command.lateCheckOutFee,
             )
 
-        val checkedOut = reservations.checkOut(id)
+        val checkedOut = checkOutRead(reservation)
         val roomCharge = billing.transactionCode(TransactionCodeKey.ROOM_CHARGE).id
         val stayCharges = pending.map { post(reservation.folioId, it, roomCharge) }
         val lateCheckOut =
@@ -140,6 +143,18 @@ class FrontdeskCheckOutService(
         )
         return outcome
     }
+
+    /**
+     * A transição sobre a reserva **lida**: a `ReservationsApi.checkOut` confere a versão dela com a reserva travada.
+     * Uma troca de UH, uma alteração ou outro check-out confirmados entre a leitura e a trava mudam a versão, e a UH a
+     * vagar e as cobranças calculadas não valeriam mais: `409 RESERVATION_CHANGED` e tudo é desfeito.
+     */
+    private fun checkOutRead(reservation: ReservationSummary): ReservationSummary =
+        try {
+            reservations.checkOut(reservation.id, expectedVersion = reservation.version)
+        } catch (_: StaleVersionException) {
+            throw ReservationChangedException()
+        }
 
     /** Lança a cobrança da noite da chegada com a chave dela (H14): já lançada, a `BillingApi` devolve a existente. */
     private fun post(

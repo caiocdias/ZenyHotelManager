@@ -49,6 +49,13 @@ object FrontdeskErrorCodes {
      */
     val EARLY_LATE_FEE_CHANGED = ErrorCode("EARLY_LATE_FEE_CHANGED")
 
+    /**
+     * 409: a reserva mudou durante a operação (outra recepção alterou, trocou a UH ou fez o check-out); leia de novo e
+     * repita. O check-out não tem `If-Match`: confere a versão que leu com a reserva travada (M5 E05) e, diferente,
+     * desfaz tudo.
+     */
+    val RESERVATION_CHANGED = ErrorCode("RESERVATION_CHANGED")
+
     // --- Reexportados -----------------------------------------------------------------------------------------------
 
     val RESERVATION_NOT_FOUND: ErrorCode = ReservationsErrorCodes.RESERVATION_NOT_FOUND
