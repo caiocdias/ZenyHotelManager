@@ -10,9 +10,11 @@ import org.springframework.modulith.PackageInfo
  * o desfazer check-in (sensível) e a cotação de early check-in e late check-out; desde a E03, o walk-in (a reserva, a
  * alocação e o check-in numa transação); desde a E04, o check-out (as cobranças da noite da chegada, o late cotado, o
  * saldo zero de todas as contas da reserva, as cauções liberadas, as contas encerradas, a transição da reserva e a UH
- * Vaga e Suja numa transação). Pode depender de `shared`, `hotel` (a
- * data operacional, o fuso e a política de early/late, só pela `HotelApi`), `reservations` (a reserva, a alocação e as
- * transições de hospedagem, só pela `ReservationsApi`), `rooms` (RN-05, a ocupação e a UH vaga, só pela `RoomsApi`),
+ * Vaga e Suja numa transação); desde a E05, a troca de UH do hospedado (a alocação nova, a tarifa das noites restantes
+ * mantida ou recalculada, a origem Vaga e Suja e o destino ocupado numa transação). Pode depender de `shared`, `hotel`
+ * (a data operacional, o fuso e a política de early/late, só pela `HotelApi`), `reservations` (a reserva, a alocação
+ * e as transições de hospedagem, só pela `ReservationsApi`), `rooms` (RN-05, a ocupação e a UH vaga, só pela
+ * `RoomsApi`),
  * `guests` (a identificação sem número e o alerta da lista de restrição, só pela `GuestsApi`; **nunca** `fnrhData`),
  * `billing` (a conta da reserva, a caução, os lançamentos, o saldo e o encerramento, só pela `BillingApi`), `files` (o
  * anexo da comprovação do menor, só pela `FilesApi`) e, desde a E03, `rates` (só os tipos públicos que a

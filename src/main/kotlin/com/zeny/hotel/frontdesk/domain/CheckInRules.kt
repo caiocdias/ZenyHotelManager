@@ -164,14 +164,16 @@ class MinorAttachmentInvalidException(
         )
 }
 
-/** `409 ROOM_NOT_READY`, com a situação da UH (sem dado de hóspede). */
+/**
+ * `409 ROOM_NOT_READY`, com a situação da UH (sem dado de hóspede); [message] diz para quê a UH não está pronta (o
+ * check-in, por padrão, ou a troca de UH).
+ */
 class RoomNotReadyException(
     val status: RoomStatus,
-) : ConflictException(
-        FrontdeskErrorCodes.ROOM_NOT_READY,
+    message: String =
         "A UH alocada não está pronta para o check-in (precisa estar vaga, fora de OOO e inspecionada, ou limpa sem " +
             "inspeção pendente).",
-    ) {
+) : ConflictException(FrontdeskErrorCodes.ROOM_NOT_READY, message) {
     override val problemProperties: Map<String, Any>
         get() =
             buildMap {
@@ -193,6 +195,7 @@ object StayRules {
     const val CHECK_IN = "CHECK_IN"
     const val UNDO_CHECK_IN = "UNDO_CHECK_IN"
     const val CHECK_OUT = "CHECK_OUT"
+    const val MOVE_ROOM = "MOVE_ROOM"
 
     /** Só uma confirmada (`409 RESERVATION_TRANSITION_NOT_ALLOWED`) que já chegou (`422 CHECK_IN_BEFORE_ARRIVAL`). */
     fun requireCheckIn(
@@ -233,6 +236,13 @@ object StayRules {
         }
     }
 
+    /** Só uma hospedada (`409 RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`) troca de UH (M5 E05). */
+    fun requireMoveRoom(reservation: ReservationSummary) {
+        if (reservation.status != ReservationStatus.IN_HOUSE) {
+            throw StayTransitionNotAllowedException(reservation.status, MOVE_ROOM)
+        }
+    }
+
     /** O número de hóspedes que ocupa a UH: o informado (de 1 a 40, não abaixo da lista) ou o tamanho da lista. */
     fun guestCount(
         requested: Int?,
@@ -267,6 +277,7 @@ class StayTransitionNotAllowedException(
         when (action) {
             StayRules.CHECK_IN -> "Só uma reserva confirmada faz o check-in (a pré-reserva é confirmada antes)."
             StayRules.CHECK_OUT -> "Só uma reserva hospedada faz o check-out."
+            StayRules.MOVE_ROOM -> "Só uma reserva hospedada troca de UH."
             else -> "Só uma reserva hospedada tem o check-in desfeito."
         },
     ) {

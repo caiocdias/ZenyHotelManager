@@ -57,6 +57,7 @@ object FrontdeskAudit {
     const val UNDO_CHECK_IN = "frontdesk.stay.undo-check-in"
     const val WALK_IN = "frontdesk.stay.walk-in"
     const val CHECK_OUT = "frontdesk.stay.check-out"
+    const val ROOM_MOVE = "frontdesk.stay.room-move"
 
     /** A hospedagem (id = a reserva): o que a recepção fez, sem dado pessoal. */
     const val STAY = "frontdesk.stay"

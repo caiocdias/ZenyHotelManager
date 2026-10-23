@@ -17,6 +17,9 @@ import com.zeny.hotel.shared.TemplateGrant
  *
  * Check-out (E04): [STAYS_CHECK_OUT] faz o check-out de uma reserva hospedada (Gerente e Recepcionista; não sensível,
  * decisão D7): só com todas as contas da reserva em saldo zero, sem nenhuma permissão do `billing`.
+ *
+ * Troca de UH (E05): [STAYS_MOVE] troca a UH de uma reserva hospedada, com a tarifa mantida ou recalculada (Gerente e
+ * Recepcionista; não sensível, decisão D7 da E05), sem `reservations.assignments.manage`.
  */
 object FrontdeskPermissions : ModulePermissions {
     override val module = "frontdesk"
@@ -29,6 +32,9 @@ object FrontdeskPermissions : ModulePermissions {
 
     /** Fazer o check-out de uma reserva hospedada. */
     val STAYS_CHECK_OUT = PermissionCode("frontdesk.stays.checkout")
+
+    /** Trocar a UH de um hóspede hospedado. */
+    val STAYS_MOVE = PermissionCode("frontdesk.stays.move")
 
     private val all = TemplateGrant(ALL)
 
@@ -50,6 +56,12 @@ object FrontdeskPermissions : ModulePermissions {
             PermissionDefinition(
                 STAYS_CHECK_OUT,
                 "Fazer o check-out de uma reserva hospedada",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
+            ),
+            PermissionDefinition(
+                STAYS_MOVE,
+                "Trocar a UH de um hóspede hospedado",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
             ),

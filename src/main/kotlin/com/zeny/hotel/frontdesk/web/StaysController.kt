@@ -1,6 +1,7 @@
 package com.zeny.hotel.frontdesk.web
 
 import com.zeny.hotel.frontdesk.application.FrontdeskCheckOutService
+import com.zeny.hotel.frontdesk.application.FrontdeskRoomMoveService
 import com.zeny.hotel.frontdesk.application.FrontdeskStayService
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
@@ -10,6 +11,7 @@ import com.zeny.hotel.shared.Idempotent
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -23,12 +25,13 @@ const val FRONTDESK_TAG = "frontdesk"
 const val FRONTDESK_TAG_DESCRIPTION =
     "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in, cotação de early check-in e late " +
         "check-out, walk-in (reserva, alocação e check-in numa transação) e check-out orquestrado numa transação " +
-        "(cobranças da noite da chegada, late, saldo zero, cauções, contas e UH)."
+        "(cobranças da noite da chegada, late, saldo zero, cauções, contas e UH) e troca de UH do hospedado numa " +
+        "transação (alocação, tarifa das noites restantes e as duas UHs)."
 
 /**
  * A recepção sobre uma reserva (M5 E02): o check-in orquestrado (ARCHITECTURE §6.1), o desfazer check-in (sensível) e
- * a cotação de early/late (RN-11); desde a E04, o check-out orquestrado. Os caminhos ficam sob `/reservations/{id}`,
- * como ações da reserva.
+ * a cotação de early/late (RN-11); desde a E04, o check-out orquestrado; desde a E05, a troca de UH do hospedado. Os
+ * caminhos ficam sob `/reservations/{id}`, como ações da reserva.
  */
 @ApiV1Controller
 @RequestMapping("/reservations")
@@ -36,6 +39,7 @@ const val FRONTDESK_TAG_DESCRIPTION =
 class StaysController(
     private val stays: FrontdeskStayService,
     private val checkOuts: FrontdeskCheckOutService,
+    private val roomMoves: FrontdeskRoomMoveService,
 ) {
     @PostMapping("/{id}/check-in")
     @Idempotent
@@ -139,6 +143,44 @@ class StaysController(
             .ok()
             .eTag(ETags.of(outcome.reservation.version))
             .body(CheckOutResponse.of(outcome))
+    }
+
+    @PostMapping("/{id}/room-moves")
+    @Idempotent
+    @Operation(
+        operationId = "moveReservationRoom",
+        summary = "Trocar a UH de uma reserva hospedada",
+        description =
+            "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): encerra a alocação atual na data operacional " +
+                "(motivo de fim `ROOM_MOVED`) e abre outra na UH nova até a saída, com o motivo pedido; mantém " +
+                "(`KEEP`, padrão) ou recalcula pela tarifa atual (`RECALCULATE`) as noites da data operacional em " +
+                "diante (as passadas guardam o preço congelado, RN-14); deixa a UH de origem Vaga e Suja (RN-09) e " +
+                "ocupa a de destino com o mesmo número de hóspedes; publica `RoomMoved`. Devolve a soma das noites " +
+                "restantes antes e depois e a diferença (nada é lançado na conta). Exige `frontdesk.stays.move`, " +
+                "`Idempotency-Key` e `If-Match` com o `ETag` da reserva (428 sem ele; 412 com outra versão, " +
+                "conferida com a reserva travada). Na ordem: inexistente 404 `RESERVATION_NOT_FOUND`; só uma " +
+                "hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`); UH inexistente 400 " +
+                "`UNKNOWN_ROOM` (campo `roomId`); UH não pronta (RN-05: ativa, vaga, fora de OOO e inspecionada, " +
+                "ou limpa sem inspeção pendente; conferida de novo com a UH travada ao ocupar: uma troca e um " +
+                "check-in, ou duas trocas, simultâneos na mesma UH nunca passam os dois) 409 `ROOM_NOT_READY`, com " +
+                "a situação dela; motivo `INITIAL` 400 `ROOM_MOVE_INVALID`; a versão (412 `PRECONDITION_FAILED`); " +
+                "a estadia já terminada 422 `RESERVATION_STAY_ENDED`; o recálculo da reserva de um bloqueio 409 " +
+                "`ROOM_BLOCK_RESERVATION_STAY_FIXED`; a mesma UH 422 `ROOM_MOVE_SAME_ROOM`; outro tipo de UH 422 " +
+                "`ROOM_TYPE_MISMATCH` (a troca para outro tipo ainda não é aceita); OOO no período novo 422 " +
+                "`ROOM_OUT_OF_ORDER`; outra reserva alocada na UH no período 409 `ROOM_ALREADY_ASSIGNED`. A tarefa " +
+                "de limpeza da origem é da governança (M6).",
+    )
+    fun moveRoom(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: RoomMoveRequest,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+    ): ResponseEntity<RoomMoveResponse> {
+        val expected = ETags.expectedVersion(ifMatch)
+        val outcome = roomMoves.move(ReservationId(id), request.toCommand(expected))
+        return ResponseEntity
+            .ok()
+            .eTag(ETags.of(outcome.reservation.version))
+            .body(RoomMoveResponse.of(outcome))
     }
 
     @GetMapping("/{id}/early-late-quote")

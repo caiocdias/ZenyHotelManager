@@ -40,16 +40,22 @@ class FrontdeskTestSupport(
     private val billing: BillingTestSupport = support.billing
     private val today: LocalDate get() = hotelApi.currentBusinessDate()
 
-    /** Uma estadia num tipo de UH novo, com uma UH e um plano com preço (400,00 a noite para dois adultos). */
+    /**
+     * Uma estadia num tipo de UH novo, com as UHs [rooms] (a primeira é [room], a padrão) e um plano com preço (400,00
+     * a noite para dois adultos).
+     */
     inner class Stay(
         val type: UUID,
-        val room: UUID,
+        val rooms: List<UUID>,
         val plan: UUID,
     ) {
-        /** Uma reserva confirmada de hoje a [departure] (igual a hoje = day use), com a UH alocada. */
+        val room: UUID get() = rooms.first()
+
+        /** Uma reserva confirmada de hoje a [departure] (igual a hoje = day use), com a UH [room] alocada. */
         fun book(
             holder: UUID,
             departure: LocalDate = today.plusDays(2),
+            room: UUID = this.room,
         ): Booked {
             val created =
                 support.created(
@@ -62,20 +68,21 @@ class FrontdeskTestSupport(
             return Booked(id, UUID.fromString(created["folioId"].asString()))
         }
 
-        /** A UH limpa e inspecionada (nasce suja). */
-        fun ready() {
+        /** A UH [room] limpa e inspecionada (nasce suja). */
+        fun ready(room: UUID = this.room) {
             roomsApi.markClean(RoomId(room), false, RoomStatusSource.MANUAL)
             roomsApi.markInspected(RoomId(room), RoomStatusSource.MANUAL)
         }
 
-        /** Reserva, deixa a UH pronta e faz o check-in de verdade (E02), com a caução opcional. */
+        /** Reserva, deixa a UH [room] pronta e faz o check-in de verdade (E02), com a caução opcional. */
         fun checkedIn(
             departure: LocalDate = today.plusDays(2),
             preAuthorization: Map<String, Any?>? = null,
+            room: UUID = this.room,
         ): Booked {
             val holder = guest()
-            val booked = book(holder, departure)
-            ready()
+            val booked = book(holder, departure, room)
+            ready(room)
             checkIn(booked.id, holder, preAuthorization).expect(200)
             return booked
         }
@@ -86,12 +93,15 @@ class FrontdeskTestSupport(
         val folio: UUID,
     )
 
-    /** A estadia; com [packages], o plano tem esses pacotes (do `rates`). */
-    fun stay(packages: List<UUID> = emptyList()): Stay {
-        val (type, rooms) = support.inventory.roomTypeWithRooms(1, today)
+    /** A estadia com [rooms] UHs; com [packages], o plano tem esses pacotes (do `rates`). */
+    fun stay(
+        packages: List<UUID> = emptyList(),
+        rooms: Int = 1,
+    ): Stay {
+        val (type, created) = support.inventory.roomTypeWithRooms(rooms, today)
         val plan = support.plan(listOf(type), packages = packages)
         support.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
-        return Stay(type, rooms.single(), plan.id)
+        return Stay(type, created, plan.id)
     }
 
     /** Um hóspede brasileiro adulto com CPF (os dados mínimos do check-in, H11). */

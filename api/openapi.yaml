@@ -29,6 +29,12 @@ tags:
   name: checklists
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
+- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
+    \ cotação de early check-in e late check-out, walk-in (reserva, alocação e check-in\
+    \ numa transação) e check-out orquestrado numa transação (cobranças da noite da\
+    \ chegada, late, saldo zero, cauções, contas e UH) e troca de UH do hospedado\
+    \ numa transação (alocação, tarifa das noites restantes e as duas UHs)."
+  name: frontdesk
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -39,11 +45,6 @@ tags:
   name: meta
 - description: Sincronização offline do app operacional.
   name: sync
-- description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
-    \ cotação de early check-in e late check-out, walk-in (reserva, alocação e check-in\
-    \ numa transação) e check-out orquestrado numa transação (cobranças da noite da\
-    \ chegada, late, saldo zero, cauções, contas e UH)."
-  name: frontdesk
 - description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
   name: guests
 - description: Trilha de auditoria das escritas.
@@ -8186,6 +8187,83 @@ paths:
       summary: Histórico das UHs alocadas a uma reserva
       tags:
       - reservations
+  /api/v1/reservations/{id}/room-moves:
+    post:
+      description: "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): encerra a\
+        \ alocação atual na data operacional (motivo de fim `ROOM_MOVED`) e abre outra\
+        \ na UH nova até a saída, com o motivo pedido; mantém (`KEEP`, padrão) ou\
+        \ recalcula pela tarifa atual (`RECALCULATE`) as noites da data operacional\
+        \ em diante (as passadas guardam o preço congelado, RN-14); deixa a UH de\
+        \ origem Vaga e Suja (RN-09) e ocupa a de destino com o mesmo número de hó\
+        spedes; publica `RoomMoved`. Devolve a soma das noites restantes antes e depois\
+        \ e a diferença (nada é lançado na conta). Exige `frontdesk.stays.move`, `Idempotency-Key`\
+        \ e `If-Match` com o `ETag` da reserva (428 sem ele; 412 com outra versão,\
+        \ conferida com a reserva travada). Na ordem: inexistente 404 `RESERVATION_NOT_FOUND`;\
+        \ só uma hospedada (409 `RESERVATION_TRANSITION_NOT_ALLOWED`, ação `MOVE_ROOM`);\
+        \ UH inexistente 400 `UNKNOWN_ROOM` (campo `roomId`); UH não pronta (RN-05:\
+        \ ativa, vaga, fora de OOO e inspecionada, ou limpa sem inspeção pendente;\
+        \ conferida de novo com a UH travada ao ocupar: uma troca e um check-in, ou\
+        \ duas trocas, simultâneos na mesma UH nunca passam os dois) 409 `ROOM_NOT_READY`,\
+        \ com a situação dela; motivo `INITIAL` 400 `ROOM_MOVE_INVALID`; a versão\
+        \ (412 `PRECONDITION_FAILED`); a estadia já terminada 422 `RESERVATION_STAY_ENDED`;\
+        \ o recálculo da reserva de um bloqueio 409 `ROOM_BLOCK_RESERVATION_STAY_FIXED`;\
+        \ a mesma UH 422 `ROOM_MOVE_SAME_ROOM`; outro tipo de UH 422 `ROOM_TYPE_MISMATCH`\
+        \ (a troca para outro tipo ainda não é aceita); OOO no período novo 422 `ROOM_OUT_OF_ORDER`;\
+        \ outra reserva alocada na UH no período 409 `ROOM_ALREADY_ASSIGNED`. A tarefa\
+        \ de limpeza da origem é da governança (M6)."
+      operationId: moveReservationRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoomMoveRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoomMoveResponse"
+          description: OK
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Trocar a UH de uma reserva hospedada
+      tags:
+      - frontdesk
   /api/v1/reservations/{id}/room-suggestions:
     get:
       description: "As UHs ativas do tipo da reserva, livres em todo o período e sem\
@@ -22261,6 +22339,84 @@ components:
       - id
       - name
       - updatedAt
+    RoomMoveRequest:
+      type: object
+      description: "A troca de UH do hóspede hospedado: a UH nova (do mesmo tipo da\
+        \ reserva, vaga e pronta), o motivo e a tarifa das noites restantes."
+      properties:
+        reason:
+          type: string
+          description: "O motivo da troca: `GUEST_REQUEST`, `OUT_OF_ORDER`, `ROOM_ISSUE`\
+            \ ou `OPERATIONAL` (`INITIAL` é da primeira alocação: 400 `ROOM_MOVE_INVALID`)."
+          enum:
+          - INITIAL
+          - GUEST_REQUEST
+          - OUT_OF_ORDER
+          - ROOM_ISSUE
+          - OPERATIONAL
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          nullable: true
+        tariff:
+          type: string
+          description: "A tarifa das noites restantes: `KEEP` (padrão) mantém o preç\
+            o congelado; `RECALCULATE` reprecifica as noites da data operacional em\
+            \ diante pela tarifa atual (as passadas nunca mudam, RN-14)."
+          enum:
+          - KEEP
+          - RECALCULATE
+          nullable: true
+      required:
+      - reason
+      - roomId
+    RoomMoveResponse:
+      type: object
+      description: "A troca feita: a reserva na UH nova, a UH de origem Vaga e Suja,\
+        \ a de destino ocupada com o mesmo número de hóspedes, a tarifa aplicada e\
+        \ a soma das noites restantes (da data operacional em diante) antes e depois,\
+        \ com a diferença. Nenhum dado do hóspede."
+      properties:
+        difference:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        fromRoom:
+          $ref: "#/components/schemas/StayRoomResponse"
+        remainingAfter:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        remainingBefore:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reservation:
+          $ref: "#/components/schemas/StayReservationResponse"
+        tariff:
+          type: string
+          description: "`KEEP` ou `RECALCULATE`. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - KEEP
+          - RECALCULATE
+        toRoom:
+          $ref: "#/components/schemas/StayRoomResponse"
+      required:
+      - difference
+      - fromRoom
+      - remainingAfter
+      - remainingBefore
+      - reservation
+      - tariff
+      - toRoom
     RoomRequest:
       type: object
       description: Dados de uma UH.
