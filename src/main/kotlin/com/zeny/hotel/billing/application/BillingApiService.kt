@@ -1,6 +1,7 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingApi
+import com.zeny.hotel.billing.CardPreAuthorizationId
 import com.zeny.hotel.billing.CardPreAuthorizationSummary
 import com.zeny.hotel.billing.CashierShiftId
 import com.zeny.hotel.billing.CashierShiftSummary
@@ -128,6 +129,14 @@ class BillingApiService(
                     preAuthorization.cardLast4,
                 ),
             ).summary()
+
+    override fun unsettledCardPreAuthorizations(folioId: FolioId): List<CardPreAuthorizationSummary> =
+        preAuthorizations.unsettledOf(folioId)
+
+    override fun releaseCardPreAuthorization(
+        folioId: FolioId,
+        id: CardPreAuthorizationId,
+    ): CardPreAuthorizationSummary = preAuthorizations.releaseAuthorized(folioId, id).summary()
 
     override fun cardPreAuthorizationsExpiring(
         from: Instant,

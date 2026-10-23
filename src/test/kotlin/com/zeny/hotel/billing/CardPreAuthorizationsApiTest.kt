@@ -6,9 +6,11 @@ import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.iam.TestUser
+import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.LimitValue
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
@@ -31,6 +33,9 @@ import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import tools.jackson.databind.JsonNode
@@ -613,6 +618,79 @@ class CardPreAuthorizationsApiTest(
             storedCaptured(id) shouldBe "60.00"
         }
 
+    // --- BillingApi: cauções em aberto e liberação sem permissão (M5 E04, H12) ------------------------
+
+    @Test
+    fun `the billing api lists the unsettled holds of a folio, expired included`(): Unit =
+        with(billing) {
+            val folio = openFolio()
+            val cashier = cashier()
+            openShift(cashier)
+            val soon = clock.instant().plus(Duration.ofHours(1)).truncatedTo(ChronoUnit.SECONDS)
+            val active = register(folio, cashier.auth, "100.00", inDays(5)).expect(201)["id"].asString()
+            val partial = register(folio, cashier.auth, "100.00", inDays(5)).expect(201)["id"].asString()
+            val expiring = register(folio, cashier.auth, "100.00", soon).expect(201)["id"].asString()
+            val released = register(folio, cashier.auth, "100.00", inDays(5)).expect(201)["id"].asString()
+            capture(folio, partial, cashier.auth, "40.00").expect(201)
+            call(POST, "$base$folio/card-pre-authorizations/$released/release", cashier.auth).expect(200)
+
+            billingApi.unsettledCardPreAuthorizations(FolioId(UUID.randomUUID())) shouldBe emptyList()
+            moveClock(Duration.ofHours(2)) {
+                val listed = billingApi.unsettledCardPreAuthorizations(FolioId(folio))
+                listed.map { it.id.toString() } shouldContainExactlyInAnyOrder listOf(active, partial, expiring)
+                listed.associate { it.id.toString() to it.status.name } shouldBe
+                    mapOf(active to "ACTIVE", partial to "PARTIALLY_CAPTURED", expiring to "EXPIRED")
+            }
+        }
+
+    @Test
+    @Suppress("LongMethod") // sem permissão, vencida, com a conta encerrada, repetida e de outra conta
+    fun `the billing api releases a hold without the permission, even expired or on a closed folio`(): Unit =
+        with(billing) {
+            val folio = openFolio()
+            val other = openFolio()
+            val cashier = cashier()
+            val soon = clock.instant().plus(Duration.ofHours(1)).truncatedTo(ChronoUnit.SECONDS)
+            val active = register(folio, cashier.auth, "100.00", inDays(5)).expect(201)["id"].asString()
+            val expired = register(folio, cashier.auth, "200.00", soon).expect(201)["id"].asString()
+            val foreign = register(other, cashier.auth, "50.00", inDays(5)).expect(201)["id"].asString()
+            val user = iam.createUserWith(TestGrant(folioRead, ALL))
+
+            fun release(
+                id: String,
+                folioId: UUID = folio,
+            ) = actingAs(user.id) {
+                billingApi.releaseCardPreAuthorization(FolioId(folioId), CardPreAuthorizationId(UUID.fromString(id)))
+            }
+
+            release(active).status shouldBe CardPreAuthorizationStatus.RELEASED
+            storedStatus(active) shouldBe "RELEASED"
+            withClue("a trilha da liberação leva o usuário que chamou") {
+                jdbc
+                    .sql(
+                        "SELECT user_id FROM audit.audit_entry WHERE entity_id = :id " +
+                            "AND action = 'billing.card-pre-authorization.release'",
+                    ).param("id", active)
+                    .query { rs, _ -> rs.getObject(1, UUID::class.java) }
+                    .single() shouldBe user.id.value
+            }
+            closeFolio(folio)
+            moveClock(Duration.ofHours(2)) {
+                withClue("vencida e com a conta encerrada, também termina RELEASED") {
+                    release(expired).status shouldBe CardPreAuthorizationStatus.RELEASED
+                    storedStatus(expired) shouldBe "RELEASED"
+                }
+            }
+            shouldThrow<DomainException> { release(active) }.code shouldBe BillingErrorCodes.PRE_AUTHORIZATION_SETTLED
+            withClue("o id de outra conta e o inexistente são 404") {
+                shouldThrow<DomainException> { release(foreign) }.code shouldBe
+                    BillingErrorCodes.PRE_AUTHORIZATION_NOT_FOUND
+                shouldThrow<DomainException> { release(UUID.randomUUID().toString()) }.code shouldBe
+                    BillingErrorCodes.PRE_AUTHORIZATION_NOT_FOUND
+            }
+            storedStatus(foreign) shouldBe "ACTIVE"
+        }
+
     // --- Apoio ---------------------------------------------------------------------------------------
 
     private val base = "/api/v1/folios/"
@@ -693,6 +771,26 @@ class CardPreAuthorizationsApiTest(
             mapOf("amount" to amount, "nsu" to nsu),
             idempotencyKey = idempotencyKey,
         )
+
+    /** Roda [block] com o ator [userId] no contexto de segurança (chamada direta à `BillingApi`, fora do `MockMvc`). */
+    private fun <T> actingAs(
+        userId: UserId,
+        block: () -> T,
+    ): T {
+        val jwt =
+            Jwt
+                .withTokenValue("token")
+                .header("alg", "none")
+                .subject(userId.toString())
+                .claim("sid", UuidV7.generate().toString())
+                .build()
+        SecurityContextHolder.getContext().authentication = JwtAuthenticationToken(jwt)
+        try {
+            return block()
+        } finally {
+            SecurityContextHolder.clearContext()
+        }
+    }
 
     private fun inDays(days: Long): Instant =
         clock.instant().plus(Duration.ofDays(days)).truncatedTo(ChronoUnit.SECONDS)

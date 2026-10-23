@@ -113,6 +113,26 @@ interface BillingApi {
     ): CardPreAuthorizationSummary
 
     /**
+     * As cauções da conta [folioId] ainda não encerradas (nem capturadas por inteiro nem liberadas), por id, com a
+     * situação calculada agora (`EXPIRED` as já vencidas; M5 E04, H12): o check-out do `frontdesk` lista para liberar
+     * todas antes de encerrar a conta. Conta inexistente, lista vazia. Lido sem trava e sem conferir permissão.
+     */
+    fun unsettledCardPreAuthorizations(folioId: FolioId): List<CardPreAuthorizationSummary>
+
+    /**
+     * Libera a sobra da caução [id] da conta [folioId] e a encerra (M5 E04, H12: o check-out do `frontdesk`), na
+     * transação de quem chama, auditada `billing.card-pre-authorization.release` em nome do ator corrente, com as
+     * mesmas regras de `POST /api/v1/folios/{folioId}/card-pre-authorizations/{id}/release`, **menos a permissão**
+     * (quem chama já se autorizou): trava a conta e depois a caução; vale com a conta encerrada e depois da validade;
+     * caução já encerrada `409 PRE_AUTHORIZATION_SETTLED`; de outra conta ou inexistente `404
+     * PRE_AUTHORIZATION_NOT_FOUND`. Não exige turno de caixa. Precisa de um usuário autenticado (registra quem fez).
+     */
+    fun releaseCardPreAuthorization(
+        folioId: FolioId,
+        id: CardPreAuthorizationId,
+    ): CardPreAuthorizationSummary
+
+    /**
      * As cauções ainda não encerradas (nem capturadas por inteiro nem liberadas) com a validade em [from] (inclusive) a
      * [to] (exclusive), em ordem de validade, com a situação calculada agora (`EXPIRED` as já vencidas; M3 E09): para o
      * fechamento do dia (M6) listar e a renovação (M7). Até 1000. Não confere permissão.

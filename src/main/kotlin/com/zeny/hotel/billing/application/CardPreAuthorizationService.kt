@@ -99,7 +99,7 @@ object BillingPreAuthorizationIntents {
  * - **Consultar** (`billing.folios.read`): as cauções da conta e as que vencem num período.
  */
 @Service
-@Suppress("LongParameterList") // as portas que as cauções usam
+@Suppress("LongParameterList", "TooManyFunctions") // as portas e as operações das cauções (com e sem permissão)
 class CardPreAuthorizationService(
     private val operations: BillingOperations,
     private val store: BillingStore,
@@ -180,6 +180,26 @@ class CardPreAuthorizationService(
     ): List<CardPreAuthorizationSummary> {
         val now = clock.instant()
         return preAuthorizations.expiring(from, to, null, MAX_EXPIRING).map { it.view(now).summary() }
+    }
+
+    /**
+     * As cauções da conta ainda não encerradas (nem capturadas por inteiro nem liberadas), por id, com a situação
+     * calculada agora (as vencidas como `EXPIRED`), para a `BillingApi`. Sem trava; conta inexistente, lista vazia.
+     */
+    @Transactional(readOnly = true)
+    fun unsettledOf(folioId: FolioId): List<CardPreAuthorizationSummary> {
+        val now = clock.instant()
+        return preAuthorizations.unsettledOf(folioId).map {
+            CardPreAuthorizationSummary(
+                it.id,
+                it.folioId,
+                it.statusAt(now),
+                it.amount,
+                it.capturedAmount,
+                it.capturableAt(now),
+                it.expiresAt,
+            )
+        }
     }
 
     /** Registra na conta a caução feita na maquininha (sem turno de caixa; não muda o saldo). */
@@ -288,6 +308,24 @@ class CardPreAuthorizationService(
         id: CardPreAuthorizationId,
     ): CardPreAuthorizationView {
         authorization.require(BillingPermissions.PAYMENTS_RECEIVE)
+        return releaseOn(folioId, id)
+    }
+
+    /**
+     * A mesma liberação sem conferir a permissão, para a `BillingApi` (M5 E04, H12: o check-out do `frontdesk`, que já
+     * se autorizou, libera todas as cauções da conta), na transação de quem chama.
+     */
+    @Audited(BillingAudit.RELEASE_PRE_AUTHORIZATION)
+    @Transactional
+    fun releaseAuthorized(
+        folioId: FolioId,
+        id: CardPreAuthorizationId,
+    ): CardPreAuthorizationView = releaseOn(folioId, id)
+
+    private fun releaseOn(
+        folioId: FolioId,
+        id: CardPreAuthorizationId,
+    ): CardPreAuthorizationView {
         // A conta antes da caução, como na captura: uma captura e uma liberação simultâneas se enfileiram.
         store.folioForUpdate(folioId) ?: throw folioNotFound()
         val before = lockedPreAuthorization(folioId, id)
