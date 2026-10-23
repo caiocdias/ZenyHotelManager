@@ -40,6 +40,7 @@ import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.shared.requireCurrentVersion
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Component
 import org.springframework.stereotype.Service
@@ -287,10 +288,13 @@ class StayTransitions(
     fun moveRoom(
         id: ReservationId,
         move: RoomMove,
+        expectedVersion: Long?,
     ): ReservationSummary {
         requireWriteTransaction()
         RoomMoveRules.requireValid(move)
         val reservation = locked(id)
+        // A versão do cliente vale contra a reserva já travada (M5 E05, D5): outra alteração antes é 412.
+        expectedVersion?.let { requireCurrentVersion(it, reservation.version) }
         ReservationTransitions.require(ReservationAction.MOVE_ROOM, reservation.status)
         val businessDate = hotel.currentBusinessDate()
         RoomMoveRules.requireRemaining(reservation, businessDate)
@@ -423,5 +427,6 @@ class StayTransitionsService(
     fun moveRoom(
         id: ReservationId,
         move: RoomMove,
-    ): ReservationSummary = transitions.moveRoom(id, move)
+        expectedVersion: Long?,
+    ): ReservationSummary = transitions.moveRoom(id, move, expectedVersion)
 }

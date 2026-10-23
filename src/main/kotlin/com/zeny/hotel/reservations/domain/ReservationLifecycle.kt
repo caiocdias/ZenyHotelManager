@@ -232,6 +232,15 @@ object StayRepricing {
     }
 
     /**
+     * A alteração só reduz a estadia: mesma chegada, saída nova antes da atual e o mesmo tipo de UH, plano e ocupação.
+     * Para o hospedado (`IN_HOUSE`), é a redução que não é uma venda e não passa pelas restrições (M5 E05, D3).
+     */
+    fun onlyShortens(
+        old: StayShape,
+        new: StayShape,
+    ): Boolean = old.copy(departure = new.departure) == new && new.departure < old.departure
+
+    /**
      * Os motivos de "não vendável" que dizem respeito ao que a alteração mudou (decisão do implementador na E08,
      * pendente de confirmação): uma regra que valia na venda e não mudou não recusa a alteração (um plano desativado
      * depois não impede mudar a ocupação; uma restrição de antecedência não impede estender a saída). Na ordem:

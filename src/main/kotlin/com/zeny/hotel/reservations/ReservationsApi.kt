@@ -153,11 +153,14 @@ interface ReservationsApi {
      * ativa, do tipo da reserva (`422 ROOM_TYPE_MISMATCH`), diferente da atual (`422 ROOM_MOVE_SAME_ROOM`) e sem OOO no
      * período novo (`422 ROOM_OUT_OF_ORDER`); a alocação atual termina na data operacional (`ROOM_MOVED`) e a nova vai
      * dela à saída (`409 ROOM_ALREADY_ASSIGNED` se outra reserva ocupa a UH); a tarifa das noites restantes mantida ou
-     * recalculada ([RoomMoveTariff]). Publica [RoomMoved].
+     * recalculada ([RoomMoveTariff]). Com [expectedVersion] (a do `If-Match` do cliente), a versão é conferida contra a
+     * da reserva já travada: diferente é `412 PRECONDITION_FAILED` e nada muda (M5 E05, D5); nulo não confere.
+     * Publica [RoomMoved].
      */
     fun moveRoom(
         id: ReservationId,
         move: RoomMove,
+        expectedVersion: Long? = null,
     ): ReservationSummary
 
     /** A reserva agrupadora com as reservas; `null` se não existe. */

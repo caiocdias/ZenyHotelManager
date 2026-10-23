@@ -244,7 +244,8 @@ class ReservationsApiService(
     override fun moveRoom(
         id: ReservationId,
         move: RoomMove,
-    ): ReservationSummary = stays.moveRoom(id, move)
+        expectedVersion: Long?,
+    ): ReservationSummary = stays.moveRoom(id, move, expectedVersion)
 
     override fun createBlock(block: NewRoomBlock): RoomBlockSummary = blocks.createAuthorized(block)
 

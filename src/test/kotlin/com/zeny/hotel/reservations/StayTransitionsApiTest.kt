@@ -5,6 +5,7 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
+import com.zeny.hotel.rates.RestrictionsTestSupport
 import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderRequest
@@ -13,6 +14,7 @@ import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.PreconditionFailedException
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
@@ -72,6 +74,7 @@ class StayTransitionsApiTest(
 ) {
     private val support = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
     private val inventory = support.inventory
+    private val restrictions = RestrictionsTestSupport(iam)
     private val today: LocalDate get() = hotelApi.currentBusinessDate()
 
     // --- Check-in -------------------------------------------------------------------------------------------------
@@ -551,6 +554,72 @@ class StayTransitionsApiTest(
         inventory.row(type, today.plusDays(1))!!.sold shouldBe 0
         inventory.row(type, today.plusDays(2))!!.sold shouldBe 0
         support.historyKinds(id) shouldContainExactly listOf("CHECK_IN", "CHANGE", "CHANGE")
+    }
+
+    @Test
+    fun `moving an in-house guest with a stale expected version is refused under the lock`() {
+        val (type, rooms) = inventory.roomTypeWithRooms(2, today)
+        val plan = planFor(type)
+        val adult = guest()
+        val id = ReservationId(created(type, plan, today, today.plusDays(2), adult).id())
+        reservationsApi.assignRoom(id, RoomId(rooms[0]))
+        reservationsApi.checkIn(id, CheckIn(listOf(primary(adult))))
+        val version = support.reservation(id.value)["reservation"]["version"].asLong()
+        val move = RoomMove(RoomId(rooms[1]), RoomAssignmentReason.GUEST_REQUEST)
+
+        shouldThrow<PreconditionFailedException> {
+            transactions.executeWithoutResult { reservationsApi.moveRoom(id, move, expectedVersion = version - 1) }
+        }
+        assignments(id.value).single()["roomId"].asString() shouldBe rooms[0].toString()
+        support.lifecyclePublications(RoomMoved::class.java, id.value, LISTENER).shouldBeEmpty()
+
+        transactions.executeWithoutResult { reservationsApi.moveRoom(id, move, expectedVersion = version) }
+        assignments(id.value).map { it["roomId"].asString() }.first() shouldBe rooms[1].toString()
+        support.reservation(id.value)["reservation"]["version"].asLong() shouldBe version + 1
+    }
+
+    @Test
+    fun `an in-house stay is shortened despite sale restrictions, an extension still checks them`() {
+        val (type, rooms) = inventory.roomTypeWithRooms(1, today)
+        val plan = planFor(type)
+        val adult = guest()
+        val id = created(type, plan, today, today.plusDays(4), adult).id()
+        reservationsApi.assignRoom(ReservationId(id), RoomId(rooms[0]))
+        reservationsApi.checkIn(ReservationId(id), CheckIn(listOf(primary(adult))))
+        with(iam) {
+            restrictions.update(plan, restrictions.body(from = today, set = mapOf("minStay" to 4))).ok()
+            listOf(2L, 5L).forEach {
+                restrictions
+                    .update(
+                        plan,
+                        restrictions.body(
+                            from = today.plusDays(it),
+                            set =
+                                mapOf("closedToDeparture" to true),
+                        ),
+                    ).ok()
+            }
+        }
+        val frozen = support.reservation(id)["reservation"]["nightlyRates"].values().map { it["roomAmount"].asString() }
+
+        // A extensão é uma venda: a estadia mínima das noites novas segue conferida.
+        with(support.billing) {
+            val current = support.reservation(id)["reservation"]
+            support
+                .change(id, support.changeBody(current, departure = today.plusDays(5)))
+                .problem(422, "CLOSED_TO_DEPARTURE")
+        }
+
+        val reduced =
+            with(support.billing) {
+                val current = support.reservation(id)["reservation"]
+                support.change(id, support.changeBody(current, departure = today.plusDays(2))).expect(200)
+            }["reservation"]
+        reduced["departure"].asString() shouldBe today.plusDays(2).toString()
+        reduced["nightlyRates"].values().map { it["roomAmount"].asString() } shouldContainExactly frozen.take(2)
+        inventory.row(type, today.plusDays(1))!!.sold shouldBe 1
+        inventory.row(type, today.plusDays(2))!!.sold shouldBe 0
+        inventory.row(type, today.plusDays(3))!!.sold shouldBe 0
     }
 
     // --- Alocação pela API pública, banco e GuestsMerged ----------------------------------------------------------

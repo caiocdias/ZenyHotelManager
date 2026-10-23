@@ -358,7 +358,10 @@ class ReservationLifecycle(
                 .any { it.pricing == PackagePricing.PER_STAY }
         val affected = StayRepricing.affectedNights(old, new, oldArrivalPerStay)
         val sellability = withStayFields { rates.isSellable(query(new, new.arrival, new.departure), channel) }
-        val refusals = StayRepricing.relevantRefusals(sellability.refusals, old, new, affected)
+        // A redução do hospedado devolve noites, não vende: estadia mínima/máxima, CTD e fechamento não a recusam (D3).
+        val shortensInHouse = reservation.status == ReservationStatus.IN_HOUSE && StayRepricing.onlyShortens(old, new)
+        val relevant = { StayRepricing.relevantRefusals(sellability.refusals, old, new, affected) }
+        val refusals = if (shortensInHouse) emptyList() else relevant()
         if (refusals.isNotEmpty()) throw StayNotSellableException(null, refusals)
         ReservationChangeRules.requireOverridesOn(command, affected)
         val repriced =
