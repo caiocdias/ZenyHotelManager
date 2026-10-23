@@ -35,6 +35,20 @@ object FrontdeskErrorCodes {
      */
     val ROOM_NOT_READY = ErrorCode("ROOM_NOT_READY")
 
+    // --- Check-out (E04) --------------------------------------------------------------------------------------------
+
+    /**
+     * 422: o pedido traz o valor do late check-out, mas a política vigente do hotel não oferece late check-out (D4).
+     * Nada é lançado.
+     */
+    val EARLY_LATE_NOT_OFFERED = ErrorCode("EARLY_LATE_NOT_OFFERED")
+
+    /**
+     * 409: o valor do late check-out do pedido difere do da política vigente (ela mudou entre a cotação e o
+     * check-out); o problema traz `currentFee` (texto, duas casas). Nada é lançado.
+     */
+    val EARLY_LATE_FEE_CHANGED = ErrorCode("EARLY_LATE_FEE_CHANGED")
+
     // --- Reexportados -----------------------------------------------------------------------------------------------
 
     val RESERVATION_NOT_FOUND: ErrorCode = ReservationsErrorCodes.RESERVATION_NOT_FOUND
@@ -45,6 +59,12 @@ object FrontdeskErrorCodes {
     val UNKNOWN_GUEST: ErrorCode = ReservationsErrorCodes.UNKNOWN_GUEST
     val UNKNOWN_ROOM: ErrorCode = ReservationsErrorCodes.UNKNOWN_ROOM
     val GUEST_ANONYMIZED: ErrorCode = ReservationsErrorCodes.GUEST_ANONYMIZED
+
+    /**
+     * 409: alguma conta da reserva ficou com saldo diferente de zero no check-out (RN-06), depois das cobranças
+     * pendentes e do late; o problema traz `folios` (`folioId`, `number`, `status`, `balance`) e `total`.
+     */
+    val FOLIO_BALANCE_NOT_ZERO: ErrorCode = BillingErrorCodes.FOLIO_BALANCE_NOT_ZERO
     val FOLIO_CLOSED: ErrorCode = BillingErrorCodes.FOLIO_CLOSED
     val FOLIO_NOT_FOUND: ErrorCode = BillingErrorCodes.FOLIO_NOT_FOUND
 }

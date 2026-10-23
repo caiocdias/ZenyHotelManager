@@ -192,6 +192,7 @@ class RoomNotReadyException(
 object StayRules {
     const val CHECK_IN = "CHECK_IN"
     const val UNDO_CHECK_IN = "UNDO_CHECK_IN"
+    const val CHECK_OUT = "CHECK_OUT"
 
     /** Só uma confirmada (`409 RESERVATION_TRANSITION_NOT_ALLOWED`) que já chegou (`422 CHECK_IN_BEFORE_ARRIVAL`). */
     fun requireCheckIn(
@@ -222,6 +223,13 @@ object StayRules {
                 FrontdeskErrorCodes.UNDO_CHECK_IN_EXPIRED,
                 "O check-in só pode ser desfeito na mesma data operacional em que foi feito.",
             )
+        }
+    }
+
+    /** Só uma hospedada (`409 RESERVATION_TRANSITION_NOT_ALLOWED`, ação `CHECK_OUT`) faz o check-out (H12). */
+    fun requireCheckOut(reservation: ReservationSummary) {
+        if (reservation.status != ReservationStatus.IN_HOUSE) {
+            throw StayTransitionNotAllowedException(reservation.status, CHECK_OUT)
         }
     }
 
@@ -256,10 +264,10 @@ class StayTransitionNotAllowedException(
     val action: String,
 ) : ConflictException(
         FrontdeskErrorCodes.RESERVATION_TRANSITION_NOT_ALLOWED,
-        if (action == StayRules.CHECK_IN) {
-            "Só uma reserva confirmada faz o check-in (a pré-reserva é confirmada antes)."
-        } else {
-            "Só uma reserva hospedada tem o check-in desfeito."
+        when (action) {
+            StayRules.CHECK_IN -> "Só uma reserva confirmada faz o check-in (a pré-reserva é confirmada antes)."
+            StayRules.CHECK_OUT -> "Só uma reserva hospedada faz o check-out."
+            else -> "Só uma reserva hospedada tem o check-in desfeito."
         },
     ) {
     override val problemProperties: Map<String, Any>
