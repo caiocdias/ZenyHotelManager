@@ -219,7 +219,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
 | E04 | Check-out | #concluida | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
 | E05 | Troca de UH, extensão, redução e early check-in | #concluida | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
-| E06 | Recados | #em-andamento | E02 | Recados por setor vinculados a reserva ou UH |
+| E06 | Recados | #concluida | E02 | Recados por setor vinculados a reserva ou UH |
 
 **FNRH**
 
@@ -803,7 +803,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E06 — Recados — #em-andamento
+## E06 — Recados — #concluida
 
 **Objetivo:** implementar recados (RF-REC-07, `Trace` da SPEC §8.2.6): lembretes para setores vinculados a uma reserva ou UH, com data, responsável e resolução.
 
@@ -840,12 +840,50 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-10-23-m5-recepcao-fnrh-e06.md` (3 tarefas; decisões D1 a D6). Executado com `superpowers:subagent-driven-development`: implementador e revisor por tarefa, revisão final no modelo mais capaz, uma rodada de correção e re-revisão.
+- **Commits** (a partir de `5068040`):
+  - `fb2ae34`: início e plano.
+  - `b56ceaa`: schema `frontdesk`, tabela `frontdesk.trace` sem `DELETE` (trigger), migrações `frontdesk/V2026_10_23_1200__create_traces.sql` e `…1201__grant_frontdesk_to_app_role.sql`, domínio `Trace`/`TraceRules` e `JdbcTraceStore`; aresta `frontdesk` → `staff`.
+  - `d938259`: `FrontdeskTraceService`, `TracesController` (`/api/v1/traces`), permissões, contrato e README.
+  - `3dfeafe`: ajustes da revisão final.
+  - Mais o commit deste fechamento.
+- **Revisão final:** **com correções**, 0 críticas, 0 importantes, 4 menores e uma recomendação. Tudo foi corrigido em `3dfeafe`, com re-revisão limpa:
+  - a citação RF-REC-08 trocada por RF-REC-07 (também na migração);
+  - `textLength` contado em code points;
+  - `textChanged` na trilha da alteração;
+  - testes do `PUT` sem mudança e do `UNKNOWN_ASSIGNEE` no `PUT`;
+  - leitura e resolução dos recados também para Caixa A&B e Cozinha/Bar;
+  - aviso "não escreva dados pessoais do hóspede" na descrição do texto.
+
+  Os menores adiados das revisões por tarefa foram triados como não bloqueantes.
+- **Critérios verificados** (testes `FrontdeskTracesApiTest` 10, `TraceDomainTest` 6, `TraceStoreTest` 5):
+  - [x] `POST /api/v1/traces` cria o recado vinculado a uma reserva ou a uma UH. Sem vínculo, ou com os dois → `400 TRACE_INVALID`. Setor inexistente → `400 UNKNOWN_DEPARTMENT`. Também recusa: reserva, UH ou responsável inexistentes (`400`) e UH desativada (`422 ROOM_INACTIVE`).
+  - [x] `GET /api/v1/traces` filtra por setor, vencimento, situação, reserva e UH, com cursor `(due_on, id)`; as páginas cobrem todos os recados sem repetição.
+  - [x] Resolver registra o usuário e o instante. Um recado já resolvido → `409 TRACE_ALREADY_RESOLVED`, também na corrida entre dois usuários (trava da linha). O `PUT` exige `If-Match` (`428`/`412`), e num recado resolvido dá `409`.
+  - [x] Escrita sem permissão → `403`. As escritas são auditadas sem o texto (`textLength`, `textChanged`), e o texto não aparece na trilha, nos problemas nem no log (teste com marcadores). Não há `DELETE`: nem endpoint, nem `DELETE` físico (trigger).
+  - [x] `ModularityTest` e ARCHITECTURE §3.1 incluem `frontdesk` → `staff`, só pela `StaffApi` e pelos tipos dela.
+  - [x] `./gradlew build` → BUILD SUCCESSFUL em 6 min 53 s (1287 testes em 158 classes, 0 falhas). Oasdiff contra `68a2a37` e `ffae917` → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+- **Decisões tomadas** pela opção recomendada, em nome do usuário (delegado ao orquestrador, 2026-10-23), depois de pesar prós e contras:
+  - **D1, responsável:** `assigneeUserId` de um usuário vinculado a um colaborador, conferido pela `StaffApi.employeeOfUser` (`400 UNKNOWN_ASSIGNEE`).
+  - **D2, permissões:** `frontdesk.traces.read` e `frontdesk.traces.resolve` para Gerente, Recepcionista, Governanta, Manutenção, Comercial/Eventos, Caixa A&B e Cozinha/Bar. `frontdesk.traces.manage` só para Gerente e Recepcionista. Assim, o setor que cumpre o recado o resolve sem poder editá-lo.
+  - **D3, vínculo fixo:** a reserva ou a UH é definida só na criação.
+  - **D4, vencimento:** não pode ser anterior à data operacional, na criação e quando muda.
+  - **D5, situação:** `OPEN` ou `RESOLVED`, calculada.
+  - **D6, texto:** de 1 a 500 caracteres, aparado.
+  - **Fora dos modelos padrão:** os modelos de setor que ficaram de fora (Camareira, Garçom, Almoxarife, Financeiro) recebem acesso por concessão do administrador.
+- **Decisões para o usuário** (entrevista no fim do lote):
+  - (a) responsável como usuário com colaborador;
+  - (b) a permissão de resolver separada e os modelos que a recebem;
+  - (c) o vínculo fixo.
+- **Notas para a próxima etapa:**
+  - **Primeiro estado próprio do `frontdesk`:** o schema e a pasta `db/migration/frontdesk/` existem desde esta etapa.
+  - **Ajuste depois da integração:** o comentário da migração `V2026_10_23_1200` mudou na correção. Um banco local que já a aplicou precisa de `flyway repair`; a CI e os testes usam bancos novos.
+  - **Possíveis acompanhamentos:**
+    - mostrar no recado de reserva o número da UH alocada;
+    - um texto com U+0000 provavelmente vira `500` (vale para o projeto todo);
+    - `StaffApi.departments()` é lido a cada chamada (aceitável para 30 UHs);
+    - um filtro de recados atrasados.
+  - **Gate (E12):** os recados entram no roteiro do compose.
 
 ---
 
