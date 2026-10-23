@@ -218,7 +218,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E02 | Check-in orquestrado | #concluida | E01 | Módulo `frontdesk`, `POST /reservations/{id}/check-in` numa transação, desfazer check-in sensível e cotação de early/late |
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
 | E04 | Check-out | #concluida | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
-| E05 | Troca de UH, extensão, redução e early check-in | #pendente | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
+| E05 | Troca de UH, extensão, redução e early check-in | #em-andamento | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
 
 **FNRH**
@@ -703,7 +703,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E05 — Troca de UH, extensão, redução e early check-in — #pendente
+## E05 — Troca de UH, extensão, redução e early check-in — #em-andamento
 
 **Objetivo:** expor no `frontdesk` a troca de UH do hóspede em casa com motivo, mantendo ou recalculando a tarifa (RF-REC-04), usando a transição da E01 e atualizando o status das duas UHs; cobrir de ponta a ponta a extensão e a redução do hospedado (RF-REC-05) pelo `PUT` da E01; e acrescentar ao check-in a cobrança do early check-in com o preço informado antes (RF-REC-03, RN-11, H13).
 
