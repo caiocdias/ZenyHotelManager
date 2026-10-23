@@ -256,6 +256,9 @@ class AuthorizationTest(
                 "frontdesk.stays.undocheckin:ALL",
                 "frontdesk.stays.checkout:ALL",
                 "frontdesk.stays.move:ALL",
+                "frontdesk.traces.read:ALL",
+                "frontdesk.traces.manage:ALL",
+                "frontdesk.traces.resolve:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

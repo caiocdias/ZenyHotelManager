@@ -27,14 +27,15 @@ tags:
   name: billing
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
-- description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
-  name: rates
 - description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
     \ cotação de early check-in e late check-out, walk-in (reserva, alocação e check-in\
     \ numa transação) e check-out orquestrado numa transação (cobranças da noite da\
-    \ chegada, late, saldo zero, cauções, contas e UH) e troca de UH do hospedado\
-    \ numa transação (alocação, tarifa das noites restantes e as duas UHs)."
+    \ chegada, late, saldo zero, cauções, contas e UH), troca de UH do hospedado numa\
+    \ transação (alocação, tarifa das noites restantes e as duas UHs) e recados para\
+    \ os setores."
   name: frontdesk
+- description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
+  name: rates
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -11245,6 +11246,215 @@ paths:
       summary: Envia um lote de comandos offline
       tags:
       - sync
+  /api/v1/traces:
+    get:
+      description: "Em ordem de vencimento e id, por cursor; os filtros preenchidos\
+        \ restringem juntos. Exige `frontdesk.traces.read`."
+      operationId: listTraces
+      parameters:
+      - description: Só os recados deste setor.
+        in: query
+        name: departmentId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só os que vencem nesta data operacional (YYYY-MM-DD).
+        in: query
+        name: dueOn
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Só os abertos (`OPEN`) ou só os resolvidos (`RESOLVED`).
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - RESOLVED
+      - description: Só os vinculados a esta reserva.
+        in: query
+        name: reservationId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só os vinculados a esta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageTraceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os recados
+      tags:
+      - frontdesk
+    post:
+      description: "Um recado (trace) para o setor `departmentId`, vinculado a uma\
+        \ reserva (`reservationId`) **ou** a uma UH (`roomId`), com o vencimento e\
+        \ o responsável opcional. Exige `frontdesk.traces.manage`. Na ordem: texto\
+        \ vazio ou acima de 500 caracteres (campo `text`), reserva e UH juntas ou\
+        \ nenhuma delas (campo `reservationId`) e vencimento antes da data operacional\
+        \ (campo `dueOn`): 400 `TRACE_INVALID`, com o campo e a regra, nunca o texto;\
+        \ setor inexistente 400 `UNKNOWN_DEPARTMENT`; reserva inexistente 400 `UNKNOWN_RESERVATION`\
+        \ (qualquer situação serve); UH inexistente 400 `UNKNOWN_ROOM`; UH desativada\
+        \ 422 `ROOM_INACTIVE` (campo em `field`); responsável que não é um usuário\
+        \ vinculado a um colaborador 400 `UNKNOWN_ASSIGNEE`. O recado nasce `OPEN`."
+      operationId: createTrace
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+          description: Recado criado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Criar um recado para um setor
+      tags:
+      - frontdesk
+  /api/v1/traces/{id}:
+    get:
+      description: "Exige `frontdesk.traces.read`. Inexistente: 404 `TRACE_NOT_FOUND`."
+      operationId: getTrace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um recado
+      tags:
+      - frontdesk
+    put:
+      description: "Troca o setor, o vencimento, o texto e o responsável (o vínculo\
+        \ com a reserva ou a UH não muda), com `If-Match` (412 com outra versão; 428\
+        \ sem ele). Exige `frontdesk.traces.manage`. Inexistente: 404 `TRACE_NOT_FOUND`;\
+        \ resolvido: 409 `TRACE_ALREADY_RESOLVED` e nada muda. As regras da criaçã\
+        o valem para o texto e, quando mudam, para o vencimento, o setor e o responsá\
+        vel."
+      operationId: updateTrace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar um recado aberto
+      tags:
+      - frontdesk
+  /api/v1/traces/{id}/resolve:
+    post:
+      description: "Registra quem resolveu e quando (`resolvedBy`, `resolvedAt`) com\
+        \ o recado travado: de duas resoluções simultâneas, só uma passa. Exige `frontdesk.traces.resolve`\
+        \ (o setor resolve sem poder editar). Inexistente: 404 `TRACE_NOT_FOUND`;\
+        \ já resolvido: 409 `TRACE_ALREADY_RESOLVED`."
+      operationId: resolveTrace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Resolver um recado
+      tags:
+      - frontdesk
   /api/v1/transaction-codes:
     get:
       description: Em ordem de código. Exige `billing.codes.read`.
@@ -15637,6 +15847,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ShiftResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageTraceResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TraceResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -24497,6 +24721,154 @@ components:
       - sessionId
       - tokenType
       - userId
+    TraceChangeRequest:
+      type: object
+      description: "A alteração de um recado aberto: o setor, o vencimento, o texto\
+        \ e o responsável (sem ele, o recado fica sem responsável). O vínculo não\
+        \ muda."
+      properties:
+        assigneeUserId:
+          type: string
+          format: uuid
+          description: "O responsável opcional: o id de um usuário vinculado a um\
+            \ colaborador (senão 400 `UNKNOWN_ASSIGNEE`)."
+          nullable: true
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        dueOn:
+          type: string
+          format: date
+          description: "O vencimento (data operacional, `YYYY-MM-DD`): não antes da\
+            \ data operacional do hotel (senão 400 `TRACE_INVALID` no campo `dueOn`).\
+            \ Conferido só quando muda."
+          nullable: true
+        text:
+          type: string
+          description: "O recado (texto livre, aparado, de 1 a 500 caracteres; senã\
+            o 400 `TRACE_INVALID` no campo `text`). Nunca vai à trilha, a logs nem\
+            \ a problemas."
+          nullable: true
+      required:
+      - departmentId
+      - dueOn
+      - text
+    TraceRequest:
+      type: object
+      description: "Um recado para um setor, vinculado a uma reserva **ou** a uma\
+        \ UH (exatamente um dos dois, fixo depois da criação), com o vencimento e\
+        \ o responsável opcional."
+      properties:
+        assigneeUserId:
+          type: string
+          format: uuid
+          description: "O responsável opcional: o id de um usuário vinculado a um\
+            \ colaborador (senão 400 `UNKNOWN_ASSIGNEE`)."
+          nullable: true
+        departmentId:
+          type: string
+          format: uuid
+          nullable: true
+        dueOn:
+          type: string
+          format: date
+          description: "O vencimento (data operacional, `YYYY-MM-DD`): não antes da\
+            \ data operacional do hotel (senão 400 `TRACE_INVALID` no campo `dueOn`)."
+          nullable: true
+        reservationId:
+          type: string
+          format: uuid
+          description: A reserva do recado (qualquer situação); sem `roomId`.
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: A UH do recado (ativa); sem `reservationId`.
+          nullable: true
+        text:
+          type: string
+          description: "O recado (texto livre, aparado, de 1 a 500 caracteres; senã\
+            o 400 `TRACE_INVALID` no campo `text`). Nunca vai à trilha, a logs nem\
+            \ a problemas."
+          nullable: true
+      required:
+      - departmentId
+      - dueOn
+      - text
+    TraceResponse:
+      type: object
+      description: "Um recado da recepção para um setor, com os nomes do setor, da\
+        \ UH e do responsável lidos na hora da consulta."
+      properties:
+        assigneeName:
+          type: string
+          description: O nome do colaborador do responsável (nulo se o usuário não
+            tem mais colaborador).
+          nullable: true
+        assigneeUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: string
+          format: uuid
+        departmentId:
+          type: string
+          format: uuid
+        departmentName:
+          type: string
+        dueOn:
+          type: string
+          format: date
+        id:
+          type: string
+          format: uuid
+        reservationId:
+          type: string
+          format: uuid
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedBy:
+          type: string
+          format: uuid
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          nullable: true
+        roomNumber:
+          type: string
+          description: O número da UH do vínculo (nulo no recado de reserva).
+          nullable: true
+        status:
+          type: string
+          description: "`OPEN` (sem resolução) ou `RESOLVED`. A lista pode crescer\
+            \ (`x-extensible-enum`): trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - OPEN
+          - RESOLVED
+        text:
+          type: string
+        version:
+          type: integer
+          format: int64
+      required:
+      - createdAt
+      - createdBy
+      - departmentId
+      - departmentName
+      - dueOn
+      - id
+      - status
+      - text
+      - version
     TransactionCodeCreateRequest:
       type: object
       description: Um código de lançamento novo; o tipo e o grupo de receita não mudam

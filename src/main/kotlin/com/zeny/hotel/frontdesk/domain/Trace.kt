@@ -5,6 +5,7 @@ import com.zeny.hotel.frontdesk.TraceId
 import com.zeny.hotel.frontdesk.TraceStatus
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
@@ -141,4 +142,11 @@ object TraceRules {
         message,
         listOf(FieldViolation(field, FrontdeskErrorCodes.TRACE_INVALID.value, message)),
     )
+}
+
+/** `422 ROOM_INACTIVE` do recado: a UH do vínculo está desativada, com o campo em `field` (`roomId`). */
+class TraceRoomInactiveException(
+    number: String,
+) : BusinessRuleException(FrontdeskErrorCodes.ROOM_INACTIVE, "A UH $number está desativada.") {
+    override val problemProperties: Map<String, Any> get() = mapOf("field" to "roomId")
 }

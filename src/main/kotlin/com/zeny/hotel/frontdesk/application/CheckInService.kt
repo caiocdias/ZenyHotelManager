@@ -64,9 +64,15 @@ object FrontdeskAudit {
     const val WALK_IN = "frontdesk.stay.walk-in"
     const val CHECK_OUT = "frontdesk.stay.check-out"
     const val ROOM_MOVE = "frontdesk.stay.room-move"
+    const val CREATE_TRACE = "frontdesk.trace.create"
+    const val UPDATE_TRACE = "frontdesk.trace.update"
+    const val RESOLVE_TRACE = "frontdesk.trace.resolve"
 
     /** A hospedagem (id = a reserva): o que a recepção fez, sem dado pessoal. */
     const val STAY = "frontdesk.stay"
+
+    /** O recado (M5 E06): ids, setor, datas, situação e o tamanho do texto, **nunca** o texto (RN-13). */
+    const val TRACE = "frontdesk.trace"
 }
 
 /**

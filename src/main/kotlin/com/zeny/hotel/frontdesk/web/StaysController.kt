@@ -25,8 +25,8 @@ const val FRONTDESK_TAG = "frontdesk"
 const val FRONTDESK_TAG_DESCRIPTION =
     "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in, cotação de early check-in e late " +
         "check-out, walk-in (reserva, alocação e check-in numa transação) e check-out orquestrado numa transação " +
-        "(cobranças da noite da chegada, late, saldo zero, cauções, contas e UH) e troca de UH do hospedado numa " +
-        "transação (alocação, tarifa das noites restantes e as duas UHs)."
+        "(cobranças da noite da chegada, late, saldo zero, cauções, contas e UH), troca de UH do hospedado numa " +
+        "transação (alocação, tarifa das noites restantes e as duas UHs) e recados para os setores."
 
 /**
  * A recepção sobre uma reserva (M5 E02): o check-in orquestrado (ARCHITECTURE §6.1), o desfazer check-in (sensível) e

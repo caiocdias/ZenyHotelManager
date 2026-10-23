@@ -20,6 +20,10 @@ import com.zeny.hotel.shared.TemplateGrant
  *
  * Troca de UH (E05): [STAYS_MOVE] troca a UH de uma reserva hospedada, com a tarifa mantida ou recalculada (Gerente e
  * Recepcionista; não sensível, decisão D7 da E05), sem `reservations.assignments.manage`.
+ *
+ * Recados (E06, decisão D2): [TRACES_READ] consulta os recados (Gerente, Recepcionista, Governanta, Manutenção e
+ * Comercial/Eventos); [TRACES_MANAGE] cria e altera (Gerente e Recepcionista); [TRACES_RESOLVE] resolve (os mesmos da
+ * leitura): o setor que cumpre o recado o resolve sem poder editá-lo. Nenhuma é sensível.
  */
 object FrontdeskPermissions : ModulePermissions {
     override val module = "frontdesk"
@@ -36,7 +40,26 @@ object FrontdeskPermissions : ModulePermissions {
     /** Trocar a UH de um hóspede hospedado. */
     val STAYS_MOVE = PermissionCode("frontdesk.stays.move")
 
+    /** Consultar os recados da recepção. */
+    val TRACES_READ = PermissionCode("frontdesk.traces.read")
+
+    /** Criar e alterar recados. */
+    val TRACES_MANAGE = PermissionCode("frontdesk.traces.manage")
+
+    /** Resolver um recado. */
+    val TRACES_RESOLVE = PermissionCode("frontdesk.traces.resolve")
+
     private val all = TemplateGrant(ALL)
+
+    /** Quem lê e resolve os recados: a recepção e os setores que os cumprem (D2). */
+    private val traceDepartments =
+        listOf(
+            RoleTemplate.MANAGER,
+            RoleTemplate.RECEPTIONIST,
+            RoleTemplate.HOUSEKEEPER,
+            RoleTemplate.MAINTENANCE,
+            RoleTemplate.SALES_EVENTS,
+        ).associateWith { all }
 
     override val permissions =
         listOf(
@@ -64,6 +87,24 @@ object FrontdeskPermissions : ModulePermissions {
                 "Trocar a UH de um hóspede hospedado",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
+            ),
+            PermissionDefinition(
+                TRACES_READ,
+                "Consultar os recados da recepção para os setores",
+                setOf(ALL),
+                templates = traceDepartments,
+            ),
+            PermissionDefinition(
+                TRACES_MANAGE,
+                "Criar e alterar recados da recepção",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
+            ),
+            PermissionDefinition(
+                TRACES_RESOLVE,
+                "Resolver um recado da recepção",
+                setOf(ALL),
+                templates = traceDepartments,
             ),
         )
 }
