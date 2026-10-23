@@ -80,6 +80,17 @@ class CheckOutDomainTest {
     }
 
     @Test
+    fun `only the room and the included packages are flagged as included in the rate`() {
+        val reservation = reservation(ARRIVAL, ARRIVAL, night(ARRIVAL, "300.00", "40.00", listOf(breakfast, parking)))
+
+        val charges = StayCharges.pending(reservation, ARRIVAL)
+
+        charges.single { it.kind == StayChargeKind.ROOM }.includedInRate shouldBe true
+        charges.single { it.packageId == breakfast.packageId }.includedInRate shouldBe true
+        charges.single { it.packageId == parking.packageId }.includedInRate shouldBe false
+    }
+
+    @Test
     fun `an overnight stay checked out on the arrival date charges the arrival night only`() {
         val nights = (0L..2L).map { night(ARRIVAL.plusDays(it), "300.00", "0.00", emptyList()) }
         val reservation = reservation(ARRIVAL, ARRIVAL.plusDays(3), *nights.toTypedArray())

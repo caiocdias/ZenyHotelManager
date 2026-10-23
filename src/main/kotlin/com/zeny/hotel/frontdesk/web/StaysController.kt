@@ -112,7 +112,9 @@ class StaysController(
             "Numa transação só (tudo ou nada; ARCHITECTURE §6.1): lança as cobranças da noite da chegada (só no " +
                 "day use ou no pernoite que sai no dia em que chegou: a hospedagem sem os pacotes inclusos e cada " +
                 "pacote da noite, no código dele, origem `END_OF_DAY`, uma vez só por noite mesmo se o check-out " +
-                "for repetido) e o late cotado (`lateCheckOutFee`, no código da diária, origem `MANUAL`), confere o " +
+                "for repetido; os pacotes inclusos saem sem taxa de serviço, os adicionais seguem a regra do " +
+                "código e devolvem a taxa em `serviceCharge`, que entra no saldo) e o late cotado " +
+                "(`lateCheckOutFee`, no código da diária, origem `MANUAL`), confere o " +
                 "saldo de todas as contas da reserva, libera as cauções não encerradas (inclusive as vencidas), " +
                 "encerra as contas, faz a reserva `CHECKED_OUT` (o antecipado devolve as noites seguintes ao " +
                 "inventário; a alocação é encerrada; publica `GuestCheckedOut`) e deixa a UH Vaga e Suja (RN-09). " +

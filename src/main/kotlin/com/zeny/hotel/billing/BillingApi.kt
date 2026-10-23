@@ -19,7 +19,9 @@ import java.util.UUID
  * fora de uma requisição. Estorno e ajuste não estão aqui: são ações sensíveis de quem opera, pela API HTTP. Desde a
  * E07, também o turno de caixa aberto do usuário ([requireOpenShift]), que os recebimentos exigem, e, desde a E09, as
  * cauções a vencer ([cardPreAuthorizationsExpiring]); desde o M4 E09, o total líquido de depósitos de uma conta
- * ([netDeposits]).
+ * ([netDeposits]); desde o M5 E02, o registro da caução do check-in ([registerCardPreAuthorization]); e, desde o M5
+ * E04, o lançamento idempotente pela chave de origem ([NewPosting.sourceReference]), a leitura das cauções em aberto
+ * ([unsettledCardPreAuthorizations]) e a liberação delas ([releaseCardPreAuthorization]).
  */
 @Suppress("TooManyFunctions") // a API pública inteira do módulo para os de cima
 interface BillingApi {
@@ -77,6 +79,12 @@ interface BillingApi {
      * ([NewPosting.serviceChargeRate]), senão o do código, senão o padrão do hotel, arredondado pela regra de `Money`
      * (nada se arredondar a zero); devolvida em [PostingSummary.serviceCharge]. Código `TX-SERVICO` desativado recusa
      * o item (`422 TRANSACTION_CODE_INACTIVE`), salvo com a taxa zero (percentual zero ou valor que arredonda a zero).
+     *
+     * **Idempotência** (M5 E04, H14): com [NewPosting.sourceReference], uma chave já lançada devolve o lançamento
+     * existente, com a taxa de serviço dele, sem gravar nem auditar nada, mesmo com a conta encerrada; a busca roda
+     * sob a trava da conta pedida. A chave leva só ids, datas e o tipo da cobrança. O fechamento do dia (M6) deve usar
+     * a mesma chave do check-out, `reservations.reservation:<id>:<data>:room` ou `…:package:<packageId>`, separar da
+     * hospedagem os pacotes inclusos e lançar estes sem taxa de serviço (`serviceChargeRate` zero), como o check-out.
      */
     fun post(
         folioId: FolioId,

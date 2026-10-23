@@ -7843,7 +7843,9 @@ paths:
         \ cobranças da noite da chegada (só no day use ou no pernoite que sai no dia\
         \ em que chegou: a hospedagem sem os pacotes inclusos e cada pacote da noite,\
         \ no código dele, origem `END_OF_DAY`, uma vez só por noite mesmo se o check-out\
-        \ for repetido) e o late cotado (`lateCheckOutFee`, no código da diária, origem\
+        \ for repetido; os pacotes inclusos saem sem taxa de serviço, os adicionais\
+        \ seguem a regra do código e devolvem a taxa em `serviceCharge`, que entra\
+        \ no saldo) e o late cotado (`lateCheckOutFee`, no código da diária, origem\
         \ `MANUAL`), confere o saldo de todas as contas da reserva, libera as cauç\
         ões não encerradas (inclusive as vencidas), encerra as contas, faz a reserva\
         \ `CHECKED_OUT` (o antecipado devolve as noites seguintes ao inventário; a\
@@ -13651,6 +13653,10 @@ components:
         postingId:
           type: string
           format: uuid
+        serviceCharge:
+          allOf:
+          - $ref: "#/components/schemas/CheckOutServiceChargeResponse"
+          nullable: true
         transactionCodeId:
           type: string
           format: uuid
@@ -13678,8 +13684,9 @@ components:
       description: "O check-out feito: a reserva `CHECKED_OUT`, a UH Vaga e Suja,\
         \ as cobranças da noite da chegada (no day use ou no pernoite que sai no dia\
         \ em que chegou: a hospedagem sem os pacotes inclusos e cada pacote, no có\
-        digo dele), o late cobrado (nulo sem late), as cauções liberadas e as contas\
-        \ encerradas. Nenhum dado do hóspede."
+        digo dele; só os adicionais levam taxa de serviço, em `serviceCharge`), o\
+        \ late cobrado (nulo sem late), as cauções liberadas e as contas encerradas.\
+        \ Nenhum dado do hóspede."
       properties:
         closedFolios:
           type: array
@@ -13707,6 +13714,36 @@ components:
       - reservation
       - room
       - stayCharges
+    CheckOutServiceChargeResponse:
+      type: object
+      description: A taxa de serviço lançada junto de um item do check-out.
+      nullable: true
+      properties:
+        amount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional do lançamento.
+        folioId:
+          type: string
+          format: uuid
+        postingId:
+          type: string
+          format: uuid
+        transactionCodeId:
+          type: string
+          format: uuid
+      required:
+      - amount
+      - businessDate
+      - folioId
+      - postingId
+      - transactionCodeId
     ChecklistAnswerDto:
       type: object
       description: "Uma resposta: a chave do item e só o campo do tipo dele — `check`\

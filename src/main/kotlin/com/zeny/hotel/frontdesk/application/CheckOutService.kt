@@ -29,6 +29,7 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.Money
+import com.zeny.hotel.shared.Percent
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -64,7 +65,8 @@ data class CheckOutOutcome(
  * `409 EARLY_LATE_FEE_CHANGED`), calculados sobre a reserva lida **antes** da transição e recusados antes de qualquer
  * escrita; a transição (`ReservationsApi.checkOut`, que **trava a reserva**, devolve ao inventário as noites do
  * antecipado e encerra a alocação); as cobranças (`BillingApi.post`, cada uma com a chave da noite: uma repetição nunca
- * cobra de novo, H14) e o late no código `ROOM_CHARGE`, que **travam a conta**; o saldo de todas as contas da reserva
+ * cobra de novo, H14; a hospedagem e os pacotes inclusos sem taxa de serviço, taxa zero, e os adicionais com a regra
+ * do código, RN-11) e o late no código `ROOM_CHARGE`, que **travam a conta**; o saldo de todas as contas da reserva
  * pela `BillingApi.balanceOf` (nunca recalculado aqui), já com as cobranças e o late: alguma conta com saldo,
  * `409 FOLIO_BALANCE_NOT_ZERO` com o saldo de cada conta e o total (RN-06; até o M10 só se quita por pagamento, sem
  * contas a receber); as cauções não encerradas de cada conta liberadas (inclusive as vencidas e as de um check-in
@@ -153,6 +155,8 @@ class FrontdeskCheckOutService(
                 quantity = charge.quantity,
                 description = charge.description,
                 source = PostingSource.END_OF_DAY,
+                // Os pacotes inclusos já estão na tarifa cotada: a taxa de serviço do código não os acresce (RN-11).
+                serviceChargeRate = if (charge.includedInRate) Percent.ZERO else null,
                 sourceReference = charge.sourceReference,
             ),
         )

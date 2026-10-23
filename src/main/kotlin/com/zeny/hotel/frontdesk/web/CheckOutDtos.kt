@@ -62,10 +62,41 @@ data class CheckOutPostingResponse(
     val amount: Money,
     @field:Schema(description = "A data operacional do lançamento.")
     val businessDate: LocalDate,
+    @field:Schema(
+        description =
+            "A taxa de serviço lançada junto do item (nula sem taxa: nos itens inclusos na tarifa e nos códigos sem " +
+                "taxa), no mesmo formato; ela entra no saldo, e o cliente a soma ao item para conciliar com o " +
+                "`total` " +
+                "do `409 FOLIO_BALANCE_NOT_ZERO`.",
+        nullable = true,
+    )
+    val serviceCharge: CheckOutServiceChargeResponse? = null,
 ) {
     companion object {
         fun of(posting: PostingSummary) =
             CheckOutPostingResponse(
+                posting.id.value,
+                posting.folioId.value,
+                posting.transactionCodeId.value,
+                posting.amount,
+                posting.businessDate,
+                posting.serviceCharge?.let(CheckOutServiceChargeResponse::of),
+            )
+    }
+}
+
+@Schema(description = "A taxa de serviço lançada junto de um item do check-out.")
+data class CheckOutServiceChargeResponse(
+    val postingId: UUID,
+    val folioId: UUID,
+    val transactionCodeId: UUID,
+    val amount: Money,
+    @field:Schema(description = "A data operacional do lançamento.")
+    val businessDate: LocalDate,
+) {
+    companion object {
+        fun of(posting: PostingSummary) =
+            CheckOutServiceChargeResponse(
                 posting.id.value,
                 posting.folioId.value,
                 posting.transactionCodeId.value,
@@ -91,7 +122,8 @@ data class CheckOutFolioResponse(
     description =
         "O check-out feito: a reserva `CHECKED_OUT`, a UH Vaga e Suja, as cobranças da noite da chegada (no day use " +
             "ou no pernoite que sai no dia em que chegou: a hospedagem sem os pacotes inclusos e cada pacote, no " +
-            "código dele), o late cobrado (nulo sem late), as cauções liberadas e as contas encerradas. Nenhum dado " +
+            "código dele; só os adicionais levam taxa de serviço, em `serviceCharge`), o late cobrado (nulo sem " +
+            "late), as cauções liberadas e as contas encerradas. Nenhum dado " +
             "do hóspede.",
 )
 data class CheckOutResponse(

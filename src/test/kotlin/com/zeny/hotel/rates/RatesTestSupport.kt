@@ -60,7 +60,10 @@ class RatesTestSupport(
         id(post("/api/v1/guarantee-policies", body))
 
     /** Um código de lançamento novo do `billing` (consumo, por padrão), pela API. */
-    fun createTransactionCode(kind: String = "CHARGE"): UUID {
+    fun createTransactionCode(
+        kind: String = "CHARGE",
+        serviceChargeApplies: Boolean = false,
+    ): UUID {
         val code = uniqueCode("PK").take(TRANSACTION_CODE_LENGTH)
         return id(
             post(
@@ -70,6 +73,8 @@ class RatesTestSupport(
                     "name" to "Pacote $code",
                     "kind" to kind,
                     "revenueGroup" to if (kind == "CHARGE") "FOOD_BEVERAGE" else "OTHER",
+                    "serviceChargeApplies" to serviceChargeApplies,
+                    "serviceChargeRate" to if (serviceChargeApplies) "10" else null,
                 ),
             ),
         )

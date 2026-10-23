@@ -286,6 +286,66 @@ class FrontdeskCheckOutApiTest(
     }
 
     @Test
+    @Suppress("LongMethod") // o pacote incluso e o adicional, ambos com taxa de serviço, e o que sai em cada resposta
+    fun `an included package carries no service charge and an additional one follows its code`() {
+        val included = createPackage("ON_ARRIVAL", "PER_STAY", "60.00", included = true, serviceCharge = true)
+        val additional = createPackage("ON_ARRIVAL", "PER_STAY", "50.00", included = false, serviceCharge = true)
+        val stay = frontdesk.stay(packages = listOf(included.id, additional.id))
+        val booked = stay.checkedIn(departure = today)
+        // A diária 340 (sem o incluso) + o incluso 60 + o adicional 50 + a taxa de 10% só do adicional (5,00).
+        frontdesk.pay(booked.folio, frontdesk.cashier(), "455.00")
+
+        val response = checkOut(booked.id).expect(200)
+
+        val items = response["stayCharges"].values().associateBy { it["transactionCodeId"].asString() }
+        items.getValue(included.code.toString())["serviceCharge"].isNull shouldBe true
+        items.getValue(billing.codeId("ROOM_CHARGE").toString())["serviceCharge"].isNull shouldBe true
+        items.getValue(additional.code.toString()).let {
+            it["amount"].asString() shouldBe "50.00"
+            it["serviceCharge"]["amount"].asString() shouldBe "5.00"
+            it["serviceCharge"]["transactionCodeId"].asString() shouldBe billing.codeId("SERVICE_CHARGE").toString()
+            it["serviceCharge"]["folioId"].asString() shouldBe booked.folio.toString()
+        }
+        val charges =
+            jdbc
+                .sql(
+                    "SELECT service_charge_for_id FROM billing.posting " +
+                        "WHERE folio_id = :folio AND service_charge_for_id IS NOT NULL",
+                ).param("folio", booked.folio)
+                .query(UUID::class.java)
+                .list()
+        charges shouldBe listOf(UUID.fromString(items.getValue(additional.code.toString())["postingId"].asString()))
+    }
+
+    @Test
+    fun `an overnight stay checked out before its departure charges nothing and returns the remaining nights`() {
+        val stay = frontdesk.stay()
+        val booked = stay.book(frontdesk.guest(), departure = today.plusDays(2))
+        unassign(booked.id)
+        jdbc
+            .sql("UPDATE reservations.reservation SET arrival = :date WHERE id = :id")
+            .param("date", today.minusDays(1))
+            .param("id", booked.id)
+            .update() shouldBe 1
+        support.forceInHouse(booked.id, stay.room)
+        jdbc
+            .sql("UPDATE reservations.reservation_guest SET checked_in_at = now() WHERE reservation_id = :id")
+            .param("id", booked.id)
+            .update()
+        roomsApi.markOccupied(RoomId(stay.room), 1, RoomStatusSource.MANUAL)
+        support.inventory.row(stay.type, today)!!.sold shouldBe 1
+        support.inventory.row(stay.type, today.plusDays(1))!!.sold shouldBe 1
+
+        val response = checkOut(booked.id).expect(200)
+
+        response["stayCharges"].values().toList().shouldBeEmpty()
+        response["reservation"]["departure"].asString() shouldBe today.toString()
+        support.postings(booked.folio).shouldBeEmpty()
+        support.inventory.awaitRow(stay.type, today) { it.sold == 0 }
+        support.inventory.awaitRow(stay.type, today.plusDays(1)) { it.sold == 0 }
+    }
+
+    @Test
     fun `a repeated check-out after a refused one does not charge the arrival night twice`() {
         val booked = frontdesk.stay().checkedIn()
         checkOut(booked.id).problem(409, "FOLIO_BALANCE_NOT_ZERO")
@@ -527,8 +587,9 @@ class FrontdeskCheckOutApiTest(
         pricing: String,
         price: String,
         included: Boolean,
+        serviceCharge: Boolean = false,
     ): Package {
-        val code = support.rates.createTransactionCode()
+        val code = support.rates.createTransactionCode(serviceChargeApplies = serviceCharge)
         val body =
             support.rates.packageBody(
                 code,
