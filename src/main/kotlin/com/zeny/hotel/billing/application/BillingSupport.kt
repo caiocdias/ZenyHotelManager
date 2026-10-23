@@ -288,6 +288,7 @@ internal fun Posting.summary(serviceCharge: Posting? = null): PostingSummary =
         this.serviceCharge?.itemId,
         this.serviceCharge?.rate,
         serviceCharge?.summary(),
+        sourceReference,
     )
 
 /** Retrato da trilha de um código de lançamento. */
@@ -354,6 +355,7 @@ internal fun Posting.auditState(): Map<String, Any?> =
         "serviceChargeForId" to serviceCharge?.itemId?.toString(),
         "serviceChargeRate" to serviceCharge?.rate?.toString(),
         "triggeredById" to triggeredById?.toString(),
+        "sourceReference" to sourceReference,
     )
 
 internal fun folioNotFound() = NotFoundException(BillingErrorCodes.FOLIO_NOT_FOUND, "Conta não encontrada.")

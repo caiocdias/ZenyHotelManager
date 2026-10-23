@@ -83,6 +83,7 @@ class Posting(
     val transferredFromId: PostingId? = null,
     val serviceCharge: ServiceChargeLink? = null,
     val triggeredById: PostingId? = null,
+    val sourceReference: String? = null,
 ) {
     init {
         require(!amount.isZero()) { "Lançamento com valor zero" }
@@ -116,6 +117,8 @@ class Posting(
     companion object {
         const val MAX_DESCRIPTION_LENGTH = 200
         const val MAX_REASON_LENGTH = 500
+        const val MAX_SOURCE_REFERENCE_LENGTH = 200
+        private val SOURCE_REFERENCE = Regex("^[A-Za-z0-9._:-]{1,$MAX_SOURCE_REFERENCE_LENGTH}$")
 
         /**
          * Os tipos que se estornam, ajustam, transferem e dividem: o normal, a entrada de uma transferência e a taxa de
@@ -146,7 +149,9 @@ class Posting(
             source: PostingSource,
             stamp: PostingStamp,
             routing: PostingRouting? = null,
+            sourceReference: String? = null,
         ): Posting {
+            requireValidSourceReference(sourceReference)
             folio.requireOpen()
             code.requireActive()
             val gross = gross(quantity, unitPrice)
@@ -171,7 +176,18 @@ class Posting(
                 postedAt = stamp.postedAt,
                 postedBy = stamp.postedBy,
                 routing = routing,
+                sourceReference = sourceReference,
             )
+        }
+
+        /** A chave de origem, se há, só com letras, dígitos e `. _ : -`, até 200 (`400 POSTING_INVALID`). */
+        fun requireValidSourceReference(value: String?) {
+            if (value != null && !SOURCE_REFERENCE.matches(value)) {
+                throw invalid(
+                    "sourceReference",
+                    "A chave de origem leva só letras, dígitos e . _ : -, de 1 a $MAX_SOURCE_REFERENCE_LENGTH.",
+                )
+            }
         }
 
         /** Quantidade × valor unitário, com as faixas conferidas, arredondado pela regra de [Money]. */

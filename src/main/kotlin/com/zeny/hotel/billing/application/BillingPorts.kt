@@ -88,6 +88,9 @@ interface PostingLedger {
 
     fun posting(id: PostingId): Posting?
 
+    /** O lançamento já gravado com a chave de origem (M5 E04), em qualquer conta; `null` se não há. */
+    fun bySourceReference(sourceReference: String): Posting?
+
     /** A taxa de serviço vinculada ao item (M3 E06), na conta dele; `null` se não tem. */
     fun serviceChargeOf(itemId: PostingId): Posting?
 

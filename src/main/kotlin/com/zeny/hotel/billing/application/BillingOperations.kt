@@ -123,6 +123,9 @@ class BillingOperations(
      * `TX-SERVICO`), com o percentual [serviceChargeRate] informado pelo módulo de origem, senão o do código, senão o
      * padrão do hotel (H4). O código `TX-SERVICO` desativado recusa o item (`422 TRANSACTION_CODE_INACTIVE`), salvo com
      * a taxa zero (percentual zero ou valor que arredonda a zero), em que o item passa sem taxa.
+     *
+     * Chave de origem (M5 E04, H14): com [sourceReference] já lançada, devolve o lançamento existente (e a taxa dele)
+     * sem gravar nem auditar nada, mesmo com a conta encerrada; chave fora do formato, `400 POSTING_INVALID`.
      */
     @Suppress("LongParameterList", "ThrowsCount") // os dados do lançamento; uma recusa por motivo
     fun post(
@@ -133,7 +136,9 @@ class BillingOperations(
         description: String?,
         source: PostingSource,
         serviceChargeRate: Percent? = null,
+        sourceReference: String? = null,
     ): PostedItem {
+        Posting.requireValidSourceReference(sourceReference)
         store.folio(folioId) ?: throw folioNotFound()
         val code =
             store.transactionCode(transactionCodeId)
@@ -152,11 +157,28 @@ class BillingOperations(
         val destinationId = path.lastOrNull()?.targetFolioId ?: folioId
         val locked = store.foliosForUpdate(setOf(folioId, destinationId))
         val requested = locked[folioId] ?: throw folioNotFound()
+        // A repetição devolve o lançamento da chave antes de olhar a conta (que pode já estar encerrada); a conferência
+        // e a gravação ficam sob a trava da conta pedida, então dois pedidos da mesma chave se enfileiram.
+        sourceReference?.let(ledger::bySourceReference)?.let {
+            audit.noChanges()
+            return PostedItem(it, ledger.serviceChargeOf(it.id))
+        }
         requested.requireOpen()
         val destination = checkNotNull(locked[destinationId]) { "Conta de destino $destinationId ausente" }
         if (path.isNotEmpty()) destination.requireOpenAsRoutingTarget()
         val routing = path.firstOrNull()?.let { PostingRouting(folioId, it.id) }
-        val posting = Posting.regular(destination, code, quantity, unitPrice, description, source, stamp, routing)
+        val posting =
+            Posting.regular(
+                destination,
+                code,
+                quantity,
+                unitPrice,
+                description,
+                source,
+                stamp,
+                routing,
+                sourceReference,
+            )
         val charge = chargeCode?.let { ServiceCharge.on(posting, it, checkNotNull(rate), stamp) }
         val chain = path.map { it.id.toString() }
         record(destination, posting) {

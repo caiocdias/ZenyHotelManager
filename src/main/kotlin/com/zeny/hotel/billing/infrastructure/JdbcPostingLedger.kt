@@ -44,11 +44,11 @@ class JdbcPostingLedger(
                     INSERT INTO billing.posting (id, folio_id, transaction_code_id, posting_type, quantity, unit_price,
                         amount, description, source, business_date, posted_at, posted_by, corrects_id, reason,
                         approval_id, approved_by, routed_from_folio_id, routing_rule_id, transferred_from_id,
-                        service_charge_for_id, service_charge_rate, triggered_by_id)
+                        service_charge_for_id, service_charge_rate, triggered_by_id, source_reference)
                     VALUES (:id, :folioId, :codeId, :type, :quantity, :unitPrice, :amount, :description, :source,
                         :businessDate, :postedAt, :postedBy, :correctsId, :reason, :approvalId, :approvedBy,
                         :routedFrom, :routingRule, :transferredFrom, :serviceChargeFor, :serviceChargeRate,
-                        :triggeredBy)
+                        :triggeredBy, :sourceReference)
                     """.trimIndent(),
                 ).param("id", posting.id.value)
                 .param("folioId", posting.folioId.value)
@@ -72,6 +72,7 @@ class JdbcPostingLedger(
                 .param("serviceChargeFor", posting.serviceCharge?.itemId?.value)
                 .param("serviceChargeRate", posting.serviceCharge?.rate?.value)
                 .param("triggeredBy", posting.triggeredById?.value)
+                .param("sourceReference", posting.sourceReference)
                 .update()
         }
 
@@ -79,6 +80,14 @@ class JdbcPostingLedger(
         jdbc
             .sql("SELECT * FROM billing.posting WHERE id = :id")
             .param("id", id.value)
+            .query { rs, _ -> posting(rs) }
+            .optional()
+            .orElse(null)
+
+    override fun bySourceReference(sourceReference: String): Posting? =
+        jdbc
+            .sql("SELECT * FROM billing.posting WHERE source_reference = :reference")
+            .param("reference", sourceReference)
             .query { rs, _ -> posting(rs) }
             .optional()
             .orElse(null)
@@ -243,6 +252,7 @@ class JdbcPostingLedger(
                     ServiceChargeLink(PostingId(it), Percent.of(rs.getBigDecimal("service_charge_rate")))
                 },
             triggeredById = rs.getObject("triggered_by_id", UUID::class.java)?.let(::PostingId),
+            sourceReference = rs.getString("source_reference"),
         )
 
     private companion object {

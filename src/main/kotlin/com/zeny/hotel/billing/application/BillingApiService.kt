@@ -94,6 +94,7 @@ class BillingApiService(
                 posting.description,
                 posting.source,
                 posting.serviceChargeRate,
+                posting.sourceReference,
             ).let { it.item.summary(it.serviceCharge) }
 
     /**

@@ -389,6 +389,11 @@ data class NewFolio(
  * passa o do ponto de venda), de 0 a 100 (fora, `400 POSTING_INVALID`, campo `serviceChargeRate`). Só vale num código
  * que aceita a taxa (`serviceChargeApplies`); nulo, vale o do código, senão o padrão do hotel. Num código sem a taxa,
  * é ignorado.
+ *
+ * [sourceReference] (M5 E04, H14): a chave do fato de origem, estável entre repetições (ids, datas e o tipo da
+ * cobrança, nunca dado pessoal; letras, dígitos e `. _ : -`, até 200; fora, `400 POSTING_INVALID`, campo
+ * `sourceReference`). Com a chave, [BillingApi.post] lança uma vez só: se a chave já foi lançada (em qualquer conta,
+ * aberta ou encerrada), devolve o lançamento existente sem gravar nem auditar nada. Sem a chave, nunca deduplica.
  */
 data class NewPosting(
     val transactionCodeId: TransactionCodeId,
@@ -397,6 +402,7 @@ data class NewPosting(
     val description: String? = null,
     val source: PostingSource,
     val serviceChargeRate: Percent? = null,
+    val sourceReference: String? = null,
 )
 
 /**
@@ -424,4 +430,5 @@ data class PostingSummary(
     val serviceChargeForId: PostingId? = null,
     val serviceChargeRate: Percent? = null,
     val serviceCharge: PostingSummary? = null,
+    val sourceReference: String? = null,
 )
