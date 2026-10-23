@@ -320,17 +320,17 @@ class ModularityTest {
     }
 
     @Test
-    fun `frontdesk depends only on shared, hotel, reservations, rooms, guests, billing, files, rates, by APIs`() {
+    fun `frontdesk depends only on the lower layers and staff, by APIs`() {
         val frontdesk = modules.getModuleByName("frontdesk").orElseThrow()
-        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates")
+        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates", "staff")
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M5 E02: hotel (data operacional, fuso e política de early/late pela
         // HotelApi), reservations (a reserva, a alocação e as transições pela ReservationsApi), rooms (RN-05 e a
         // ocupação pela RoomsApi), guests (a identificação sem número e o alerta de restrição pela GuestsApi), billing
         // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); M5 E03: rates,
         // só os tipos públicos que a ReservationsApi usa (o id do plano do walk-in e o tipo de garantia da política
-        // copiada) e, na E04, os do pacote da noite (PackageId e PackageCharge), nunca a RatesApi; nunca fnrh (camada
-        // acima) nem iam.
+        // copiada) e, na E04, os do pacote da noite (PackageId e PackageCharge), nunca a RatesApi;
+        // M5 E06: staff, o setor do recado (DepartmentId e, a seguir, a StaffApi); nunca fnrh (camada acima) nem iam.
         frontdesk
             .getDirectDependencies(modules)
             .uniqueModules()

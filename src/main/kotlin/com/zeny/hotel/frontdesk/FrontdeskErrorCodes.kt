@@ -56,6 +56,30 @@ object FrontdeskErrorCodes {
      */
     val RESERVATION_CHANGED = ErrorCode("RESERVATION_CHANGED")
 
+    // --- Recados (E06) ----------------------------------------------------------------------------------------------
+
+    /**
+     * 400: recado incoerente, com o campo e a regra, **nunca** o texto recebido (RN-13): texto vazio ou acima de 500
+     * caracteres (`text`), vencimento anterior à data operacional (`dueOn`), reserva e UH juntas ou nenhuma delas
+     * (`reservationId`).
+     */
+    val TRACE_INVALID = ErrorCode("TRACE_INVALID")
+
+    /** 404: recado inexistente. */
+    val TRACE_NOT_FOUND = ErrorCode("TRACE_NOT_FOUND")
+
+    /** 409: o recado já foi resolvido; não se resolve nem se altera de novo. */
+    val TRACE_ALREADY_RESOLVED = ErrorCode("TRACE_ALREADY_RESOLVED")
+
+    /** 400: o setor do recado não existe (campo `departmentId`). */
+    val UNKNOWN_DEPARTMENT = ErrorCode("UNKNOWN_DEPARTMENT")
+
+    /** 400: o responsável não é um usuário vinculado a um colaborador (campo `assigneeUserId`). */
+    val UNKNOWN_ASSIGNEE = ErrorCode("UNKNOWN_ASSIGNEE")
+
+    /** 400: a reserva do recado não existe (campo `reservationId`). */
+    val UNKNOWN_RESERVATION = ErrorCode("UNKNOWN_RESERVATION")
+
     // --- Reexportados -----------------------------------------------------------------------------------------------
 
     val RESERVATION_NOT_FOUND: ErrorCode = ReservationsErrorCodes.RESERVATION_NOT_FOUND
@@ -65,6 +89,7 @@ object FrontdeskErrorCodes {
     val UNDO_CHECK_IN_EXPIRED: ErrorCode = ReservationsErrorCodes.UNDO_CHECK_IN_EXPIRED
     val UNKNOWN_GUEST: ErrorCode = ReservationsErrorCodes.UNKNOWN_GUEST
     val UNKNOWN_ROOM: ErrorCode = ReservationsErrorCodes.UNKNOWN_ROOM
+    val ROOM_INACTIVE: ErrorCode = ReservationsErrorCodes.ROOM_INACTIVE
     val GUEST_ANONYMIZED: ErrorCode = ReservationsErrorCodes.GUEST_ANONYMIZED
 
     /**
