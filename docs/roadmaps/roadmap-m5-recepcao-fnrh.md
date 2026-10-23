@@ -218,7 +218,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E02 | Check-in orquestrado | #concluida | E01 | Módulo `frontdesk`, `POST /reservations/{id}/check-in` numa transação, desfazer check-in sensível e cotação de early/late |
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
 | E04 | Check-out | #concluida | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
-| E05 | Troca de UH, extensão, redução e early check-in | #em-andamento | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
+| E05 | Troca de UH, extensão, redução e early check-in | #concluida | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
 
 **FNRH**
@@ -703,7 +703,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E05 — Troca de UH, extensão, redução e early check-in — #em-andamento
+## E05 — Troca de UH, extensão, redução e early check-in — #concluida
 
 **Objetivo:** expor no `frontdesk` a troca de UH do hóspede em casa com motivo, mantendo ou recalculando a tarifa (RF-REC-04), usando a transição da E01 e atualizando o status das duas UHs; cobrir de ponta a ponta a extensão e a redução do hospedado (RF-REC-05) pelo `PUT` da E01; e acrescentar ao check-in a cobrança do early check-in com o preço informado antes (RF-REC-03, RN-11, H13).
 
@@ -751,12 +751,55 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-10-23-m5-recepcao-fnrh-e05.md`, com 5 tarefas e as decisões D1 a D8. Executado com `superpowers:subagent-driven-development`: implementador e revisor por tarefa, revisão final no modelo mais capaz, uma rodada de correção e re-revisão.
+- **Commits** (a partir de `83766da`):
+  - `a15672a`: início e plano.
+  - `1a1b9b1`: `ReservationsApi.moveRoom(..., expectedVersion)` conferido sob a trava; a redução do hospedado passa a ignorar as restrições de venda.
+  - `515d0a1`: `POST /api/v1/reservations/{id}/room-moves`, com a permissão `frontdesk.stays.move` e o `FrontdeskRoomMoveService`.
+  - `5aa0c9c`: early check-in no check-in e no walk-in; `LateCheckOutRules` passa a se chamar `EarlyLateFeeRules`.
+  - `e692d9f`: testes de ponta a ponta da extensão e da redução do hospedado.
+  - `a439886`: ajustes da revisão final.
+  - Mais o commit deste fechamento.
+- **Revisão final:** **com correções**, sendo 1 importante e 6 menores.
+  - O importante: um check-out que esperava a trava atrás de uma troca simultânea vagava a UH de origem e deixava a de destino Ocupada sem hóspede. É uma corrida da E04, exposta pela troca. Foi corrigido em `a439886`: `ReservationsApi.checkOut(id, expectedVersion)` é conferido sob a trava, e o `frontdesk` responde `409 RESERVATION_CHANGED` quando a reserva mudou. A corrida entre check-out e troca foi testada nas duas ordens.
+  - Na mesma rodada:
+    - a pré-checagem do `If-Match` na troca, no lugar do pós-check morto;
+    - o `complete` passa a receber o early já aceito;
+    - uma asserção da ordem das UHs no teste de falha forçada.
+  - A re-revisão confirmou os 4 itens, sem nada novo quebrado. Os menores restantes das revisões por tarefa foram triados como não bloqueantes.
+- **Critérios verificados** (testes: `FrontdeskRoomMoveApiTest` 7, mais a corrida com o check-out; `RoomMoveDomainTest` 2; `FrontdeskEarlyCheckInApiTest` 5; `FrontdeskInHouseChangeApiTest` 5; 3 novos em `StayTransitionsApiTest`):
+  - [x] Troca para UH não pronta → `409 ROOM_NOT_READY`. A troca válida publica `RoomMoved`, deixa a origem Vaga + Suja e o destino Ocupado, e registra o motivo na alocação nova (a antiga termina com `ROOM_MOVED`).
+  - [x] A troca mantendo a tarifa não altera as noites. Recalculando, altera só as restantes: a noite passada fica com o preço antigo (RN-14), e `difference` = soma nova − soma antiga das restantes.
+  - [x] Extensão sem disponibilidade → `409 ROOM_TYPE_UNAVAILABLE`, e nada muda. Extensão sobre a UH alocada a outra reserva → `409 ROOM_ALREADY_ASSIGNED`. A redução devolve o inventário (o `sold` foi conferido).
+  - [x] O early check-in só é lançado com o valor cotado e ainda vigente. Com a política mudada entre a cotação e o check-in → `409 EARLY_LATE_FEE_CHANGED`, e nada é gravado. Sem oferta → `422 EARLY_LATE_NOT_OFFERED`. Vale também no walk-in, e a repetição com a mesma chave não lança de novo.
+  - [x] Troca sem `If-Match` → `428`; com versão velha → `412`, também quando a versão muda entre a leitura e a trava.
+  - [x] `./gradlew build` → BUILD SUCCESSFUL em 7 min 22 s (1266 testes em 155 classes, 0 falhas). `.github/scripts/check-api-breaking.sh` (contra `68a2a37`) e `… ffae917` → "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+- **Decisões tomadas:** todas pela opção recomendada, em nome do usuário (delegado ao orquestrador, 2026-10-23), depois de pesar prós e contras. Estão registradas no plano e no ledger.
+  - **D1, troca só para o mesmo tipo:** outro tipo continua `422 ROOM_TYPE_MISMATCH`. O upgrade fica pendente.
+  - **D2, ocupação do hospedado fixa:** `409 IN_HOUSE_STAY_FIXED`.
+  - **D3, redução sem restrições de venda:** a redução do hospedado não confere estadia mínima nem CTA/CTD, como o check-out antecipado. A extensão continua conferindo as restrições.
+  - **D4, status da origem:** `markVacant(CHECK_OUT)`, sem valor novo no `RoomStatusSource` do `rooms`.
+  - **D5, versão sob a trava:** na troca e, desde a correção, também no check-out.
+  - **D6, early também no walk-in.**
+  - **D7, permissão:** `frontdesk.stays.move`, para Gerente e Recepcionista.
+  - **D8, diferença da tarifa:** calculada sobre as noites a partir da data operacional.
+  - **Ordem das recusas da troca:** a UH não pronta (`409`) vem antes do outro tipo (`422`). A mesma UH pula a conferência de prontidão para dar `422 ROOM_MOVE_SAME_ROOM`.
+  - **Check-out com a reserva alterada:** `409 RESERVATION_CHANGED`, um código novo do `frontdesk`, porque o check-out não recebe `If-Match`.
+  - **Walk-in com um hóspede mesclado:** dá `201` com o sobrevivente em tudo (pendência da E03, coberta por teste).
+- **Decisões para o usuário** (entrevista no fim do lote):
+  - **(a) Upgrade para outro tipo de UH:** fica para depois. Quando entrar, troca o tipo da reserva e move o inventário das noites restantes.
+  - **(b) Ocupação do hospedado:** continua fixa.
+  - **(c) Redução sem restrições de venda.**
+  - **(d) Origem da troca:** registrada como `CHECK_OUT` no histórico da UH.
+  - **(e) Early também no walk-in.**
+  - **(f) Teste intermitente:** o `ReservationSearchApiTest` ("every search filter … is served by an index") falha às vezes, porque o planner escolhe `reservation_arrival_idx` no filtro "period". Recomendação: aceitar os dois índices nesse filtro.
+- **Notas para a próxima etapa:**
+  - **E06 (recados):** os recados não dependem da troca nem do check-out.
+  - **Comportamento conhecido:** depois de desfazer o check-in, o early lançado continua na conta. Um novo check-in com `earlyCheckInFee` lança outro, e o cliente estorna pelo `billing`.
+  - **Dívida transversal:** as descrições dos campos de dinheiro (`difference`, `remainingBefore`/`After`, `earlyCheckInFee` e `lateCheckOutFee`) somem no contrato, substituídas pela descrição genérica de `Money`.
+  - **Possível confusão de nomes:** `RESERVATION_CHANGED` tem o mesmo nome do motivo de soltura `RoomAssignmentEndReason.RESERVATION_CHANGED`.
+  - **M6 (`housekeeping`):** gera a limpeza da origem pelo `RoomMoved`. A UH de origem já fica Suja aqui.
+  - **Gate (E12):** a troca de UH e o early entram no `MilestoneM5EndToEndTest` e no roteiro do compose.
 
 ---
 
