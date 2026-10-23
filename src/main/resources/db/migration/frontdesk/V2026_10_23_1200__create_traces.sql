@@ -1,4 +1,4 @@
--- Recados da recepção (M5 E06; RF-REC-08, RN-13). Primeiro estado próprio do módulo frontdesk.
+-- Recados da recepção (M5 E06; RF-REC-07, RN-13 e H10 do M3). Primeiro estado próprio do módulo frontdesk.
 -- Ids de outros módulos (setor, reserva, UH, usuários) são opacos: sem FK entre schemas.
 --
 -- trace: um recado para um setor, com o vencimento (data operacional), o texto livre do operador, o vínculo com uma

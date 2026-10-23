@@ -32,8 +32,8 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * Os recados da recepção para os setores (M5 E06; RF-REC-08, RN-13): criar, consultar, listar, alterar e resolver. Não
- * há exclusão: a resolução encerra o recado. O texto nunca vai à trilha, a logs nem a problemas.
+ * Os recados da recepção para os setores (M5 E06; RF-REC-07, RN-13 e H10 do M3): criar, consultar, listar, alterar e
+ * resolver. Não há exclusão: a resolução encerra o recado. O texto nunca vai à trilha, a logs nem a problemas.
  */
 @ApiV1Controller
 @RequestMapping("/traces")

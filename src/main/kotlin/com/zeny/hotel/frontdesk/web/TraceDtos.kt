@@ -17,7 +17,7 @@ import java.util.UUID
 
 private const val TEXT_DESCRIPTION =
     "O recado (texto livre, aparado, de 1 a 500 caracteres; senão 400 `TRACE_INVALID` no campo `text`). Nunca vai à " +
-        "trilha, a logs nem a problemas."
+        "trilha, a logs nem a problemas; não escreva dados pessoais do hóspede."
 private const val ASSIGNEE_DESCRIPTION =
     "O responsável opcional: o id de um usuário vinculado a um colaborador (senão 400 `UNKNOWN_ASSIGNEE`)."
 private const val DUE_ON_DESCRIPTION =

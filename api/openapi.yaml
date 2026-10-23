@@ -24748,7 +24748,7 @@ components:
           type: string
           description: "O recado (texto livre, aparado, de 1 a 500 caracteres; senã\
             o 400 `TRACE_INVALID` no campo `text`). Nunca vai à trilha, a logs nem\
-            \ a problemas."
+            \ a problemas; não escreva dados pessoais do hóspede."
           nullable: true
       required:
       - departmentId
@@ -24790,7 +24790,7 @@ components:
           type: string
           description: "O recado (texto livre, aparado, de 1 a 500 caracteres; senã\
             o 400 `TRACE_INVALID` no campo `text`). Nunca vai à trilha, a logs nem\
-            \ a problemas."
+            \ a problemas; não escreva dados pessoais do hóspede."
           nullable: true
       required:
       - departmentId

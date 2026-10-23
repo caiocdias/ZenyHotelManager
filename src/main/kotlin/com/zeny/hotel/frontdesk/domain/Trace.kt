@@ -26,7 +26,7 @@ sealed interface TraceLink {
 }
 
 /**
- * Um recado da recepção para um setor (M5 E06, RF-REC-08). O [text] é texto livre do operador e **nunca** vai à
+ * Um recado da recepção para um setor (M5 E06, RF-REC-07). O [text] é texto livre do operador e **nunca** vai à
  * trilha, a eventos, a logs nem a problemas (RN-13): por isso [auditState] leva só o tamanho e [toString] não o mostra.
  * Resolvido, o recado não muda mais.
  */
@@ -78,7 +78,7 @@ data class Trace(
         mapOf(
             "departmentId" to departmentId.value,
             "dueOn" to dueOn,
-            "textLength" to text.length,
+            "textLength" to text.codePointCount(0, text.length),
             "reservationId" to (link as? TraceLink.Reservation)?.id?.value,
             "roomId" to (link as? TraceLink.Room)?.id?.value,
             "assigneeUserId" to assigneeUserId?.value,

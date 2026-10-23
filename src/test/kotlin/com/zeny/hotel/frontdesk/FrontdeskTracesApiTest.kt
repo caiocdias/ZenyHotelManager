@@ -46,8 +46,8 @@ import java.util.concurrent.CyclicBarrier
 import kotlin.concurrent.thread
 
 /**
- * Os recados da recepção de ponta a ponta (M5 E06; RF-REC-08, RN-01, RN-13, D1 a D6): a criação para um setor com o
- * vínculo (reserva ou UH) e o responsável, as recusas que não gravam nada, a lista filtrada e paginada por
+ * Os recados da recepção de ponta a ponta (M5 E06; RF-REC-07, RN-01, RN-13 e H10 do M3, D1 a D6): a criação para um
+ * setor com o vínculo (reserva ou UH) e o responsável, as recusas que não gravam nada, a lista filtrada e paginada por
  * `(dueOn, id)`, a alteração com `If-Match` que nunca toca um resolvido, a resolução única (inclusive em corrida), as
  * permissões (o setor resolve sem editar), o texto que nunca vai à trilha, aos problemas nem aos logs, e a ausência de
  * `DELETE`. Cada teste cria o próprio setor (o banco é compartilhado).
@@ -352,9 +352,44 @@ class FrontdeskTracesApiTest(
                 }
             }
         }
-        trail[0]["after"].toString() shouldContain "\"textLength\": ${"Berço $CREATED_MARKER".length}"
-        trail[1]["after"].toString() shouldContain "\"textLength\": ${"Toalhas $UPDATED_MARKER".length}"
+        trail[0]["after"].toString() shouldContain
+            "\"textLength\": ${"Berço $CREATED_MARKER".let { it.codePointCount(0, it.length) }}"
+        trail[1]["after"].toString() shouldContain
+            "\"textLength\": ${"Toalhas $UPDATED_MARKER".let { it.codePointCount(0, it.length) }}"
+        trail[1]["after"].toString() shouldContain "\"textChanged\": true"
         MARKERS.forEach { output.all shouldNotContain it }
+    }
+
+    @Test
+    fun `a same-length text edit is told apart in the trail, and a no-op update writes nothing`() {
+        val department = department()
+        val stay = frontdesk.stay()
+        val id = created(body(department, room = stay.room, text = "Chuveiro A"))
+        val first = update(id, change(department, today, "Chuveiro B"), "\"0\"")
+        first.status shouldBe 200
+        val noOp = update(id, change(department, today, "Chuveiro B"), "\"1\"")
+        noOp.status shouldBe 200
+        noOp.getHeader(HttpHeaders.ETAG) shouldBe first.getHeader(HttpHeaders.ETAG)
+        iam.json(noOp)["version"].asLong() shouldBe 1
+
+        val trail = support.auditEntries(id)
+        trail.map { it["action"] } shouldContainExactly listOf("frontdesk.trace.create", "frontdesk.trace.update")
+        trail[1]["after"].toString() shouldContain "\"textChanged\": true"
+        trail[1]["after"].toString() shouldNotContain "Chuveiro"
+    }
+
+    @Test
+    fun `updating with an unknown assignee is refused and changes nothing`() {
+        val department = department()
+        val stay = frontdesk.stay()
+        val id = created(body(department, room = stay.room))
+        val before = iam.json(call(GET, "/api/v1/traces/$id"))
+
+        update(id, change(department, today, "Outro", assignee = UUID.randomUUID()), "\"0\"")
+            .fieldProblem(400, "UNKNOWN_ASSIGNEE", "assigneeUserId")
+
+        iam.json(call(GET, "/api/v1/traces/$id")) shouldBe before
+        support.auditEntries(id).map { it["action"] } shouldContainExactly listOf("frontdesk.trace.create")
     }
 
     // --- Sem exclusão ---------------------------------------------------------------------------------------------

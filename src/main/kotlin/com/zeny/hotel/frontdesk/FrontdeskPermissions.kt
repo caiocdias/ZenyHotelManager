@@ -21,9 +21,10 @@ import com.zeny.hotel.shared.TemplateGrant
  * Troca de UH (E05): [STAYS_MOVE] troca a UH de uma reserva hospedada, com a tarifa mantida ou recalculada (Gerente e
  * Recepcionista; não sensível, decisão D7 da E05), sem `reservations.assignments.manage`.
  *
- * Recados (E06, decisão D2): [TRACES_READ] consulta os recados (Gerente, Recepcionista, Governanta, Manutenção e
- * Comercial/Eventos); [TRACES_MANAGE] cria e altera (Gerente e Recepcionista); [TRACES_RESOLVE] resolve (os mesmos da
- * leitura): o setor que cumpre o recado o resolve sem poder editá-lo. Nenhuma é sensível.
+ * Recados (E06, decisão D2): [TRACES_READ] consulta os recados (Gerente, Recepcionista, Governanta, Manutenção,
+ * Comercial/Eventos, Caixa A&B e Cozinha/Bar: o setor de Alimentos e Bebidas também é destino de recado);
+ * [TRACES_MANAGE] cria e altera (Gerente e Recepcionista); [TRACES_RESOLVE] resolve (os mesmos da leitura):
+ * o setor que cumpre o recado o resolve sem poder editá-lo. Nenhuma é sensível.
  */
 object FrontdeskPermissions : ModulePermissions {
     override val module = "frontdesk"
@@ -59,6 +60,8 @@ object FrontdeskPermissions : ModulePermissions {
             RoleTemplate.HOUSEKEEPER,
             RoleTemplate.MAINTENANCE,
             RoleTemplate.SALES_EVENTS,
+            RoleTemplate.FNB_CASHIER,
+            RoleTemplate.KITCHEN_BAR,
         ).associateWith { all }
 
     override val permissions =

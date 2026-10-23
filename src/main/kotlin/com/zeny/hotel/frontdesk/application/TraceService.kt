@@ -91,7 +91,7 @@ data class TraceView(
 }
 
 /**
- * Os recados da recepção para os setores (M5 E06; RF-REC-08, RN-01, RN-13, D1 a D6): criar e alterar exigem
+ * Os recados da recepção para os setores (M5 E06; RF-REC-07, RN-01, RN-13 e H10 do M3, D1 a D6): criar e alterar exigem
  * `frontdesk.traces.manage`; consultar, `frontdesk.traces.read`; resolver, `frontdesk.traces.resolve` (o setor que
  * cumpre o recado o resolve sem poder editá-lo, D2).
  *
@@ -170,7 +170,9 @@ class FrontdeskTraceService(
             return view(trace)
         }
         val saved = store.update(changed)
-        audit.record(FrontdeskAudit.TRACE, id.value, trace.auditState(), saved.auditState())
+        // O texto fica fora da trilha (H10 do M3); o booleano mostra só que ele mudou, mesmo com o mesmo tamanho.
+        val after = saved.auditState() + ("textChanged" to (saved.text != trace.text))
+        audit.record(FrontdeskAudit.TRACE, id.value, trace.auditState(), after)
         return view(stored(id))
     }
 

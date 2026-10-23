@@ -97,7 +97,7 @@ class TraceDomainTest {
     fun `audit state and toString never carry the text`() {
         val trace = trace()
         trace.auditState().toString() shouldNotContain secret
-        trace.auditState()["textLength"] shouldBe secret.length
+        trace.auditState()["textLength"] shouldBe secret.codePointCount(0, secret.length)
         trace.toString() shouldNotContain secret
     }
 }
