@@ -217,7 +217,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E01 | Transições de hospedagem em reservations | #concluida | — | `checkIn`, `undoCheckIn`, `checkOut`, `moveRoom`, alteração do hospedado, `assignRoom` na API pública e eventos de hospedagem |
 | E02 | Check-in orquestrado | #concluida | E01 | Módulo `frontdesk`, `POST /reservations/{id}/check-in` numa transação, desfazer check-in sensível e cotação de early/late |
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
-| E04 | Check-out | #pendente | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
+| E04 | Check-out | #em-andamento | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
 | E05 | Troca de UH, extensão, redução e early check-in | #pendente | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
 
@@ -618,7 +618,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E04 — Check-out — #pendente
+## E04 — Check-out — #em-andamento
 
 **Objetivo:** implementar `POST /api/v1/reservations/{id}/check-out` (RF-REC-06 sem nota fiscal nem contas a receber): lança as cobranças da estadia que o fechamento nunca lançará (H14), cobra o late check-out só com o preço informado antes (RN-11, H13), exige saldo zero em todas as contas da reserva (RN-06), libera as cauções ainda ativas (H12), encerra as contas, passa a reserva a `CHECKED_OUT` (inclusive o check-out antecipado da E01) e a UH a Vaga + Suja (RN-09).
 
