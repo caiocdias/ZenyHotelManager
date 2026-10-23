@@ -92,37 +92,43 @@ object StayCharges {
 }
 
 /**
- * O late check-out do pedido (D4): o hóspede só paga o valor que lhe foi cotado e que a política vigente ainda
- * oferece.
+ * O early check-in ou o late check-out do pedido (E04 D4, E05 D6): o hóspede só paga o valor que lhe foi cotado e que
+ * a política vigente ainda oferece.
  */
-object LateCheckOutRules {
+object EarlyLateFeeRules {
     /**
      * O valor a lançar: nulo sem [quotedFee] (nada se cobra); `422 EARLY_LATE_NOT_OFFERED` se a política vigente não
-     * oferece; `409 EARLY_LATE_FEE_CHANGED` se o valor difere do vigente; senão o `fee` da [offer].
+     * oferece; `409 EARLY_LATE_FEE_CHANGED` se o valor difere do vigente; senão o `fee` da [offer]. [label] só
+     * compõe a mensagem (`late check-out` ou `early check-in`).
      */
     fun acceptedFee(
         offer: EarlyLateOffer,
         quotedFee: Money?,
+        label: String = LATE_LABEL,
     ): Money? {
         if (quotedFee == null) return null
         val current = offer.fee
         if (!offer.offered || current == null) {
             throw BusinessRuleException(
                 FrontdeskErrorCodes.EARLY_LATE_NOT_OFFERED,
-                "O hotel não oferece late check-out pela política vigente.",
+                "O hotel não oferece $label pela política vigente.",
             )
         }
-        if (quotedFee != current) throw EarlyLateFeeChangedException(current)
+        if (quotedFee != current) throw EarlyLateFeeChangedException(current, label)
         return current
     }
+
+    const val LATE_LABEL = "late check-out"
+    const val EARLY_LABEL = "early check-in"
 }
 
 /** `409 EARLY_LATE_FEE_CHANGED`, com o valor vigente em `currentFee` (texto). */
 class EarlyLateFeeChangedException(
     val currentFee: Money,
+    label: String = EarlyLateFeeRules.LATE_LABEL,
 ) : ConflictException(
         FrontdeskErrorCodes.EARLY_LATE_FEE_CHANGED,
-        "O valor do late check-out mudou desde a cotação: confirme o valor vigente.",
+        "O valor do $label mudou desde a cotação: confirme o valor vigente.",
     ) {
     override val problemProperties: Map<String, Any>
         get() = mapOf("currentFee" to currentFee.amount.toPlainString())

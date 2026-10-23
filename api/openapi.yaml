@@ -7789,7 +7789,12 @@ paths:
         \ formato 400 `CHECK_IN_INVALID`); as recusas da caução (400 `PRE_AUTHORIZATION_INVALID`\
         \ com o campo em `preAuthorization.…`). Os hóspedes na lista de restrição\
         \ vêm em `restrictionAlerts`, sem bloquear. A caução não muda o saldo da conta.\
-        \ Nenhum pacote nem o early check-in é lançado aqui."
+        \ Nenhum pacote é lançado aqui. Com `earlyCheckInFee` (o valor cotado em `GET\
+        \ /api/v1/reservations/{id}/early-late-quote`, RN-11), o early check-in é\
+        \ conferido com a política vigente antes de qualquer escrita (409 `EARLY_LATE_FEE_CHANGED`\
+        \ com `currentFee`; 422 `EARLY_LATE_NOT_OFFERED`) e lançado na conta da reserva\
+        \ no código `ROOM_CHARGE` (origem `MANUAL`, descrição `Early check-in`) depois\
+        \ da caução, em `earlyCheckIn`; sem o campo, nada é lançado."
       operationId: checkInReservation
       parameters:
       - in: path
@@ -11933,8 +11938,12 @@ paths:
         \ em OOO 422 `ROOM_OUT_OF_ORDER`, já alocada a outra reserva 409 `ROOM_ALREADY_ASSIGNED`;\
         \ UH não pronta 409 `ROOM_NOT_READY`; as recusas do check-in da reserva (RN-24:\
         \ menor sem comprovação 422 `MINOR_AUTHORIZATION_REQUIRED`…) e da caução (400\
-        \ `PRE_AUTHORIZATION_INVALID` com o campo em `preAuthorization.…`). Responde\
-        \ 201 com o `Location` da reserva e o `ETag` dela."
+        \ `PRE_AUTHORIZATION_INVALID` com o campo em `preAuthorization.…`) e do early\
+        \ check-in (`earlyCheckInFee`, o valor cotado, conferido antes de criar a\
+        \ reserva com a chegada na data operacional: 409 `EARLY_LATE_FEE_CHANGED`,\
+        \ 422 `EARLY_LATE_NOT_OFFERED`; aceito, é lançado na conta como no check-in,\
+        \ em `earlyCheckIn`). Responde 201 com o `Location` da reserva e o `ETag`\
+        \ dela."
       operationId: createWalkIn
       parameters:
       - $ref: "#/components/parameters/IdempotencyKey"
@@ -13637,8 +13646,16 @@ components:
       type: object
       description: "O check-in: a lista **completa** dos hóspedes da estadia (exatamente\
         \ um principal, até a ocupação da reserva), o número de pessoas na UH, a UH\
-        \ (opcional: aloca ou realoca antes) e a caução opcional."
+        \ (opcional: aloca ou realoca antes), a caução opcional e o valor cotado do\
+        \ early check-in (opcional)."
       properties:
+        earlyCheckInFee:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
         guestCount:
           type: integer
           format: int32
@@ -13669,9 +13686,14 @@ components:
     CheckInResponse:
       type: object
       description: "O check-in feito: a reserva `IN_HOUSE`, a UH Ocupada, a cauçã\
-        o registrada (nula sem caução) e os alertas da lista de restrição. Nenhum\
-        \ número de documento nem dado sensível."
+        o registrada (nula sem caução) e os alertas da lista de restrição, mais o\
+        \ early check-in lançado (nulo sem ele). Nenhum número de documento nem dado\
+        \ sensível."
       properties:
+        earlyCheckIn:
+          allOf:
+          - $ref: "#/components/schemas/CheckOutPostingResponse"
+          nullable: true
         preAuthorization:
           allOf:
           - $ref: "#/components/schemas/StayPreAuthorizationResponse"
@@ -24906,6 +24928,13 @@ components:
           description: "A saída. A chegada é a data operacional; a saída igual a ela\
             \ é um day use (sem pernoite, sem inventário)."
           nullable: true
+        earlyCheckInFee:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
         guestCount:
           type: integer
           format: int32
@@ -24975,8 +25004,9 @@ components:
       description: "O walk-in feito: a reserva agrupadora criada (origem `FRONT_DESK`),\
         \ o total calculado, a reserva `IN_HOUSE`, a UH Ocupada, a caução registrada\
         \ (nula sem caução) e os alertas da lista de restrição (dos hóspedes e do\
-        \ titular). O detalhe da reserva, com as noites e os termos, é `GET /api/v1/reservations/{id}`.\
-        \ Nenhum número de documento nem dado sensível."
+        \ titular) e o early check-in lançado (nulo sem ele). O detalhe da reserva,\
+        \ com as noites e os termos, é `GET /api/v1/reservations/{id}`. Nenhum nú\
+        mero de documento nem dado sensível."
       properties:
         bookingCode:
           type: string
@@ -24985,6 +25015,10 @@ components:
         bookingId:
           type: string
           format: uuid
+        earlyCheckIn:
+          allOf:
+          - $ref: "#/components/schemas/CheckOutPostingResponse"
+          nullable: true
         holderGuestId:
           type: string
           format: uuid

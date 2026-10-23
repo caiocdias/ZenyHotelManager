@@ -20,7 +20,10 @@ import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatus
+import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.ExtensibleEnum
+import com.zeny.hotel.shared.FieldViolation
+import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.Money
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
@@ -138,7 +141,8 @@ data class CheckInPreAuthorizationRequest(
 @Schema(
     description =
         "O check-in: a lista **completa** dos hóspedes da estadia (exatamente um principal, até a ocupação da " +
-            "reserva), o número de pessoas na UH, a UH (opcional: aloca ou realoca antes) e a caução opcional.",
+            "reserva), o número de pessoas na UH, a UH (opcional: aloca ou realoca antes), a caução opcional e o " +
+            "valor cotado do early check-in (opcional).",
 )
 data class CheckInRequest(
     @field:Schema(
@@ -161,6 +165,8 @@ data class CheckInRequest(
     @field:Valid
     @field:Schema(nullable = true)
     val preAuthorization: CheckInPreAuthorizationRequest? = null,
+    @field:Schema(description = EARLY_FEE_DESCRIPTION, nullable = true, example = "60.00")
+    val earlyCheckInFee: Money? = null,
 ) {
     fun toCommand() =
         CheckInCommand(
@@ -168,7 +174,29 @@ data class CheckInRequest(
             guests = checkNotNull(guests).map { it.toGuest() },
             guestCount = guestCount,
             preAuthorization = preAuthorization?.toNew(),
+            earlyCheckInFee = requirePositiveEarlyFee(earlyCheckInFee),
         )
+}
+
+internal const val EARLY_POSTING_DESCRIPTION =
+    "O early check-in lançado na conta da reserva; nulo sem `earlyCheckInFee`."
+
+internal const val EARLY_FEE_DESCRIPTION =
+    "O valor do early check-in cotado ao hóspede (`GET /api/v1/reservations/{id}/early-late-quote`, RN-11): " +
+        "positivo, até duas casas, conferido com o da política vigente (`409 EARLY_LATE_FEE_CHANGED` se mudou, " +
+        "`422 EARLY_LATE_NOT_OFFERED` se não é oferecido). Nulo: sem early."
+
+/** O valor do early check-in do pedido, se informado, precisa ser positivo (`400 VALIDATION_FAILED`). */
+internal fun requirePositiveEarlyFee(fee: Money?): Money? {
+    if (fee != null && !fee.isPositive()) {
+        val message = "O valor do early check-in precisa ser positivo."
+        throw InvalidInputException(
+            ErrorCodes.VALIDATION_FAILED,
+            message,
+            listOf(FieldViolation("earlyCheckInFee", "POSITIVE", message)),
+        )
+    }
+    return fee
 }
 
 // --- Resposta -------------------------------------------------------------------------------------------------------
@@ -352,7 +380,8 @@ data class StayRestrictionAlertResponse(
 @Schema(
     description =
         "O check-in feito: a reserva `IN_HOUSE`, a UH Ocupada, a caução registrada (nula sem caução) e os alertas da " +
-            "lista de restrição. Nenhum número de documento nem dado sensível.",
+            "lista de restrição, mais o early check-in lançado (nulo sem ele). Nenhum número de documento nem dado " +
+            "sensível.",
 )
 data class CheckInResponse(
     val reservation: StayReservationResponse,
@@ -360,6 +389,11 @@ data class CheckInResponse(
     @field:Schema(nullable = true)
     val preAuthorization: StayPreAuthorizationResponse?,
     val restrictionAlerts: List<StayRestrictionAlertResponse>,
+    @field:Schema(
+        description = "O early check-in lançado na conta da reserva; nulo sem `earlyCheckInFee`.",
+        nullable = true,
+    )
+    val earlyCheckIn: CheckOutPostingResponse? = null,
 ) {
     companion object {
         fun of(outcome: CheckInOutcome) =
@@ -368,6 +402,7 @@ data class CheckInResponse(
                 StayRoomResponse.of(outcome.room, outcome.roomNumber),
                 outcome.preAuthorization?.let(StayPreAuthorizationResponse::of),
                 outcome.restrictionAlerts.map(StayRestrictionAlertResponse::of),
+                outcome.earlyCheckIn?.let(CheckOutPostingResponse::of),
             )
     }
 }

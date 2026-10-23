@@ -70,7 +70,13 @@ class StaysController(
                 "inválida 422 `MINOR_AUTHORIZATION_INVALID`; UH desativada ou de outro tipo 422; formato 400 " +
                 "`CHECK_IN_INVALID`); as recusas da caução (400 `PRE_AUTHORIZATION_INVALID` com o campo em " +
                 "`preAuthorization.…`). Os hóspedes na lista de restrição vêm em `restrictionAlerts`, sem bloquear. " +
-                "A caução não muda o saldo da conta. Nenhum pacote nem o early check-in é lançado aqui.",
+                "A caução não muda o saldo da conta. Nenhum pacote é lançado aqui. Com `earlyCheckInFee` (o valor " +
+                "cotado em `GET /api/v1/reservations/{id}/early-late-quote`, RN-11), o early check-in é conferido " +
+                "com a política vigente antes de qualquer escrita (409 `EARLY_LATE_FEE_CHANGED` com `currentFee`; " +
+                "422 " +
+                "`EARLY_LATE_NOT_OFFERED`) e lançado na conta da reserva no código `ROOM_CHARGE` (origem " +
+                "`MANUAL`, descrição `Early check-in`) depois da caução, em `earlyCheckIn`; sem o campo, nada é " +
+                "lançado.",
     )
     fun checkIn(
         @PathVariable id: UUID,

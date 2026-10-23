@@ -27,6 +27,7 @@ import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
+import com.zeny.hotel.shared.Money
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -34,7 +35,8 @@ import java.time.LocalDate
 /**
  * O walk-in pedido à recepção (RF-REC-02, H24): o titular (nulo = o hóspede principal), a UH escolhida, o tipo de UH
  * (nulo = o da UH), o plano, a saída (a chegada é a data operacional; igual = day use), a ocupação, o segmento, os
- * pedidos especiais e os dados do check-in (os mesmos do check-in de uma reserva, inclusive a caução). Os hóspedes já
+ * pedidos especiais e os dados do check-in (os mesmos do check-in de uma reserva, inclusive a caução e o valor
+ * cotado do early check-in, que o walk-in aceita porque chega na data operacional). Os hóspedes já
  * estão cadastrados no `guests` (H24).
  */
 data class WalkInCommand(
@@ -50,6 +52,7 @@ data class WalkInCommand(
     val guests: List<CheckInGuest>,
     val guestCount: Int?,
     val preAuthorization: NewCardPreAuthorization?,
+    val earlyCheckInFee: Money? = null,
 )
 
 /** O walk-in feito: a reserva agrupadora criada e o check-in da reserva dela. */
@@ -66,7 +69,9 @@ data class WalkInOutcome(
  *
  * **Ordem** (e das travas): as permissões (`frontdesk.stays.checkin`, `reservations.reservations.manage` e, como no
  * check-in com a UH no corpo, `reservations.assignments.manage`); o pedido (o número de hóspedes, a UH existente); a
- * identificação dos hóspedes **sem número** e os anexos dos menores, sem escrita ([CheckInSteps.prepareGuests]); a
+ * identificação dos hóspedes **sem número** e os anexos dos menores, sem escrita ([CheckInSteps.prepareGuests]); o
+ * early check-in aceito pela política vigente para a chegada na data operacional ([CheckInSteps.acceptedEarlyFee]:
+ * `422 EARLY_LATE_NOT_OFFERED`, `409 EARLY_LATE_FEE_CHANGED`), antes de qualquer escrita; a
  * criação pela `ReservationsApi.createBooking` (origem `FRONT_DESK`, canal `DIRECT`, a chegada na data operacional, o
  * preço **calculado**: sem diária editada nem desconto, H24; a venda conferida pelo `rates`, `422` com `refusals`; a
  * unidade tomada com as linhas do inventário **travadas**, `409 ROOM_TYPE_UNAVAILABLE`; a conta aberta); a
@@ -102,13 +107,20 @@ class FrontdeskWalkInService(
         val holder =
             command.holderGuestId ?: (command.guests.firstOrNull { it.primary } ?: command.guests.first()).guestId
         val prepared = steps.prepareGuests(command.guests, businessDate, alsoAlert = listOf(holder))
+        steps.acceptedEarlyFee(businessDate, command.earlyCheckInFee)
         val booking = create(command, holder, command.roomTypeId ?: room.roomTypeId, businessDate)
         val reservation = confirmed(booking.reservations.single())
         StayRules.requireCheckIn(reservation, businessDate)
         val checkIn =
             steps.complete(
                 reservation,
-                CheckInCommand(command.roomId, command.guests, guestCount, command.preAuthorization),
+                CheckInCommand(
+                    command.roomId,
+                    command.guests,
+                    guestCount,
+                    command.preAuthorization,
+                    command.earlyCheckInFee,
+                ),
                 guestCount,
                 prepared,
                 trail = mapOf("walkIn" to true, "bookingId" to booking.id.value),

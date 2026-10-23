@@ -8,7 +8,7 @@ import com.zeny.hotel.billing.FolioSummary
 import com.zeny.hotel.billing.OwnerBalance
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.frontdesk.domain.EarlyLateFeeChangedException
-import com.zeny.hotel.frontdesk.domain.LateCheckOutRules
+import com.zeny.hotel.frontdesk.domain.EarlyLateFeeRules
 import com.zeny.hotel.frontdesk.domain.StayCharge
 import com.zeny.hotel.frontdesk.domain.StayChargeKind
 import com.zeny.hotel.frontdesk.domain.StayCharges
@@ -140,13 +140,13 @@ class CheckOutDomainTest {
         val offer = EarlyLateOffer(true, null, Money.of("80.00"), null, null)
         val none = EarlyLateOffer(false, null, null, null, null)
 
-        LateCheckOutRules.acceptedFee(offer, null).shouldBeNull()
-        LateCheckOutRules.acceptedFee(offer, Money.of("80.00")) shouldBe Money.of("80.00")
+        EarlyLateFeeRules.acceptedFee(offer, null).shouldBeNull()
+        EarlyLateFeeRules.acceptedFee(offer, Money.of("80.00")) shouldBe Money.of("80.00")
         val changed =
-            shouldThrow<EarlyLateFeeChangedException> { LateCheckOutRules.acceptedFee(offer, Money.of("70.00")) }
+            shouldThrow<EarlyLateFeeChangedException> { EarlyLateFeeRules.acceptedFee(offer, Money.of("70.00")) }
         changed.code.value shouldBe "EARLY_LATE_FEE_CHANGED"
         changed.problemProperties["currentFee"] shouldBe "80.00"
-        val refused = shouldThrow<BusinessRuleException> { LateCheckOutRules.acceptedFee(none, Money.of("80.00")) }
+        val refused = shouldThrow<BusinessRuleException> { EarlyLateFeeRules.acceptedFee(none, Money.of("80.00")) }
         refused.code.value shouldBe "EARLY_LATE_NOT_OFFERED"
     }
 

@@ -12,8 +12,8 @@ import com.zeny.hotel.billing.PostingSummary
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.frontdesk.FrontdeskPermissions
+import com.zeny.hotel.frontdesk.domain.EarlyLateFeeRules
 import com.zeny.hotel.frontdesk.domain.EarlyLateQuotes
-import com.zeny.hotel.frontdesk.domain.LateCheckOutRules
 import com.zeny.hotel.frontdesk.domain.StayCharge
 import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.frontdesk.domain.StayNotSettledException
@@ -61,7 +61,7 @@ data class CheckOutOutcome(
  * **Ordem** (e das travas, decisão D1): a permissão; a reserva lida sem trava (inexistente `404`; só uma hospedada,
  * `409 RESERVATION_TRANSITION_NOT_ALLOWED`); a data operacional (RN-01); as cobranças pendentes da noite da chegada
  * ([StayCharges.pending], só no day use ou no pernoite que sai no dia em que chegou) e o late aceito pela política
- * **vigente** no fuso do hotel ([LateCheckOutRules.acceptedFee]: `422 EARLY_LATE_NOT_OFFERED`,
+ * **vigente** no fuso do hotel ([EarlyLateFeeRules.acceptedFee]: `422 EARLY_LATE_NOT_OFFERED`,
  * `409 EARLY_LATE_FEE_CHANGED`), calculados sobre a reserva lida **antes** da transição e recusados antes de qualquer
  * escrita; a transição (`ReservationsApi.checkOut`, que **trava a reserva**, devolve ao inventário as noites do
  * antecipado e encerra a alocação); as cobranças (`BillingApi.post`, cada uma com a chave da noite: uma repetição nunca
@@ -98,7 +98,7 @@ class FrontdeskCheckOutService(
         val businessDate = hotel.currentBusinessDate()
         val pending = StayCharges.pending(reservation, businessDate)
         val lateFee =
-            LateCheckOutRules.acceptedFee(
+            EarlyLateFeeRules.acceptedFee(
                 EarlyLateQuotes.late(hotel.policy(), reservation.departure, hotel.timezone()),
                 command.lateCheckOutFee,
             )

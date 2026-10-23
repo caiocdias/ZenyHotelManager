@@ -72,6 +72,8 @@ data class WalkInRequest(
     @field:Valid
     @field:Schema(nullable = true)
     val preAuthorization: CheckInPreAuthorizationRequest? = null,
+    @field:Schema(description = EARLY_FEE_DESCRIPTION, nullable = true, example = "60.00")
+    val earlyCheckInFee: Money? = null,
 ) {
     fun toCommand() =
         WalkInCommand(
@@ -87,6 +89,7 @@ data class WalkInRequest(
             guests = checkNotNull(guests).map { it.toGuest() },
             guestCount = guestCount,
             preAuthorization = preAuthorization?.toNew(),
+            earlyCheckInFee = requirePositiveEarlyFee(earlyCheckInFee),
         )
 }
 
@@ -94,8 +97,8 @@ data class WalkInRequest(
     description =
         "O walk-in feito: a reserva agrupadora criada (origem `FRONT_DESK`), o total calculado, a reserva " +
             "`IN_HOUSE`, a UH Ocupada, a caução registrada (nula sem caução) e os alertas da lista de restrição (dos " +
-            "hóspedes e do titular). O detalhe da reserva, com as noites e os termos, é " +
-            "`GET /api/v1/reservations/{id}`. Nenhum número de documento nem dado sensível.",
+            "hóspedes e do titular) e o early check-in lançado (nulo sem ele). O detalhe da reserva, com as noites e " +
+            "os termos, é `GET /api/v1/reservations/{id}`. Nenhum número de documento nem dado sensível.",
 )
 data class WalkInResponse(
     val bookingId: UUID,
@@ -109,6 +112,11 @@ data class WalkInResponse(
     @field:Schema(nullable = true)
     val preAuthorization: StayPreAuthorizationResponse?,
     val restrictionAlerts: List<StayRestrictionAlertResponse>,
+    @field:Schema(
+        description = "O early check-in lançado na conta da reserva; nulo sem `earlyCheckInFee`.",
+        nullable = true,
+    )
+    val earlyCheckIn: CheckOutPostingResponse? = null,
 ) {
     companion object {
         fun of(outcome: WalkInOutcome): WalkInResponse {
@@ -122,6 +130,7 @@ data class WalkInResponse(
                 room = checkIn.room,
                 preAuthorization = checkIn.preAuthorization,
                 restrictionAlerts = checkIn.restrictionAlerts,
+                earlyCheckIn = checkIn.earlyCheckIn,
             )
         }
     }

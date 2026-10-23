@@ -45,7 +45,10 @@ class WalkInsController(
                 "`ROOM_OUT_OF_ORDER`, já alocada a outra reserva 409 `ROOM_ALREADY_ASSIGNED`; UH não pronta 409 " +
                 "`ROOM_NOT_READY`; as recusas do check-in da reserva (RN-24: menor sem comprovação 422 " +
                 "`MINOR_AUTHORIZATION_REQUIRED`…) e da caução (400 `PRE_AUTHORIZATION_INVALID` com o campo em " +
-                "`preAuthorization.…`). Responde 201 com o `Location` da reserva e o `ETag` dela.",
+                "`preAuthorization.…`) e do early check-in (`earlyCheckInFee`, o valor cotado, conferido antes de " +
+                "criar a reserva com a chegada na data operacional: 409 `EARLY_LATE_FEE_CHANGED`, 422 " +
+                "`EARLY_LATE_NOT_OFFERED`; aceito, é lançado na conta como no check-in, em `earlyCheckIn`). " +
+                "Responde 201 com o `Location` da reserva e o `ETag` dela.",
     )
     fun walkIn(
         @Valid @RequestBody request: WalkInRequest,
