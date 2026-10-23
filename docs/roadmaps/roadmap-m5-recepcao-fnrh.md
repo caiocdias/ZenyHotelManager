@@ -219,7 +219,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E03 | Walk-in | #concluida | E02 | Reserva, alocação e check-in no mesmo fluxo |
 | E04 | Check-out | #concluida | E02 | Saldo zero, cauções liberadas, contas encerradas, UH Vago + Sujo, late check-out |
 | E05 | Troca de UH, extensão, redução e early check-in | #concluida | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
-| E06 | Recados | #pendente | E02 | Recados por setor vinculados a reserva ou UH |
+| E06 | Recados | #em-andamento | E02 | Recados por setor vinculados a reserva ou UH |
 
 **FNRH**
 
@@ -803,7 +803,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E06 — Recados — #pendente
+## E06 — Recados — #em-andamento
 
 **Objetivo:** implementar recados (RF-REC-07, `Trace` da SPEC §8.2.6): lembretes para setores vinculados a uma reserva ou UH, com data, responsável e resolução.
 
