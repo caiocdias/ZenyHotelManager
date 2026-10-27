@@ -4,7 +4,7 @@
 
 O desenvolvimento do servidor está dividido em **11 marcos**. Cada marco entrega um conjunto de módulos do monólito modular que funciona sozinho, com build e testes verdes. O marco seguinte só acrescenta código: não reabre o que o anterior entregou.
 
-Cada marco tem seu próprio roadmap, com etapas pequenas e um gate final. Desde 2026-10-22, M5 a M10 seguem o formato da skill `development-roadmap`: um único "Prompt de execução" por roadmap, que executa um lote de etapas na branch `roadmap/<slug>`, cada etapa planejada e executada pelo plugin superpowers (M0 a M4, concluídos, ficaram no formato antigo, com um prompt por etapa). O gate de um marco é o critério de entrada do próximo.
+Cada marco tem seu próprio roadmap, com etapas pequenas e um gate final. Desde 2026-10-22, M5 a M10 seguem o formato da skill `development-roadmap`: um único "Prompt de execução" por roadmap, que executa um lote de etapas na branch `roadmap/<slug>`, cada etapa planejada pelo plugin superpowers e, desde 2026-10-27, executada pelas souls do Second Brain numa sessão iniciada com `claude --agent orquestrador-etapa` (M0 a M4, concluídos, ficaram no formato antigo, com um prompt por etapa). O gate de um marco é o critério de entrada do próximo.
 
 ## Mapa dos marcos
 

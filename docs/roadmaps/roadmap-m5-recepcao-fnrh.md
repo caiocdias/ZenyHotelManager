@@ -8,7 +8,7 @@
 
 ## Como usar
 
-Cole o "Prompt de execução" numa sessão limpa do Claude Code, na raiz do repositório. Ele executa até 3 etapas em sequência na branch `roadmap/m5-recepcao-fnrh`, cada uma planejada e executada pelo plugin superpowers, e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador-etapa` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m5-recepcao-fnrh`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Sincronizado com o código em 2026-10-22**, depois do gate do M4 (commit `ffae917`): caminhos, comandos, convenções, APIs públicas e pendências vêm do `CLAUDE.md`, do código e dos handoffs de `docs/roadmaps/roadmap-m4-tarifas-reservas.md` (principalmente as "Notas para o marco M5" da E13 e as notas para o M5 das etapas E07 a E12, inclusive o "Ajuste D" da E10). Nenhuma etapa nova, removida ou renumerada; E01 a E08 e E10 a E12 seguem `#pendente` e a E09 segue `#bloqueada` (a Q-12 continua sem credencial). Mudanças de escopo: a cotação de early/late saiu da E01 para a E02 (o preço é a política do `hotel`, e quem cobra é o `frontdesk`); a E08 passou a depender também da E02 (o critério do check-in com o Serpro fora do ar usa o endpoint dela); a E10 passou a ter revisão humana (cria o segundo mecanismo de autenticação do sistema). H1 a H4 foram confirmadas no código, a H9 caiu (o M1 não tem credencial de serviço) e há hipóteses novas (H10 a H24). As decisões que cabiam ao usuário (P1 a P12 da sincronização) foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a); a P7 (H14) com uma ressalva, aplicada à E04 (o check-out lança o que o fechamento nunca lançará); e a revisão humana da E10 foi mantida.
 
@@ -119,6 +119,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 | H24 | **Decidida pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22 (P12 da sincronização):** no walk-in, os hóspedes já existem no `guests` (cadastrados antes pelo cliente, `POST /api/v1/guests`); a reserva usa o preço calculado (sem diária editada: o desconto, se houver, vem depois pelo `PUT` com o step-up do M4); exige `frontdesk.stays.checkin` e `reservations.reservations.manage`. | Alternativa: o walk-in cria o perfil (método novo na `GuestsApi`) e aceita desconto com step-up (o `frontdesk` não depende de `rates`). | E03 |
 | D1 | **Credencial de homologação da FNRH e Cadastur ativo (SPEC Q-12).** Ainda em aberto em 2026-10-22: nenhuma credencial fornecida. | Sem credencial não há homologação real com o Serpro. | E09 (bloqueada até decidir) |
 | D2 | **Decidido em 2026-10-13 (dono + printing):** cada módulo dono de um documento monta os dados, checa a própria permissão e chama a API pública de `printing` para renderizar (PDF ou ESC/POS) e enfileirar: `frontdesk` → ficha de registro, `billing` → extrato, `reservations` → confirmação. `printing` compõe o cabeçalho do hotel pela API pública de `hotel` (aresta já na tabela §3.1; falta a `HotelApi.profile()`, H18). Não há porta em `shared` para documentos. | — | E11 |
+| D3 | **Decidido pelo usuário em 2026-10-27:** o scanner de dependências da revisão final enxerga o projeto por um `gradle.lockfile` (travamento de dependências do Gradle), criado numa etapa própria executada antes das demais pendentes; o plugin OWASP Dependency-Check foi descartado. | — | E13 |
 
 **Decisões abertas para a entrevista de cada etapa** (dependem da investigação; o orquestrador as registra em "Decisões para o usuário" no handoff da etapa e as apresenta no fim do lote como entrevista):
 
@@ -155,6 +156,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - [ ] `ApplicationModules.verify()` passa, com um teste por módulo novo no `ModularityTest` e as arestas na ARCHITECTURE §3.1; build, testes, `checkOpenApi` e oasdiff sem `ERR` contra `ffae917`.
 - [ ] O compose isolado do gate mostra as publicações dos eventos de reserva e de hospedagem concluídas pelo listener do `fnrh`.
 - [ ] A homologação real da FNRH (E09) está concluída ou registrada como pendência obrigatória antes da operação real.
+- [ ] `gradle.lockfile` versionado e atualizado; `osv-scanner scan source -r .` lista os pacotes do projeto.
 
 ## Protocolo de execução
 
@@ -162,15 +164,17 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 
 **Papéis**
 
-| Papel | Quem | Usa |
+| Papel | Soul | Usa |
 |---|---|---|
-| Orquestrador | a sessão que recebeu o prompt de execução | este protocolo; atualiza tags e handoffs; publica as capturas de atualização do brain |
-| Planejador | o orquestrador | `superpowers:writing-plans` |
-| Implementador | subagente por tarefa | `superpowers:subagent-driven-development` (ou `superpowers:executing-plans`, sem subagentes) |
-| Revisor de tarefa | subagente novo por tarefa | revisão da `subagent-driven-development` |
-| Revisor final | subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
+| Orquestrador | `orquestrador-etapa` (a sessão principal, iniciada com `claude --agent orquestrador-etapa`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
+| Planejador | `orquestrador-etapa` | `superpowers:writing-plans` |
+| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
+| Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
+| Captura no brain | `brain-escriba` | publica a captura de atualização em `00 Inbox/` |
 
-Souls: nenhuma definida para estes papéis. Quando existir uma soul para um papel, ela se aplica a esse papel; até lá, valem os prompts padrão do superpowers.
+Souls: este protocolo exige `orquestrador-etapa`, `desenvolvedor`, `testador` e `revisor-seguranca`. Não há fallback: se a sessão não roda como `orquestrador-etapa` ou alguma dessas souls não está instalada, pare e diga ao usuário para configurar a máquina (skill `configurar-maquina`) ou iniciar com `claude --agent orquestrador-etapa`. O caminho inline (`superpowers:executing-plans`) não vale aqui.
 
 **Branch**
 
@@ -184,7 +188,7 @@ Souls: nenhuma definida para estes papéis. Quando existir uma soul para um pape
 2. **Conferência:** leia a seção da etapa, os handoffs das dependências e o código que eles citam. Se o código divergiu do que a etapa supõe, pare e relate.
 3. **Início:** troque a tag para `#em-andamento` (índice e título).
 4. **Plano:** use `superpowers:writing-plans`. A spec é a seção desta etapa mais os documentos citados em "Contexto confirmado"; as "Restrições e invariantes" entram como Global Constraints. Salve em `docs/superpowers/plans/AAAA-MM-DD-m5-recepcao-fnrh-eNN.md` (AAAA-MM-DD = a data do dia). A execução já está definida (abaixo): não pergunte ao usuário o método, apenas siga.
-5. **Execução:** use `superpowers:subagent-driven-development` com esse plano, incluindo a revisão final da etapa. Não invoque `superpowers:finishing-a-development-branch` ao fim da etapa: ele roda uma vez, no fim do lote.
+5. **Execução:** use `superpowers:subagent-driven-development` com esse plano, executado pelas souls conforme o ciclo por tarefa, a verificação mecânica dos testes e a revisão final da etapa definidos no `orquestrador-etapa` (as regras de encaixe vivem só nele). Não invoque `superpowers:finishing-a-development-branch` ao fim da etapa: ele roda uma vez, no fim do lote.
 6. **Fechamento:** publique a captura de atualização do brain (bloco "Second Brain"). Marque `#concluida` (índice e título) só com a revisão final limpa e cada critério de aceite verificado com evidência. Diante de impedimento real, marque `#bloqueada` e preencha "Bloqueios" com causa, evidência, impacto e ação de desbloqueio. Preencha "Evidências e handoff". Rulings do ledger que mudam contrato, escopo, segurança, dados ou algo caro de desfazer vão para "Decisões para o usuário".
 
 **Second Brain**
@@ -193,7 +197,7 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 - O contexto da sessão precisa trazer a linha `BRAIN: carregado (ZenyHotelManager)`, injetada pelo hook. Sem ela, pare e relate.
 - Na conferência de cada etapa, leia as notas de tema do brain ligadas a ela (pelo hub `ZenyHotelManager`) e as capturas pendentes do projeto que tratem do assunto: são a referência técnica do projeto. Num handoff antigo, "seção X do `CLAUDE.md`" é a nota de tema correspondente.
-- No fechamento de cada etapa que mudou algo descrito no brain (inclusive o estado do roadmap), o orquestrador publica em `00 Inbox/` do vault a captura `ZenyHotelManager - atualização m5-recepcao-fnrh Eyy`, com o texto novo ou alterado de cada nota afetada e qual nota ele substitui ou complementa, conforme o contrato de agente externo do vault (skill `second-brain`). Nunca edite notas do brain nem registre referência técnica no `CLAUDE.md`.
+- No fechamento de cada etapa que mudou algo descrito no brain (inclusive o estado do roadmap), o orquestrador manda o `brain-escriba` publicar em `00 Inbox/` do vault a captura `ZenyHotelManager - atualização m5-recepcao-fnrh Eyy`, com o texto novo ou alterado de cada nota afetada e qual nota ele substitui ou complementa; o contrato de agente externo do vault fica com o `brain-escriba`. Nunca edite notas do brain nem registre referência técnica no `CLAUDE.md`.
 
 **Paradas**
 
@@ -211,7 +215,7 @@ Execute o roadmap docs/roadmaps/roadmap-m5-recepcao-fnrh.md deste repositório s
 
 Limite desta execução: no máximo 3 etapas concluídas.
 
-1. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho inteiro, o protocolo e o índice. Se o CLAUDE.md exigir o Second Brain, confira a linha BRAIN: carregado no contexto e leia o hub. Rode git status e git branch -a.
+1. Confira a pré-condição do protocolo: esta sessão roda como orquestrador-etapa e as souls desenvolvedor, testador e revisor-seguranca estão disponíveis; se não, pare e diga como resolver. Leia CLAUDE.md (e AGENTS.md, se existir) e, no roadmap, o cabeçalho inteiro, o protocolo e o índice. Se o CLAUDE.md exigir o Second Brain, confira a linha BRAIN: carregado no contexto e leia o hub. Rode git status e git branch -a.
 2. Se alguma etapa estiver #em-andamento, retome-a a partir do ledger do superpowers e do handoff; não recomece tarefas já commitadas.
 3. Crie ou retome o worktree/branch roadmap/m5-recepcao-fnrh com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
@@ -236,6 +240,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E05 | Troca de UH, extensão, redução e early check-in | #concluida | E02 | Troca de UH com status das duas UHs, `RoomMoved`, extensão e redução do hospedado, cobrança do early |
 | E06 | Recados | #concluida | E02 | Recados por setor vinculados a reserva ou UH |
 
+**Cadeia de dependências**
+
+| ID | Etapa | Estado | Dependências | Entrega principal |
+|---|---|---|---|---|
+| E13 | Travamento de dependências do Gradle para o scanner | #pendente | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
+
 **FNRH**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
@@ -255,7 +265,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
+| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E13 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
 
 ---
 
@@ -902,6 +912,61 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
+## E13 — Travamento de dependências do Gradle para o scanner — #pendente
+
+**Objetivo:** ligar o travamento de dependências do Gradle (dependency locking) e versionar o `gradle.lockfile`, para que o scanner de dependências usado na revisão final de cada etapa (`osv-scanner`, soul `revisor-seguranca`) enxergue o grafo resolvido do projeto.
+
+**Por que agora:** desde 2026-10-27 os roadmaps executam pelas souls, e a revisão final exige saída de scanner que liste pacotes do stack; sem ela, a revisora bloqueia. Hoje `osv-scanner scan source -r .` na raiz responde "No package sources found" (verificado em 2026-10-27 com o osv-scanner 2.7.0): o projeto tem `gradle/libs.versions.toml`, mas nenhum lockfile. Por isso esta etapa vem antes das demais pendentes (decisão do usuário, D3).
+
+**Dependências:** nenhuma. Independente das etapas de recepção, FNRH e impressão.
+
+**Escopo:** configuração de build do Gradle (raiz do projeto), o `gradle.lockfile` gerado e versionado, e o registro da convenção de atualização do lockfile.
+
+- Travamento ligado para as configurações resolvidas pelo build (compilação, runtime e testes); o classpath de plugins (buildscript) entra se o planejador concluir que o scanner precisa dele.
+- `gradle.lockfile` gerado e versionado.
+- Com o lockfile desatualizado em relação ao que o build resolve, `./gradlew build` falha (o comportamento padrão do Gradle com travamento; o plano confere).
+- Convenção: toda etapa que muda dependência atualiza o lockfile no mesmo commit; registrada na captura de atualização do brain (nota `ZenyHotelManager - Ambiente, banco, chaves e build`), nunca no `CLAUDE.md`.
+
+**Fora de escopo:** atualizar versões de dependências; corrigir vulnerabilidades que o scanner apontar (vão para "Decisões para o usuário" e para etapas futuras); plugin OWASP Dependency-Check.
+
+**Critérios de aceite:**
+
+- [ ] `gradle.lockfile` versionado na raiz, gerado pelo próprio Gradle.
+- [ ] `osv-scanner scan source -r .` na raiz lista os pacotes Maven do projeto (não responde mais "No package sources found"); a saída fica no handoff.
+- [ ] Mudar a versão de uma dependência em `gradle/libs.versions.toml` sem atualizar o lockfile faz `./gradlew build` falhar (verificado numa cópia descartável e revertido); a saída fica no handoff.
+- [ ] `./gradlew build` e `./gradlew checkOpenApi` verdes com o lockfile atual, localmente e no CI.
+- [ ] Vulnerabilidades apontadas pelo scanner registradas no handoff, com as de severidade alta ou crítica em "Decisões para o usuário".
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `osv-scanner scan source -r .` → lista pacotes Maven do projeto.
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- Documentação oficial: https://docs.gradle.org/current/userguide/dependency_locking.html (travamento por `dependencyLocking { lockAllConfigurations() }` e geração com `./gradlew dependencies --write-locks`; o plano confere a forma certa para este build).
+- O `osv-scanner` 2.7.0 lê `gradle.lockfile` (conferido em 2026-10-27 num projeto de teste). Ele não está no CI; rodá-lo no CI fica fora de escopo, salvo decisão do usuário.
+- A revisora não executa nada: o orquestrador roda o scanner e anexa a saída ao pacote da revisão final.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Lockfile esquecido em mudanças futuras de dependência: o build falha (critério 3), e a revisora confere lockfile e manifesto juntos.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
 ## E07 — Configuração, domínios e adaptador Serpro da FNRH — #pendente
 
 **Objetivo:** criar o módulo `fnrh` com a configuração das credenciais cifradas (RF-FNRH-02), o cadastro do CPF solicitante (H5), os domínios oficiais com validação local (RF-FNRH-06, H21) e a porta `FnrhGateway` com o adaptador REST do Serpro (Basic Auth, header `cpf_solicitante`), testado com WireMock a partir da documentação v2.4 (H6), com log de integração redigido e o painel de saúde como métrica e endpoint de status (H22).
@@ -1210,7 +1275,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério de entrada do marco M6.
 
-**Dependências:** E03, E04, E05, E06, E08, E11 (as etapas-folha, que cobrem transitivamente E01, E02, E07 e E10). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
+**Dependências:** E03, E04, E05, E06, E08, E11, E13 (as etapas-folha, que cobrem transitivamente E01, E02, E07 e E10). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
 
 **Escopo:**
 
@@ -1269,3 +1334,5 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-22 — decisões da sincronização (P1 a P12) **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a), tirada a marca de provisória das H5, H10 a H18, H21, H23 e H24. A P7 (H14) com ressalva: a E04 passou a lançar, no day use e no check-out no mesmo dia da chegada, a diária congelada e os pacotes `ON_ARRIVAL`/`DAILY` da data antes de conferir o saldo, uma vez só, por uma chave de idempotência opcional nova na `BillingApi.post` (acréscimo mínimo sem quebrar contrato), com teste e a nota para o M6 de usar a mesma chave. Revisão humana da E10 mantida (segundo mecanismo de autenticação). CI do push do gate do M4 verde no run `39730633697` (build, oasdiff e imagem): ressalva do cabeçalho retirada. Tags inalteradas.
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m5-recepcao-fnrh`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-23 — lote E04 a E06 executado com o superpowers na branch `roadmap/m5-recepcao-fnrh` (check-out, troca de UH, extensão, redução e early check-in, recados). As três etapas estão `#concluida`, com handoffs preenchidos e as capturas de atualização do brain publicadas. As decisões do lote foram tomadas pela opção recomendada em nome do usuário (ausente, delegado) e registradas em "Hipóteses e decisões em aberto". As demais tags não mudaram.
+- 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
+- 2026-10-27 — nova etapa E13 (travamento de dependências do Gradle para o scanner), decidida pelo usuário (D3) e posicionada antes das pendentes para rodar primeiro; E12 passa a depender também da E13 e a definição global de pronto ganha o item do lockfile.
