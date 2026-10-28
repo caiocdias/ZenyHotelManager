@@ -49,7 +49,8 @@ allOpen {
 // Travamento de dependências (M5 E13, decisão D3): o grafo resolvido fica em gradle.lockfile, e o
 // osv-scanner da revisão final lê o arquivo. No modo estrito, configuração sem lock state e versão
 // fora do lockfile falham o build (inclusive na imagem Docker). Depois de mudar o catálogo ou um
-// plugin, regrave os dois lockfiles (este e o buildscript-gradle.lockfile) com
+// plugin, regrave os três lockfiles (gradle.lockfile, buildscript-gradle.lockfile e
+// settings-gradle.lockfile, que trava a importação do catálogo) com
 // `./gradlew dependencies --write-locks`.
 dependencyLocking {
     lockAllConfigurations()

@@ -31,7 +31,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Procurar breaking change na API v1 contra a `main` (precisa de git e Docker) | `.github/scripts/check-api-breaking.sh` |
 | Subir a aplicação localmente (precisa do banco, das chaves de cifragem e JWT e, no primeiro boot, do administrador inicial, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
-Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml). O grafo resolvido fica travado em `gradle.lockfile` e `buildscript-gradle.lockfile`, que mudam no mesmo commit do catálogo, e o build falha se ficarem desatualizados.
+Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml). O grafo resolvido fica travado em `gradle.lockfile`, `buildscript-gradle.lockfile` e `settings-gradle.lockfile` (este trava a importação do catálogo), que mudam no mesmo commit do catálogo, e o build falha se ficarem desatualizados.
 
 ## Banco de dados
 
