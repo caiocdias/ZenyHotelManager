@@ -244,7 +244,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E13 | Travamento de dependências do Gradle para o scanner | #pendente | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
+| E13 | Travamento de dependências do Gradle para o scanner | #em-andamento | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
 
 **FNRH**
 
@@ -912,7 +912,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E13 — Travamento de dependências do Gradle para o scanner — #pendente
+## E13 — Travamento de dependências do Gradle para o scanner — #em-andamento
 
 **Objetivo:** ligar o travamento de dependências do Gradle (dependency locking) e versionar o `gradle.lockfile`, para que o scanner de dependências usado na revisão final de cada etapa (`osv-scanner`, soul `revisor-seguranca`) enxergue o grafo resolvido do projeto.
 
