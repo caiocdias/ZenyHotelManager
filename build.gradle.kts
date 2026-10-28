@@ -2,7 +2,12 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 buildscript {
     // Os plugins rodam no build com acesso total; o travamento do classpath deles
-    // (buildscript-gradle.lockfile) deixa o osv-scanner vê-los.
+    // (buildscript-gradle.lockfile) deixa o osv-scanner vê-los. Estrito, como o do projeto: sem o
+    // arquivo (ou com dependência fora dele) o build falha em vez de seguir sem trava.
+    dependencyLocking {
+        lockAllConfigurations()
+        lockMode = LockMode.STRICT
+    }
     configurations.classpath { resolutionStrategy.activateDependencyLocking() }
 }
 
@@ -47,11 +52,12 @@ allOpen {
 }
 
 // Travamento de dependências (M5 E13, decisão D3): o grafo resolvido fica em gradle.lockfile, e o
-// osv-scanner da revisão final lê o arquivo. No modo estrito, configuração sem lock state e versão
-// fora do lockfile falham o build (inclusive na imagem Docker). Depois de mudar o catálogo ou um
-// plugin, regrave os três lockfiles (gradle.lockfile, buildscript-gradle.lockfile e
-// settings-gradle.lockfile, que trava a importação do catálogo) com
-// `./gradlew dependencies --write-locks`.
+// osv-scanner da revisão final lê o arquivo, ou seja, o que o build de fato usa. O modo estrito
+// falha o build para versão maior que a travada, dependência nova fora do lockfile e configuração
+// sem lock state (inclusive na imagem Docker). Versão menor no catálogo, ao contrário, é ignorada
+// em favor da travada, sem aviso; por isso regrave os lockfiles no mesmo commit que muda o catálogo
+// ou um plugin: gradle.lockfile, buildscript-gradle.lockfile e settings-gradle.lockfile (este trava
+// a importação do catálogo), com `./gradlew dependencies --write-locks`.
 dependencyLocking {
     lockAllConfigurations()
     lockMode = LockMode.STRICT
