@@ -15,7 +15,7 @@ Cada marco tem seu próprio roadmap, com etapas pequenas e um gate final. Desde 
 | M2 | [Plataforma operacional](roadmap-m2-plataforma-operacional.md) | 12 | 0 | `rooms`, `checklists`, `notifications`, tempo real (SSE) e sincronização offline em `shared` | M1 | UHs com status em tempo real, motor de checklists e base do app offline |
 | M3 | [Hóspedes, contas e caixa](roadmap-m3-hospedes-contas.md) | 11 | 1 | `guests`, `payments` (registro manual), `billing` (sem contas a receber) | M2 | Cadastro de hóspedes com LGPD, contas imutáveis, caixa e pagamento manual |
 | M4 | [Tarifas, disponibilidade e reservas](roadmap-m4-tarifas-reservas.md) | 13 | 1 | `rates`, `reservations` | M3 | Planos tarifários, disponibilidade sem overbooking, reservas, grupos e bloqueios |
-| M5 | [Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) | 12 | 1 | `frontdesk`, `fnrh`, `printing` | M4 | Check-in/out, walk-in, troca de UH, FNRH Digital e agente de impressão |
+| M5 | [Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) | 14 | 1 | `frontdesk`, `fnrh`, `printing` | M4 | Check-in/out, walk-in, troca de UH, FNRH Digital e agente de impressão |
 | M6 | [Operação diária e fechamento](roadmap-m6-operacao-fechamento.md) | 12 | 1 | `housekeeping`, `maintenance` (corretiva), `endofday`, `reporting` (operacional) | M5 | **Fim da Fase 1:** o hotel opera a hospedagem |
 | M7 | [Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md) | 12 | 2 | `payments` (Pix, cartão, conciliação), `fiscal` | M6 | Pix e cartão integrados, caução, NFS-e e NFC-e |
 | M8 | [Restaurante, distribuição e inauguração](roadmap-m8-restaurante-distribuicao.md) | 13 | 2 | `pos`, `distribution`, implantação e backup | M7 | **Fim da Fase 2:** pronto para inaugurar |

@@ -145,6 +145,18 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E06 (b) Resolver o recado:** permissão própria, para Gerente, Recepcionista, Governanta, Manutenção, Comercial/Eventos, Caixa A&B e Cozinha/Bar.
 - **E06 (c) Vínculo do recado:** fixo depois de criado.
 
+**Decisões do lote E13** (entrevista do fim do lote). O usuário estava ausente e delegou toda intervenção em 2026-10-28, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras. Por isso, todas as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-28**. O detalhe está no handoff da E13.
+
+- **E13 (a) Vulnerabilidades High/Critical:** viraram a etapa E14, primeira da fila, com patch do Spring Boot ou restrição de versão e os lockfiles regravados.
+  - A favor: Critical de 9,8 no servidor HTTP de produção e DoS sem autenticação no Jackson, com correções de patch de baixo risco; sem a etapa, toda revisão final seguinte volta a apontá-las.
+  - Contra: atrasa a E07 em uma etapa.
+  - Alternativas descartadas: deixar para o M8 (implantação) ou não tratar.
+- **E13 (b) Rebaixamento no catálogo:** é ignorado em silêncio, porque o Gradle aplica a versão travada como `strictly`. Fica aceito como comportamento do Gradle e documentado no README e no `build.gradle.kts`. A E14 acrescenta à CI o passo `--write-locks` + `git diff --exit-code`, que pega a divergência. Alternativa descartada: uma tarefa de verificação própria no build.
+- **E13 (c) `osv-scanner` no CI:** fica fora por ora. O scanner continua na revisão final de cada etapa. Contra pô-lo no CI: ele reprova um push por CVE publicada depois, sem relação com a mudança. Reavaliar no M8.
+- **E13 (d) Verificação de checksums do Gradle** (`gradle/verification-metadata.xml`): fica para depois (M8). Ela fecha a troca de artefato com a mesma versão, mas exige manutenção a cada mudança de versão.
+- **E13 (e) `settings-gradle.lockfile`:** versionado, porque o `--write-locks` o gera e, sem ele, a regeneração suja a árvore.
+- **E13 (f) Revisão humana da E13:** o lote parou nela, como manda o protocolo, e a branch foi integrada na `main` a pedido do usuário. A revisão fica para quando ele voltar.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
@@ -157,6 +169,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - [ ] O compose isolado do gate mostra as publicações dos eventos de reserva e de hospedagem concluídas pelo listener do `fnrh`.
 - [ ] A homologação real da FNRH (E09) está concluída ou registrada como pendência obrigatória antes da operação real.
 - [ ] `gradle.lockfile` versionado e atualizado; `osv-scanner scan source -r .` lista os pacotes do projeto.
+- [ ] Nenhuma vulnerabilidade High ou Critical conhecida no `productionRuntimeClasspath` nem no classpath dos plugins na data do gate, salvo as registradas como risco aceito pelo usuário (E14).
 
 ## Protocolo de execução
 
@@ -244,7 +257,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E13 | Travamento de dependências do Gradle para o scanner | #em-andamento | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
+| E13 | Travamento de dependências do Gradle para o scanner | #concluida | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
+| E14 | Correção das vulnerabilidades High/Critical apontadas pelo scanner | #pendente | E13 | Tomcat, Jackson 3 e 2 e o freemarker dos plugins em versões corrigidas, lockfiles regravados e CI conferindo lockfile × catálogo |
 
 **FNRH**
 
@@ -265,7 +279,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E13 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
+| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E14 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
 
 ---
 
@@ -912,7 +926,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E13 — Travamento de dependências do Gradle para o scanner — #em-andamento
+## E13 — Travamento de dependências do Gradle para o scanner — #concluida
 
 **Objetivo:** ligar o travamento de dependências do Gradle (dependency locking) e versionar o `gradle.lockfile`, para que o scanner de dependências usado na revisão final de cada etapa (`osv-scanner`, soul `revisor-seguranca`) enxergue o grafo resolvido do projeto.
 
@@ -955,6 +969,116 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 **Riscos e mitigação:**
 
 - Lockfile esquecido em mudanças futuras de dependência: o build falha (critério 3), e a revisora confere lockfile e manifesto juntos.
+
+**Evidências e handoff:**
+
+- **Plano:** `docs/superpowers/plans/2026-10-28-m5-recepcao-fnrh-e13.md` (uma tarefa), executado pelas souls: `desenvolvedor` → `testador` (ataques numa cópia descartável) → verificação mecânica → `revisor-seguranca`.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `94a24a9`):
+  - `87c0b15` início da etapa e plano;
+  - `1a4b0ab` travamento estrito, `gradle.lockfile` e `buildscript-gradle.lockfile`, imagem e README;
+  - `6ba3ac1` `settings-gradle.lockfile`, que o `--write-locks` também gera;
+  - `c1acc86` modo estrito também no classpath dos plugins e texto preciso (rodada 1, pelo achado do testador);
+  - `a5dc411` textos e remoção da ativação redundante (onda da revisão final);
+  - o commit de fechamento (este handoff, a E14 e o histórico).
+- **Revisão final:** `revisor-seguranca` no modelo mais capaz, sobre `94a24a9..c1acc86`. Resultado: "With fixes", sem Critical. Os três Important eram o handoff vazio, o critério 3 só para versão maior e o `docker build` sem prova no HEAD; foram resolvidos neste fechamento e pela prova da imagem em `a5dc411`. Os três Minor entraram na onda única de correção (`a5dc411`), conferida pelo testador e por uma re-revisão restrita. Na revisão da tarefa: "Approved", 0 Critical, 0 Important.
+- **Configuração:**
+  - `build.gradle.kts`: `dependencyLocking { lockAllConfigurations(); lockMode = LockMode.STRICT }` no projeto e o mesmo bloco dentro de `buildscript { }`, para o classpath dos plugins.
+  - Lockfiles na raiz, gerados por `./gradlew dependencies --write-locks`:
+    - `gradle.lockfile`: 415 pacotes;
+    - `buildscript-gradle.lockfile`: 74 pacotes;
+    - `settings-gradle.lockfile`: hoje só `empty=incomingCatalogForLibs0`, versionado para a regeneração não sujar a árvore.
+  - O `.dockerignore` (lista de permissão) e o `docker/Dockerfile` levam os dois primeiros.
+- **Critérios verificados:**
+  - [x] `gradle.lockfile` versionado na raiz, gerado pelo Gradle. O testador apagou os três lockfiles, regenerou do zero e obteve arquivos idênticos aos versionados; uma segunda regeneração também não muda nada.
+  - [x] O `osv-scanner` lista os pacotes Maven. Saída numa cópia limpa do HEAD (`git archive`): "Scanned …/gradle.lockfile file and found 415 packages", "Scanned …/buildscript-gradle.lockfile file and found 74 packages", "Total 11 packages affected by 31 known vulnerabilities (5 Critical, 15 High, 8 Medium, 3 Low, 0 Unknown) from 1 ecosystem". Na base `94a24a9` a saída era "No package sources found". Dentro de um worktree em `.claude/worktrees/`, o scanner não vê nada, porque o `.gitignore` do checkout principal ignora essa pasta; rode-o na raiz do checkout principal, numa cópia ou com `--no-ignore`.
+  - [x] Lockfile desatualizado faz o build falhar. Teste numa cópia descartável, revertido:
+    - versão maior no catálogo (`aws-sdk = "2.57.6"`): falha com "Constraint … {strictly 2.56.0} … enforced by Dependency Locking";
+    - plugin maior (`spring-boot = "4.1.2"`): falha com "Cannot find a version of 'org.springframework.boot:org.springframework.boot.gradle.plugin' that satisfies the version constraints … {strictly 4.1.1}";
+    - dependência nova (`commons-pool2`): falha com "Resolved 'org.apache.commons:commons-pool2:2.13.1' which is not part of the dependency lock state";
+    - sem `buildscript-gradle.lockfile`: falha com "Locking strict mode: Configuration 'classpath' is locked but does not have lock state";
+    - imagem sem os lockfiles: falha no `COPY` ("not found"); com o lockfile defasado, falha no modo estrito.
+    - **Ressalva:** uma versão **menor** no catálogo (`shedlock = "7.10.0"`) não falha. O Gradle aplica a versão travada como `strictly` e usa a 7.10.1. O README e o comentário do build dizem isso, e o caso foi para "Decisões para o usuário".
+  - [x] `./gradlew build` e `./gradlew checkOpenApi` verdes localmente:
+    - `c1acc86`: "BUILD SUCCESSFUL in 7m 51s", 1287 testes em 158 classes, 0 falhas (rodado pelo orquestrador);
+    - `a5dc411`: "BUILD SUCCESSFUL in 7m 54s" (rodado pelo desenvolvedor);
+    - `checkOpenApi` verde e `api/openapi.yaml` sem mudança; oasdiff contra `94a24a9`: "No changes detected";
+    - `docker build -f docker/Dockerfile .` em `a5dc411`: exit 0, com o `bootJar` executado (94,3 s);
+    - `ktlintFormat`, `koverHtmlReport` e `updateOpenApi` também passam no modo estrito sem mudar a árvore; o `bootRun` resolve o classpath e sobe até pedir o banco.
+    - **CI:** o run sai com o push da integração e fica anotado nas notas abaixo.
+  - [x] Vulnerabilidades registradas. Na produção (`productionRuntimeClasspath`):
+    - `org.apache.tomcat.embed:tomcat-embed-core` 11.0.24: 2 Critical de 9,8 e 2 de 9,1, corrigidas na 11.0.25;
+    - `tools.jackson.core:jackson-core`/`jackson-databind` 3.1.5: High 7,5, corrigidas na 3.1.6/3.1.7; inclui DoS sem autenticação no parser das requisições;
+    - `com.fasterxml.jackson.core:jackson-core`/`jackson-databind` 2.22.1, usadas pelo springdoc: High 7,5, corrigidas na 2.22.2/2.22.3;
+    - `io.opentelemetry:opentelemetry-api` 1.62.0: Medium.
+
+    Só no build:
+    - `org.freemarker:freemarker` 2.3.32, no classpath dos plugins: Critical 9,1, corrigida na 2.3.35;
+    - `tools.jackson.*` 3.1.5 no classpath dos plugins;
+    - `commons-lang3` 3.16.0 no plugin: Medium;
+    - `logback-core` 1.3.16 no `ktlint`: Low.
+- **Decisões para o usuário** (o usuário estava ausente e delegou em 2026-10-28; decididas pela opção recomendada em nome dele depois de pesar prós e contras; ver "Decisões do lote E13"):
+  - (a) vulnerabilidades High/Critical numa etapa própria de manutenção, a E14, primeira da fila;
+  - (b) o rebaixamento silencioso no catálogo é aceito como comportamento do Gradle, documentado, e fechado pelo passo de CI da E14;
+  - (c) o `osv-scanner` fica fora do CI por ora;
+  - (d) a verificação de checksums fica para depois;
+  - (e) o `settings-gradle.lockfile` é versionado.
+- **Notas para a próxima etapa:**
+  - **Convenção:** toda mudança de dependência ou plugin regrava os lockfiles no mesmo commit, com `./gradlew dependencies --write-locks`. Os revisores conferem `build.gradle.kts`, catálogo e lockfiles juntos.
+  - **Scanner da revisão final:** rode-o fora do worktree (veja o critério 2).
+  - **Revisão humana desta etapa:** pendente. O usuário pediu, ausente, a integração na `main` no fim do lote; a revisão fica para quando ele voltar.
+
+---
+
+## E14 — Correção das vulnerabilidades High/Critical apontadas pelo scanner — #pendente
+
+**Objetivo:** levar às versões corrigidas as dependências com vulnerabilidade High ou Critical que o `osv-scanner` apontou na E13. Isso vale para o runtime de produção (`tomcat-embed-core`, `jackson` 3 e 2) e para o classpath dos plugins (`freemarker`). A etapa também regrava os lockfiles e põe na CI a conferência de que lockfile e catálogo não divergem.
+
+**Por que agora:** a E13 tornou o grafo visível. No `productionRuntimeClasspath` há duas Critical de 9,8 no servidor HTTP e um DoS sem autenticação no parser das requisições, todos corrigidos em versões de patch. Sem esta etapa, toda revisão final das etapas seguintes volta a apontá-los. Decidida pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-28; ver "Decisões do lote E13".
+
+**Dependências:** E13.
+
+**Escopo:** `gradle/libs.versions.toml`, `build.gradle.kts` (só se uma restrição de versão for necessária), os três lockfiles e `.github/workflows/ci.yml`:
+
+- Versões corrigidas, vistas no handoff da E13. Rode o scanner de novo antes de planejar, porque a lista muda com o tempo:
+  - `org.apache.tomcat.embed:tomcat-embed-core` 11.0.24 → ≥ 11.0.25;
+  - `tools.jackson.core:jackson-core`/`jackson-databind` 3.1.5 → ≥ 3.1.7;
+  - `com.fasterxml.jackson.core:jackson-core`/`jackson-databind` 2.22.1 → ≥ 2.22.3;
+  - `org.freemarker:freemarker` 2.3.32 (classpath dos plugins) → ≥ 2.3.35;
+  - de passagem, se o mesmo caminho resolver: `io.opentelemetry:opentelemetry-api` (Medium), `commons-lang3` do plugin (Medium) e `logback-core` do `ktlint` (Low).
+- Caminho preferido: o patch do Spring Boot (plugin e BOM juntos, no catálogo) que já traga essas versões. Se não houver, use uma restrição de versão no catálogo e no `build.gradle.kts`, com o motivo e o advisory no comentário. A restrição sai quando o BOM alcançar a versão. Para o `freemarker`, descubra qual plugin o traz (`./gradlew buildEnvironment`) e prefira subir o plugin.
+- Lockfiles regravados no mesmo commit: `./gradlew dependencies --write-locks`.
+- Passo novo no job `build` da CI: `./gradlew dependencies --write-locks` seguido de `git diff --exit-code -- '*.lockfile'`. Assim a CI pega lockfile esquecido e o rebaixamento silencioso no catálogo (ressalva do critério 3 da E13).
+
+**Fora de escopo:** subir versões sem vulnerabilidade High ou Critical, salvo as que o caminho escolhido arrastar; o `osv-scanner` no CI; a verificação de checksums (`gradle/verification-metadata.xml`); trocar de biblioteca.
+
+**Critérios de aceite:**
+
+- [ ] O `osv-scanner` (na raiz do checkout principal ou numa cópia limpa) não aponta High nem Critical no `gradle.lockfile` e no `buildscript-gradle.lockfile`. O que restar sem correção publicada fica no handoff como risco, em "Decisões para o usuário". A saída antes e depois fica no handoff.
+- [ ] Nenhuma versão literal fora do catálogo. Os lockfiles foram regravados pelo Gradle no mesmo commit da mudança de versão.
+- [ ] O passo novo da CI falha com o lockfile divergente do catálogo e passa com ele em dia. Verifique numa cópia descartável: rebaixar uma versão no catálogo sem regravar faz o passo falhar.
+- [ ] `./gradlew build`, `./gradlew checkOpenApi` e `docker build -f docker/Dockerfile .` verdes; oasdiff sem `ERR` (uma subida de patch não deve mudar o contrato; se mudar, a etapa explica).
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `osv-scanner scan source -r .` → sem High nem Critical, ou com o resto registrado como risco.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Leia o handoff da E13: a classificação por configuração, os advisories e a convenção dos lockfiles.
+- O scanner não vê nada dentro de um worktree em `.claude/worktrees/`. Rode-o numa cópia (`git archive HEAD`) ou com `--no-ignore`.
+- Os BOMs entram como `platform(...)` nativo do Gradle, sem o plugin `io.spring.dependency-management`. Por isso as propriedades do BOM do Spring Boot (`tomcat.version`) não valem aqui. Use restrição de versão.
+- A revisora confere catálogo, `build.gradle.kts` e lockfiles juntos, e a saída do scanner antes e depois.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Patch do Spring Boot com mudança de comportamento: a suíte inteira (1287 testes) e o `docker build` cobrem; o oasdiff pega mudança de contrato.
+- Restrição de versão esquecida depois que o BOM alcança a versão: o comentário diz quando removê-la, e o passo de CI mostra a divergência.
 
 **Evidências e handoff:**
 
@@ -1275,7 +1399,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério de entrada do marco M6.
 
-**Dependências:** E03, E04, E05, E06, E08, E11, E13 (as etapas-folha, que cobrem transitivamente E01, E02, E07 e E10). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
+**Dependências:** E03, E04, E05, E06, E08, E11, E14 (as etapas-folha, que cobrem transitivamente E01, E02, E07, E10 e E13). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
 
 **Escopo:**
 
@@ -1336,3 +1460,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-23 — lote E04 a E06 executado com o superpowers na branch `roadmap/m5-recepcao-fnrh` (check-out, troca de UH, extensão, redução e early check-in, recados). As três etapas estão `#concluida`, com handoffs preenchidos e as capturas de atualização do brain publicadas. As decisões do lote foram tomadas pela opção recomendada em nome do usuário (ausente, delegado) e registradas em "Hipóteses e decisões em aberto". As demais tags não mudaram.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-27 — nova etapa E13 (travamento de dependências do Gradle para o scanner), decidida pelo usuário (D3) e posicionada antes das pendentes para rodar primeiro; E12 passa a depender também da E13 e a definição global de pronto ganha o item do lockfile.
+- 2026-10-28 — lote da E13 executado pelas souls na branch `roadmap/m5-recepcao-fnrh`. A E13 está `#concluida`, com o handoff preenchido e a captura do brain publicada. O lote parou na revisão humana dela e foi integrado na `main` a pedido do usuário, que estava ausente. Nova etapa E14 (correção das vulnerabilidades High/Critical apontadas pelo scanner), decidida pela opção recomendada em nome do usuário. Ela depende da E13 e fica antes das pendentes, para rodar primeiro. A E12 passa a depender da E14 no lugar da E13, que a E14 cobre. A definição global de pronto ganha o item das vulnerabilidades. As decisões do lote estão em "Decisões do lote E13". As demais tags não mudaram.
