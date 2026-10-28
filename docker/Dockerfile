@@ -25,7 +25,7 @@ ENV GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.welcome=never -Dorg.grad
 # Wrapper, scripts do build e lockfiles primeiro: a distribuição do Gradle e as dependências
 # (as versões travadas vêm de gradle.lockfile e buildscript-gradle.lockfile, e o modo estrito
 # falha sem eles) ficam no cache do BuildKit (/root/.gradle) e só são baixadas de novo quando
-# o catálogo muda.
+# o catálogo ou um lockfile muda.
 COPY gradlew settings.gradle.kts build.gradle.kts gradle.lockfile buildscript-gradle.lockfile ./
 COPY gradle gradle
 RUN --mount=type=cache,target=/root/.gradle ./gradlew --quiet --version

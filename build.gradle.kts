@@ -8,7 +8,6 @@ buildscript {
         lockAllConfigurations()
         lockMode = LockMode.STRICT
     }
-    configurations.classpath { resolutionStrategy.activateDependencyLocking() }
 }
 
 plugins {
@@ -56,8 +55,9 @@ allOpen {
 // falha o build para versão maior que a travada, dependência nova fora do lockfile e configuração
 // sem lock state (inclusive na imagem Docker). Versão menor no catálogo, ao contrário, é ignorada
 // em favor da travada, sem aviso; por isso regrave os lockfiles no mesmo commit que muda o catálogo
-// ou um plugin: gradle.lockfile, buildscript-gradle.lockfile e settings-gradle.lockfile (este trava
-// a importação do catálogo), com `./gradlew dependencies --write-locks`.
+// ou um plugin: gradle.lockfile, buildscript-gradle.lockfile e settings-gradle.lockfile (este só é
+// gerado pelo `--write-locks` e versionado para a regeneração não sujar a árvore; hoje não tem
+// dependências), com `./gradlew dependencies --write-locks`.
 dependencyLocking {
     lockAllConfigurations()
     lockMode = LockMode.STRICT

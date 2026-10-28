@@ -31,7 +31,7 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Procurar breaking change na API v1 contra a `main` (precisa de git e Docker) | `.github/scripts/check-api-breaking.sh` |
 | Subir a aplicação localmente (precisa do banco, das chaves de cifragem e JWT e, no primeiro boot, do administrador inicial, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
-Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml). O grafo resolvido fica travado em `gradle.lockfile`, `buildscript-gradle.lockfile` e `settings-gradle.lockfile` (este trava a importação do catálogo), que mudam no mesmo commit do catálogo. O build falha para versão maior que a travada e para dependência nova fora dos lockfiles; uma versão menor no catálogo é ignorada em favor da travada (por isso regenere sempre no mesmo commit), e o `osv-scanner` lê o que o build de fato usa.
+Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml). O grafo resolvido fica travado em `gradle.lockfile`, `buildscript-gradle.lockfile` e `settings-gradle.lockfile` (este é gerado pelo `--write-locks` e versionado para a regeneração não sujar a árvore; hoje não tem dependências), que mudam no mesmo commit do catálogo. O build falha para versão maior que a travada e para dependência nova fora dos lockfiles; uma versão menor no catálogo é ignorada em favor da travada (por isso regenere sempre no mesmo commit), e o `osv-scanner` lê o que o build de fato usa.
 
 ## Banco de dados
 
