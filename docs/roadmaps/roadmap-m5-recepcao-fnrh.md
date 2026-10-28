@@ -1004,7 +1004,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
     - `checkOpenApi` verde e `api/openapi.yaml` sem mudança; oasdiff contra `94a24a9`: "No changes detected";
     - `docker build -f docker/Dockerfile .` em `a5dc411`: exit 0, com o `bootJar` executado (94,3 s);
     - `ktlintFormat`, `koverHtmlReport` e `updateOpenApi` também passam no modo estrito sem mudar a árvore; o `bootRun` resolve o classpath e sobe até pedir o banco.
-    - **CI:** o run sai com o push da integração e fica anotado nas notas abaixo.
+    - **CI:** o push da integração (`94a24a9..11cacb0` na `main`) passou no run `40788327598`, verde nos três jobs (build, testes e contrato; oasdiff; imagem Docker). Antes do push, a `main` integrada também passou no `./gradlew build` ("BUILD SUCCESSFUL in 8m 51s"), e o `osv-scanner scan source -r .` na raiz do checkout principal leu 415 + 74 pacotes.
   - [x] Vulnerabilidades registradas. Na produção (`productionRuntimeClasspath`):
     - `org.apache.tomcat.embed:tomcat-embed-core` 11.0.24: 2 Critical de 9,8 e 2 de 9,1, corrigidas na 11.0.25;
     - `tools.jackson.core:jackson-core`/`jackson-databind` 3.1.5: High 7,5, corrigidas na 3.1.6/3.1.7; inclui DoS sem autenticação no parser das requisições;
