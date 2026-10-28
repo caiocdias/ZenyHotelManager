@@ -5,4 +5,6 @@
 !gradle/
 !settings.gradle.kts
 !build.gradle.kts
+!gradle.lockfile
+!buildscript-gradle.lockfile
 !src/main/

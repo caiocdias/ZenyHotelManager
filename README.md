@@ -27,10 +27,11 @@ Servidor do Zeny Hotel Manager: PMS e operações de um único hotel de até 30 
 | Relatório de cobertura (Kover) | `./gradlew koverHtmlReport` |
 | Conferir se `api/openapi.yaml` está atualizado (já roda no build) | `./gradlew checkOpenApi` |
 | Regenerar `api/openapi.yaml` depois de mudar a API | `./gradlew updateOpenApi` |
+| Atualizar os lockfiles depois de mudar dependência ou plugin | `./gradlew dependencies --write-locks` |
 | Procurar breaking change na API v1 contra a `main` (precisa de git e Docker) | `.github/scripts/check-api-breaking.sh` |
 | Subir a aplicação localmente (precisa do banco, das chaves de cifragem e JWT e, no primeiro boot, do administrador inicial, abaixo) | `./gradlew bootRun --args='--spring.profiles.active=local'` |
 
-Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml).
+Profiles disponíveis: `local` e `prod`. As versões de dependências e plugins ficam todas em [`gradle/libs.versions.toml`](gradle/libs.versions.toml). O grafo resolvido fica travado em `gradle.lockfile` e `buildscript-gradle.lockfile`, que mudam no mesmo commit do catálogo, e o build falha se ficarem desatualizados.
 
 ## Banco de dados
 

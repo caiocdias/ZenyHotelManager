@@ -1,5 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+buildscript {
+    // Os plugins rodam no build com acesso total; o travamento do classpath deles
+    // (buildscript-gradle.lockfile) deixa o osv-scanner vê-los.
+    configurations.classpath { resolutionStrategy.activateDependencyLocking() }
+}
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
@@ -38,6 +44,16 @@ allOpen {
     annotation("jakarta.persistence.Entity")
     annotation("jakarta.persistence.MappedSuperclass")
     annotation("jakarta.persistence.Embeddable")
+}
+
+// Travamento de dependências (M5 E13, decisão D3): o grafo resolvido fica em gradle.lockfile, e o
+// osv-scanner da revisão final lê o arquivo. No modo estrito, configuração sem lock state e versão
+// fora do lockfile falham o build (inclusive na imagem Docker). Depois de mudar o catálogo ou um
+// plugin, regrave os dois lockfiles (este e o buildscript-gradle.lockfile) com
+// `./gradlew dependencies --write-locks`.
+dependencyLocking {
+    lockAllConfigurations()
+    lockMode = LockMode.STRICT
 }
 
 dependencies {
