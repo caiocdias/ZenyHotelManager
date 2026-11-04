@@ -40,6 +40,8 @@ tags:
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
+- description: Integração com a FNRH do Serpro.
+  name: FNRH
 - description: "Tipos de UH, características, UHs e áreas comuns."
   name: rooms
 - description: Informações sobre o servidor e a API.
@@ -3209,6 +3211,62 @@ paths:
       summary: Gerar a URL de download de um anexo
       tags:
       - files
+  /api/v1/fnrh/settings:
+    get:
+      description: Exige `fnrh.settings.manage`. A senha nunca volta (só `passwordSet`)
+        e o CPF vem mascarado. O `ETag` vai no `If-Match` da edição.
+      operationId: getFnrhSettings
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSettingsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar a configuração da FNRH
+      tags:
+      - FNRH
+    put:
+      description: "Exige `fnrh.settings.manage` e o `If-Match`. Sem `password`, a\
+        \ senha atual é mantida; uma senha em branco é 400 no campo. CPF inválido:\
+        \ 400 `VALIDATION_FAILED` (campo `defaultRequesterCpf`, `INVALID_FORMAT`),\
+        \ sem o valor. Trocar de ambiente sem informar a senha: 422 `FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE`.\
+        \ Ligar sem usuário, senha ou CPF: 422 `FNRH_SETTINGS_INCOMPLETE`."
+      operationId: updateFnrhSettings
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FnrhSettingsRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSettingsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar a configuração da FNRH
+      tags:
+      - FNRH
   /api/v1/folios:
     get:
       description: "Da mais nova para a mais antiga, com o saldo. Exige `billing.folios.read`."
@@ -16652,6 +16710,70 @@ components:
       - purpose
       - sensitive
       - sizeBytes
+    FnrhSettingsRequest:
+      type: object
+      description: A configuração da integração com a FNRH.
+      properties:
+        defaultRequesterCpf:
+          type: string
+          description: "CPF, só os 11 dígitos."
+          example: "52998224725"
+          nullable: true
+          pattern: "^\\d{11}$"
+        enabled:
+          type: boolean
+          description: "Liga a integração; exige usuário, senha e CPF."
+        environment:
+          type: string
+          description: Ambiente do Serpro. Trocá-lo exige informar a senha de novo.
+          enum:
+          - HOMOLOGATION
+          - PRODUCTION
+          example: HOMOLOGATION
+        password:
+          type: string
+          description: "Senha do Serpro. Ausente: mantém a atual. Em branco: 400."
+          maxLength: 200
+          minLength: 0
+          nullable: true
+          pattern: .*\S.*
+          writeOnly: true
+        username:
+          type: string
+          maxLength: 200
+          minLength: 0
+          nullable: true
+      required:
+      - enabled
+      - environment
+    FnrhSettingsResponse:
+      type: object
+      description: A configuração da FNRH. Nunca traz a senha.
+      properties:
+        defaultRequesterCpf:
+          type: string
+          description: "CPF solicitante padrão, só com os 2 últimos dígitos."
+          example: '***.***.***-25'
+          nullable: true
+        enabled:
+          type: boolean
+        environment:
+          type: string
+          description: "Ambiente do Serpro. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - HOMOLOGATION
+          - PRODUCTION
+        passwordSet:
+          type: boolean
+          description: Se há uma senha gravada.
+        username:
+          type: string
+          nullable: true
+      required:
+      - enabled
+      - environment
+      - passwordSet
     FolioOpenRequest:
       type: object
       description: Uma conta nova.

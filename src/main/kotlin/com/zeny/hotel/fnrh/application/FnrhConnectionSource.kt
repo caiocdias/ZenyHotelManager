@@ -31,4 +31,7 @@ data class FnrhConnection(
 interface FnrhSettingsStore {
     /** A configuração (a linha semente sempre existe). */
     fun settings(): FnrhSettings
+
+    /** Grava na hora as mudanças pendentes, para a versão (o `ETag`) já valer na resposta. */
+    fun flush()
 }

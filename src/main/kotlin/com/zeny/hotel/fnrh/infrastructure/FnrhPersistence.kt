@@ -21,6 +21,8 @@ class JpaFnrhSettingsStore(
         settings.findById(FnrhSettings.SINGLETON_ID).orElseThrow {
             IllegalStateException("A linha semente da configuração da FNRH não existe.")
         }
+
+    override fun flush() = settings.flush()
 }
 
 /** A conexão vigente a partir da configuração gravada e da URL do ambiente escolhido. */
