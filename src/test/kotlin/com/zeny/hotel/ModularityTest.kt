@@ -2,6 +2,7 @@ package com.zeny.hotel
 
 import com.zeny.hotel.billing.BillingModule
 import com.zeny.hotel.checklists.ChecklistsModule
+import com.zeny.hotel.fnrh.FnrhModule
 import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
@@ -317,6 +318,24 @@ class ModularityTest {
             .filter { name -> publicApis.any { name.startsWith("$it.") } }
             .filter { it.substringBeforeLast('.') !in publicApis }
             .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `fnrh depends only on shared`() {
+        val fnrh = modules.getModuleByName("fnrh").orElseThrow()
+
+        // M5 E07: a integração com a FNRH do Serpro fica na camada acima de Hospedagem (ARCHITECTURE §3.1). Nunca
+        // iam, frontdesk nem tabela de outro schema; as tarefas seguintes acrescentam guests (o mapeamento dos dados).
+        fnrh
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList() shouldContainExactlyInAnyOrder
+            listOf("shared")
+        FnrhModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe setOf("shared")
     }
 
     @Test
