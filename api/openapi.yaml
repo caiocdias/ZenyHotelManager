@@ -3211,6 +3211,85 @@ paths:
       summary: Gerar a URL de download de um anexo
       tags:
       - files
+  /api/v1/fnrh/requesters:
+    get:
+      description: Exige `fnrh.settings.manage`. O CPF vem mascarado.
+      operationId: listFnrhRequesters
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FnrhRequesterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os CPFs solicitantes por usuário
+      tags:
+      - FNRH
+  /api/v1/fnrh/requesters/{userId}:
+    delete:
+      description: "Exige `fnrh.settings.manage`. Sem CPF cadastrado: 404 `FNRH_REQUESTER_NOT_FOUND`."
+      operationId: removeFnrhRequester
+      parameters:
+      - in: path
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Remover o CPF solicitante de um usuário
+      tags:
+      - FNRH
+    put:
+      description: "Exige `fnrh.settings.manage`. Cria ou troca o CPF do usuário;\
+        \ o id dele não é conferido. CPF inválido: 400 `VALIDATION_FAILED` (campo\
+        \ `cpf`, `INVALID_FORMAT`), sem o valor."
+      operationId: setFnrhRequester
+      parameters:
+      - in: path
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FnrhRequesterRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhRequesterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir o CPF solicitante de um usuário
+      tags:
+      - FNRH
   /api/v1/fnrh/settings:
     get:
       description: Exige `fnrh.settings.manage`. A senha nunca volta (só `passwordSet`)
@@ -16710,6 +16789,32 @@ components:
       - purpose
       - sensitive
       - sizeBytes
+    FnrhRequesterRequest:
+      type: object
+      description: O CPF solicitante de um usuário.
+      properties:
+        cpf:
+          type: string
+          description: "CPF: 11 dígitos; na entrada aceita a pontuação (`529.982.247-25`),\
+            \ na saída vem só com os dígitos."
+          example: "52998224725"
+          pattern: "^(\\d{11}|\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2})$"
+      required:
+      - cpf
+    FnrhRequesterResponse:
+      type: object
+      description: "O CPF solicitante de um usuário, mascarado."
+      properties:
+        cpf:
+          type: string
+          description: "CPF solicitante, só com os 2 últimos dígitos."
+          example: '***.***.***-25'
+        userId:
+          type: string
+          format: uuid
+      required:
+      - cpf
+      - userId
     FnrhSettingsRequest:
       type: object
       description: A configuração da integração com a FNRH.

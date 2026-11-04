@@ -1,11 +1,23 @@
 package com.zeny.hotel.fnrh.application
 
+import com.zeny.hotel.fnrh.domain.FnrhRequester
 import com.zeny.hotel.fnrh.domain.FnrhSettings
 
 internal object FnrhAudit {
     const val SETTINGS = "fnrh.settings"
     const val UPDATE_SETTINGS = "fnrh.settings.update"
+    const val REQUESTER = "fnrh.requester"
+    const val SET_REQUESTER = "fnrh.requester.set"
+    const val REMOVE_REQUESTER = "fnrh.requester.remove"
 }
+
+/** O retrato do CPF solicitante de um usuário para a trilha: só o CPF mascarado. */
+internal data class FnrhRequesterAuditState(
+    val userId: String,
+    val cpf: String,
+)
+
+internal fun FnrhRequester.auditState() = FnrhRequesterAuditState(userId.toString(), maskCpf(cpf.digits))
 
 /**
  * O retrato da configuração para a trilha: sem senha nem usuário (só se existem) e com o CPF mascarado. A [version]
