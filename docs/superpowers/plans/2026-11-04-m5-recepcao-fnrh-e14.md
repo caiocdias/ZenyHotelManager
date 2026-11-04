@@ -131,7 +131,9 @@ if ! git diff --exit-code -- '*.lockfile' || [ -n "$(git status --porcelain -- '
   echo "::error::Lockfiles fora de dia com o catálogo. Rode ./gradlew dependencies --write-locks e commite os lockfiles."
   exit 1
 fi
-``` Comentário acima do passo: pega lockfile esquecido e a versão menor no catálogo, que o modo estrito ignora (M5 E13, ressalva do critério 3). Ações já fixadas por SHA no arquivo; nenhuma ação nova.
+```
+
+Comentário acima do passo: pega lockfile esquecido e a versão menor no catálogo, que o modo estrito ignora (M5 E13, ressalva do critério 3). Ações já fixadas por SHA no arquivo; nenhuma ação nova.
 
 - [ ] **Step 3: Provar o passo verde e vermelho**
 
@@ -159,3 +161,12 @@ git commit -m "Confere na CI que os lockfiles estão em dia com o catálogo (M5 
 - Resíduos do scanner depois da Task 1 (qualquer High/Critical sobrevivente e o `opentelemetry-api` Medium, com correção publicada mas fora do caminho) vão ao handoff da E14 como risco, em "Decisões para o usuário" (critério 1).
 - Alternativas descartadas, para o handoff e a captura do brain (nota "Ambiente, banco, chaves e build", com o inventário das restrições e a condição de saída de cada uma): Jackson 2 por restrição por módulo (descartada: a plataforma alinha todos os módulos da linha) ou pelo springdoc 3.2.0 (subida de minor, fora de escopo); freemarker sem alternativa de plugin (kover 0.9.11 é a última).
 - O verde do passo novo no runner só existe depois do push (decisão do usuário): o handoff registra o run da CI quando houver integração. A captura complementa também a nota "Docker, observabilidade e CI".
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas.
+- **Rodadas:** 1 (revisão inicial bloqueada por dois Importantes; re-revisão aprovada com notas).
+- **Modelo:** `revisor-arquitetura` no modelo mais capaz disponível (opus).
+- **Importantes resolvidos:** I1 (`koverHtmlReport` como prova do freemarker, Task 1 Step 6b); I2 (prova de idempotência do `--write-locks` refeita, Task 1 Step 5).
+- **Notas Menores:** M1 (passo da CI em `if`, rodado com `bash -eo pipefail`), M3 (cabeçalho do `ci.yml` e ARCHITECTURE §17), M5 (trecho do `buildEnvironment`), M7 (o passo não pega restrição esquecida; só o comentário avisa) aplicadas no plano; M2 (run da CI só depois do push), M4 (alternativas descartadas) e M6 (resíduos do scanner em "Decisões para o usuário") nas "Notas para o fechamento"; N1 (cerca de código do Task 2 Step 2) corrigida.
+- **Não verificado pelo revisor (sem Bash):** versões no Maven Central (levantadas pelo orquestrador), compilação do acessor do catálogo dentro do `buildscript`, comportamento do passo no runner.
