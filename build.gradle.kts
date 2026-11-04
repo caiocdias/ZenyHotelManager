@@ -8,6 +8,14 @@ buildscript {
         lockAllConfigurations()
         lockMode = LockMode.STRICT
     }
+    // Restrição do freemarker que o kover arrasta (GHSA-27j2-h3m2-8237); motivo e saída no catálogo.
+    dependencies {
+        constraints {
+            classpath(libs.freemarker) {
+                because("O kover 0.9.11 traz o freemarker 2.3.32 (GHSA-27j2-h3m2-8237); sai com o kover >= 2.3.35")
+            }
+        }
+    }
 }
 
 plugins {
@@ -68,6 +76,8 @@ dependencies {
     implementation(platform(libs.spring.boot.dependencies))
     implementation(platform(libs.spring.modulith.bom))
     implementation(platform(libs.aws.sdk.bom))
+    // Jackson 2 do springdoc em versão corrigida; motivo e advisories no catálogo (versão jackson2).
+    implementation(platform(libs.jackson2.bom))
 
     implementation(libs.spring.boot.starter)
     implementation(libs.spring.modulith.starter.core)

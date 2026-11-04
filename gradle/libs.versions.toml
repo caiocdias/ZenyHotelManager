@@ -3,7 +3,7 @@
 
 [versions]
 kotlin = "2.4.21"
-spring-boot = "4.1.1"
+spring-boot = "4.1.2"
 spring-modulith = "2.1.1"
 archunit = "1.5.1"
 kotest = "6.2.5"
@@ -20,11 +20,21 @@ aws-sdk = "2.56.0"
 # FCM de mentira nos testes do push (módulo notifications, ARCHITECTURE §12); a distribuição standalone traz o
 # Jetty e o Jackson sombreados, sem conflitar com os do Spring Boot.
 wiremock = "3.13.2"
+# O springdoc 3.1.1 puxa o Jackson 2 na 2.22.1 (GHSA-7hhh-6rmp-j9qf, GHSA-p6pp-m3f8-5c89, GHSA-cxp5-3px4-pw24,
+# GHSA-wv8q-qhhj-9h54, GHSA-q4xh-88c3-wmh7) e o BOM do Spring Boot 4.1.2 fica na 2.21.x. Sai quando o springdoc
+# ou o BOM do Boot trouxer o Jackson 2 >= 2.22.3.
+jackson2 = "2.22.4"
+# O freemarker chega ao classpath dos plugins pelo kover 0.9.11 (kover-features-jvm -> intellij-coverage-reporter)
+# na 2.3.32, com o Critical GHSA-27j2-h3m2-8237. Sai quando o kover trouxer o freemarker >= 2.3.35.
+freemarker = "2.3.35"
 
 [libraries]
+# Restrição do classpath dos plugins (ver a versão freemarker acima).
+freemarker = { module = "org.freemarker:freemarker", version.ref = "freemarker" }
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 spring-modulith-bom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "spring-modulith" }
 aws-sdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "aws-sdk" }
+jackson2-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson2" }
 
 # Versões gerenciadas pelos BOMs acima (Spring Boot e Spring Modulith).
 spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
