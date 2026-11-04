@@ -12,7 +12,10 @@ buildscript {
     dependencies {
         constraints {
             classpath(libs.freemarker) {
-                because("O kover 0.9.11 traz o freemarker 2.3.32 (GHSA-27j2-h3m2-8237); sai com o kover >= 2.3.35")
+                because(
+                    "O kover 0.9.11 traz o freemarker 2.3.32 (GHSA-27j2-h3m2-8237); " +
+                        "sai quando o kover trouxer o freemarker >= 2.3.35",
+                )
             }
         }
     }
