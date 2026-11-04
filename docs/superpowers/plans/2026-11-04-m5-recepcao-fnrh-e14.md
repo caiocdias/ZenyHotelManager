@@ -77,13 +77,18 @@ Catálogo: `freemarker = "2.3.35"` e `freemarker = { module = "org.freemarker:fr
 
 - [ ] **Step 5: Regravar os lockfiles**
 
-Run: `./gradlew dependencies --write-locks` e, em seguida, a mesma linha de novo.
-Esperado: a primeira muda os lockfiles; a segunda não muda nada (`git status --porcelain -- '*.lockfile'` vazio depois de `git add`). Confira no diff: `tomcat-embed-core:11.0.27`, `tools.jackson.core:jackson-core:3.1.7` e `jackson-databind:3.1.7` (nos dois lockfiles), `com.fasterxml.jackson.core:jackson-core`/`jackson-databind` ≥ 2.22.3 e `org.freemarker:freemarker:2.3.35=classpath`. Nenhuma linha removida sem explicação (descreva no relatório o que o Boot 4.1.2 arrastou).
+Run, nesta ordem: `./gradlew dependencies --write-locks`; `git add gradle.lockfile buildscript-gradle.lockfile settings-gradle.lockfile`; `./gradlew dependencies --write-locks` de novo; `git diff --exit-code -- '*.lockfile'`; `git status --porcelain -- '*.lockfile'`.
+Esperado: a primeira execução muda os lockfiles; depois da segunda, o `git diff --exit-code` (árvore × índice) sai com exit 0 e o `git status --porcelain` não tem linha `?? ` nem ` M` (só as `M  ` do stage). Confira no diff: `tomcat-embed-core:11.0.27`, `tools.jackson.core:jackson-core:3.1.7` e `jackson-databind:3.1.7` (nos dois lockfiles), `com.fasterxml.jackson.core:jackson-core`/`jackson-databind` ≥ 2.22.3 e `org.freemarker:freemarker:2.3.35=classpath`. Nenhuma linha removida sem explicação (descreva no relatório o que o Boot 4.1.2 arrastou).
 
 - [ ] **Step 6: Build completo**
 
 Run: `./gradlew build`
 Esperado: `BUILD SUCCESSFUL`, 0 falhas, `checkOpenApi` verde e `api/openapi.yaml` sem mudança (`git status` limpo depois do build).
+
+- [ ] **Step 6b: Relatório HTML do kover (único consumidor do freemarker)**
+
+Run: `./gradlew koverHtmlReport`
+Esperado: `BUILD SUCCESSFUL` e `build/reports/kover/html/index.html` gerado. O `build` roda só o `koverVerify`, que não prova o reporter; este comando oficial é o que usa o freemarker restringido. Anexe ao relatório também o trecho de `./gradlew buildEnvironment` com o `org.freemarker:freemarker` e a cadeia acima dele (prova de que o kover é o único caminho), já com a 2.3.35.
 
 - [ ] **Step 7: Commit**
 
@@ -105,6 +110,7 @@ Esperado: nenhuma linha com CVSS ≥ 7,0; o que sobrar (esperados: `opentelemetr
 - Modify: `.github/workflows/ci.yml` (job `build`)
 - Modify: `README.md` (uma frase no parágrafo dos lockfiles, linha 34: a CI regrava e falha se mudar)
 - Modify: `build.gradle.kts` (comentário do bloco `dependencyLocking` do projeto: a versão menor no catálogo agora é pega pela CI)
+- Modify: `docs/ARCHITECTURE.md` (§17, a frase da CI)
 
 **Interfaces:**
 - Consumes: os lockfiles em dia da Task 1.
@@ -117,11 +123,19 @@ Esperado: o `git diff` sai com exit 1 mostrando `shedlock` 7.10.1 → 7.10.0. Ap
 
 - [ ] **Step 2: Acrescentar o passo**
 
-No job `build`, logo depois de "Gradle com cache" e antes de "Build completo", um passo `Lockfiles em dia com o catálogo` que roda `./gradlew dependencies --write-locks` e depois falha se algum lockfile mudou **ou** apareceu sem rastreio: `git diff --exit-code -- '*.lockfile'` e `test -z "$(git status --porcelain -- '*.lockfile')"`, com uma mensagem que diga o comando para corrigir (`./gradlew dependencies --write-locks` e commitar os lockfiles). Comentário acima do passo: pega lockfile esquecido e a versão menor no catálogo, que o modo estrito ignora (M5 E13, ressalva do critério 3). Ações já fixadas por SHA no arquivo; nenhuma ação nova.
+No job `build`, logo depois de "Gradle com cache" e antes de "Build completo", um passo `Lockfiles em dia com o catálogo` que roda `./gradlew dependencies --write-locks` e depois falha se algum lockfile mudou **ou** apareceu sem rastreio. O `run` do Actions usa `bash -e`, então a conferência fica num `if` para a mensagem sair antes da falha:
+
+```bash
+./gradlew dependencies --write-locks
+if ! git diff --exit-code -- '*.lockfile' || [ -n "$(git status --porcelain -- '*.lockfile')" ]; then
+  echo "::error::Lockfiles fora de dia com o catálogo. Rode ./gradlew dependencies --write-locks e commite os lockfiles."
+  exit 1
+fi
+``` Comentário acima do passo: pega lockfile esquecido e a versão menor no catálogo, que o modo estrito ignora (M5 E13, ressalva do critério 3). Ações já fixadas por SHA no arquivo; nenhuma ação nova.
 
 - [ ] **Step 3: Provar o passo verde e vermelho**
 
-Num clone novo do worktree (com o commit da Task 1 e o passo novo), rode os comandos do passo exatamente como estão no YAML:
+Num clone novo do worktree (com o commit da Task 1 e o passo novo), rode o bloco `run` do passo exatamente como está no YAML, com `bash -eo pipefail` (como o runner):
 - na árvore como está → exit 0, duas vezes seguidas;
 - com `shedlock = "7.10.0"` no catálogo → falha;
 - com um lockfile novo não rastreado (por exemplo, `touch extra-gradle.lockfile`) → falha.
@@ -129,13 +143,19 @@ Guarde as três saídas para o relatório. Apague o clone.
 
 - [ ] **Step 4: README e comentário**
 
-README linha 34: acrescentar que a CI regrava os lockfiles e falha se algum mudar. `build.gradle.kts`: no comentário do `dependencyLocking` do projeto, a mesma informação numa linha.
+README linha 34: acrescentar que a CI regrava os lockfiles e falha se algum mudar. `build.gradle.kts`: no comentário do `dependencyLocking` do projeto, a mesma informação numa linha. Cabeçalho do `ci.yml` (linhas 1–7): o job `build` também confere os lockfiles. `docs/ARCHITECTURE.md` §17 (linha ~628, "A CI … roda build, testes, …"): acrescentar "conferência dos lockfiles". Nenhum desses textos diz que o passo pega restrição de versão esquecida: uma restrição é piso de versão e não faz o lockfile divergir quando o BOM a ultrapassa; só o comentário da restrição avisa.
 
 - [ ] **Step 5: Lint e commit**
 
 Run: `./gradlew lint` → `BUILD SUCCESSFUL`.
 
 ```bash
-git add .github/workflows/ci.yml README.md build.gradle.kts
+git add .github/workflows/ci.yml README.md build.gradle.kts docs/ARCHITECTURE.md
 git commit -m "Confere na CI que os lockfiles estão em dia com o catálogo (M5 E14)" -m "Soul: desenvolvedor"
 ```
+
+## Notas para o fechamento (orquestrador)
+
+- Resíduos do scanner depois da Task 1 (qualquer High/Critical sobrevivente e o `opentelemetry-api` Medium, com correção publicada mas fora do caminho) vão ao handoff da E14 como risco, em "Decisões para o usuário" (critério 1).
+- Alternativas descartadas, para o handoff e a captura do brain (nota "Ambiente, banco, chaves e build", com o inventário das restrições e a condição de saída de cada uma): Jackson 2 por restrição por módulo (descartada: a plataforma alinha todos os módulos da linha) ou pelo springdoc 3.2.0 (subida de minor, fora de escopo); freemarker sem alternativa de plugin (kover 0.9.11 é a última).
+- O verde do passo novo no runner só existe depois do push (decisão do usuário): o handoff registra o run da CI quando houver integração. A captura complementa também a nota "Docker, observabilidade e CI".
