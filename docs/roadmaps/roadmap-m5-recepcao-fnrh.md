@@ -274,7 +274,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E07 | Configuração, domínios e adaptador Serpro da FNRH | #pendente | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
+| E07 | Configuração, domínios e adaptador Serpro da FNRH | #em-andamento | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
 | E08 | Envio assíncrono e pendências da FNRH | #pendente | E01, E02, E07 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
 | E09 | Homologação da FNRH com o Serpro | #bloqueada | E08 | Envios reais no ambiente de homologação |
 
@@ -1159,7 +1159,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E07 — Configuração, domínios e adaptador Serpro da FNRH — #pendente
+## E07 — Configuração, domínios e adaptador Serpro da FNRH — #em-andamento
 
 **Objetivo:** criar o módulo `fnrh` com a configuração das credenciais cifradas (RF-FNRH-02), o cadastro do CPF solicitante (H5), os domínios oficiais com validação local (RF-FNRH-06, H21) e a porta `FnrhGateway` com o adaptador REST do Serpro (Basic Auth, header `cpf_solicitante`), testado com WireMock a partir da documentação v2.4 (H6), com log de integração redigido e o painel de saúde como métrica e endpoint de status (H22).
 
