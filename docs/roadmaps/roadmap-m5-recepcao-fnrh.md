@@ -259,7 +259,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E13 | Travamento de dependências do Gradle para o scanner | #concluida | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
-| E14 | Correção das vulnerabilidades High/Critical apontadas pelo scanner | #pendente | E13 | Tomcat, Jackson 3 e 2 e o freemarker dos plugins em versões corrigidas, lockfiles regravados e CI conferindo lockfile × catálogo |
+| E14 | Correção das vulnerabilidades High/Critical apontadas pelo scanner | #em-andamento | E13 | Tomcat, Jackson 3 e 2 e o freemarker dos plugins em versões corrigidas, lockfiles regravados e CI conferindo lockfile × catálogo |
 
 **FNRH**
 
@@ -1030,7 +1030,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E14 — Correção das vulnerabilidades High/Critical apontadas pelo scanner — #pendente
+## E14 — Correção das vulnerabilidades High/Critical apontadas pelo scanner — #em-andamento
 
 **Objetivo:** levar às versões corrigidas as dependências com vulnerabilidade High ou Critical que o `osv-scanner` apontou na E13. Isso vale para o runtime de produção (`tomcat-embed-core`, `jackson` 3 e 2) e para o classpath dos plugins (`freemarker`). A etapa também regrava os lockfiles e põe na CI a conferência de que lockfile e catálogo não divergem.
 
