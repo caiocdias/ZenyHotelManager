@@ -157,6 +157,15 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E13 (e) `settings-gradle.lockfile`:** versionado, porque o `--write-locks` o gera e, sem ele, a regeneração suja a árvore.
 - **E13 (f) Revisão humana da E13:** o lote parou nela, como manda o protocolo, e a branch foi integrada na `main` a pedido do usuário. A revisão fica para quando ele voltar.
 
+**Decisões do lote E14** (entrevista do fim do lote). Em 2026-11-04, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-04**. O detalhe está no handoff da E14.
+
+- **E14 (a) `opentelemetry-api` 1.62.0 (GHSA-ccrj-gw8r-854m, Medium 5,3):** CPU quadrática no `tracestate`, alcançável sem autenticação. Fica aceito como risco registrado até o Boot trazer a ≥ 1.67.0. A resolução é obrigatória antes da operação real (M8), e cada revisão final reavalia o caso.
+  - A favor: o sistema ainda não opera; a correção pelo BOM evita uma subida de minor fora do escopo; o scanner de cada revisão final volta a mostrar o risco.
+  - Contra: o risco fica aberto até lá.
+  - Alternativas descartadas: plataforma `opentelemetry-bom` 1.67.0 agora (subida de minor de toda a família, à frente do BOM do Boot e sem teste da ponte do Micrometer); limpar o `tracestate` no proxy (mexe no compose e perde o contexto de trace vindo de clientes).
+- **E14 (b) `commons-lang3` 3.16.0 (Medium, classpath dos plugins) e `logback-core` 1.3.16 (Low, `ktlint`):** aceitos. Só rodam no build e não são alcançáveis por entrada externa. Alternativa descartada: restrições de versão próprias, que acrescentariam manutenção sem ganho de segurança no servidor.
+- **E14 (c) Jackson 2 na 2.22.4:** último patch da linha 2.22, em vez do piso 2.22.3. Ele fecha as mesmas 7 GHSA e evita um patch atrás. Alternativa descartada: a 2.22.3 exata.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
@@ -259,7 +268,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E13 | Travamento de dependências do Gradle para o scanner | #concluida | — | `gradle.lockfile` versionado e lido pelo `osv-scanner`, build falha com lockfile desatualizado |
-| E14 | Correção das vulnerabilidades High/Critical apontadas pelo scanner | #em-andamento | E13 | Tomcat, Jackson 3 e 2 e o freemarker dos plugins em versões corrigidas, lockfiles regravados e CI conferindo lockfile × catálogo |
+| E14 | Correção das vulnerabilidades High/Critical apontadas pelo scanner | #concluida | E13 | Tomcat, Jackson 3 e 2 e o freemarker dos plugins em versões corrigidas, lockfiles regravados e CI conferindo lockfile × catálogo |
 
 **FNRH**
 
@@ -1030,7 +1039,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E14 — Correção das vulnerabilidades High/Critical apontadas pelo scanner — #em-andamento
+## E14 — Correção das vulnerabilidades High/Critical apontadas pelo scanner — #concluida
 
 **Objetivo:** levar às versões corrigidas as dependências com vulnerabilidade High ou Critical que o `osv-scanner` apontou na E13. Isso vale para o runtime de produção (`tomcat-embed-core`, `jackson` 3 e 2) e para o classpath dos plugins (`freemarker`). A etapa também regrava os lockfiles e põe na CI a conferência de que lockfile e catálogo não divergem.
 
@@ -1079,16 +1088,74 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 **Riscos e mitigação:**
 
 - Patch do Spring Boot com mudança de comportamento: a suíte inteira (1287 testes) e o `docker build` cobrem; o oasdiff pega mudança de contrato.
-- Restrição de versão esquecida depois que o BOM alcança a versão: o comentário diz quando removê-la, e o passo de CI mostra a divergência.
+- Restrição de versão esquecida depois que o BOM alcança a versão: o comentário diz quando removê-la. O passo de CI **não** mostra essa sobra, porque uma restrição é piso de versão e não faz o lockfile divergir; ele pega, sim, a remoção da restrição (o lockfile volta para a versão vulnerável). Correção feita na execução (revisão de arquitetura, M7).
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-04-m5-recepcao-fnrh-e14.md`, com duas tarefas, executado pelas souls: `desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`. Revisão de arquitetura (`revisor-arquitetura`, modelo mais capaz): aprovado com notas, em 1 rodada. A revisão inicial bloqueou por dois Importantes: o `koverHtmlReport` não provava o freemarker, e a prova de idempotência do `--write-locks` era impossível como estava escrita. Os dois foram corrigidos no plano.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `15bbcdb`):
+  - `be152b2` início da etapa e plano; `b09be76` plano corrigido após a revisão de arquitetura; `2eefa28` seção "Revisão de arquitetura" no plano;
+  - `fa08f85` Spring Boot 4.1.2, plataforma do Jackson 2 e restrição do freemarker, lockfiles regravados (Task 1);
+  - `3f47b39` passo "Lockfiles em dia com o catálogo" na CI, README, comentário do build, cabeçalho do `ci.yml` e ARCHITECTURE §17 (Task 2);
+  - `2c72294` comentários das restrições (onda única da revisão final);
+  - o commit de fechamento (este handoff).
+- **Revisões:**
+  - Tarefas: as duas saíram "Approved", com 0 Critical e 0 Important.
+  - Revisão final: `revisor-seguranca` no modelo mais capaz, sobre `15bbcdb..3f47b39`, com resultado "With fixes" e sem Critical. O Important era este handoff vazio, com o risco do OpenTelemetry a registrar com precisão; foi resolvido neste fechamento. Os Minors M1 (texto do `because`) e M3 (advisories Medium no comentário do Jackson 2) entraram na onda única `2c72294`, e a re-revisão restrita deu os dois como resolvidos. O M2 (imagem e oasdiff provados só em `fa08f85`) foi refeito pelo orquestrador no HEAD `2c72294`.
+  - Verificação mecânica (`check_test_integrity.py --base 15bbcdb`): "OK: nenhum apontamento".
+- **Configuração:**
+  - `gradle/libs.versions.toml`:
+    - `spring-boot = "4.1.2"` (plugin e BOM);
+    - `jackson2 = "2.22.4"`, com a lib `jackson2-bom` (`com.fasterxml.jackson:jackson-bom`);
+    - `freemarker = "2.3.35"`, com a lib `freemarker`.
+    - Cada restrição traz no comentário o motivo, os GHSA e a condição de saída.
+  - `build.gradle.kts`:
+    - `implementation(platform(libs.jackson2.bom))` junto dos outros BOMs;
+    - `buildscript { dependencies { constraints { classpath(libs.freemarker) { because(…) } } } }`: o acessor `libs` compila dentro do `buildscript`.
+  - Inventário das restrições:
+
+    | Restrição | Por quê | Sai quando |
+    |---|---|---|
+    | plataforma do Jackson 2 na 2.22.4 | o springdoc 3.1.1 puxa a 2.22.1, e o BOM do Boot 4.1.2 fica na 2.21.7 | o springdoc ou o BOM do Boot trouxer o Jackson 2 ≥ 2.22.3 (conferir as 7 GHSA no scanner) |
+    | freemarker 2.3.35 no classpath dos plugins | vem do kover 0.9.11 (`kover-features-jvm` → `intellij-coverage-reporter`), o último publicado | o kover trouxer o freemarker ≥ 2.3.35 |
+
+  - Arrastado pelo Boot 4.1.2 (conferido contra o POM do BOM pela revisão final):
+    - Tomcat 11.0.27, Jackson 3.1.7, Spring Framework 7.0.10, Spring Security 7.1.2, Hibernate 7.4.13;
+    - Micrometer 1.17.2, PostgreSQL JDBC 42.7.14, slf4j 2.0.20, byte-buddy 1.18.15;
+    - no classpath dos plugins: httpclient5 5.6.5, httpcore5 5.4.4 e jspecify 1.0.1.
+    - Os lockfiles não ganharam nem perderam pacote: 415 e 74, antes e depois.
+  - CI (`.github/workflows/ci.yml`, job `build`): o passo novo "Lockfiles em dia com o catálogo" fica antes do build completo. Ele roda `./gradlew dependencies --write-locks` e falha com `::error::` se o `git diff --exit-code -- '*.lockfile'` acusar mudança ou se o `git status --porcelain -- '*.lockfile'` não sair vazio. Fica dentro de um `if`, para a mensagem sair mesmo sob `bash -e`.
+- **Critérios verificados:**
+  - [x] Scanner sem High nem Critical (`osv-scanner -r` em cópias limpas por `git archive`):
+    - antes, em `15bbcdb`: "Scanned …/gradle.lockfile file and found 415 packages", "Scanned …/buildscript-gradle.lockfile file and found 74 packages", "Total 11 packages affected by 31 known vulnerabilities (5 Critical, 15 High, 8 Medium, 3 Low, 0 Unknown)";
+    - depois, em `3f47b39` (lockfiles iguais aos de `2c72294`): os mesmos 415 + 74 pacotes, "Total 3 packages affected by 5 known vulnerabilities (0 Critical, 0 High, 2 Medium, 3 Low, 0 Unknown)";
+    - restam o `io.opentelemetry:opentelemetry-api` 1.62.0 (GHSA-ccrj-gw8r-854m, Medium 5,3, runtime), o `org.apache.commons:commons-lang3` 3.16.0 (GHSA-j288-q9x7-2f5v, Medium 6,5, só no classpath dos plugins) e o `ch.qos.logback:logback-core` 1.3.16 (três Low, só na configuração `ktlint`). Estão em "Decisões para o usuário".
+  - [x] Nenhuma versão literal fora do catálogo (a única string de versão no `build.gradle.kts` é a do projeto, `0.0.1-SNAPSHOT`), e os lockfiles foram regravados pelo Gradle no mesmo commit (`fa08f85`).
+    - Idempotência: uma segunda `--write-locks` dá `git diff --exit-code -- '*.lockfile'` com exit 0 (testador, num clone).
+    - `jackson-annotations` está na `2.22` e os demais `com.fasterxml.jackson.*` na 2.22.4; o `dependencyInsight` mostra "{strictly 2.22.4}".
+    - O `buildEnvironment` mostra `org.freemarker:freemarker:2.3.32 -> 2.3.35`, só pelo kover, e o `koverHtmlReport` gera o `index.html`.
+  - [x] O passo da CI falha com lockfile divergente e passa com ele em dia. O bloco `run` foi extraído do YAML e rodado com `bash --noprofile --norc -eo pipefail` em clones descartáveis:
+    - árvore em dia: exit 0, duas vezes seguidas, sem sujar a árvore;
+    - `shedlock = "7.10.0"` no catálogo: exit 1, com diff `7.10.1 → 7.10.0` e o `::error::` impresso;
+    - lockfile novo não rastreado: exit 1 (pego pelo `git status`);
+    - dependência nova (`commons-pool2`) no catálogo e no build: exit 1;
+    - restrição do freemarker removida: exit 1, com diff `2.3.35 → 2.3.32`. Sem o passo, o build estrito **não** falha nesse caso, porque o Gradle aplica a versão travada como `strictly`.
+    - O verde no runner do GitHub só existe depois do push: registrar o run quando houver integração.
+  - [x] Build, contrato e imagem verdes no HEAD `2c72294`:
+    - `./gradlew build`: "BUILD SUCCESSFUL in 7m 38s", 1287 testes em 158 classes, 0 falhas e 0 erros (a base `15bbcdb` também tinha 1287 e 0 falhas);
+    - `checkOpenApi` verde, sem mudança em `api/openapi.yaml`;
+    - `.github/scripts/check-api-breaking.sh 15bbcdb`: "No changes detected", "Nenhuma mudança incompatível (nível ERR) em /api/v1";
+    - `docker build -f docker/Dockerfile .`: exit 0;
+    - `./gradlew lint`: verde.
+- **Decisões para o usuário** (decididas pela opção recomendada em nome do usuário, delegado ao orquestrador, 2026-11-04, depois de pesar prós e contras; ver "Decisões do lote E14"):
+  - (a) `opentelemetry-api` 1.62.0 (Medium 5,3, alcançável sem autenticação pelo cabeçalho `tracestate`, porque a propagação W3C está ligada em toda requisição em `application.yaml`): aceito como risco registrado até o Boot trazer a ≥ 1.67.0. A resolução é obrigatória antes da operação real (M8), e cada revisão final reavalia o caso. Alternativas descartadas por ora: plataforma `opentelemetry-bom` 1.67.0 (subida de minor do OpenTelemetry inteiro, à frente do que o BOM do Boot 4.1.2 escolheu para a ponte do Micrometer; fora do escopo da E14 e sem teste) e limpar o `tracestate` no proxy.
+  - (b) `commons-lang3` 3.16.0 (Medium, só no classpath dos plugins) e `logback-core` 1.3.16 (Low, só no `ktlint`): aceitos, porque não são alcançáveis por entrada externa.
+  - (c) Jackson 2 na 2.22.4 (último patch da linha), e não na 2.22.3 (o piso que fecha os advisories).
+- **Notas para a próxima etapa:**
+  - Duas restrições de versão vivem no catálogo (tabela acima). Numa subida futura do Boot ou do kover, confira a condição de saída de cada uma: o passo da CI não acusa restrição que ficou sobrando.
+  - Mudança de dependência ou plugin: regrave os lockfiles no mesmo commit. Agora a CI recusa o lockfile defasado.
+  - Scanner da revisão final: rode-o fora do worktree (cópia por `git archive` ou `--no-ignore`). Neste ambiente, `osv-scanner -r` seguido do diretório equivale a `scan source -r`.
+  - Ainda falta o primeiro run da CI com o passo novo, depois do push (decisão do usuário).
 
 ---
 
@@ -1463,3 +1530,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-27 — nova etapa E13 (travamento de dependências do Gradle para o scanner), decidida pelo usuário (D3) e posicionada antes das pendentes para rodar primeiro; E12 passa a depender também da E13 e a definição global de pronto ganha o item do lockfile.
 - 2026-10-28 — lote da E13 executado pelas souls na branch `roadmap/m5-recepcao-fnrh`. A E13 está `#concluida`, com o handoff preenchido e a captura do brain publicada. O lote parou na revisão humana dela e foi integrado na `main` a pedido do usuário, que estava ausente. Nova etapa E14 (correção das vulnerabilidades High/Critical apontadas pelo scanner), decidida pela opção recomendada em nome do usuário. Ela depende da E13 e fica antes das pendentes, para rodar primeiro. A E12 passa a depender da E14 no lugar da E13, que a E14 cobre. A definição global de pronto ganha o item das vulnerabilidades. As decisões do lote estão em "Decisões do lote E13". As demais tags não mudaram.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-04 — E14 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: Spring Boot 4.1.2, plataforma do Jackson 2 na 2.22.4, restrição do freemarker 2.3.35 no classpath dos plugins, lockfiles regravados e o passo "Lockfiles em dia com o catálogo" na CI. O scanner passou de 5 Critical e 15 High a 0 e 0, e os resíduos Medium/Low ficaram em "Decisões do lote E14". O risco do item "Restrição de versão esquecida" foi corrigido: o passo de CI não acusa a sobra. Handoff preenchido. As demais tags não mudaram.
