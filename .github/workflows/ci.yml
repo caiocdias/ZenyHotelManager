@@ -1,7 +1,8 @@
 # CI do servidor (ARCHITECTURE §7 e §17, RNF-03). Três jobs independentes, em paralelo:
 #   - build: ./gradlew build (compilação, testes unitários e de integração com Testcontainers,
 #     verificação de módulos do Modulith, ArchUnit, detekt, ktlint, contrato e cobertura) e a
-#     verificação do contrato api/openapi.yaml; publica a documentação dos módulos e o contrato.
+#     verificação do contrato api/openapi.yaml; antes do build, confere que os lockfiles do Gradle
+#     estão em dia com o catálogo; publica a documentação dos módulos e o contrato.
 #   - api-compatibility: oasdiff contra a branch principal; falha em breaking change de /api/v1.
 #   - image: build da imagem docker/Dockerfile, sem push.
 # Não publica imagem nem faz deploy (M8). Nenhum segredo é usado.
@@ -43,6 +44,18 @@ jobs:
         with:
           cache-provider: basic
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # Regrava os lockfiles e falha se algum mudou ou apareceu sem rastreio. Pega lockfile
+      # esquecido e a versão menor no catálogo, que o modo estrito ignora em favor da travada
+      # (M5 E13, ressalva do critério 3). Não pega restrição de versão que sobrou depois de o BOM
+      # a ultrapassar: só o comentário da restrição avisa.
+      - name: Lockfiles em dia com o catálogo
+        run: |
+          ./gradlew dependencies --write-locks
+          if ! git diff --exit-code -- '*.lockfile' || [ -n "$(git status --porcelain -- '*.lockfile')" ]; then
+            echo "::error::Lockfiles fora de dia com o catálogo. Rode ./gradlew dependencies --write-locks e commite os lockfiles."
+            exit 1
+          fi
 
       # Os testes de integração sobem um postgres:18 pelo Testcontainers no Docker do runner.
       - name: Build completo (compilação, testes, módulos, ArchUnit, lint, contrato e cobertura)

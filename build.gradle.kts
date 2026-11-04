@@ -65,7 +65,8 @@ allOpen {
 // em favor da travada, sem aviso; por isso regrave os lockfiles no mesmo commit que muda o catálogo
 // ou um plugin: gradle.lockfile, buildscript-gradle.lockfile e settings-gradle.lockfile (este só é
 // gerado pelo `--write-locks` e versionado para a regeneração não sujar a árvore; hoje não tem
-// dependências), com `./gradlew dependencies --write-locks`.
+// dependências), com `./gradlew dependencies --write-locks`. A CI regrava os lockfiles e falha se
+// algum mudar ou aparecer sem rastreio, o que pega a versão menor no catálogo.
 dependencyLocking {
     lockAllConfigurations()
     lockMode = LockMode.STRICT

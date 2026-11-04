@@ -625,7 +625,7 @@ A decisão está em aberto (SPEC Q-06). O código é o mesmo nos dois casos; mud
 | Contrato | Geração do OpenAPI e `oasdiff` | Sem quebra silenciosa da API |
 | Estático | detekt, ktlint, Kover (cobertura) | Estilo e cobertura nos módulos críticos |
 
-A CI (GitHub Actions, `.github/workflows/ci.yml`) roda build, testes, verificação de módulos, diff do contrato e build da imagem. O Spring Modulith também gera a **documentação dos módulos** (diagramas e canvas) como artefato do build.
+A CI (GitHub Actions, `.github/workflows/ci.yml`) roda build, testes, verificação de módulos, conferência dos lockfiles, diff do contrato e build da imagem. O Spring Modulith também gera a **documentação dos módulos** (diagramas e canvas) como artefato do build.
 
 ---
 
