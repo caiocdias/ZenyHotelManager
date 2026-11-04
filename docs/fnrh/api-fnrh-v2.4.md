@@ -14,18 +14,18 @@ Levantamento feito em 2026-11-04 (M5 E07, hipótese H6). A fonte é o "Documento
 
 ## Domínios (`GET`, resposta `{"dados": [{"id": "...", "label": "..."}]}`)
 
-| Caminho | Valores documentados (`id`) |
+| Caminho | Valores documentados (`id` = `label`) |
 |---|---|
-| `/dominios/fnrh/meios_transporte` | `ONIBUS`, `AUTOMOVEL`, `AVIAO`, `MOTO`, `NAVIO_BARCO`, `PE`, `TREM`, `BICICLETA` |
-| `/dominios/fnrh/motivos_viagem` | `COMPRAS`, `CONGRESSO_FEIRA`, `ESTUDOS_CURSOS`, `LAZER_FERIAS`, `NEGOCIOS`, `PARENTES_AMIGOS`, `RELIGIAO`, `SAUDE` |
-| `/dominios/hospedes/situacoes` | `PRECHECKIN_NAOVINCULADO`, `PRECHECKIN_PENDENTE`, `PRECHECKIN_REALIZADO`, `CHECKIN_REALIZADO`, `CHECKOUT_REALIZADO`, `NOSHOW`, `CANCELADO` |
-| `/dominios/pessoas/generos` | `HOMEM`, `MULHER`, `OUTRO`, `NAOINFORMADO` |
-| `/dominios/pessoas/opcao_deficiencia` | `SIM`, `NAO`, `NAOINFORMAR` |
-| `/dominios/pessoas/racas` | `AMARELA`, `BRANCA`, `INDIGENA`, `PARDA`, `PRETA`, `NAOINFORMAR` |
-| `/dominios/pessoas/tipos_deficiencia` | `FISICA`, `AUDITIVA_SURDEZ`, `VISUAL`, `INTELECTUAL`, `MULTIPLA` |
-| `/dominios/pessoas/tipos_documento` | `CPF`, `PASSAPORTE` |
-| `/dominios/reservas/situacoes` | `CRIADA`, `EM_ANDAMENTO`, `CONCLUIDA`, `NOSHOW`, `CANCELADA` |
-| `/dominios/fichas/situacoes` | `AGUARDANDO_CHECKIN`, `AGUARDANDO_CHECKOUT`, `CHECK_OUT_CONFIRMADO`, `INVALIDADA`, `NO_SHOW` |
+| `/dominios/fnrh/meios_transporte` | `ONIBUS` = Ônibus; `AUTOMOVEL` = Automóvel; `AVIAO` = Avião; `MOTO` = Moto; `NAVIO_BARCO` = Navio/Barco; `PE` = A pé; `TREM` = Trem; `BICICLETA` = Bicicleta |
+| `/dominios/fnrh/motivos_viagem` | `COMPRAS` = Compras; `CONGRESSO_FEIRA` = Congresso/Feira; `ESTUDOS_CURSOS` = Estudos/Cursos; `LAZER_FERIAS` = Lazer/Férias; `NEGOCIOS` = Negócios; `PARENTES_AMIGOS` = Parentes/Amigos; `RELIGIAO` = Religião; `SAUDE` = Saúde |
+| `/dominios/hospedes/situacoes` | `CANCELADO` = Cancelado; `CHECKIN_REALIZADO` = Check-in realizado; `CHECKOUT_REALIZADO` = Check-out realizado; `NOSHOW` = No-Show; `PRECHECKIN_NAOVINCULADO` = Pré-check-in não vinculado; `PRECHECKIN_PENDENTE` = Pré-check-in pendente; `PRECHECKIN_REALIZADO` = Pré-check-in realizado |
+| `/dominios/pessoas/generos` | `HOMEM` = Masculino; `MULHER` = Feminino; `OUTRO` = Outros; `NAOINFORMADO` = Prefiro não informar |
+| `/dominios/pessoas/opcao_deficiencia` | `SIM` = Sim; `NAO` = Não; `NAOINFORMAR` = Prefiro não informar |
+| `/dominios/pessoas/racas` | `AMARELA` = Amarelo; `BRANCA` = Branco; `INDIGENA` = Indígena; `PARDA` = Pardo; `PRETA` = Preto; `NAOINFORMAR` = Prefiro não informar |
+| `/dominios/pessoas/tipos_deficiencia` | `FISICA` = Deficiência Física; `AUDITIVA_SURDEZ` = Deficiência Auditiva/Surdez; `VISUAL` = Deficiência Visual; `INTELECTUAL` = Deficiência Intelectual; `MULTIPLA` = Deficiência Múltipla |
+| `/dominios/pessoas/tipos_documento` | `CPF` = CPF; `PASSAPORTE` = Passaporte |
+| `/dominios/reservas/situacoes` | `CRIADA` = Criada; `EM_ANDAMENTO` = Em Andamento; `CONCLUIDA` = Concluída; `CANCELADA` = Cancelada; `NOSHOW` = No-Show |
+| `/dominios/fichas/situacoes` | `AGUARDANDO_CHECKIN` = Aguardando Check-in; `AGUARDANDO_CHECKOUT` = Aguardando Check-out; `CHECK_OUT_CONFIRMADO` = Check-out confirmado; `INVALIDADA` = Invalidada; `NO_SHOW` = No show |
 
 - Países (`PaisNacionalidade_id`, `PaisResidencia_id`): ISO 3166-1 alpha-2 ("tabela de Países IBGE"); a API não tem endpoint de países. Valores fora do ISO dão `400`.
 - Municípios (`cidade_id`): código IBGE de 7 dígitos, cujos 2 primeiros são o código da UF; a API **não** tem endpoint de municípios. `estado_id` é a sigla da UF.
