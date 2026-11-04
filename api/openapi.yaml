@@ -16716,10 +16716,11 @@ components:
       properties:
         defaultRequesterCpf:
           type: string
-          description: "CPF, só os 11 dígitos."
+          description: "CPF: 11 dígitos; na entrada aceita a pontuação (`529.982.247-25`),\
+            \ na saída vem só com os dígitos."
           example: "52998224725"
           nullable: true
-          pattern: "^\\d{11}$"
+          pattern: "^(\\d{11}|\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2})$"
         enabled:
           type: boolean
           description: "Liga a integração; exige usuário, senha e CPF."

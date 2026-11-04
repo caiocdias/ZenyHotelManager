@@ -81,7 +81,7 @@ data class FnrhSettingsRequest(
     @field:Size(max = MAX_TEXT)
     @field:Pattern(regexp = ".*\\S.*")
     val password: String?,
-    @field:Schema(description = "CPF solicitante padrão, com ou sem pontuação.", example = "529.982.247-25")
+    @field:Schema(description = "CPF solicitante padrão, com ou sem pontuação.")
     val defaultRequesterCpf: Cpf?,
     @field:Schema(description = "Liga a integração; exige usuário, senha e CPF.")
     val enabled: Boolean,

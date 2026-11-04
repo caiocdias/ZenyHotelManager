@@ -10,6 +10,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -21,6 +22,9 @@ import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.PUT
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.put
 
 /**
  * A configuração da FNRH pela API (M5 E07): leitura e escrita só com `fnrh.settings.manage`, `If-Match`, senha que
@@ -32,6 +36,7 @@ import org.springframework.mock.web.MockHttpServletResponse
 class FnrhSettingsApiTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
+    @Autowired private val mockMvc: MockMvc,
 ) {
     private val path = "/api/v1/fnrh/settings"
     private val password = "s3cr3t-Pass-do-Serpro"
@@ -203,7 +208,7 @@ class FnrhSettingsApiTest(
         }
 
     @Test
-    fun `a receptionist and an anonymous caller cannot read or write`(): Unit =
+    fun `a receptionist is forbidden and an anonymous caller is unauthenticated`(): Unit =
         with(iam) {
             val receptionist =
                 iam.createUserWith(
@@ -215,6 +220,14 @@ class FnrhSettingsApiTest(
             call(GET, path, asTestUser(receptionist)).problem(403, "PERMISSION_DENIED")
             call(PUT, path, asTestUser(receptionist), fullBody, ifMatch = etag).problem(403, "PERMISSION_DENIED")
             etagOf() shouldBe etag
+            mockMvc
+                .get(path)
+                .andReturn()
+                .response.status shouldBe 401
+            mockMvc
+                .put(path)
+                .andReturn()
+                .response.status shouldBe 401
         }
 
     @Test
@@ -229,32 +242,44 @@ class FnrhSettingsApiTest(
         }
 
     @Test
-    fun `the audit trail records the change, including a password-only one, with no password nor CPF`(): Unit =
+    fun `the audit trail records the change, including password-only and user-only ones, with no secrets`(): Unit =
         with(iam) {
             val first = call(PUT, path, asAdmin(), fullBody, ifMatch = etagOf())
             first.ok()
             // Só a senha muda: ainda assim há uma entrada.
+            val second =
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    fullBody + ("password" to "outra-senha-secreta-123"),
+                    ifMatch = first.getHeader(HttpHeaders.ETAG),
+                )
+            second.ok()
+            // Só o usuário muda: também há uma entrada, sem o usuário antigo nem o novo.
             call(
                 PUT,
                 path,
                 asAdmin(),
-                fullBody + ("password" to "outra-senha-secreta-123"),
-                ifMatch = first.getHeader(HttpHeaders.ETAG),
+                (fullBody - "password") + ("username" to "conta-nova-777"),
+                ifMatch = second.getHeader(HttpHeaders.ETAG),
             ).ok()
 
             val entries = auditEntries()
 
-            entries.size shouldBe 2
+            entries.size shouldBe 3
             for (entry in entries) {
                 (entry.before.orEmpty() + entry.after.shouldNotBeNull()).let { text ->
                     text shouldNotContain password
                     text shouldNotContain "outra-senha-secreta-123"
+                    text shouldNotContain "hotel-user"
+                    text shouldNotContain "conta-nova-777"
+                    text shouldContain "usernameSet"
                     text shouldNotContain "52998224725"
                     text shouldNotContain cpf
                 }
             }
-            entries.last().before.shouldNotBeNull()
-            entries.last().before shouldNotBe entries.last().after
+            for (entry in entries) entry.before.shouldNotBeNull() shouldNotBe entry.after
         }
 
     private data class AuditRow(
@@ -266,7 +291,7 @@ class FnrhSettingsApiTest(
         jdbc
             .sql(
                 "SELECT CAST(before_state AS text) AS b, CAST(after_state AS text) AS a FROM audit.audit_entry " +
-                    "WHERE action = 'fnrh.settings.update' ORDER BY occurred_at DESC, id DESC LIMIT 2",
+                    "WHERE action = 'fnrh.settings.update' ORDER BY occurred_at DESC, id DESC LIMIT 3",
             ).query { rs, _ -> AuditRow(rs.getString("b"), rs.getString("a")) }
             .list()
             .reversed()

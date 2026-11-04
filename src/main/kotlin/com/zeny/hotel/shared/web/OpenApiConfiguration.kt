@@ -343,7 +343,12 @@ class OpenApiConfiguration {
                     ),
                 ).replaceWithSchema(
                     Cpf::class.java,
-                    StringSchema().description("CPF, só os 11 dígitos.").pattern("^\\d{11}$").example("52998224725"),
+                    StringSchema()
+                        .description(
+                            "CPF: 11 dígitos; na entrada aceita a pontuação (`529.982.247-25`), " +
+                                "na saída vem só com os dígitos.",
+                        ).pattern("^(\\d{11}|\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2})$")
+                        .example("52998224725"),
                 ).replaceWithSchema(
                     Cnpj::class.java,
                     StringSchema()
