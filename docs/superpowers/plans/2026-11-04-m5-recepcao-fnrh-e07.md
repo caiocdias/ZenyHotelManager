@@ -111,7 +111,7 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
 **Interfaces:**
 - Produces:
   - Na raiz: `enum class FnrhEnvironment { HOMOLOGATION, PRODUCTION }` e `FnrhPermissions`. A `FnrhPermissions` traz `SETTINGS_MANAGE = "fnrh.settings.manage"` (sem modelo), `DOMAINS_READ = "fnrh.domains.read"` (`MANAGER`, `RECEPTIONIST`) e `SUBMISSIONS_READ = "fnrh.submissions.read"` (`MANAGER`, `RECEPTIONIST`); nenhuma é sensível.
-  - `FnrhErrorCodes`: `FNRH_SETTINGS_INCOMPLETE`, `FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE`, `FNRH_REQUESTER_NOT_FOUND`, `FNRH_DOMAIN_NOT_FOUND`, `FNRH_NOT_CONFIGURED`, `FNRH_CREDENTIALS_REJECTED`, `FNRH_UNAVAILABLE`, `NOT_IN_DOMAIN` e `INCONSISTENT` (as Tasks 2 a 7 usam os seus).
+  - `FnrhErrorCodes` (códigos de problema): `FNRH_SETTINGS_INCOMPLETE`, `FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE`, `FNRH_REQUESTER_NOT_FOUND`, `FNRH_DOMAIN_NOT_FOUND`, `FNRH_NOT_CONFIGURED`, `FNRH_CREDENTIALS_REJECTED`, `FNRH_UNAVAILABLE` e `FNRH_REJECTED`. Separado deles, `FnrhFieldCodes` (códigos de campo): `NOT_IN_DOMAIN` e `INCONSISTENT`. Cada uma das Tasks 2 a 7 usa os seus.
   - `domain/FnrhSettings`: ambiente, usuário, senha, CPF padrão, ligado e versão. Operação `update(environment, username, password?, defaultCpf, enabled)`, que aplica estas regras:
     - `password` nula mantém a atual;
     - trocar de ambiente com `password` nula lança `FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE`;
@@ -246,7 +246,7 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
     | timeout de leitura em `POST`, `PUT` ou `PATCH` | `UNKNOWN_OUTCOME` |
     | integração sem configuração | `NOT_CONFIGURED`, sem chamada |
   - `interface FnrhIntegrationLog { fun record(call: FnrhCall) }`, com `data class FnrhCall(operation: String, environment: FnrhEnvironment, outcome: String, httpStatus: Int?, durationMs: Long, correlationRef: String?, remoteId: String?)`. O `outcome` é `SUCCESS` ou um nome de `FnrhFailure`. O adaptador chama o `record` uma vez por chamada HTTP.
-- Produces, em `infrastructure`: `object FnrhMessageSanitizer { fun sanitize(raw: String?, sentValues: Collection<String>): String? }`. Troca por `***` os valores enviados (só os de 3 caracteres ou mais), as sequências de 5 ou mais dígitos e os e-mails, e corta em 200 caracteres. A mensagem vem de `mensagem` no corpo JSON, quando existir, e o corpo bruto nunca é usado.
+- Produces, em `infrastructure`: `object FnrhMessageSanitizer { fun sanitize(raw: String?, sentValues: Collection<String>): String? }`. Troca por `***` os valores enviados (só os de 3 caracteres ou mais) e cada palavra deles com 3 ou mais letras, ignorando maiúsculas e acentos, porque o Serpro pode ecoar só "MARIA" ou "Maria da Luz". Troca também as sequências de 5 ou mais dígitos e os e-mails, e corta em 200 caracteres. A mensagem vem de `mensagem` no corpo JSON, quando existir, e o corpo bruto nunca é usado.
 
 - [ ] **Step 1: Testes que falham.**
   - Em `SerproFnrhGatewayTest`, um teste por operação, com o `FnrhTestServer`. Cada um confere método, caminho e `Authorization: Basic` com o usuário e a senha da conexão. Confere também que `cpf_solicitante` aparece **só** em `registerPerson` e está ausente nas demais, e confere o corpo exato e o id remoto mapeado:
@@ -324,14 +324,16 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
     - A web recebe o `{domain}` como `String` em kebab-case: `transport-modes`, `travel-reasons`, `guest-statuses`, `genders`, `disability-options`, `races`, `disability-types`, `document-types`, `booking-statuses` ou `record-statuses`.
     - A application converte. Um nome desconhecido dá `404 FNRH_DOMAIN_NOT_FOUND`.
   - `POST /api/v1/fnrh/domains/refresh` (`SETTINGS_MANAGE`):
-    - O serviço busca os 10 domínios **fora de transação**. Depois substitui tudo num método `@Audited @Transactional` curto, que só grava. Se qualquer busca falhar, nada muda.
-    - `NOT_CONFIGURED` → `422 FNRH_NOT_CONFIGURED`; `UNAUTHORIZED`/`FORBIDDEN` → `422 FNRH_CREDENTIALS_REJECTED`; as falhas temporárias → `503 FNRH_UNAVAILABLE`; `VALIDATION`/`NOT_FOUND` → `502 FNRH_UNAVAILABLE`.
+    - O `FnrhDomainsService`, sem transação, confere a permissão e busca os 10 domínios **fora de transação**. Depois chama **outro bean**, `application/FnrhDomainValuesWriter`, cujo método `@Audited @Transactional` só grava a substituição. A gravação fica num bean separado porque a autoinvocação na mesma classe pularia o proxy, e com ele a transação e a trilha. Se qualquer busca falhar, nada muda.
+    - `NOT_CONFIGURED` → `422 FNRH_NOT_CONFIGURED`; `UNAUTHORIZED`/`FORBIDDEN` → `422 FNRH_CREDENTIALS_REJECTED`; as falhas temporárias → `503 FNRH_UNAVAILABLE`; `VALIDATION`/`NOT_FOUND` → `502 FNRH_REJECTED`.
     - A resposta traz a contagem por domínio.
+  - A web nunca devolve `FnrhDomainValue` (domain): a application o mapeia para um tipo dela.
 - [ ] **Step 1: Testes que falham.**
   - Sem `refresh`, `GET …/transport-modes` devolve os 8 valores da semente, com os rótulos.
   - Com um valor novo no WireMock, o `refresh` faz o valor aparecer e remove um que sumiu.
   - Um `503` em um domínio deixa todos como estavam.
   - `refresh` sem configuração → `422`; com `401` → `422 FNRH_CREDENTIALS_REJECTED`.
+  - Um `refresh` bem-sucedido deixa uma entrada na trilha de auditoria. Isso prova que a gravação passou pelo proxy, com transação e `@Audited`.
   - A Recepcionista lê, e o `refresh` dela → `403`.
 - [ ] **Step 2: Rodar e ver falhar.** `./gradlew test --tests 'com.zeny.hotel.fnrh.*'` → FAIL.
 - [ ] **Step 3: Implementar.** Depois, `updateOpenApi` e README.
@@ -422,7 +424,11 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
   - `UNKNOWN_OUTCOME` se concilia por `findReservationByCode`;
   - a chamada ao Serpro roda fora da transação do banco;
   - `minors` sai da data de nascimento;
-  - o `performedBy` só pesa no `registerPerson`.
+  - o `performedBy` só pesa no `registerPerson`;
+  - `UNKNOWN_OUTCOME` no `addGuestToReservation` se concilia por `GET /reservas/{id}/hospedes`; no `registerPerson`, decidir entre aceitar o risco de pessoa duplicada e conciliar por `GET /pessoas/documento/…` (documento no caminho, com `cpf_solicitante`);
+  - o responsável (`responsavel_id` = id remoto do **hóspede** adulto) entra antes do menor; a E09 confirma se um responsável de outra `Reservation` do mesmo Booking é aceito;
+  - o `sanitizedMessage` só vai para a fila de pendências ou para coluna persistente depois do mesmo saneamento, e nunca para tabela *append-only*.
+- **Premissas a confirmar na E09:** o `POST /reservas/{id}/hospedes` aceita `CHECKIN_REALIZADO` numa reserva `CRIADA`; o filtro `codigo_reserva` casa com `numero_reserva`.
 - **Captura do brain:** nota nova `ZenyHotelManager - Módulo fnrh`; as permissões novas na nota de segurança.
 - **Documentação:**
   - na `docs/ARCHITECTURE.md` §12, a linha da FNRH diz "header `cpf_solicitante`"; deve dizer "só nas operações de pessoa e de hospedagem completa";
