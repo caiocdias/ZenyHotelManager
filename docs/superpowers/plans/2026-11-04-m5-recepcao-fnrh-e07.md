@@ -311,7 +311,7 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
 ### Task 6: Domínios oficiais com cache
 
 **Files:**
-- Create: `fnrh/domain/FnrhDomainCatalog.kt` (interface), `fnrh/application/FnrhDomainsService.kt`, persistência e implementação do catálogo em `fnrh/infrastructure/`, `fnrh/web/FnrhDomainsController.kt`
+- Create: `fnrh/domain/FnrhDomainCatalog.kt` (interface), `fnrh/application/FnrhDomainsService.kt`, `fnrh/application/FnrhDomainValuesWriter.kt`, persistência e implementação do catálogo em `fnrh/infrastructure/`, `fnrh/web/FnrhDomainsController.kt`
 - Create: `db/migration/fnrh/V2026_11_04_1030__create_fnrh_domain_values.sql`, com `fnrh.domain_value (domain, code, label, refreshed_at)`, chave `(domain, code)`, e a semente com **todos os `id` e `label` da tabela "Domínios" de `docs/fnrh/api-fnrh-v2.4.md`**
 - Modify: `api/openapi.yaml`, `README.md`
 - Test: `fnrh/FnrhDomainsApiTest.kt`
@@ -434,3 +434,25 @@ Tomadas pela opção recomendada em nome do usuário (delegado ao orquestrador, 
   - na `docs/ARCHITECTURE.md` §12, a linha da FNRH diz "header `cpf_solicitante`"; deve dizer "só nas operações de pessoa e de hospedagem completa";
   - na §16, confira o "painel de saúde";
   - na seção da E07 no roadmap, o objetivo e o primeiro critério supõem `cpf_solicitante` em toda operação: registre a correção no handoff.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas.
+- **Rodadas:** 2.
+  - A revisão inicial bloqueou com 1 Crítico e 8 Importantes:
+    - C1: tipos em camadas proibidas pelo `LayerRules`;
+    - I1: verificação de cada tarefa sem os testes de convenção;
+    - I2: registro em `REQUIRES_NEW` e refresh com HTTP dentro de transação;
+    - I3: fluxo de registro "reserva antes da chegada" sem decisão;
+    - I4: resultado incerto e idempotência das escritas;
+    - I5: código da reserva confundido com o do `Booking`;
+    - I6: gênero `OUTRO` sem descrição;
+    - I7: rótulos da semente fora do repositório;
+    - I8: texto livre com nome em tabela *append-only*.
+  - A rodada 1 resolveu todos e abriu o I-N1: autoinvocação no refresh, que pularia a transação e a trilha.
+  - A rodada 2 resolveu o I-N1.
+- **Modelo:** `revisor-arquitetura` no modelo mais capaz disponível (opus).
+- **Notas Menores:**
+  - Aplicadas no plano: M1 a M14 da revisão inicial (D-E07-9 a 12, apoio de testes, milissegundos, no-show fora, tabela de erros, permissão sem modelo, proveniência do IBGE, `REVOKE` e linha semente, ambiente no registro, códigos de campo, porta do log antecipada, Task 1 dividida, exceção sem causa); M-N3 a M-N5 da rodada 1; o arquivo `FnrhDomainValuesWriter.kt` na lista da Task 6 (rodada 2).
+  - Levadas às "Notas para o fechamento": M-N1 e M-N2 da rodada 1.
+- **Não verificado pelo revisor** (sem Bash e sem o PDF): build e testes; os rótulos contra o PDF; as premissas do Serpro real, que ficam para a E09.
