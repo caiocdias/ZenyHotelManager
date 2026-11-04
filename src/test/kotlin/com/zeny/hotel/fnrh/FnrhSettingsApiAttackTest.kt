@@ -8,6 +8,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldMatch
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -236,6 +237,7 @@ class FnrhSettingsApiAttackTest(
     @Test
     fun `no request, accepted or refused, writes the password or the CPF to the logs`(output: CapturedOutput): Unit =
         with(iam) {
+            val logStart = output.all.length
             val first = call(PUT, path, asAdmin(), fullBody, ifMatch = etagOf())
             first.ok()
             val etag = first.getHeader(HttpHeaders.ETAG).shouldNotBeNull()
@@ -248,7 +250,7 @@ class FnrhSettingsApiAttackTest(
             call(PUT, path, asAdmin(), fullBody + ("password" to "   "), ifMatch = etag).status shouldBe 400
             call(GET, path, asAdmin()).ok()
 
-            val logs = output.all
+            val logs = output.all.substring(logStart)
             logs shouldNotContain password
             logs shouldNotContain other
             logs shouldNotContain "52998224725"
@@ -297,6 +299,91 @@ class FnrhSettingsApiAttackTest(
                 (statuses.last() in listOf(409, 412)) shouldBe true
             } finally {
                 pool.shutdownNow()
+            }
+        }
+
+    @Test
+    fun `the audit trail never holds the username, in any transition, and flags it with usernameSet`(): Unit =
+        with(iam) {
+            val first = call(PUT, path, asAdmin(), fullBody, ifMatch = etagOf())
+            first.ok()
+            val second =
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    (fullBody - "password") + ("username" to "outro-user-marcador"),
+                    ifMatch = first.getHeader(HttpHeaders.ETAG),
+                )
+            second.ok()
+            val third =
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    mapOf("environment" to "HOMOLOGATION", "username" to null, "enabled" to false),
+                    ifMatch = second.getHeader(HttpHeaders.ETAG),
+                )
+            third.ok()
+
+            val rows =
+                jdbc
+                    .sql(
+                        "SELECT CAST(before_state AS text), CAST(after_state AS text) FROM audit.audit_entry " +
+                            "WHERE action = 'fnrh.settings.update' ORDER BY occurred_at DESC, id DESC LIMIT 3",
+                    ).query { rs, _ -> listOf(rs.getString(1), rs.getString(2)) }
+                    .list()
+                    .reversed()
+
+            rows.size shouldBe 3
+            for (text in rows.flatten().filterNotNull()) {
+                text shouldNotContain "hotel-user"
+                text shouldNotContain "outro-user-marcador"
+                text shouldNotContain "\"username\""
+            }
+            rows[0][1].shouldNotBeNull() shouldMatch Regex(""".*"usernameSet": ?true.*""")
+            rows[2][1].shouldNotBeNull() shouldMatch Regex(""".*"usernameSet": ?false.*""")
+        }
+
+    @Test
+    fun `the CPF pattern in the published contract matches exactly what the server accepts`(): Unit =
+        with(iam) {
+            val lines =
+                java.nio.file.Files
+                    .readAllLines(
+                        java.nio.file.Path
+                            .of("api/openapi.yaml"),
+                    )
+            val schemaStart = lines.indexOfFirst { it.trim() == "FnrhSettingsRequest:" }
+            val cpfStart = (schemaStart until lines.size).first { lines[it].trim() == "defaultRequesterCpf:" }
+            val raw =
+                lines
+                    .drop(cpfStart)
+                    .first { it.trim().startsWith("pattern:") }
+                    .substringAfter("pattern:")
+                    .trim()
+                    .removeSurrounding("\"")
+                    .replace("\\\\", "\\")
+            val contract = Regex(raw)
+
+            val samples =
+                listOf(
+                    "52998224725",
+                    "529.982.247-25",
+                    "529.98224725",
+                    "529982.247-25",
+                    "529.982.24725",
+                    "529-982-247.25",
+                    "5299822472",
+                    "529.982.247-2",
+                    "abc",
+                )
+            for (sample in samples) {
+                val etag = etagOf()
+                val status =
+                    call(PUT, path, asAdmin(), fullBody + ("defaultRequesterCpf" to sample), ifMatch = etag).status
+                // Todos os exemplos têm dígitos verificadores válidos quando bem formados; só o formato decide.
+                (status == 200) shouldBe contract.matches(sample)
             }
         }
 
