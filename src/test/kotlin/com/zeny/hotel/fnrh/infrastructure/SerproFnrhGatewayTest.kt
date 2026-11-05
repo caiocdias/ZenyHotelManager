@@ -44,7 +44,17 @@ class SerproFnrhGatewayTest {
     private val requesterCpf = Cpf.of("52998224725")
     private val calls = mutableListOf<FnrhCall>()
     private var connection: FnrhConnection? = connectionTo(FnrhTestServer.baseUrl)
+
+    /** Prazo largo para os casos felizes e de erro de status: um prazo curto daria falha intermitente em CI. */
     private val gateway =
+        SerproFnrhGateway(
+            FnrhProperties(connectTimeout = Duration.ofSeconds(2), readTimeout = Duration.ofSeconds(10)),
+            { connection },
+            { calls += it },
+        )
+
+    /** Só para os testes de timeout de leitura (100 ms contra um atraso de 300 ms). */
+    private val shortTimeoutGateway =
         SerproFnrhGateway(
             FnrhProperties(connectTimeout = Duration.ofSeconds(2), readTimeout = Duration.ofMillis(100)),
             { connection },
@@ -440,7 +450,7 @@ class SerproFnrhGatewayTest {
     fun `a read timeout on a POST is UNKNOWN_OUTCOME, since the server may have written`() {
         FnrhTestServer.stubAny(200, """{"reserva":{"reserva_id":"r"}}""", delayMs = 300)
 
-        val e = failureOf { gateway.registerReservation(reservation, "corr-1") }
+        val e = failureOf { shortTimeoutGateway.registerReservation(reservation, "corr-1") }
 
         e.failure shouldBe FnrhFailure.UNKNOWN_OUTCOME
         e.httpStatus.shouldBeNull()
@@ -453,15 +463,20 @@ class SerproFnrhGatewayTest {
     fun `a read timeout on a PATCH is UNKNOWN_OUTCOME`() {
         FnrhTestServer.stubAny(200, "{}", delayMs = 300)
 
-        failureOf { gateway.checkOut(FnrhRemoteId("hos-uuid-1"), Instant.parse("2026-02-15T11:00:00Z"), "corr-1") }
-            .failure shouldBe FnrhFailure.UNKNOWN_OUTCOME
+        failureOf {
+            shortTimeoutGateway.checkOut(
+                FnrhRemoteId("hos-uuid-1"),
+                Instant.parse("2026-02-15T11:00:00Z"),
+                "corr-1",
+            )
+        }.failure shouldBe FnrhFailure.UNKNOWN_OUTCOME
     }
 
     @Test
     fun `a read timeout on a GET is UNAVAILABLE`() {
         FnrhTestServer.stubAny(200, """{"dados":[]}""", delayMs = 300)
 
-        val e = failureOf { gateway.findReservationByCode("RES-2026-0001", "corr-1") }
+        val e = failureOf { shortTimeoutGateway.findReservationByCode("RES-2026-0001", "corr-1") }
 
         e.failure shouldBe FnrhFailure.UNAVAILABLE
         e.shouldHaveNoCause()
