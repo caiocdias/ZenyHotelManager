@@ -227,8 +227,16 @@ class SerproFnrhGatewayAttackTest {
     @Test
     fun `an unresolvable host is UNAVAILABLE even on a write`() {
         connection = connectionTo("http://host-que-nao-existe.invalid/FNRH_API/rest/v2")
+        // O readTimeout vira o timeout da requisição inteira, DNS incluído: com 100 ms um DNS lento viraria
+        // UNKNOWN_OUTCOME. Aqui o prazo é folgado para o teste medir a recusa do nome, não a latência do ambiente.
+        val patient =
+            SerproFnrhGateway(
+                FnrhProperties(connectTimeout = Duration.ofSeconds(2), readTimeout = Duration.ofSeconds(10)),
+                { connection },
+                { calls += it },
+            )
 
-        val e = shouldThrow<FnrhGatewayException> { gateway.registerReservation(reservation, "c") }
+        val e = shouldThrow<FnrhGatewayException> { patient.registerReservation(reservation, "c") }
 
         e.failure shouldBe FnrhFailure.UNAVAILABLE
         e.shouldBeClean()
