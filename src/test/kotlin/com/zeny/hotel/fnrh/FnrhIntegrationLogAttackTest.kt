@@ -278,7 +278,11 @@ class FnrhIntegrationLogAttackTest(
                 .get("/actuator/prometheus")
                 .andReturn()
                 .response.contentAsString
-        val line = prometheus.lines().first { it.startsWith("zeny_fnrh_calls_total") && "FORBIDDEN" in it }
+        val line =
+            prometheus.lines().first {
+                it.startsWith("zeny_fnrh_calls_total") && "FORBIDDEN" in it &&
+                    "registerPerson" in it
+            }
         listOf("operation=\"registerPerson\"", "outcome=\"FORBIDDEN\"", "environment=\"HOMOLOGATION\"").forEach {
             line shouldContain it
         }

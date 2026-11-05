@@ -475,6 +475,163 @@ class FnrhDomainsAttackTest(
             }
         }
 
+    // ---- ataques à correção 1 (validação e serialização)
+
+    @Test
+    fun `code length limits are exactly 40 accepted and 41 refused`(): Unit =
+        with(iam) {
+            stubAll("NOVO" to "Valor novo")
+            stubRaw(FnrhDomain.GENDERS, "A".repeat(40) to "Quarenta")
+            call(POST, refreshPath, asAdmin()).ok()
+            call(GET, "/api/v1/fnrh/domains/genders", asAdmin())
+                .ok()
+                .single()["code"]
+                .asString()
+                .length shouldBe 40
+
+            val stored = rows()
+            stubRaw(FnrhDomain.GENDERS, "A".repeat(41) to "Quarenta e um")
+            call(POST, refreshPath, asAdmin()).problem(502, "FNRH_REJECTED")
+            rows() shouldContainExactly stored
+        }
+
+    @Test
+    fun `label length limits are exactly 255 accepted and 256 refused`(): Unit =
+        with(iam) {
+            stubAll("NOVO" to "Valor novo")
+            stubRaw(FnrhDomain.GENDERS, "NOVO" to "L".repeat(255))
+            call(POST, refreshPath, asAdmin()).ok()
+            call(GET, "/api/v1/fnrh/domains/genders", asAdmin())
+                .ok()
+                .single()["label"]
+                .asString()
+                .length shouldBe 255
+
+            val stored = rows()
+            stubRaw(FnrhDomain.GENDERS, "NOVO" to "L".repeat(256))
+            call(POST, refreshPath, asAdmin()).problem(502, "FNRH_REJECTED")
+            rows() shouldContainExactly stored
+        }
+
+    @Test
+    fun `a label of 255 characters plus edge spaces is trimmed to 255 and accepted`(): Unit =
+        with(iam) {
+            stubAll("NOVO" to "Valor novo")
+            stubRaw(FnrhDomain.GENDERS, "NOVO" to "  " + "L".repeat(255) + "  ")
+
+            call(POST, refreshPath, asAdmin()).ok()
+
+            call(GET, "/api/v1/fnrh/domains/genders", asAdmin()).ok().single()["label"].asString() shouldBe
+                "L".repeat(255)
+        }
+
+    @Test
+    fun `U+0085, an inner tab, a blank label and a tab-only label are refused with nothing changed`(): Unit =
+        with(iam) {
+            val before = refreshEntries()
+            for (label in listOf("a\u0085b", "\u0085", "a\tb", "   ", "\t", "", "  ")) {
+                stubAll("NOVO" to "Valor novo")
+                stubRaw(FnrhDomain.GENDERS, "NOVO" to label)
+
+                val response = call(POST, refreshPath, asAdmin())
+
+                withClue("rótulo ${label.map { it.code }}: ${response.getContentAsString(Charsets.UTF_8)}") {
+                    response.status shouldBe 502
+                    json(response)["code"].asString() shouldBe "FNRH_REJECTED"
+                }
+                rows() shouldContainExactly seed
+            }
+            refreshEntries() shouldBe before
+        }
+
+    @Test
+    fun `edge tabs and spaces around a good label are trimmed, not refused`(): Unit =
+        with(iam) {
+            stubAll("NOVO" to "Valor novo")
+            stubRaw(FnrhDomain.GENDERS, "NOVO" to "\t Bom valor \t")
+
+            call(POST, refreshPath, asAdmin()).ok()
+
+            call(GET, "/api/v1/fnrh/domains/genders", asAdmin()).ok().single()["label"].asString() shouldBe "Bom valor"
+        }
+
+    @Test
+    fun `lowercase, accented, spaced or empty codes are refused`(): Unit =
+        with(iam) {
+            for (code in listOf("abc", "AÇÃO", "A B", "A-B", "", "A\u0000")) {
+                stubAll("NOVO" to "Valor novo")
+                stubRaw(FnrhDomain.RACES, code to "x")
+
+                val response = call(POST, refreshPath, asAdmin())
+
+                withClue("código '${code.map { it.code }}': ${response.getContentAsString(Charsets.UTF_8)}") {
+                    response.status shouldBe 502
+                }
+                rows() shouldContainExactly seed
+            }
+        }
+
+    @Test
+    fun `one bad value among many refuses every domain, not only its own`(): Unit =
+        with(iam) {
+            stubAll("NOVO" to "Valor novo")
+            stubRaw(FnrhDomain.RESERVATION_STATUSES, "BOM" to "Bom", "ruim" to "Ruim")
+
+            call(POST, refreshPath, asAdmin()).problem(502, "FNRH_REJECTED")
+
+            rows() shouldContainExactly seed
+        }
+
+    @Test
+    fun `heavy concurrent refreshes all succeed and end with one coherent write`() {
+        stubAll("NOVO" to "Valor novo", "OUTRO" to "Outro valor")
+        val before = refreshEntries()
+        val threads = 12
+        val pool = Executors.newFixedThreadPool(threads)
+        val ready = CountDownLatch(threads)
+        val go = CountDownLatch(1)
+        try {
+            val futures =
+                (1..threads).map {
+                    pool.submit<MockHttpServletResponse> {
+                        ready.countDown()
+                        go.await()
+                        iam.call(POST, refreshPath, iam.asAdmin())
+                    }
+                }
+            ready.await()
+            go.countDown()
+            val statuses = futures.map { it.get(120, TimeUnit.SECONDS) }.map { it.status }
+            withClue(statuses.toString()) { statuses.all { it == 200 } shouldBe true }
+        } finally {
+            pool.shutdownNow()
+        }
+        val final = rows()
+        final.map { it.domain to it.code }.distinct().size shouldBe final.size
+        final.groupBy { it.domain }.values.all { it.size == 2 } shouldBe true
+        final.groupBy { it.domain }.size shouldBe SURVEY.size
+        jdbc.sql("SELECT count(DISTINCT refreshed_at) FROM fnrh.domain_value").query(Int::class.java).single() shouldBe
+            1
+        refreshEntries() shouldBe before + threads
+    }
+
+    @Test
+    fun `a refresh waiting on the lock reads a settled cache while another one runs`() {
+        stubAll("NOVO" to "Valor novo", "OUTRO" to "Outro valor")
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val refresh = pool.submit<MockHttpServletResponse> { iam.call(POST, refreshPath, iam.asAdmin()) }
+            // leituras durante o refresh nunca veem o cache pela metade (10 domínios, sempre completos)
+            repeat(30) { _ ->
+                val sizes = rows().groupBy { it.domain }.mapValues { it.value.size }
+                withClue(sizes.toString()) { sizes.keys.size shouldBe SURVEY.size }
+            }
+            refresh.get(60, TimeUnit.SECONDS).status shouldBe 200
+        } finally {
+            pool.shutdownNow()
+        }
+    }
+
     // ---- apoio
 
     private fun def(code: String) = FnrhPermissions.permissions.single { it.code.value == code }
