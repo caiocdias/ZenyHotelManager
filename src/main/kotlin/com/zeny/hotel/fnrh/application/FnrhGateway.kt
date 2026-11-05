@@ -28,13 +28,16 @@ enum class FnrhFailure(
     FORBIDDEN(false),
     NOT_FOUND(false),
 
-    /** `429`, `3xx`, `5xx` ou resposta ilegível. */
+    /** `429`, `3xx`, `5xx`, ou 2xx sem o esperado numa leitura. */
     SERVER_ERROR(true),
 
     /** Conexão recusada ou esgotada, ou leitura esgotada num `GET`: o Serpro não gravou nada. */
     UNAVAILABLE(true),
 
-    /** A leitura de um `POST`/`PUT`/`PATCH` esgotou: não se sabe se o Serpro gravou. Concilie antes de repetir. */
+    /**
+     * Numa escrita (`POST`/`PUT`/`PATCH`), a leitura esgotou ou o Serpro respondeu 2xx sem o id esperado: não se sabe
+     * se ele gravou. Concilie antes de repetir.
+     */
     UNKNOWN_OUTCOME(true),
 }
 

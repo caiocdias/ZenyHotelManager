@@ -77,7 +77,7 @@ class FnrhSettings private constructor(
             )
         }
         val newUsername = username?.trim()?.ifEmpty { null }
-        require(newUsername == null || ':' !in newUsername) { "O usuário da FNRH não pode ter ':' (RFC 7617)." }
+        requireValidUsername(newUsername)
         val newPassword = password ?: this.password
         val complete = newUsername != null && !newPassword.isNullOrEmpty() && defaultCpf != null
         if (enabled && !complete) {
@@ -91,6 +91,15 @@ class FnrhSettings private constructor(
         this.password = newPassword
         this.encodedDefaultCpf = defaultCpf?.digits
         this.enabled = enabled
+    }
+
+    private fun requireValidUsername(username: String?) {
+        if (username != null && ':' in username) {
+            throw BusinessRuleException(
+                FnrhErrorCodes.FNRH_USERNAME_INVALID,
+                "O usuário da FNRH não pode conter dois-pontos.",
+            )
+        }
     }
 
     override fun toString(): String = "FnrhSettings(environment=$environment, enabled=$enabled)"

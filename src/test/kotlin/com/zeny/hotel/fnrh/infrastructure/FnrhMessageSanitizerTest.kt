@@ -67,6 +67,22 @@ class FnrhMessageSanitizerTest {
     }
 
     @Test
+    fun `a hyphenated name is split into words, so an echo of one part is masked`() {
+        val out = FnrhMessageSanitizer.sanitize("Nome PIERRE invalido", listOf("Jean-Pierre"))!!
+
+        out shouldBe "Nome *** invalido"
+    }
+
+    @Test
+    fun `a very long message without an at sign is processed within a bounded time`() {
+        val started = System.nanoTime()
+
+        FnrhMessageSanitizer.sanitize("a".repeat(1 shl 20), emptyList())!!.length shouldBe 200
+
+        ((System.nanoTime() - started) / 1_000_000 < 2_000) shouldBe true
+    }
+
+    @Test
     fun `the message is cut at 200 characters`() {
         val out = FnrhMessageSanitizer.sanitize("a".repeat(500), emptyList())!!
 

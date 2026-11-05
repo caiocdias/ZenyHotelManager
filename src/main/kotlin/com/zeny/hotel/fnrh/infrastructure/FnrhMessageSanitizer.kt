@@ -19,10 +19,11 @@ object FnrhMessageSanitizer {
     private const val MASK = "***"
     private const val MIN_VALUE_LENGTH = 3
     private const val MIN_WORD_LETTERS = 3
+    private const val INPUT_FACTOR = 5
     private val EMAIL = Regex("""[\p{L}\p{N}_.+%-]+@[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+""")
     private val FORMATTED_TAX_ID = Regex("""\d{2,3}\.\d{3}\.\d{3}[-/]\d{2,4}(-\d{2})?""")
     private val LONG_DIGITS = Regex("""\d{5,}""")
-    private val WHITESPACE = Regex("""\s+""")
+    private val WORD_SEPARATOR = Regex("""[^\p{L}\p{N}]+""")
     private val DIGIT_GROUP = Regex("""\d{4,}""")
 
     fun sanitize(
@@ -30,7 +31,8 @@ object FnrhMessageSanitizer {
         sentValues: Collection<String>,
     ): String? {
         if (raw.isNullOrBlank()) return null
-        val masked = maskSentValues(raw, sentValues)
+        // Limita o trabalho das regex: a mensagem pode ter até 1 MiB e o resultado é cortado em MAX_LENGTH.
+        val masked = maskSentValues(raw.take(MAX_LENGTH * INPUT_FACTOR), sentValues)
         return masked
             .replace(EMAIL, MASK)
             .replace(FORMATTED_TAX_ID, MASK)
@@ -46,7 +48,7 @@ object FnrhMessageSanitizer {
             sentValues
                 .flatMap { value ->
                     listOf(value) +
-                        value.split(WHITESPACE).filter { it.count(Char::isLetter) >= MIN_WORD_LETTERS } +
+                        value.split(WORD_SEPARATOR).filter { it.count(Char::isLetter) >= MIN_WORD_LETTERS } +
                         DIGIT_GROUP.findAll(value).map { it.value }
                 }.map { fold(it.trim()) }
                 .filter { it.length >= MIN_VALUE_LENGTH }

@@ -1,6 +1,8 @@
 package com.zeny.hotel.fnrh.domain
 
 import com.zeny.hotel.fnrh.FnrhEnvironment
+import com.zeny.hotel.fnrh.FnrhErrorCodes
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.Cpf
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.shouldBe
@@ -12,10 +14,18 @@ class FnrhSettingsUsernameTest {
     fun `a username with a colon is refused and nothing changes`() {
         val settings = FnrhSettings.initial()
 
-        shouldThrow<IllegalArgumentException> {
-            settings.update(FnrhEnvironment.HOMOLOGATION, "dom:user", "secret", Cpf.of("52998224725"), enabled = true)
-        }
+        val e =
+            shouldThrow<BusinessRuleException> {
+                settings.update(
+                    FnrhEnvironment.HOMOLOGATION,
+                    "dom:user",
+                    "secret",
+                    Cpf.of("52998224725"),
+                    enabled = true,
+                )
+            }
 
+        e.code shouldBe FnrhErrorCodes.FNRH_USERNAME_INVALID
         settings.username shouldBe null
         settings.enabled shouldBe false
     }

@@ -12,6 +12,9 @@ object FnrhErrorCodes {
     /** 422: trocar de ambiente exige informar a senha de novo (a credencial de um ambiente não vai para o outro). */
     val FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE = ErrorCode("FNRH_PASSWORD_REQUIRED_FOR_ENVIRONMENT_CHANGE")
 
+    /** 422: o usuário da FNRH não pode ter dois-pontos (RFC 7617, Basic Auth). */
+    val FNRH_USERNAME_INVALID = ErrorCode("FNRH_USERNAME_INVALID")
+
     /** 404: o CPF solicitante pedido não existe para o usuário. */
     val FNRH_REQUESTER_NOT_FOUND = ErrorCode("FNRH_REQUESTER_NOT_FOUND")
 

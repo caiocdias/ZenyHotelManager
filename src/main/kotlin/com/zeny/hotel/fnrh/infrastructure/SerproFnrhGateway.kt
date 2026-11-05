@@ -1,7 +1,5 @@
 package com.zeny.hotel.fnrh.infrastructure
 
-import com.fasterxml.jackson.annotation.JsonInclude
-import com.fasterxml.jackson.annotation.JsonProperty
 import com.zeny.hotel.fnrh.application.FnrhCall
 import com.zeny.hotel.fnrh.application.FnrhConnection
 import com.zeny.hotel.fnrh.application.FnrhConnectionSource
@@ -10,11 +8,9 @@ import com.zeny.hotel.fnrh.application.FnrhGateway
 import com.zeny.hotel.fnrh.application.FnrhGatewayException
 import com.zeny.hotel.fnrh.application.FnrhIntegrationLog
 import com.zeny.hotel.fnrh.application.FnrhReservationRegistered
-import com.zeny.hotel.fnrh.domain.FnrhDocumentType
 import com.zeny.hotel.fnrh.domain.FnrhDomain
 import com.zeny.hotel.fnrh.domain.FnrhDomainValue
 import com.zeny.hotel.fnrh.domain.FnrhGuest
-import com.zeny.hotel.fnrh.domain.FnrhGuestStatus
 import com.zeny.hotel.fnrh.domain.FnrhPersonData
 import com.zeny.hotel.fnrh.domain.FnrhRemoteId
 import com.zeny.hotel.fnrh.domain.FnrhReservationData
@@ -26,20 +22,10 @@ import org.springframework.http.MediaType
 import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
-import org.springframework.web.util.UriUtils
-import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
-import tools.jackson.databind.json.JsonMapper
-import java.net.ConnectException
 import java.net.URI
-import java.net.URLEncoder
-import java.net.UnknownHostException
 import java.net.http.HttpClient
-import java.net.http.HttpConnectTimeoutException
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 
 /**
  * O adaptador da FNRH do Serpro (API v2.4, `docs/fnrh/api-fnrh-v2.4.md`), no modelo do `FcmPushGateway`: um
@@ -122,8 +108,17 @@ class SerproFnrhGateway(
             query = listOf("page_number" to "1", "codigo_reserva" to reservationCode),
             sentValues = listOf(reservationCode),
             remoteIdOf = { it.firstOrNull() },
-        ) { tree -> tree?.get("dados")?.takeIf { it.isArray }?.mapNotNull { it.text("reserva_id") } }
-            .firstOrNull()
+        ) { tree ->
+            // Quando o item traz numero_reserva, só vale o do código pedido ("RES-1" não é "RES-10").
+            tree?.get("dados")?.takeIf { it.isArray }?.mapNotNull { item ->
+                item.text("reserva_id")?.takeIf {
+                    item.text("numero_reserva").let { n ->
+                        n == null ||
+                            n == reservationCode
+                    }
+                }
+            }
+        }.firstOrNull()
             ?.let(::FnrhRemoteId)
 
     override fun registerPerson(
@@ -146,7 +141,7 @@ class SerproFnrhGateway(
                     person.email,
                     person.phone,
                     requesterCpf.digits,
-                ),
+                ) + personSensitiveValues(person),
             remoteIdOf = { it.value },
         ) { tree -> tree?.text("pessoa_id")?.let(::FnrhRemoteId) }
 
@@ -192,16 +187,11 @@ class SerproFnrhGateway(
 
     // ---- a chamada HTTP
 
-    private class Reply(
-        val status: Int,
-        val body: ByteArray,
-    )
-
     /**
      * Faz uma chamada: [parse] extrai o resultado do JSON da resposta (`null` se ele não traz o que devia), e
      * [remoteIdOf] ou [knownRemoteId] dão a referência remota que vai ao registro.
      */
-    @Suppress("LongParameterList", "ThrowsCount", "SwallowedException", "TooGenericExceptionCaught")
+    @Suppress("LongParameterList", "ThrowsCount")
     private fun <T : Any> call(
         operation: String,
         correlationRef: String?,
@@ -241,19 +231,11 @@ class SerproFnrhGateway(
         if (':' in connection.username) fail(FnrhFailure.UNAUTHORIZED, null, null)
         // Montar a URL é antes do envio: se falhar, nada saiu (UNAVAILABLE), nunca UNKNOWN_OUTCOME.
         val uri =
-            try {
-                requestUri(connection.baseUrl, segments, query)
-            } catch (e: RuntimeException) {
-                log.warn("FNRH {}: montagem da requisição falhou ({})", operation, e.javaClass.simpleName)
-                fail(FnrhFailure.UNAVAILABLE, null, null)
-            }
+            uriOrNull(log, operation, connection.baseUrl, segments, query) ?: fail(FnrhFailure.UNAVAILABLE, null, null)
         val reply =
-            try {
-                send(connection, method, uri, body, headers)
-            } catch (e: RuntimeException) {
-                // Só a classe vai ao log, nunca a mensagem nem a causa (podem trazer o corpo da resposta).
-                log.warn("FNRH {}: falha no envio ({})", operation, e.javaClass.simpleName)
-                fail(sendFailure(e, write), null, null)
+            when (val sent = trySend(log, operation) { send(connection, method, uri, body, headers) }) {
+                is Sent.Done -> sent.reply
+                is Sent.Failed -> fail(sendFailure(sent.error, write), null, null)
             }
         val tree = readTree(reply.body)
         if (reply.status !in HTTP_OK_RANGE) {
@@ -302,17 +284,19 @@ class SerproFnrhGateway(
         startedNanos: Long,
         correlationRef: String?,
         remoteId: String?,
-    ) = integrationLog.record(
-        FnrhCall(
-            operation = operation,
-            environment = connection.environment,
-            outcome = outcome,
-            httpStatus = status,
-            durationMs = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI,
-            correlationRef = correlationRef,
-            remoteId = remoteId,
-        ),
-    )
+    ) {
+        val call =
+            FnrhCall(
+                operation = operation,
+                environment = connection.environment,
+                outcome = outcome,
+                httpStatus = status,
+                durationMs = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI,
+                correlationRef = correlationRef,
+                remoteId = remoteId,
+            )
+        recordSafely(log, integrationLog, operation, call)
+    }
 
     private companion object {
         val log: Logger = LoggerFactory.getLogger(SerproFnrhGateway::class.java)
