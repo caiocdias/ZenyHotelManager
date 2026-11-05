@@ -217,17 +217,30 @@ class SerproFnrhGatewayTest {
     }
 
     @Test
-    fun `findReservationByCode returns the first reserva_id`() {
+    fun `findReservationByCode maps reserva_id of the item whose numero_reserva is the code`() {
+        FnrhTestServer.stub(
+            "/reservas?page_number=1&codigo_reserva=RES-2026-0001",
+            body =
+                """{"dados":[{"reserva_id":"res-a","numero_reserva":"RES-2026-0010"},""" +
+                    """{"reserva_id":"res-b","numero_reserva":"RES-2026-0001"}],"pagination":{"TotalRegistros":2}}""",
+        )
+
+        gateway.findReservationByCode("RES-2026-0001", "corr-1") shouldBe FnrhRemoteId("res-b")
+
+        val request = FnrhTestServer.onlyRequest()
+        request.expectCall("GET", "/reservas?page_number=1&codigo_reserva=RES-2026-0001")
+        request.requesterHeader().shouldBeNull()
+    }
+
+    @Test
+    fun `findReservationByCode with two items without numero_reserva is an unknown outcome, none is picked`() {
         FnrhTestServer.stub(
             "/reservas?page_number=1&codigo_reserva=RES-2026-0001",
             body = """{"dados":[{"reserva_id":"res-a"},{"reserva_id":"res-b"}],"pagination":{"TotalRegistros":2}}""",
         )
 
-        gateway.findReservationByCode("RES-2026-0001", "corr-1") shouldBe FnrhRemoteId("res-a")
-
-        val request = FnrhTestServer.onlyRequest()
-        request.expectCall("GET", "/reservas?page_number=1&codigo_reserva=RES-2026-0001")
-        request.requesterHeader().shouldBeNull()
+        shouldThrow<FnrhGatewayException> { gateway.findReservationByCode("RES-2026-0001", "corr-1") }.failure shouldBe
+            FnrhFailure.UNKNOWN_OUTCOME
     }
 
     @Test
