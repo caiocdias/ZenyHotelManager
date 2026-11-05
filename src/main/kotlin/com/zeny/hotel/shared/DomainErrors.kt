@@ -153,6 +153,12 @@ enum class ErrorKind {
 
     /** 428 */
     PRECONDITION_REQUIRED,
+
+    /** 502 */
+    BAD_GATEWAY,
+
+    /** 503 */
+    SERVICE_UNAVAILABLE,
 }
 
 /**
@@ -235,3 +241,15 @@ open class PreconditionRequiredException(
     code: ErrorCode,
     message: String,
 ) : DomainException(ErrorKind.PRECONDITION_REQUIRED, code, message)
+
+/** Um serviço externo recusou a operação (502): a falha é dele, não do pedido do cliente. */
+open class BadGatewayException(
+    code: ErrorCode,
+    message: String,
+) : DomainException(ErrorKind.BAD_GATEWAY, code, message)
+
+/** Um serviço externo está fora do ar ou instável (503): vale tentar de novo mais tarde. */
+open class ServiceUnavailableException(
+    code: ErrorCode,
+    message: String,
+) : DomainException(ErrorKind.SERVICE_UNAVAILABLE, code, message)

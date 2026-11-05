@@ -70,6 +70,8 @@ internal object Problems {
             ErrorKind.PERMISSION_DENIED -> HttpStatus.FORBIDDEN
             ErrorKind.PRECONDITION_FAILED -> HttpStatus.PRECONDITION_FAILED
             ErrorKind.PRECONDITION_REQUIRED -> HttpStatus.PRECONDITION_REQUIRED
+            ErrorKind.BAD_GATEWAY -> HttpStatus.BAD_GATEWAY
+            ErrorKind.SERVICE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE
         }
 
     fun codeOf(status: HttpStatusCode): ErrorCode =
@@ -124,6 +126,7 @@ internal object Problems {
             422 to "Regra de negócio violada",
             428 to "Pré-condição obrigatória",
             500 to "Erro interno",
+            502 to "Falha no serviço externo",
             503 to "Serviço indisponível",
         )
 

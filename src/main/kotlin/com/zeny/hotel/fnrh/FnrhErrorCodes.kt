@@ -21,10 +21,10 @@ object FnrhErrorCodes {
     /** 404: o domínio oficial pedido não existe. */
     val FNRH_DOMAIN_NOT_FOUND = ErrorCode("FNRH_DOMAIN_NOT_FOUND")
 
-    /** 409: a integração está desligada ou sem configuração completa. */
+    /** 422: a integração está desligada ou sem configuração completa. */
     val FNRH_NOT_CONFIGURED = ErrorCode("FNRH_NOT_CONFIGURED")
 
-    /** 502: o Serpro recusou as credenciais configuradas. */
+    /** 422: o Serpro recusou as credenciais configuradas. */
     val FNRH_CREDENTIALS_REJECTED = ErrorCode("FNRH_CREDENTIALS_REJECTED")
 
     /** 503: o Serpro está indisponível (conexão recusada ou erro do servidor). */

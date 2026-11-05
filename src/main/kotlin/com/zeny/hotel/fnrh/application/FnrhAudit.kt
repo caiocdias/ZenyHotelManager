@@ -9,6 +9,9 @@ internal object FnrhAudit {
     const val REQUESTER = "fnrh.requester"
     const val SET_REQUESTER = "fnrh.requester.set"
     const val REMOVE_REQUESTER = "fnrh.requester.remove"
+    const val DOMAIN_VALUES = "fnrh.domains"
+    const val DOMAIN_VALUES_ID = "all"
+    const val REFRESH_DOMAINS = "fnrh.domains.refresh"
 }
 
 /** O retrato do CPF solicitante de um usuário para a trilha: só o CPF mascarado. */

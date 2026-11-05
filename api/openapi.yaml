@@ -3211,6 +3211,63 @@ paths:
       summary: Gerar a URL de download de um anexo
       tags:
       - files
+  /api/v1/fnrh/domains/refresh:
+    post:
+      description: "Exige `fnrh.settings.manage`. Busca os dez domínios no Serpro\
+        \ e, só se todas as buscas derem certo, substitui o cache de uma vez (tudo\
+        \ ou nada). Sem configuração: 422 `FNRH_NOT_CONFIGURED`. Credenciais recusadas:\
+        \ 422 `FNRH_CREDENTIALS_REJECTED`. Serpro fora do ar: 503 `FNRH_UNAVAILABLE`.\
+        \ Consulta recusada ou domínio vazio: 502 `FNRH_REJECTED`. A resposta traz\
+        \ a contagem por domínio."
+      operationId: refreshFnrhDomains
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhDomainsRefreshResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Atualizar os domínios oficiais a partir do Serpro
+      tags:
+      - FNRH
+  /api/v1/fnrh/domains/{domain}:
+    get:
+      description: "Exige `fnrh.domains.read`. O `{domain}` é um de `transport-modes`,\
+        \ `travel-reasons`, `guest-statuses`, `genders`, `disability-options`, `races`,\
+        \ `disability-types`, `document-types`, `booking-statuses` ou `record-statuses`;\
+        \ outro nome é 404 `FNRH_DOMAIN_NOT_FOUND`. Os valores vêm do cache (a semente\
+        \ da migração ou o último `refresh`), em ordem de código."
+      operationId: listFnrhDomainValues
+      parameters:
+      - in: path
+        name: domain
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FnrhDomainValueResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os valores de um domínio oficial da FNRH
+      tags:
+      - FNRH
   /api/v1/fnrh/requesters:
     get:
       description: Exige `fnrh.settings.manage`. O CPF vem mascarado.
@@ -16811,6 +16868,45 @@ components:
       - purpose
       - sensitive
       - sizeBytes
+    FnrhDomainCountResponse:
+      type: object
+      description: Quantos valores um domínio tem depois do `refresh`.
+      properties:
+        count:
+          type: integer
+          format: int32
+        domain:
+          type: string
+          description: O nome do domínio na API.
+          example: transport-modes
+      required:
+      - count
+      - domain
+    FnrhDomainValueResponse:
+      type: object
+      description: Um valor de domínio oficial da FNRH.
+      properties:
+        code:
+          type: string
+          description: O `id` que a API do Serpro aceita.
+          example: ONIBUS
+        label:
+          type: string
+          description: O rótulo para o usuário.
+          example: Ônibus
+      required:
+      - code
+      - label
+    FnrhDomainsRefreshResponse:
+      type: object
+      description: "O resultado do `refresh`: a contagem de cada domínio."
+      properties:
+        domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/FnrhDomainCountResponse"
+      required:
+      - domains
     FnrhRequesterRequest:
       type: object
       description: O CPF solicitante de um usuário.
