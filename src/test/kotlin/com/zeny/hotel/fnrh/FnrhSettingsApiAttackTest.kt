@@ -159,7 +159,9 @@ class FnrhSettingsApiAttackTest(
                 val response = call(PUT, path, asAdmin(), fullBody + ("defaultRequesterCpf" to bad), ifMatch = etag)
                 response.status shouldBe 400
                 val text = response.getContentAsString(Charsets.UTF_8)
-                if (bad.isNotBlank()) text shouldNotContain bad
+                // Sem o `instance` (caminho/UUID aleatorio pode conter a amostra curta, ex.: "abc").
+                val echoable = text.replace(Regex("\"instance\"\\s*:\\s*\"[^\"]*\""), "")
+                if (bad.isNotBlank()) echoable shouldNotContain bad
                 text shouldNotContain password
             }
             etagOf() shouldBe etag

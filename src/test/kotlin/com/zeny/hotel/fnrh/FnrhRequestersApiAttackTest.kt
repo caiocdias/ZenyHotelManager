@@ -139,7 +139,9 @@ class FnrhRequestersApiAttackTest(
                 response.status shouldBe 400
                 val text = response.getContentAsString(Charsets.UTF_8)
                 text shouldNotContain digits
-                if (value.isNotBlank()) text shouldNotContain value
+                // O `instance` carrega o UUID aleatorio do usuario, que pode conter a amostra (ex.: "abc").
+                val echoable = text.replace(Regex("\"instance\"\\s*:\\s*\"[^\"]*\""), "")
+                if (value.isNotBlank()) echoable shouldNotContain value
             }
             rows() shouldBe 0L
         }
