@@ -21,7 +21,7 @@ object FnrhMessageSanitizer {
     private const val MIN_VALUE_LENGTH = 3
     private const val MIN_WORD_LETTERS = 3
     private const val INPUT_FACTOR = 5
-    private val CONTROL = Regex("""\p{Cc}""")
+    private val CONTROL = Regex("""[\p{Cc}\p{Zl}\p{Zp}]""")
     private val EMAIL = Regex("""[\p{L}\p{N}_.+%-]+@[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+""")
     private val FORMATTED_TAX_ID = Regex("""\d{2,3}\.\d{3}\.\d{3}[-/]\d{2,4}(-\d{2})?""")
     private val LONG_DIGITS = Regex("""\d{5,}""")

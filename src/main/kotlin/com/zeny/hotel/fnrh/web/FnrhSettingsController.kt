@@ -81,7 +81,7 @@ data class FnrhSettingsRequest(
         writeOnly = true,
     )
     @field:Size(max = MAX_TEXT)
-    @field:Pattern(regexp = "(?s).*\\S.*")
+    @field:Pattern(regexp = "[\\s\\S]*\\S[\\s\\S]*")
     val password: String?,
     @field:Schema(description = "CPF solicitante padrão, com ou sem pontuação.")
     val defaultRequesterCpf: Cpf?,

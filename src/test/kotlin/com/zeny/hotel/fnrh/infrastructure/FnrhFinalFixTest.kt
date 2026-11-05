@@ -72,4 +72,9 @@ class FnrhFinalFixTest {
         out.none { it.isISOControl() } shouldBe true
         out shouldBe "linha 1  linha 2 linha 3 fim"
     }
+
+    @Test
+    fun `the Unicode line and paragraph separators and NEL also become spaces`() {
+        FnrhMessageSanitizer.sanitize("a\u2028b\u2029c\u0085d", emptyList()) shouldBe "a b c d"
+    }
 }
