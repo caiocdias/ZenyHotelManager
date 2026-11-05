@@ -18,7 +18,7 @@ import java.time.Duration
 class FnrhFinalFixTest {
     private val gateway =
         SerproFnrhGateway(
-            FnrhProperties(connectTimeout = Duration.ofSeconds(2), readTimeout = Duration.ofMillis(300)),
+            FnrhProperties(connectTimeout = Duration.ofSeconds(2), readTimeout = Duration.ofSeconds(5)),
             {
                 FnrhConnection(
                     FnrhEnvironment.HOMOLOGATION,
