@@ -109,14 +109,8 @@ class SerproFnrhGateway(
             sentValues = listOf(reservationCode),
             remoteIdOf = { it.firstOrNull() },
         ) { tree ->
-            // Quando o item traz numero_reserva, só vale o do código pedido ("RES-1" não é "RES-10").
             tree?.get("dados")?.takeIf { it.isArray }?.mapNotNull { item ->
-                item.text("reserva_id")?.takeIf {
-                    item.text("numero_reserva").let { n ->
-                        n == null ||
-                            n == reservationCode
-                    }
-                }
+                item.text("reserva_id")?.takeIf { matchesCode(item, reservationCode) }
             }
         }.firstOrNull()
             ?.let(::FnrhRemoteId)

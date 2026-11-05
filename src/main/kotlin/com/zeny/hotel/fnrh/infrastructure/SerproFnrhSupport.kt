@@ -75,11 +75,17 @@ internal inline fun trySend(
         Sent.Failed(e)
     }
 
-/** O item é o da reserva pedida: sem `numero_reserva` vale; com ele, só se for igual ("RES-1" não é "RES-10"). */
+/**
+ * O item é o da reserva pedida: sem `numero_reserva` (ausente ou JSON `null`) vale; com ele, só se for texto igual ao
+ * código ("RES-1" não é "RES-10"). Um `numero_reserva` presente que não é texto (número, objeto) nunca vale.
+ */
 internal fun matchesCode(
     item: JsonNode,
     reservationCode: String,
-): Boolean = item.text("numero_reserva").let { it == null || it == reservationCode }
+): Boolean {
+    val code = item.get("numero_reserva")
+    return code == null || code.isNull || (code.isString && code.asString() == reservationCode)
+}
 
 /** Os dados da pessoa que o Serpro pode ecoar numa mensagem de erro, além de nome, documento, e-mail e telefone. */
 internal fun personSensitiveValues(person: FnrhPersonData): List<String> =
