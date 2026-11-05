@@ -10,6 +10,7 @@ import com.zeny.hotel.fnrh.domain.FnrhPersonData
 import com.zeny.hotel.fnrh.domain.FnrhRemoteId
 import com.zeny.hotel.fnrh.domain.FnrhReservationData
 import org.springframework.http.MediaType
+import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.util.UriUtils
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
@@ -75,8 +76,11 @@ internal fun errorMessage(
     sentValues: Collection<String>,
 ): String? = tree?.text("mensagem")?.let { FnrhMessageSanitizer.sanitize(it, sentValues) }
 
-/** A URL da chamada: [base] mais os [segments] (codificados) e a [query]. Nunca vai a log: pode ter documento. */
-internal fun buildUri(
+/**
+ * A URL da chamada: [base] mais os [segments] (codificados) e a [query]; só `http` e `https` (outro esquema é
+ * requisição malformada, que nunca sai). Nunca vai a log: pode ter documento.
+ */
+internal fun requestUri(
     base: URI,
     segments: List<String>,
     query: List<Pair<String, String>>,
@@ -87,7 +91,9 @@ internal fun buildUri(
             .takeIf { it.isNotEmpty() }
             ?.joinToString("&", prefix = "?") { (k, v) -> "$k=${URLEncoder.encode(v, Charsets.UTF_8)}" }
             .orEmpty()
-    return URI.create(base.toString().trimEnd('/') + path + queryString)
+    return URI.create(base.toString().trimEnd('/') + path + queryString).also {
+        require(it.scheme.equals("http", true) || it.scheme.equals("https", true)) { "esquema não suportado" }
+    }
 }
 
 /** Codifica um segmento do caminho; `.` e `..` viram `%2E`, para um id remoto nunca navegar no caminho. */
@@ -99,6 +105,17 @@ private fun encodeSegment(segment: String): String =
     } else {
         UriUtils.encodePathSegment(segment, Charsets.UTF_8)
     }
+
+/**
+ * A falha de um envio que não completou. `UNKNOWN_OUTCOME` só quando foi um erro de I/O que não é de conexão numa
+ * escrita (a requisição pode ter chegado, como o timeout de leitura); erro de programação ou requisição malformada
+ * (que não é de I/O) nunca saiu e é `UNAVAILABLE`.
+ */
+internal fun sendFailure(
+    e: RuntimeException,
+    write: Boolean,
+): FnrhFailure =
+    if (write && e is ResourceAccessException && !neverSent(e)) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.UNAVAILABLE
 
 /** O mapeamento do status HTTP de erro para a falha da porta. */
 internal fun failureOf(status: Int): FnrhFailure =

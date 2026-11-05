@@ -239,12 +239,21 @@ class SerproFnrhGateway(
 
         // RFC 7617: o user-id do Basic não tem ':'; a configuração já o barra, isto cobre um valor antigo.
         if (':' in connection.username) fail(FnrhFailure.UNAUTHORIZED, null, null)
+        // Montar a URL é antes do envio: se falhar, nada saiu (UNAVAILABLE), nunca UNKNOWN_OUTCOME.
+        val uri =
+            try {
+                requestUri(connection.baseUrl, segments, query)
+            } catch (e: RuntimeException) {
+                log.warn("FNRH {}: montagem da requisição falhou ({})", operation, e.javaClass.simpleName)
+                fail(FnrhFailure.UNAVAILABLE, null, null)
+            }
         val reply =
             try {
-                send(connection, method, buildUri(connection.baseUrl, segments, query), body, headers)
+                send(connection, method, uri, body, headers)
             } catch (e: RuntimeException) {
-                // Nada previsto pode sair cru nem com causa. Só a falha de conexão garante que nada saiu.
-                fail(if (write && !neverSent(e)) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.UNAVAILABLE, null, null)
+                // Só a classe vai ao log, nunca a mensagem nem a causa (podem trazer o corpo da resposta).
+                log.warn("FNRH {}: falha no envio ({})", operation, e.javaClass.simpleName)
+                fail(sendFailure(e, write), null, null)
             }
         val tree = readTree(reply.body)
         if (reply.status !in HTTP_OK_RANGE) {
