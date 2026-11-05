@@ -26,7 +26,6 @@ import org.springframework.http.MediaType
 import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
-import org.springframework.web.client.RestClientException
 import org.springframework.web.util.UriUtils
 import tools.jackson.core.JacksonException
 import tools.jackson.databind.JsonNode
@@ -202,7 +201,7 @@ class SerproFnrhGateway(
      * Faz uma chamada: [parse] extrai o resultado do JSON da resposta (`null` se ele não traz o que devia), e
      * [remoteIdOf] ou [knownRemoteId] dão a referência remota que vai ao registro.
      */
-    @Suppress("LongParameterList", "ThrowsCount")
+    @Suppress("LongParameterList", "ThrowsCount", "SwallowedException", "TooGenericExceptionCaught")
     private fun <T : Any> call(
         operation: String,
         correlationRef: String?,
@@ -238,17 +237,18 @@ class SerproFnrhGateway(
             throw FnrhGatewayException(failure, status, message)
         }
 
+        // RFC 7617: o user-id do Basic não tem ':'; a configuração já o barra, isto cobre um valor antigo.
+        if (':' in connection.username) fail(FnrhFailure.UNAUTHORIZED, null, null)
         val reply =
             try {
                 send(connection, method, buildUri(connection.baseUrl, segments, query), body, headers)
-            } catch (e: RestClientException) {
-                val failure = if (write && !neverSent(e)) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.UNAVAILABLE
-                fail(failure, null, null)
+            } catch (e: RuntimeException) {
+                // Nada previsto pode sair cru nem com causa. Só a falha de conexão garante que nada saiu.
+                fail(if (write && !neverSent(e)) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.UNAVAILABLE, null, null)
             }
         val tree = readTree(reply.body)
         if (reply.status !in HTTP_OK_RANGE) {
-            val message = tree?.text("mensagem")?.let { FnrhMessageSanitizer.sanitize(it, sentValues) }
-            fail(failureOf(reply.status), reply.status, message)
+            fail(failureOf(reply.status), reply.status, errorMessage(tree, sentValues))
         }
         val result =
             parse(tree)

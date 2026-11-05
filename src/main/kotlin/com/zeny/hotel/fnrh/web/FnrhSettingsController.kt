@@ -72,6 +72,8 @@ data class FnrhSettingsRequest(
     )
     val environment: FnrhEnvironment,
     @field:Size(max = MAX_TEXT)
+    @field:Pattern(regexp = "[^:]*")
+    @field:Schema(description = "Usuário do Serpro (HTTP Basic): não pode conter ':'.", nullable = true)
     val username: String?,
     @field:Schema(
         description = "Senha do Serpro. Ausente: mantém a atual. Em branco: 400.",

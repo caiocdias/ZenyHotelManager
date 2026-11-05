@@ -6,7 +6,8 @@ import java.text.Normalizer
  * Limpa a `mensagem` de um erro do Serpro antes de ela ir a log ou à exceção, porque o `400` pode ecoar o que
  * enviamos (nome, CPF, e-mail). Troca por `***`:
  *
- * - os valores enviados (só os de 3 caracteres ou mais) e cada palavra deles com 3 ou mais letras, ignorando
+ * - os valores enviados (só os de 3 caracteres ou mais), cada palavra deles com 3 ou mais letras e cada grupo de 4 ou
+ *   mais dígitos (um telefone pontuado pode voltar em parte), ignorando
  *   maiúsculas e acentos, porque o Serpro pode ecoar só "MARIA" de "Maria da Luz";
  * - os e-mails;
  * - o CPF e o CNPJ pontuados e as sequências de 5 ou mais dígitos.
@@ -18,10 +19,11 @@ object FnrhMessageSanitizer {
     private const val MASK = "***"
     private const val MIN_VALUE_LENGTH = 3
     private const val MIN_WORD_LETTERS = 3
-    private val EMAIL = Regex("""[\w.+%-]+@[\w-]+(\.[\w-]+)+""")
+    private val EMAIL = Regex("""[\p{L}\p{N}_.+%-]+@[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+""")
     private val FORMATTED_TAX_ID = Regex("""\d{2,3}\.\d{3}\.\d{3}[-/]\d{2,4}(-\d{2})?""")
     private val LONG_DIGITS = Regex("""\d{5,}""")
     private val WHITESPACE = Regex("""\s+""")
+    private val DIGIT_GROUP = Regex("""\d{4,}""")
 
     fun sanitize(
         raw: String?,
@@ -44,7 +46,8 @@ object FnrhMessageSanitizer {
             sentValues
                 .flatMap { value ->
                     listOf(value) +
-                        value.split(WHITESPACE).filter { it.count(Char::isLetter) >= MIN_WORD_LETTERS }
+                        value.split(WHITESPACE).filter { it.count(Char::isLetter) >= MIN_WORD_LETTERS } +
+                        DIGIT_GROUP.findAll(value).map { it.value }
                 }.map { fold(it.trim()) }
                 .filter { it.length >= MIN_VALUE_LENGTH }
                 .distinct()

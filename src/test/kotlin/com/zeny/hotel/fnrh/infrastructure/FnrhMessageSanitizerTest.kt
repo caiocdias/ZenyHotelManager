@@ -60,6 +60,13 @@ class FnrhMessageSanitizerTest {
     }
 
     @Test
+    fun `a formatted phone echoed in part is masked by its groups of 4 or more digits`() {
+        val out = FnrhMessageSanitizer.sanitize("Telefone 9999-8888 inválido, ddd 11", listOf("(11) 9999-8888"))!!
+
+        out shouldBe "Telefone ***-*** inválido, ddd 11"
+    }
+
+    @Test
     fun `the message is cut at 200 characters`() {
         val out = FnrhMessageSanitizer.sanitize("a".repeat(500), emptyList())!!
 

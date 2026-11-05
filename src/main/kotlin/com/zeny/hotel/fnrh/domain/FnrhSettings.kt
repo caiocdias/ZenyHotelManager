@@ -77,6 +77,7 @@ class FnrhSettings private constructor(
             )
         }
         val newUsername = username?.trim()?.ifEmpty { null }
+        require(newUsername == null || ':' !in newUsername) { "O usuário da FNRH não pode ter ':' (RFC 7617)." }
         val newPassword = password ?: this.password
         val complete = newUsername != null && !newPassword.isNullOrEmpty() && defaultCpf != null
         if (enabled && !complete) {

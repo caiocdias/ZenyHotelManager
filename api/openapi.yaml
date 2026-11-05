@@ -16846,9 +16846,11 @@ components:
           writeOnly: true
         username:
           type: string
+          description: "Usuário do Serpro (HTTP Basic): não pode conter ':'."
           maxLength: 200
           minLength: 0
           nullable: true
+          pattern: "[^:]*"
       required:
       - enabled
       - environment

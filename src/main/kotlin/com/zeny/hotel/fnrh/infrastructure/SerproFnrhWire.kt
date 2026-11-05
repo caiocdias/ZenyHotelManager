@@ -69,13 +69,19 @@ internal fun readTree(bytes: ByteArray): JsonNode? =
 internal fun JsonNode.text(field: String): String? =
     get(field)?.takeIf { it.isString }?.asString()?.takeIf { it.isNotBlank() }
 
+/** A `mensagem` do erro do Serpro, saneada; o corpo bruto nunca é usado. */
+internal fun errorMessage(
+    tree: JsonNode?,
+    sentValues: Collection<String>,
+): String? = tree?.text("mensagem")?.let { FnrhMessageSanitizer.sanitize(it, sentValues) }
+
 /** A URL da chamada: [base] mais os [segments] (codificados) e a [query]. Nunca vai a log: pode ter documento. */
 internal fun buildUri(
     base: URI,
     segments: List<String>,
     query: List<Pair<String, String>>,
 ): URI {
-    val path = segments.joinToString("") { "/" + UriUtils.encodePathSegment(it, Charsets.UTF_8) }
+    val path = segments.joinToString("") { "/" + encodeSegment(it) }
     val queryString =
         query
             .takeIf { it.isNotEmpty() }
@@ -83,6 +89,16 @@ internal fun buildUri(
             .orEmpty()
     return URI.create(base.toString().trimEnd('/') + path + queryString)
 }
+
+/** Codifica um segmento do caminho; `.` e `..` viram `%2E`, para um id remoto nunca navegar no caminho. */
+private fun encodeSegment(segment: String): String =
+    if (segment == "." ||
+        segment == ".."
+    ) {
+        segment.replace(".", "%2E")
+    } else {
+        UriUtils.encodePathSegment(segment, Charsets.UTF_8)
+    }
 
 /** O mapeamento do status HTTP de erro para a falha da porta. */
 internal fun failureOf(status: Int): FnrhFailure =
