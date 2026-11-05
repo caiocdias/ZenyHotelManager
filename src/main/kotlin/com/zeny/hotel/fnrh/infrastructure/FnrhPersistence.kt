@@ -40,18 +40,16 @@ class JpaFnrhRequesterStore(
     FnrhRequesterDirectory {
     override fun find(userId: UUID): FnrhRequester? = requesters.findById(userId).orElse(null)
 
-    override fun all(): List<FnrhRequester> = requesters.findAll(Sort.by("userId"))
+    override fun all(): List<FnrhRequester> = requesters.findAll(Sort.by("userId")).filter { it.active }
 
     override fun save(requester: FnrhRequester) {
         requesters.save(requester)
     }
 
-    override fun delete(requester: FnrhRequester) = requesters.delete(requester)
-
     override fun flush() = requesters.flush()
 
     @Transactional(readOnly = true)
-    override fun cpfOf(userId: UUID): Cpf? = find(userId)?.cpf
+    override fun cpfOf(userId: UUID): Cpf? = find(userId)?.takeIf { it.active }?.cpf
 }
 
 /** A conexão vigente a partir da configuração gravada e da URL do ambiente escolhido. */

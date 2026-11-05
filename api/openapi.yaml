@@ -3287,32 +3287,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
-      summary: Listar os CPFs solicitantes por usuário
+      summary: Listar os CPFs solicitantes ativos por usuário
       tags:
       - FNRH
   /api/v1/fnrh/requesters/{userId}:
-    delete:
-      description: "Exige `fnrh.settings.manage`. Sem CPF cadastrado: 404 `FNRH_REQUESTER_NOT_FOUND`."
-      operationId: removeFnrhRequester
-      parameters:
-      - in: path
-        name: userId
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        "204":
-          description: No Content
-        default:
-          content:
-            application/problem+json:
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: "Erro no formato RFC 9457, com `code` estável."
-      summary: Remover o CPF solicitante de um usuário
-      tags:
-      - FNRH
     put:
       description: "Exige `fnrh.settings.manage`. Cria ou troca o CPF do usuário;\
         \ o id dele não é conferido. CPF inválido: 400 `VALIDATION_FAILED` (campo\
@@ -3345,6 +3323,31 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Definir o CPF solicitante de um usuário
+      tags:
+      - FNRH
+  /api/v1/fnrh/requesters/{userId}/deactivate:
+    post:
+      description: "Exige `fnrh.settings.manage`. Apaga o CPF (minimização de dado\
+        \ pessoal) e marca o cadastro como inativo, sem removê-lo; um `PUT` com CPF\
+        \ o reativa. Sem CPF vigente: 404 `FNRH_REQUESTER_NOT_FOUND`."
+      operationId: deactivateFnrhRequester
+      parameters:
+      - in: path
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar o CPF solicitante de um usuário
       tags:
       - FNRH
   /api/v1/fnrh/settings:

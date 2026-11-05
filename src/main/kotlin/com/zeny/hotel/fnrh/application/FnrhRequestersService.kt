@@ -20,26 +20,26 @@ data class FnrhRequesterView(
 
 /** Consulta do CPF solicitante de um usuário, para a E08 escolher o CPF de cada chamada. Sem checagem de permissão. */
 fun interface FnrhRequesterDirectory {
-    /** O CPF cadastrado para [userId], ou `null`. */
+    /** O CPF vigente de [userId], ou `null` (sem cadastro ou inativo). */
     fun cpfOf(userId: UUID): Cpf?
 }
 
 /** Os CPFs solicitantes gravados, na transação corrente. */
 interface FnrhRequesterStore {
+    /** A linha do usuário, ativa ou não. */
     fun find(userId: UUID): FnrhRequester?
 
+    /** Só os ativos. */
     fun all(): List<FnrhRequester>
 
     fun save(requester: FnrhRequester)
-
-    fun delete(requester: FnrhRequester)
 
     /** Grava na hora as mudanças pendentes. */
     fun flush()
 }
 
 /**
- * O CPF solicitante por usuário (RF-FNRH-01, D-E07-7): consultar, trocar e remover exigem `fnrh.settings.manage`. O
+ * O CPF solicitante por usuário (RF-FNRH-01, D-E07-7): consultar, trocar e desativar exigem `fnrh.settings.manage`. O
  * id do usuário é opaco e não se confere se existe. A trilha só recebe o CPF mascarado.
  */
 @Service
@@ -77,20 +77,21 @@ class FnrhRequestersService(
         return requester.view()
     }
 
-    @Audited(FnrhAudit.REMOVE_REQUESTER)
+    /** Apaga o CPF do usuário e marca a linha como inativa, sem removê-la. */
+    @Audited(FnrhAudit.DEACTIVATE_REQUESTER)
     @Transactional
-    fun remove(userId: UUID) {
+    fun deactivate(userId: UUID) {
         authorization.require(FnrhPermissions.SETTINGS_MANAGE)
         val requester =
-            store.find(userId)
+            store.find(userId)?.takeIf { it.active }
                 ?: throw NotFoundException(
                     FnrhErrorCodes.FNRH_REQUESTER_NOT_FOUND,
                     "Não há CPF solicitante cadastrado para o usuário.",
                 )
-        audit.record(FnrhAudit.REQUESTER, userId, requester.auditState(), null)
-        store.delete(requester)
+        audit.track(FnrhAudit.REQUESTER, userId) { requester.auditState() }
+        requester.deactivate()
         store.flush()
     }
 
-    private fun FnrhRequester.view() = FnrhRequesterView(userId, maskCpf(cpf.digits))
+    private fun FnrhRequester.view() = FnrhRequesterView(userId, maskCpf(checkNotNull(cpf).digits))
 }

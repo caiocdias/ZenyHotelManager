@@ -18,8 +18,8 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
-import org.springframework.http.HttpMethod.DELETE
 import org.springframework.http.HttpMethod.GET
+import org.springframework.http.HttpMethod.POST
 import org.springframework.http.HttpMethod.PUT
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.web.servlet.MockMvc
@@ -115,25 +115,50 @@ class FnrhRequestersApiTest(
             call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to "111.111.111-11")).status shouldBe 400
             call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to "lixo-529.982.247-25")).status shouldBe 400
             call(GET, base, asAdmin()).ok()
-            call(DELETE, "$base/$userId", asAdmin()).status shouldBe 204
-            call(DELETE, "$base/$userId", asAdmin()).status shouldBe 404
+            call(POST, "$base/$userId/deactivate", asAdmin()).status shouldBe 204
+            call(POST, "$base/$userId/deactivate", asAdmin()).status shouldBe 404
 
             val logs = output.all.substring(logStart)
             for (secret in listOf(cpf, "52998224725", "111.111.111-11", "11111111111")) logs shouldNotContain secret
         }
 
     @Test
-    fun `a DELETE removes the CPF and a second one is 404`(): Unit =
+    fun `a deactivation erases the CPF but keeps the row, and a second one is 404`(): Unit =
         with(iam) {
             call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to cpf)).ok()
 
-            call(DELETE, "$base/$userId", asAdmin()).status shouldBe 204
+            call(POST, "$base/$userId/deactivate", asAdmin()).status shouldBe 204
             call(GET, base, asAdmin())
                 .ok()
                 .values()
                 .toList()
                 .size shouldBe 0
-            call(DELETE, "$base/$userId", asAdmin()).problem(404, "FNRH_REQUESTER_NOT_FOUND")
+            call(POST, "$base/$userId/deactivate", asAdmin()).problem(404, "FNRH_REQUESTER_NOT_FOUND")
+        }
+
+    @Test
+    fun `a PUT reactivates a deactivated user`(): Unit =
+        with(iam) {
+            call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to cpf)).ok()
+            call(POST, "$base/$userId/deactivate", asAdmin()).status shouldBe 204
+
+            call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to "111.444.777-35")).ok()["cpf"].asString() shouldBe
+                "***.***.***-35"
+
+            rows() shouldBe 1L
+            directory.cpfOf(userId) shouldBe Cpf.of("11144477735")
+            call(GET, base, asAdmin())
+                .ok()
+                .values()
+                .toList()
+                .size shouldBe 1
+        }
+
+    @Test
+    fun `an unknown user cannot be deactivated`(): Unit =
+        with(iam) {
+            call(POST, "$base/$userId/deactivate", asAdmin()).problem(404, "FNRH_REQUESTER_NOT_FOUND")
+            rows() shouldBe 0L
         }
 
     @Test
@@ -147,7 +172,7 @@ class FnrhRequestersApiTest(
 
             call(GET, base, asTestUser(receptionist)).problem(403, "PERMISSION_DENIED")
             call(PUT, "$base/$userId", asTestUser(receptionist), mapOf("cpf" to cpf)).problem(403, "PERMISSION_DENIED")
-            call(DELETE, "$base/$userId", asTestUser(receptionist)).problem(403, "PERMISSION_DENIED")
+            call(POST, "$base/$userId/deactivate", asTestUser(receptionist)).problem(403, "PERMISSION_DENIED")
             mockMvc
                 .get(base)
                 .andReturn()
@@ -160,7 +185,7 @@ class FnrhRequestersApiTest(
         with(iam) {
             call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to cpf)).ok()
             call(PUT, "$base/$userId", asAdmin(), mapOf("cpf" to "111.444.777-35")).ok()
-            call(DELETE, "$base/$userId", asAdmin())
+            call(POST, "$base/$userId/deactivate", asAdmin())
 
             val entries =
                 jdbc
@@ -179,5 +204,7 @@ class FnrhRequestersApiTest(
             }
             entries[1].second.contains("***.***.***-35") shouldBe true
             entries[2].first.contains("***.***.***-35") shouldBe true
+            entries[2].second.replace(" ", "").contains("\"active\":false") shouldBe true
+            entries[2].second.contains("***") shouldBe false
         }
 }

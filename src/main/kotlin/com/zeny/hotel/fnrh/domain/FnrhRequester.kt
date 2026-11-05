@@ -10,8 +10,9 @@ import jakarta.persistence.Table
 import java.util.UUID
 
 /**
- * O CPF solicitante de um usuário (D-E07-7). O [userId] é opaco: o `fnrh` não importa `iam`. O CPF fica cifrado no
- * banco (`EncryptedStringConverter`).
+ * O CPF solicitante de um usuário (D-E07-7).
+ * Nada é apagado: desativar anula o CPF e mantém a linha, inativa. O [userId] é opaco: o `fnrh` não importa `iam`.
+ * O CPF fica cifrado no banco (`EncryptedStringConverter`).
  *
  * **Nunca** interpole o [cpf] em log, mensagem ou `toString`: `Cpf.toString()` devolve os dígitos.
  */
@@ -25,13 +26,27 @@ class FnrhRequester(
 ) {
     /** Os dígitos do CPF, cifrados. */
     @Convert(converter = EncryptedStringConverter::class)
-    @Column(name = "cpf", nullable = false)
-    private var encodedCpf: String = cpf.digits
+    @Column(name = "cpf")
+    private var encodedCpf: String? = cpf.digits
 
-    val cpf: Cpf get() = Cpf.of(encodedCpf)
+    /** Se o usuário tem CPF solicitante vigente. Inativo: o CPF foi apagado (minimização de dado pessoal). */
+    @Column(nullable = false)
+    var active: Boolean = true
+        protected set
 
+    /** O CPF vigente, ou `null` se inativo. */
+    val cpf: Cpf? get() = encodedCpf?.let(Cpf::of)
+
+    /** Troca o CPF e, se estava inativo, reativa. */
     fun replaceCpf(cpf: Cpf) {
         encodedCpf = cpf.digits
+        active = true
+    }
+
+    /** Apaga o CPF e marca como inativo; a linha fica. */
+    fun deactivate() {
+        encodedCpf = null
+        active = false
     }
 
     override fun toString(): String = "FnrhRequester(userId=$userId)"

@@ -8,9 +8,9 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
-import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,7 +19,7 @@ import java.util.UUID
 
 /**
  * O CPF solicitante da FNRH por usuário (RF-FNRH-01). Tudo exige `fnrh.settings.manage`. O CPF vai só no corpo, nunca
- * na URL, e volta mascarado.
+ * na URL, e volta mascarado. Nada é apagado: não há `DELETE`, só desativação.
  */
 @ApiV1Controller
 @RequestMapping("/fnrh/requesters")
@@ -30,7 +30,7 @@ class FnrhRequestersController(
     @GetMapping
     @Operation(
         operationId = "listFnrhRequesters",
-        summary = "Listar os CPFs solicitantes por usuário",
+        summary = "Listar os CPFs solicitantes ativos por usuário",
         description = "Exige `fnrh.settings.manage`. O CPF vem mascarado.",
     )
     fun list(): List<FnrhRequesterResponse> = requesters.list().map(FnrhRequesterResponse::of)
@@ -48,16 +48,18 @@ class FnrhRequestersController(
         @RequestBody request: FnrhRequesterRequest,
     ): FnrhRequesterResponse = FnrhRequesterResponse.of(requesters.set(userId, request.cpf))
 
-    @DeleteMapping("/{userId}")
+    @PostMapping("/{userId}/deactivate")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(
-        operationId = "removeFnrhRequester",
-        summary = "Remover o CPF solicitante de um usuário",
-        description = "Exige `fnrh.settings.manage`. Sem CPF cadastrado: 404 `FNRH_REQUESTER_NOT_FOUND`.",
+        operationId = "deactivateFnrhRequester",
+        summary = "Desativar o CPF solicitante de um usuário",
+        description =
+            "Exige `fnrh.settings.manage`. Apaga o CPF (minimização de dado pessoal) e marca o cadastro como " +
+                "inativo, sem removê-lo; um `PUT` com CPF o reativa. Sem CPF vigente: 404 `FNRH_REQUESTER_NOT_FOUND`.",
     )
-    fun remove(
+    fun deactivate(
         @PathVariable userId: UUID,
-    ) = requesters.remove(userId)
+    ) = requesters.deactivate(userId)
 }
 
 @Schema(description = "O CPF solicitante de um usuário.")
