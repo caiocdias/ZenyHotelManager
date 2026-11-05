@@ -107,3 +107,19 @@ internal fun personSensitiveValues(person: FnrhPersonData): List<String> =
 
 /** "01310-100" pode voltar só como "100": cada parte do CEP também é um valor enviado. */
 private fun postalCodeParts(postalCode: String?): List<String> = postalCode?.split('-').orEmpty()
+
+/**
+ * A única linha de log da chamada: `INFO` no sucesso, `WARN` na falha (com a mensagem já saneada). Leva a operação, o
+ * ambiente, o resultado, o status HTTP, a duração e a referência de correlação; a URL nunca entra.
+ */
+internal fun logCall(
+    log: Logger,
+    call: FnrhCall,
+    message: String?,
+) {
+    val line =
+        "FNRH ${call.operation} ${call.environment} ${call.outcome} (HTTP ${call.httpStatus ?: "-"}), " +
+            "${call.durationMs} ms, ref ${call.correlationRef ?: "-"}${message?.let { ": $it" }.orEmpty()}"
+    // A linha vai como argumento, não como formato: a mensagem do Serpro pode ter '{}'.
+    if (call.outcome == "SUCCESS") log.info("{}", line) else log.warn("{}", line)
+}

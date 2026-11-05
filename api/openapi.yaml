@@ -3346,6 +3346,28 @@ paths:
       summary: Editar a configuração da FNRH
       tags:
       - FNRH
+  /api/v1/fnrh/status:
+    get:
+      description: "Exige `fnrh.submissions.read`. Os instantes são os do último sucesso\
+        \ e da última falha do ambiente atual, lidos do registro de chamadas (que\
+        \ não guarda dado pessoal)."
+      operationId: getFnrhStatus
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhStatusResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o status da integração com a FNRH
+      tags:
+      - FNRH
   /api/v1/folios:
     get:
       description: "Da mais nova para a mais antiga, com o saldo. Exige `billing.folios.read`."
@@ -16882,6 +16904,49 @@ components:
       - enabled
       - environment
       - passwordSet
+    FnrhStatusResponse:
+      type: object
+      description: O status da integração com a FNRH no ambiente atual.
+      properties:
+        configured:
+          type: boolean
+          description: "Se há usuário, senha e CPF solicitante padrão gravados."
+        enabled:
+          type: boolean
+          description: Se a integração está ligada.
+        environment:
+          type: string
+          description: Ambiente do Serpro. A lista pode crescer (`x-extensible-enum`).
+          x-extensible-enum:
+          - HOMOLOGATION
+          - PRODUCTION
+        lastFailureAt:
+          type: string
+          format: date-time
+          description: Instante da última chamada que falhou neste ambiente.
+          nullable: true
+        lastFailureOutcome:
+          type: string
+          description: Resultado da última falha. A lista pode crescer (`x-extensible-enum`).
+          nullable: true
+          x-extensible-enum:
+          - NOT_CONFIGURED
+          - VALIDATION
+          - UNAUTHORIZED
+          - FORBIDDEN
+          - NOT_FOUND
+          - SERVER_ERROR
+          - UNAVAILABLE
+          - UNKNOWN_OUTCOME
+        lastSuccessAt:
+          type: string
+          format: date-time
+          description: Instante da última chamada bem-sucedida neste ambiente.
+          nullable: true
+      required:
+      - configured
+      - enabled
+      - environment
     FolioOpenRequest:
       type: object
       description: Uma conta nova.

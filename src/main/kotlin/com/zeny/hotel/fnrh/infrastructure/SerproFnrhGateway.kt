@@ -209,15 +209,7 @@ class SerproFnrhGateway(
             status: Int?,
             message: String?,
         ): Nothing {
-            record(connection, operation, failure.name, status, started, correlationRef, knownRemoteId)
-            log.warn(
-                "FNRH {} falhou: {} (HTTP {}), ref {}{}",
-                operation,
-                failure,
-                status ?: "-",
-                correlationRef ?: "-",
-                message?.let { ": $it" }.orEmpty(),
-            )
+            record(connection, operation, failure.name, status, started, correlationRef, knownRemoteId, message)
             throw FnrhGatewayException(failure, status, message)
         }
 
@@ -246,6 +238,7 @@ class SerproFnrhGateway(
             started,
             correlationRef,
             remoteIdOf(result) ?: knownRemoteId,
+            null,
         )
         return result
     }
@@ -278,6 +271,7 @@ class SerproFnrhGateway(
         startedNanos: Long,
         correlationRef: String?,
         remoteId: String?,
+        message: String?,
     ) {
         val call =
             FnrhCall(
@@ -289,6 +283,7 @@ class SerproFnrhGateway(
                 correlationRef = correlationRef,
                 remoteId = remoteId,
             )
+        logCall(log, call, message)
         recordSafely(log, integrationLog, operation, call)
     }
 
