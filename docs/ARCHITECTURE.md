@@ -488,7 +488,7 @@ Os testes de contrato usam WireMock.
 | Integração | Módulo | Saída | Entrada | Funciona com servidor local sem portas abertas? |
 |---|---|---|---|---|
 | Channel manager | `distribution` | ARI incremental | Reservas por **pull periódico** (padrão) ou webhook | Sim, em modo pull. HotelRunner suporta pull; Omnibees, a confirmar. |
-| FNRH (Serpro) | `fnrh` | REST, Basic Auth, header `cpf_solicitante` | — | Sim (só saída) |
+| FNRH (Serpro) | `fnrh` | REST, Basic Auth; header `cpf_solicitante` só nas operações de pessoa e de hospedagem completa (API v2.4, levantamento em `docs/fnrh/api-fnrh-v2.4.md`) | — | Sim (só saída) |
 | Middleware fiscal | `fiscal` | Emissão e cancelamento | Status por webhook **ou polling** | Sim, com polling |
 | PSP Pix | `payments` | Cobrança (`cob`/`cobv`) e devolução | Confirmação por webhook **ou consulta periódica** da cobrança | Sim, com polling (confirmação mais lenta). Webhook pede túnel. |
 | Cartão — TEF | `payments` + cliente | O servidor cria o `PaymentIntent`; o cliente desktop/PDV executa o TEF pela biblioteca local (SiTef/PayGo) e reporta o resultado | — | Sim |

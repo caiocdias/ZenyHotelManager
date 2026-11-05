@@ -166,6 +166,30 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E14 (b) `commons-lang3` 3.16.0 (Medium, classpath dos plugins) e `logback-core` 1.3.16 (Low, `ktlint`):** aceitos. Só rodam no build e não são alcançáveis por entrada externa. Alternativa descartada: restrições de versão próprias, que acrescentariam manutenção sem ganho de segurança no servidor.
 - **E14 (c) Jackson 2 na 2.22.4:** último patch da linha 2.22, em vez do piso 2.22.3. Ele fecha as mesmas 7 GHSA e evita um patch atrás. Alternativa descartada: a 2.22.3 exata.
 
+**Decisões do lote E07** (entrevista do fim do lote). Em 2026-11-04, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-04 e 2026-11-05**. O detalhe está no plano da E07 (D-E07-1 a 12) e no handoff dela.
+
+- **E07 (a) Fluxo de registro na FNRH (decisão aberta "reserva antes da chegada"):** a reserva é registrada **na criação**, sem dado pessoal. No check-in entram a pessoa e o hóspede com `CHECKIN_REALIZADO`, e o check-out sai por `PATCH`. O cancelamento só vale com a reserva em `CRIADA`. O no-show fica para o M6.
+  - A favor: o link de pré-check-in chega cedo (RF-FNRH-04), o cancelamento chega ao Serpro e o fluxo segue os eventos de reserva que a E08 consome.
+  - Contra: mais chamadas e a reserva fica sincronizada desde a criação.
+  - Alternativa descartada: registro só no check-in (`POST /hospedagem/registrar`).
+- **E07 (b) `cpf_solicitante`:** só nas operações em que a API v2.4 o exige (na porta, só `registerPerson`). O roadmap supunha o header em toda chamada; a fonte oficial prevalece e manda menos dado pessoal.
+- **E07 (c) URL base:** a configuração guarda o ambiente (homologação ou produção), e as URLs ficam em propriedade. Trocar de ambiente exige a senha de novo. Descartadas: a URL livre, porque a credencial poderia ir para qualquer host, e uma propriedade só, porque cada troca pediria nova implantação.
+- **E07 (d) Municípios IBGE:** lista oficial versionada no repositório, com fonte, data e SHA-256.
+  - Risco aceito: um município criado depois do download é recusado até atualizar o recurso.
+  - Alternativa descartada: validar só o formato, que não cumpre o critério.
+- **E07 (e) Gênero `OUTRO`:** o `guests` não guarda a descrição que a FNRH exige. A validação acusa a falta, sem falsear o dado.
+  - Recomendação: acrescentar a descrição do gênero ao perfil e ao `FnrhGuestData`, numa etapa própria ou na E08.
+  - Raça e gênero não coletados também dão `REQUIRED`.
+- **E07 (f) Menor só com RG:** a API aceita só CPF ou passaporte (nota B2 da E02). O hotel precisa colher o CPF do menor. Nenhuma alternativa técnica do nosso lado.
+- **E07 (g) Registro de integração sem texto livre:** a mensagem do Serpro, saneada, vai só para o log e para a exceção, nunca para a tabela *append-only*, que não admite expurgo.
+- **E07 (h) CPF por usuário sem `DELETE`:** desativação (`POST …/deactivate`) que apaga o CPF e mantém a linha, pela convenção do projeto "a API não apaga nada". O plano pedia `DELETE` e o build pegou o erro.
+- **E07 (i) Limpar a credencial do Serpro:** hoje não há como apagá-la; ao desligar a integração, ela continua cifrada no banco. Fica como recurso a decidir. A recomendação é uma ação explícita de limpar, com trilha, antes do M8.
+- **E07 (j) Correções extras depois da onda única da revisão final:** dois despachos mínimos.
+  - Controle C1 no saneador.
+  - `pattern` da senha válido em ECMA-262, mais U+2028 e U+2029.
+
+  Motivo: deixar a `main` pronta para push com o build verde e o contrato válido para os geradores de SDK. Alternativa descartada: integrar com um teste vermelho como resíduo.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
@@ -274,7 +298,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E07 | Configuração, domínios e adaptador Serpro da FNRH | #em-andamento | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
+| E07 | Configuração, domínios e adaptador Serpro da FNRH | #concluida | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
 | E08 | Envio assíncrono e pendências da FNRH | #pendente | E01, E02, E07 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
 | E09 | Homologação da FNRH com o Serpro | #bloqueada | E08 | Envios reais no ambiente de homologação |
 
@@ -1159,7 +1183,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E07 — Configuração, domínios e adaptador Serpro da FNRH — #em-andamento
+## E07 — Configuração, domínios e adaptador Serpro da FNRH — #concluida
 
 **Objetivo:** criar o módulo `fnrh` com a configuração das credenciais cifradas (RF-FNRH-02), o cadastro do CPF solicitante (H5), os domínios oficiais com validação local (RF-FNRH-06, H21) e a porta `FnrhGateway` com o adaptador REST do Serpro (Basic Auth, header `cpf_solicitante`), testado com WireMock a partir da documentação v2.4 (H6), com log de integração redigido e o painel de saúde como métrica e endpoint de status (H22).
 
@@ -1214,12 +1238,85 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-04-m5-recepcao-fnrh-e07.md`, com 7 tarefas e as decisões D-E07-1 a 12, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`).
+  - **Revisão de arquitetura** (`revisor-arquitetura`, modelo mais capaz): aprovado com notas em 2 rodadas.
+    - A revisão inicial bloqueou com 1 Crítico e 8 Importantes: tipos em camadas proibidas, fluxo de registro indefinido, resultado incerto, texto livre em tabela *append-only*, entre outros.
+    - A rodada 1 abriu um Importante novo, a autoinvocação no refresh.
+  - **Levantamento da API v2.4:** `docs/fnrh/api-fnrh-v2.4.md`, a partir do PDF oficial (60 p., SHA-256 `476849fd…cbf235`, baixado pelo link `@@display-file` do portal). A H6 se confirmou: a documentação basta.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `360592f`):
+  - `3558601`, `0185647`, `fa9091b` e `08903c4`: início da etapa, levantamento, plano e as correções da revisão de arquitetura.
+  - Task 1 (módulo, permissões, configuração cifrada): `4405108` e `089b175`.
+  - Task 2 (API da configuração): `fe551a2`, `da106b5`, `f8d7ea9` (o `username` saiu da trilha) e `6f58f82`.
+  - Task 3 (CPF solicitante por usuário): `52ae0b1` e `60438a4`. Foi reaberta em `0316330` e `b6b6d61`, que trocaram o `DELETE` pela desativação.
+  - Task 4 (porta e adaptador Serpro): `68911e6`, `55f14ab`, `a7e685d`, `937e7de`, `2e4aaf5`, `0a011c8`, `24399f9`, `45aa6ef` e `514c5cb` (4 rodadas de correção).
+  - Task 5 (registro de integração, status e métrica): `2bf1b90` e `47c0797`.
+  - Task 6 (domínios com cache): `c3f6b1c`, `4928795`, `40dacfc`, `e0724b3` e `531193e`.
+  - Task 7 (mapeamento e validação local): `635b6c1` e `60080b7`.
+  - Onda da revisão final: `e8b7303`, `55e5a75`, `0584d47` e `d5614b6`.
+  - O commit de fechamento (este handoff, a ARCHITECTURE §12 e o histórico).
+- **Revisão final:** `revisor-seguranca` no modelo mais capaz, sobre `360592f..60080b7`, com resultado "With fixes" e nenhum Crítico.
+  - **I1:** a troca do CPF solicitante por outro com o mesmo final não deixava rastro na trilha. Corrigido com `@Version` no `FnrhRequester` e a versão no retrato.
+  - **I2:** `findReservationByCode` falhava aberto. Agora falha fechado e devolve `UNKNOWN_OUTCOME` quando há ambiguidade.
+  - **Minors corrigidos na mesma onda:** caracteres de controle e de formatação Unicode no saneador e nos rótulos, um CHECK no `remote_id`, a regex da senha e os casos 502/503 no `DomainErrorsTest`.
+  - **Re-revisão restrita da onda:** "all findings addressed", "Ready to merge? Yes". Ela apontou dois Minor novos, a regex da senha inválida em ECMA-262 e U+2028/U+2029, corrigidos em `d5614b6`.
+  - **Revisões por tarefa:** todas fecharam "Approved".
+- **Integridade dos testes:** `check_test_integrity.py --base 360592f` aponta `[DEV_TESTE_DO_TESTADOR] 24399f9 SerproFnrhGatewayRound3Test.kt`. Na correção 3 da Task 4, o desenvolvedor reescreveu esse arquivo do testador e apagou 5 testes. O testador os restaurou idênticos em `45aa6ef` (`SerproFnrhGatewayRequestBuildTest.kt`), e as revisões da Task 4 e a final conferiram linha a linha que nenhuma asserção ficou mais fraca. A verificação vai repetir o apontamento enquanto o commit estiver no histórico; este registro é a justificativa.
+- **Critérios verificados:**
+  - [x] Cada operação de `FnrhGateway` tem teste WireMock que confere URL, Basic Auth, `cpf_solicitante` e corpo, e mapeia o id remoto. O `cpf_solicitante` vai **só** em `registerPerson`, conforme a API v2.4 (D-E07-9). Os testes conferem a presença nessa operação e a ausência nas demais. Os stubs estritos `*_v2_4` estão em `testsupport/FnrhTestServer.kt`.
+  - [x] Validação (`400` e outros `4xx`), `401`, `403`, `404`, `429`/`3xx`/`5xx`, timeout de leitura em escrita (`UNKNOWN_OUTCOME`), conexão recusada (`UNAVAILABLE`) e integração sem configuração (`NOT_CONFIGURED`) viram erros tipados, sem causa encadeada (17 status × 8 operações).
+  - [x] Usuário, senha, CPF padrão e CPFs por usuário ficam cifrados (os testes leem a coluna). A senha nunca volta, o CPF sai mascarado (`***.***.***-NN`) e a trilha não guarda nem a senha, nem o usuário, nem o CPF em claro.
+  - [x] A validação local recusa CPF inválido, município IBGE inexistente (lista oficial com 5.571 municípios, em `src/main/resources/fnrh/ibge-municipios.csv`, com fonte, data e SHA-256) e nacionalidade fora do ISO 3166-1, com erros por campo e sem o valor.
+  - [x] Log, registro de integração (`fnrh.integration_call`, *append-only* e sem texto livre), exceção, resposta, status e métricas não trazem raça/cor, deficiência, número de documento, nome, e-mail, telefone nem a senha. O saneador mascara os valores enviados e os padrões.
+  - [x] `GET /api/v1/fnrh/status` e as métricas `zeny_fnrh_calls_total`, `zeny_fnrh_last_success_seconds`, `zeny_fnrh_last_failure_seconds` e `zeny_fnrh_configured` aparecem em `/actuator/prometheus`. Nenhum `HealthIndicator` (`ActuatorExposureTest` intacto).
+  - [x] `ModularityTest` com o teste do `fnrh` (`shared` e `guests`, sem `iam`).
+    - `./gradlew build` em `d5614b6`: BUILD SUCCESSFUL in 6m 37s, 1712 testes, 0 falhas, 0 erros.
+    - `.github/scripts/check-api-breaking.sh 360592f`: "Nenhuma mudança incompatível (nível ERR) em /api/v1".
+    - Scanner (cópia de `60080b7`, sem mudança de dependência depois): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os mesmos da E14.
+- **Endpoints novos:**
+  - `GET`/`PUT /api/v1/fnrh/settings`, com `If-Match`;
+  - `GET /api/v1/fnrh/requesters`, `PUT /api/v1/fnrh/requesters/{userId}` e `POST /api/v1/fnrh/requesters/{userId}/deactivate`;
+  - `GET /api/v1/fnrh/domains/{domain}` e `POST /api/v1/fnrh/domains/refresh`;
+  - `GET /api/v1/fnrh/status`.
+
+  Permissões: `fnrh.settings.manage` (só o Administrador), `fnrh.domains.read` e `fnrh.submissions.read` (Gerente e Recepcionista).
+- **Kernel (`shared`):** novos `ErrorKind.BAD_GATEWAY` e `SERVICE_UNAVAILABLE`, com `BadGatewayException` e `ServiceUnavailableException` (502/503). O `pattern` global do `Cpf` no contrato passou a aceitar pontuação.
+- **Decisões para o usuário.** Todas foram decididas pela opção recomendada em nome do usuário (delegado ao orquestrador, 2026-11-04 e 05); ver "Decisões do lote E07":
+  - D-E07-1: o ambiente é escolhido na configuração, com as URLs em propriedade, e trocar de ambiente exige a senha de novo.
+  - D-E07-2: registro na **criação da reserva**. Fluxo:
+    - `POST /reservas`, sem dado pessoal;
+    - no check-in, `POST /pessoas` + `POST /reservas/{id}/hospedes` com `CHECKIN_REALIZADO`;
+    - `PATCH` de check-out;
+    - cancelamento em `CRIADA`;
+    - o no-show fica para o M6.
+  - D-E07-3: lista do IBGE versionada no repositório. Risco aceito: um município criado depois do download é recusado até atualizar o arquivo.
+  - D-E07-8: sem texto livre no registro de integração.
+  - D-E07-9: `cpf_solicitante` só onde a API exige. O roadmap supunha o header em toda chamada.
+  - D-E07-10: raça ou gênero não coletados geram `REQUIRED`.
+  - D-E07-11: gênero `OUTRO` não pode ser enviado, porque o `guests` não guarda a descrição. A recomendação é acrescentá-la ao perfil numa etapa própria ou na E08.
+  - D-E07-12: dependências `shared` e `guests`; a `HotelApi.profile()` fica para a E11.
+  - Nota B2 da E02: a API só aceita CPF ou passaporte, então **um menor brasileiro só com RG não é aceito**. O hotel precisa colher o CPF do menor.
+  - Desativação no lugar do `DELETE` dos CPFs por usuário, pela convenção do projeto.
+  - Limpar a credencial do Serpro (hoje não há como apagá-la) ficou como recurso a decidir.
+- **Notas para a próxima etapa (E08):**
+  - Não há operação para desfazer o check-in na API.
+  - O cancelamento só vale com a reserva em `CRIADA`.
+  - Os ids remotos dependem do ambiente.
+  - `UNKNOWN_OUTCOME`:
+    - se concilia por `findReservationByCode` no registro da reserva e por `GET /reservas/{id}/hospedes` na inclusão do hóspede;
+    - no `registerPerson`, falta decidir entre aceitar o risco de pessoa duplicada e conciliar por `GET /pessoas/documento/…`.
+  - Toda chamada ao Serpro roda fora de transação do banco.
+  - `UNAVAILABLE` é temporário: limite as tentativas (um erro de programação no envio também cai nele). Um 503 dentro de handler offline viraria recusa permanente.
+  - O `performedBy` só pesa no `registerPerson`.
+  - `minors` sai da data de nascimento.
+  - O responsável entra antes do menor.
+  - A validação local recebe a residência nula sem erro e não confere o `checkedOutAt`: a E08 decide.
+  - O validador, o mapeador e a lista do IBGE ficam em `fnrh/domain`, sem Spring; a E08 os monta.
+- **Notas para a E09:**
+  - Confirmar se o `POST /reservas/{id}/hospedes` aceita `CHECKIN_REALIZADO` numa reserva `CRIADA`.
+  - Confirmar se o filtro `codigo_reserva` casa exatamente; hoje só a página 1 é lida.
+  - Confirmar o formato do `400`, o caminho do no-show (`/no-show` ou `/noshow`), a ordem de `dados_hospedes` e o limite de 200 caracteres da senha.
+- **Migrações:** `V2026_11_04_1000` a `1030`, alteradas no lugar durante a etapa porque nunca saíram da branch. Um banco local de desenvolvimento que tenha aplicado uma versão anterior delas precisa ser recriado (`docker compose -f docker/compose.yaml down -v`).
+- **Revisão humana desta etapa:** pendente. O lote para aqui.
 
 ---
 
@@ -1531,3 +1628,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-28 — lote da E13 executado pelas souls na branch `roadmap/m5-recepcao-fnrh`. A E13 está `#concluida`, com o handoff preenchido e a captura do brain publicada. O lote parou na revisão humana dela e foi integrado na `main` a pedido do usuário, que estava ausente. Nova etapa E14 (correção das vulnerabilidades High/Critical apontadas pelo scanner), decidida pela opção recomendada em nome do usuário. Ela depende da E13 e fica antes das pendentes, para rodar primeiro. A E12 passa a depender da E14 no lugar da E13, que a E14 cobre. A definição global de pronto ganha o item das vulnerabilidades. As decisões do lote estão em "Decisões do lote E13". As demais tags não mudaram.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
 - 2026-11-04 — E14 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: Spring Boot 4.1.2, plataforma do Jackson 2 na 2.22.4, restrição do freemarker 2.3.35 no classpath dos plugins, lockfiles regravados e o passo "Lockfiles em dia com o catálogo" na CI. O scanner passou de 5 Critical e 15 High a 0 e 0, e os resíduos Medium/Low ficaram em "Decisões do lote E14". O risco do item "Restrição de versão esquecida" foi corrigido: o passo de CI não acusa a sobra. Handoff preenchido. As demais tags não mudaram.
+- 2026-11-05 — E07 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: módulo `fnrh` com configuração cifrada, CPF solicitante por usuário, porta `FnrhGateway` com o adaptador Serpro v2.4 (levantamento em `docs/fnrh/api-fnrh-v2.4.md`), registro de integração sem dado pessoal, status e métricas, domínios com cache e validação local com a lista do IBGE. Handoff preenchido, decisões em "Decisões do lote E07" e ARCHITECTURE §12 corrigida (o `cpf_solicitante` vale só nas operações de pessoa e de hospedagem completa). O lote parou na revisão humana da E07. As demais tags não mudaram.
