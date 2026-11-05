@@ -7,6 +7,7 @@ import com.zeny.hotel.fnrh.application.FnrhCall
 import com.zeny.hotel.fnrh.application.FnrhConnection
 import com.zeny.hotel.fnrh.application.FnrhFailure
 import com.zeny.hotel.fnrh.application.FnrhGatewayException
+import com.zeny.hotel.fnrh.application.FnrhIntegrationLog
 import com.zeny.hotel.fnrh.domain.FnrhDocument
 import com.zeny.hotel.fnrh.domain.FnrhDocumentType
 import com.zeny.hotel.fnrh.domain.FnrhDomain
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertTimeoutPreemptively
 import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.LoggerFactory
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import tools.jackson.databind.json.JsonMapper
@@ -589,8 +591,22 @@ class SerproFnrhGatewayAttackTest {
         FnrhTestServer.stubAny(200, """{"dados":[]}""")
         gateway.findReservationByCode("RES-SECRET-CODE", "corr-log-2")
 
-        val provisional = ProvisionalFnrhIntegrationLogConfiguration().provisionalFnrhIntegrationLog()
-        calls.forEach(provisional::record)
+        // Registro do próprio teste: só a linha de log de cada FnrhCall, com todos os campos da chamada.
+        val logger = LoggerFactory.getLogger("FnrhAttackTestLog")
+        val callLog =
+            FnrhIntegrationLog { call ->
+                logger.info(
+                    "FNRH {} {} {} HTTP {} {} ms ref {} remoto {}",
+                    call.operation,
+                    call.environment,
+                    call.outcome,
+                    call.httpStatus ?: "-",
+                    call.durationMs,
+                    call.correlationRef ?: "-",
+                    call.remoteId ?: "-",
+                )
+            }
+        calls.forEach(callLog::record)
 
         val log = output.all
         listOf(
