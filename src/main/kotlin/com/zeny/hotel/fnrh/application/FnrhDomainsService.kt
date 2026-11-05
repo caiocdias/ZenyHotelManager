@@ -58,6 +58,9 @@ object FnrhDomainNames {
 
 /** A escrita do cache dos domínios, implementada em `infrastructure`. */
 interface FnrhDomainValueStore {
+    /** Serializa os `refresh` até o fim da transação: o seguinte espera o anterior e grava por cima. */
+    fun lockForRefresh()
+
     /** Quantos valores cada domínio tem agora. */
     fun counts(): Map<FnrhDomain, Int>
 
@@ -82,6 +85,7 @@ class FnrhDomainValuesWriter(
     @Audited(FnrhAudit.REFRESH_DOMAINS)
     @Transactional
     fun replace(values: Map<FnrhDomain, List<FnrhDomainValue>>): Map<FnrhDomain, Int> {
+        store.lockForRefresh()
         val now = clock.instant()
         val before = store.counts().named()
         store.replaceAll(values, now)
@@ -136,13 +140,17 @@ class FnrhDomainsService(
             } catch (e: FnrhGatewayException) {
                 throw e.toApiException()
             }
-        val distinct = values.distinctBy { it.code }
-        // Um domínio vazio apagaria as opções do check-in; o Serpro nunca o documentou assim, então é recusa.
-        if (distinct.isEmpty()) {
-            throw BadGatewayException(FnrhErrorCodes.FNRH_REJECTED, "O Serpro devolveu um domínio vazio.")
+        val distinct = values.distinctBy { it.code }.map { it.copy(label = it.label.trim()) }
+        // Dado do Serpro entra no cache e depois na ficha: valor fora do padrão ou domínio vazio (que apagaria as
+        // opções do check-in) recusa o refresh inteiro.
+        if (distinct.isEmpty() || distinct.any { !it.isWellFormed() }) {
+            throw BadGatewayException(FnrhErrorCodes.FNRH_REJECTED, "O Serpro devolveu um domínio inválido ou vazio.")
         }
         return distinct
     }
+
+    private fun FnrhDomainValue.isWellFormed() =
+        CODE_PATTERN.matches(code) && label.length in 1..MAX_LABEL && label.none { it.isISOControl() }
 
     private fun FnrhGatewayException.toApiException() =
         when (failure) {
@@ -171,4 +179,9 @@ class FnrhDomainsService(
                 BadGatewayException(FnrhErrorCodes.FNRH_REJECTED, "O Serpro recusou a consulta.")
             }
         }
+
+    private companion object {
+        val CODE_PATTERN = Regex("[A-Z0-9_]{1,40}")
+        const val MAX_LABEL = 255
+    }
 }

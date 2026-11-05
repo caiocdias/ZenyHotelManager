@@ -33,6 +33,14 @@ class JdbcFnrhDomainCatalog(
             .query { rs, _ -> FnrhDomainValue(rs.getString("code"), rs.getString("label")) }
             .list()
 
+    override fun lockForRefresh() {
+        jdbc
+            .sql("SELECT pg_advisory_xact_lock(:key)")
+            .param("key", REFRESH_LOCK_KEY)
+            .query()
+            .listOfRows()
+    }
+
     override fun counts(): Map<FnrhDomain, Int> {
         val counted =
             jdbc
@@ -61,5 +69,10 @@ class JdbcFnrhDomainCatalog(
                     .update()
             }
         }
+    }
+
+    private companion object {
+        /** Chave fixa do `fnrh` para o lock de aviso do `refresh` (o ASCII de "FNRHDOM1"). */
+        const val REFRESH_LOCK_KEY = 0x464E5248444F4D31L
     }
 }
