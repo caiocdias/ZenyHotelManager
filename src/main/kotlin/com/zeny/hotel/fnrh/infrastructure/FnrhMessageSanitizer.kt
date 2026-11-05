@@ -12,7 +12,8 @@ import java.text.Normalizer
  * - os e-mails;
  * - o CPF e o CNPJ pontuados e as sequências de 5 ou mais dígitos.
  *
- * E corta em [MAX_LENGTH] caracteres.
+ * Caracteres de controle (CR, LF) viram espaço, para a mensagem sair numa linha só do log. E corta em [MAX_LENGTH]
+ * caracteres.
  */
 object FnrhMessageSanitizer {
     const val MAX_LENGTH = 200
@@ -20,6 +21,7 @@ object FnrhMessageSanitizer {
     private const val MIN_VALUE_LENGTH = 3
     private const val MIN_WORD_LETTERS = 3
     private const val INPUT_FACTOR = 5
+    private val CONTROL = Regex("""\p{Cntrl}""")
     private val EMAIL = Regex("""[\p{L}\p{N}_.+%-]+@[\p{L}\p{N}-]+(\.[\p{L}\p{N}-]+)+""")
     private val FORMATTED_TAX_ID = Regex("""\d{2,3}\.\d{3}\.\d{3}[-/]\d{2,4}(-\d{2})?""")
     private val LONG_DIGITS = Regex("""\d{5,}""")
@@ -32,7 +34,7 @@ object FnrhMessageSanitizer {
     ): String? {
         if (raw.isNullOrBlank()) return null
         // Limita o trabalho das regex: a mensagem pode ter até 1 MiB e o resultado é cortado em MAX_LENGTH.
-        val masked = maskSentValues(raw.take(MAX_LENGTH * INPUT_FACTOR), sentValues)
+        val masked = maskSentValues(raw.take(MAX_LENGTH * INPUT_FACTOR).replace(CONTROL, " "), sentValues)
         return masked
             .replace(EMAIL, MASK)
             .replace(FORMATTED_TAX_ID, MASK)

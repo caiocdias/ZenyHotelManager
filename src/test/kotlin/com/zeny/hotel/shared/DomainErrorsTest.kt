@@ -39,4 +39,22 @@ class DomainErrorsTest {
         error.message shouldBe "Campos inválidos."
         error.violations shouldContainExactly listOf(violation)
     }
+
+    @Test
+    fun `the gateway families carry their kind`() {
+        val code = ErrorCode("SOMETHING")
+
+        BadGatewayException(code, "m").kind shouldBe ErrorKind.BAD_GATEWAY
+        ServiceUnavailableException(code, "m").kind shouldBe ErrorKind.SERVICE_UNAVAILABLE
+    }
+
+    @Test
+    fun `the gateway kinds map to 502 and 503`() {
+        com.zeny.hotel.shared.web.Problems
+            .statusOf(ErrorKind.BAD_GATEWAY)
+            .value() shouldBe 502
+        com.zeny.hotel.shared.web.Problems
+            .statusOf(ErrorKind.SERVICE_UNAVAILABLE)
+            .value() shouldBe 503
+    }
 }

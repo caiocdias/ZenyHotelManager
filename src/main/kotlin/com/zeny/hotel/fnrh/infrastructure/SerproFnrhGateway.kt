@@ -108,11 +108,8 @@ class SerproFnrhGateway(
             query = listOf("page_number" to "1", "codigo_reserva" to reservationCode),
             sentValues = listOf(reservationCode),
             remoteIdOf = { it.firstOrNull() },
-        ) { tree ->
-            tree?.get("dados")?.takeIf { it.isArray }?.mapNotNull { item ->
-                item.text("reserva_id")?.takeIf { matchesCode(item, reservationCode) }
-            }
-        }.firstOrNull()
+        ) { tree -> tree?.let { reservationIdsFor(it, reservationCode) } }
+            .firstOrNull()
             ?.let(::FnrhRemoteId)
 
     override fun registerPerson(
@@ -228,8 +225,11 @@ class SerproFnrhGateway(
             fail(failureOf(reply.status), reply.status, errorMessage(tree, sentValues))
         }
         val result =
-            parse(tree)
-                ?: fail(if (write) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.SERVER_ERROR, reply.status, null)
+            try {
+                parse(tree)
+            } catch (_: AmbiguousMatchException) {
+                fail(FnrhFailure.UNKNOWN_OUTCOME, reply.status, null)
+            } ?: fail(if (write) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.SERVER_ERROR, reply.status, null)
         record(
             connection,
             operation,

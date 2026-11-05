@@ -6,6 +6,8 @@ CREATE TABLE fnrh.requester (
     user_id uuid NOT NULL,
     cpf     text,
     active  boolean NOT NULL,
+    -- Sobe a cada troca (@Version) e entra no retrato da trilha; o DEFAULT cobre quem insere direto na tabela.
+    version bigint  NOT NULL DEFAULT 0,
     CONSTRAINT requester_pk PRIMARY KEY (user_id),
     -- Nada é apagado: desativar anula o CPF (minimização de dado pessoal) e mantém a linha.
     CONSTRAINT requester_active_cpf_ck CHECK (active = (cpf IS NOT NULL))

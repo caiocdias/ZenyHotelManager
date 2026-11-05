@@ -150,7 +150,8 @@ class FnrhDomainsService(
     }
 
     private fun FnrhDomainValue.isWellFormed() =
-        CODE_PATTERN.matches(code) && label.length in 1..MAX_LABEL && label.none { it.isISOControl() }
+        CODE_PATTERN.matches(code) && label.length in 1..MAX_LABEL &&
+            label.none { it.isISOControl() || Character.getType(it) == Character.FORMAT.toInt() }
 
     private fun FnrhGatewayException.toApiException() =
         when (failure) {

@@ -19,7 +19,8 @@ CREATE TABLE fnrh.integration_call (
     CONSTRAINT integration_call_outcome_ck CHECK (outcome ~ '^[A-Z_]{1,40}$'),
     CONSTRAINT integration_call_http_status_ck CHECK (http_status IS NULL OR http_status BETWEEN 100 AND 599),
     CONSTRAINT integration_call_duration_ck CHECK (duration_ms >= 0),
-    CONSTRAINT integration_call_refs_ck CHECK (length(correlation_ref) <= 100 AND length(remote_id) <= 100)
+    CONSTRAINT integration_call_refs_ck CHECK (length(correlation_ref) <= 100),
+    CONSTRAINT integration_call_remote_id_ck CHECK (remote_id IS NULL OR remote_id ~ '^[A-Za-z0-9._-]{1,100}$')
 );
 
 CREATE INDEX integration_call_env_outcome_idx

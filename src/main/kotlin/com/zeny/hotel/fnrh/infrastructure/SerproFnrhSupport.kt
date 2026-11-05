@@ -123,3 +123,27 @@ internal fun logCall(
     // A linha vai como argumento, não como formato: a mensagem do Serpro pode ter '{}'.
     if (call.outcome == "SUCCESS") log.info("{}", line) else log.warn("{}", line)
 }
+
+/** O Serpro devolveu uma página da qual não se pode dizer qual item é a reserva pedida. */
+internal class AmbiguousMatchException : RuntimeException()
+
+/**
+ * Os `reserva_id` da página que são da reserva [reservationCode]; `null` se `dados` não é uma lista. Falha fechado
+ * (I2): os itens com `numero_reserva` igual ao código valem; um item sem `numero_reserva` só vale se for o único da
+ * página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso lança [AmbiguousMatchException], sem escolher
+ * item: se o Serpro ignorasse o filtro, a reserva seria ligada ao id de outra.
+ */
+internal fun reservationIdsFor(
+    tree: JsonNode,
+    reservationCode: String,
+): List<String>? {
+    val items = tree.get("dados")?.takeIf { it.isArray } ?: return null
+    val (numbered, unnumbered) = items.partition { it.get("numero_reserva")?.isNull == false }
+    val matched = numbered.filter { matchesCode(it, reservationCode) }
+    val total = tree.get("pagination")?.get("TotalRegistros")
+    // Sem `pagination` (ou sem o total), um item só basta: o total não pode desmentir o que não foi dito.
+    val onlyOne =
+        items.size() == 1 && (total == null || total.isNull || (total.isIntegralNumber && total.asLong() == 1L))
+    if (matched.isEmpty() && unnumbered.isNotEmpty() && !onlyOne) throw AmbiguousMatchException()
+    return (matched.ifEmpty { unnumbered }).mapNotNull { it.text("reserva_id") }
+}

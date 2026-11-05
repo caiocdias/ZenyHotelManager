@@ -14,11 +14,15 @@ internal object FnrhAudit {
     const val REFRESH_DOMAINS = "fnrh.domains.refresh"
 }
 
-/** O retrato do CPF solicitante de um usuário para a trilha: só o CPF mascarado (nenhum, se inativo). */
+/**
+ * O retrato do CPF solicitante de um usuário para a trilha: só o CPF mascarado (nenhum, se inativo). A [version] sobe
+ * a cada mudança gravada, para a troca por um CPF de mesmo final (retratos iguais) não sumir da trilha.
+ */
 internal data class FnrhRequesterAuditState(
     val userId: String,
     val cpf: String?,
     val active: Boolean,
+    val version: Long?,
 )
 
 internal fun FnrhRequester.auditState() =
@@ -28,6 +32,7 @@ internal fun FnrhRequester.auditState() =
             maskCpf(it.digits)
         },
         active,
+        version,
     )
 
 /**

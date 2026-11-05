@@ -80,7 +80,7 @@ class JdbcFnrhIntegrationLog(
             .param("status", call.httpStatus)
             .param("duration", call.durationMs)
             .param("correlation", call.correlationRef)
-            .param("remote", call.remoteId)
+            .param("remote", call.remoteId?.takeIf(REMOTE_ID::matches))
             .param("now", clock.instant().atOffset(ZoneOffset.UTC))
             .update()
     }
@@ -88,6 +88,9 @@ class JdbcFnrhIntegrationLog(
     private companion object {
         val log: Logger = LoggerFactory.getLogger(JdbcFnrhIntegrationLog::class.java)
         const val MAX_LOGGED = 40
+
+        /** O id remoto vem do Serpro: o que foge deste formato vai como `NULL` (a tabela não aceita outro). */
+        val REMOTE_ID = Regex("^[A-Za-z0-9._-]{1,100}$")
     }
 }
 

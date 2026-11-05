@@ -7,6 +7,7 @@ import jakarta.persistence.Convert
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import jakarta.persistence.Version
 import java.util.UUID
 
 /**
@@ -32,6 +33,11 @@ class FnrhRequester(
     /** Se o usuário tem CPF solicitante vigente. Inativo: o CPF foi apagado (minimização de dado pessoal). */
     @Column(nullable = false)
     var active: Boolean = true
+        protected set
+
+    /** A versão: sobe a cada troca gravada, para a trilha registrar a troca por um CPF de mesmo final. */
+    @Version
+    var version: Long? = null
         protected set
 
     /** O CPF vigente, ou `null` se inativo. */

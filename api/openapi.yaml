@@ -16963,7 +16963,7 @@ components:
           maxLength: 200
           minLength: 0
           nullable: true
-          pattern: .*\S.*
+          pattern: (?s).*\S.*
           writeOnly: true
         username:
           type: string
