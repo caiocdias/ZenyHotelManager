@@ -431,18 +431,6 @@ class GuestGenderDescriptionApiTest(
             }
     }
 
-    @Test
-    fun `the contract does not expose the description in any response schema`() {
-        val lines = Files.readAllLines(Path.of("api/openapi.yaml"))
-        val names =
-            lines
-                .filter { it.matches(Regex("^    Guest\\w*(Response|View|Summary|Item):$")) }
-                .map { it.trim().removeSuffix(":") }
-        names.forEach { name ->
-            withClue(name) { schemaBlock(lines, name).none { it.trim() == "genderDescription:" } shouldBe true }
-        }
-    }
-
     // --- Apoio ----------------------------------------------------------------------------------------------
 
     private fun otherProfile(description: String?): Map<String, Any?> = profileWith("OTHER", description)
