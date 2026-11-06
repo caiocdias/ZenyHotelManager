@@ -155,6 +155,43 @@ class GuestMergeDomainTest {
     }
 
     @Test
+    fun `the gender description follows the gender in the merge and never turns a value into empty`() {
+        fun profile(
+            gender: Gender?,
+            description: String? = null,
+        ) = guest(GuestProfile("Maria", gender = gender, genderDescription = description))
+
+        val keeps = profile(Gender.OTHER, "Do sobrevivente")
+        keeps.merge(profile(Gender.MALE))
+        keeps.gender shouldBe Gender.OTHER
+        keeps.genderDescription shouldBe "Do sobrevivente"
+
+        val replaced = profile(Gender.OTHER, "Do sobrevivente")
+        replaced.merge(profile(Gender.MALE), GuestMergeField.GENDER)
+        replaced.gender shouldBe Gender.MALE
+        replaced.genderDescription.shouldBeNull()
+
+        val empty = profile(null)
+        empty.merge(profile(Gender.OTHER, "Do absorvido"))
+        empty.gender shouldBe Gender.OTHER
+        empty.genderDescription shouldBe "Do absorvido"
+
+        val noDescription = profile(Gender.OTHER)
+        noDescription.merge(profile(Gender.OTHER, "Do absorvido"))
+        noDescription.genderDescription shouldBe "Do absorvido"
+
+        val neverEmpty = profile(Gender.OTHER, "Do sobrevivente")
+        neverEmpty.merge(profile(Gender.OTHER), GuestMergeField.GENDER)
+        neverEmpty.gender shouldBe Gender.OTHER
+        neverEmpty.genderDescription shouldBe "Do sobrevivente"
+
+        val male = profile(Gender.MALE)
+        male.merge(profile(Gender.OTHER, "Do absorvido"))
+        male.gender shouldBe Gender.MALE
+        male.genderDescription.shouldBeNull()
+    }
+
+    @Test
     fun `the company and the FNRH sensitive data follow the same rule`() {
         val company = CompanyId(UuidV7.generate())
         val survivor = guest(GuestProfile("Maria"))

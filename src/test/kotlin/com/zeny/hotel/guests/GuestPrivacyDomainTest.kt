@@ -148,6 +148,20 @@ class GuestPrivacyDomainTest {
     }
 
     @Test
+    fun `anonymize clears the gender description`() {
+        val guest =
+            Guest.create(
+                GuestProfile("Maria da Silva", gender = Gender.OTHER, genderDescription = "Pessoa não binária"),
+                now,
+            )
+
+        guest.anonymize(by, now.plusSeconds(60))
+
+        guest.gender.shouldBeNull()
+        guest.genderDescription.shouldBeNull()
+    }
+
+    @Test
     fun `an absorbed profile stays MERGED when anonymized with its survivor`() {
         val survivor = Guest.create(profile(), now)
         val merged = Guest.create(profile(), now)

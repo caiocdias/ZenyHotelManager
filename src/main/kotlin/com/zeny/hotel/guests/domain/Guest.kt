@@ -60,6 +60,8 @@ data class GuestProfile(
     val companyId: CompanyId? = null,
     /** Restrições alimentares: só com o consentimento ativo da finalidade `DIETARY_RESTRICTIONS` (RF-HOS-02). */
     val dietaryRestrictions: String? = null,
+    /** Descrição do gênero que a FNRH exige com `OTHER`; só com esse gênero (dado pessoal: nunca em log). */
+    val genderDescription: String? = null,
 ) {
     /** Nunca mostra dado pessoal. */
     override fun toString(): String = "GuestProfile(vip=$vip)"
@@ -186,6 +188,12 @@ class Guest private constructor(
     @Convert(converter = EncryptedStringConverter::class)
     @Column(name = "dietary_restrictions")
     var dietaryRestrictions: String? = null
+        protected set
+
+    /** Descrição do gênero (só com `OTHER`; dado pessoal), cifrada pelo conversor. */
+    @Convert(converter = EncryptedStringConverter::class)
+    @Column(name = "gender_description")
+    var genderDescription: String? = null
         protected set
 
     /** Quando o perfil foi anonimizado a pedido do titular; `null` se não foi. */
@@ -436,11 +444,11 @@ class Guest private constructor(
      * Anonimiza o perfil a pedido do titular (RF-HOS-07; decisões do usuário em 2026-10-17): mantém o id, os
      * consentimentos (prova), a nacionalidade, o país de residência, a UF e o município do endereço
      * ([anonymizedState], [anonymizedIbgeCityCode]), o VIP e as datas; apaga o nome (o nome completo vira
-     * [ANONYMIZED_NAME]), o nome social, a data de nascimento, o gênero, os contatos, o endereço, as preferências, as
-     * observações, as restrições alimentares, a empresa, a restrição (com o motivo), os dados sensíveis da FNRH e os
-     * documentos (linhas inteiras, com o índice cego); os anexos são de quem chama (o `files`). Um perfil ativo fica
-     * `ANONYMIZED`; um absorvido (da cadeia do pedido) continua `MERGED`, com [anonymizedAt]. Já anonimizado: `409
-     * GUEST_ANONYMIZED`. Devolve os documentos apagados (para a trilha).
+     * [ANONYMIZED_NAME]), o nome social, a data de nascimento, o gênero e a descrição dele, os contatos, o endereço,
+     * as preferências, as observações, as restrições alimentares, a empresa, a restrição (com o motivo), os dados
+     * sensíveis da FNRH e os documentos (linhas inteiras, com o índice cego); os anexos são de quem chama (o
+     * `files`). Um perfil ativo fica `ANONYMIZED`; um absorvido (da cadeia do pedido) continua `MERGED`, com
+     * [anonymizedAt]. Já anonimizado: `409 GUEST_ANONYMIZED`. Devolve os documentos apagados (para a trilha).
      */
     fun anonymize(
         by: UserId?,
@@ -473,6 +481,7 @@ class Guest private constructor(
         restrictedByUuid = null
         encodedSensitiveData = null
         dietaryRestrictions = null
+        genderDescription = null
         val removed = documentList.toList()
         documentList.clear()
         if (status == GuestStatus.ACTIVE) status = GuestStatus.ANONYMIZED
@@ -503,7 +512,8 @@ class Guest private constructor(
      *
      * - **Dados do perfil:** vale o que este perfil tem; os campos vazios dele recebem os do absorvido; os campos em
      *   [takeFromMerged] vêm do absorvido, se ele os tiver (a mesclagem nunca apaga um valor). País de residência e
-     *   endereço vão juntos ([GuestMergeField.RESIDENCE]); os dados sensíveis da FNRH também seguem esta regra.
+     *   endereço vão juntos ([GuestMergeField.RESIDENCE]); os dados sensíveis da FNRH também seguem esta regra. A
+     *   descrição do gênero acompanha o gênero que ficar (só existe com `OTHER`; nunca troca valor por vazio).
      * - **VIP:** se qualquer um for. **Restrição:** se qualquer um estiver restrito, o sobrevivente fica restrito, com
      *   o motivo dele; se só o absorvido estava, com o motivo, a data e o autor do absorvido.
      * - **Documentos:** os do absorvido de um tipo e país que este não tem passam para cá ([GuestMergeResult.moved]:
@@ -604,6 +614,26 @@ class Guest private constructor(
         return moved to duplicates
     }
 
+    /**
+     * O gênero e a descrição dele saem juntos da mesclagem: a descrição só existe com `OTHER`, a do perfil de onde o
+     * gênero veio prevalece e um valor nunca vira vazio.
+     */
+    private fun mergedGender(
+        merged: Guest,
+        take: Set<GuestMergeField>,
+    ): Pair<Gender?, String?> {
+        val fromMerged =
+            if (GuestMergeField.GENDER in take) merged.gender != null else gender == null && merged.gender != null
+        val resultGender = if (fromMerged) merged.gender else gender
+        val description =
+            when {
+                resultGender != Gender.OTHER -> null
+                fromMerged -> merged.genderDescription ?: this.genderDescription
+                else -> this.genderDescription ?: merged.genderDescription
+            }
+        return resultGender to description
+    }
+
     /** Os dados do perfil sobrevivente depois da mesclagem (regra em [absorb]). */
     private fun mergedProfile(
         merged: Guest,
@@ -615,12 +645,13 @@ class Guest private constructor(
             } else {
                 residenceCountry == null && merged.residenceCountry != null
             }
+        val (genderAfter, genderDescriptionAfter) = mergedGender(merged, take)
         return GuestProfile(
             fullName = if (GuestMergeField.FULL_NAME in take) merged.fullName else fullName,
             socialName = pick(GuestMergeField.SOCIAL_NAME in take, socialName) { merged.socialName },
             nationality = pick(GuestMergeField.NATIONALITY in take, nationality) { merged.nationality },
             birthDate = pick(GuestMergeField.BIRTH_DATE in take, birthDate) { merged.birthDate },
-            gender = pick(GuestMergeField.GENDER in take, gender) { merged.gender },
+            gender = genderAfter,
             email = pick(GuestMergeField.EMAIL in take, email) { merged.email },
             phone = pick(GuestMergeField.PHONE in take, phone) { merged.phone },
             residenceCountry = if (residenceFromMerged) merged.residenceCountry else residenceCountry,
@@ -636,6 +667,7 @@ class Guest private constructor(
             companyId = pick(GuestMergeField.COMPANY in take, companyUuid) { merged.companyUuid }?.let(::CompanyId),
             // As restrições alimentares dependem do consentimento de cada perfil: fica a do sobrevivente.
             dietaryRestrictions = dietaryRestrictions,
+            genderDescription = genderDescriptionAfter,
         )
     }
 
@@ -662,6 +694,7 @@ class Guest private constructor(
                 "Restrições alimentares são dado sensível e só se gravam com o consentimento ativo do hóspede.",
             )
         }
+        val genderDescription = validGenderDescription(profile)
         requireBirthDate(profile.birthDate, now)
         if (profile.address != null && residenceCountry != BRAZIL) {
             throw GuestsRules.invalid(
@@ -677,6 +710,9 @@ class Guest private constructor(
         changes.set("nationality", this.nationality, nationality) { this.nationality = it }
         changes.set("birthDate", this.birthDate, profile.birthDate) { this.birthDate = it }
         changes.set("gender", this.gender, profile.gender) { this.gender = it }
+        changes.set("genderDescription", this.genderDescription, genderDescription) {
+            this.genderDescription = it
+        }
         changes.set("email", this.email, email) { this.email = it }
         changes.set("phone", this.phone, phone) { this.phone = it }
         changes.set("residenceCountry", this.residenceCountry, residenceCountry) { this.residenceCountry = it }
@@ -690,6 +726,20 @@ class Guest private constructor(
         changes.set("dietaryRestrictions", dietaryRestrictions, dietary) { dietaryRestrictions = it }
         searchName = GuestsRules.searchKey(this.fullName, this.socialName)
         return changes.fields
+    }
+
+    /** A descrição do gênero aparada (vazia vira `null`); só com o gênero `OTHER`. A mensagem não repete o texto. */
+    private fun validGenderDescription(profile: GuestProfile): String? {
+        val description =
+            GuestsRules.optional("genderDescription", profile.genderDescription, MAX_GENDER_DESCRIPTION_LENGTH)
+        if (description != null && profile.gender != Gender.OTHER) {
+            throw GuestsRules.invalid(
+                GuestsErrorCodes.GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER,
+                "genderDescription",
+                "A descrição do gênero só vale com o gênero OTHER.",
+            )
+        }
+        return description
     }
 
     /** Nem no futuro (com um dia de folga para os fusos) nem antes de 1900. */
@@ -727,6 +777,7 @@ class Guest private constructor(
         const val MAX_NOTES_LENGTH = 1000
         const val MAX_REASON_LENGTH = 500
         const val MAX_DIETARY_LENGTH = 500
+        const val MAX_GENDER_DESCRIPTION_LENGTH = 100
 
         /** O nome completo de um perfil anonimizado (o banco confere o mesmo texto). */
         const val ANONYMIZED_NAME = "Hóspede anonimizado"

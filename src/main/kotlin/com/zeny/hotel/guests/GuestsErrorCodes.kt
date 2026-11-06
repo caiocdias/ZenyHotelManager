@@ -49,6 +49,12 @@ object GuestsErrorCodes {
      */
     val DIETARY_RESTRICTIONS_REQUIRE_CONSENT = ErrorCode("DIETARY_RESTRICTIONS_REQUIRE_CONSENT")
 
+    /**
+     * 400: a descrição do gênero só vale com o gênero `OTHER` (a FNRH a exige só nele). A mensagem nunca repete o
+     * texto (dado pessoal).
+     */
+    val GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER = ErrorCode("GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER")
+
     /** 400: a empresa informada no perfil não existe. */
     val UNKNOWN_COMPANY = ErrorCode("UNKNOWN_COMPANY")
 
