@@ -1772,8 +1772,6 @@ classDiagram
 
   class BusinessDay {
     LocalDate date
-    String status
-    Instant closedAt
   }
   class EndOfDayRun {
     String trigger
@@ -2883,9 +2881,9 @@ Não há data definida. As fases seguem a ordem de dependência. **Para a inaugu
 |---|---|---|
 | **0 — Fundação** | Infraestrutura (repositório, CI, Docker compose, contrato OpenAPI); núcleo compartilhado; ACS (usuários, roles, escopo, aprovação, auditoria); CFG; PES (escala); UHs, áreas e status; motor de checklists (sem ações de estoque e enxoval); notificações internas; tempo real; base da sincronização offline | Base sobre a qual todos os módulos são construídos |
 | **1 — Hospedagem** | Hóspedes; tarifas (planos, restrições, pacotes, políticas); reservas, grupos e bloqueios; recepção; FNRH; contas e caixa com pagamento manual; fechamento do dia; governança completa; manutenção corretiva e OOO/OOS; painel e relatórios operacionais; agente de impressão | O hotel opera a hospedagem. Notas emitidas manualmente no portal da prefeitura até a Fase 2. |
-| **2 — Receita e fiscal** | Channel manager; Pix integrado; cartão integrado e caução; fiscal (NFS-e, NFC-e, IBS/CBS); PDV do restaurante e bar (comandas, produção, café da manhã, lançamento no quarto, taxa de serviço) | **Pronto para inaugurar** |
+| **2 — Receita e fiscal** | Channel manager; Pix integrado; cartão integrado e caução; fiscal (NFS-e, NFC-e, IBS/CBS); PDV do restaurante e bar (comandas, produção, café da manhã, lançamento no quarto, taxa de serviço); expurgo automático dos dados sensíveis da FNRH (RN-19) | **Pronto para inaugurar** |
 | **3 — Suprimentos** | Estoque e compras; NF-e XML; fichas técnicas com baixa automática; ações de checklist (baixa de insumos, troca de enxoval); rouparia e lavanderia terceirizada; lavanderia do hóspede; itens de empréstimo | Custos e insumos sob controle |
-| **4 — Comercial e gestão** | Eventos completos e locação de espaços; contas a receber; manutenção preventiva e ativos; KPIs e relatórios gerenciais; exportação contábil; automação de retenção LGPD | Gestão completa |
+| **4 — Comercial e gestão** | Eventos completos e locação de espaços; contas a receber; manutenção preventiva e ativos; KPIs e relatórios gerenciais; exportação contábil; anonimização automática de perfis por prazo (RN-20) | Gestão completa |
 | **Futuro** | Interface do hóspede (pré-check-in pela FNRH, notificações, portal); financeiro administrativo (se confirmado); fechaduras; PABX; RMS; ponto eletrônico; multi-idioma | — |
 
 ---

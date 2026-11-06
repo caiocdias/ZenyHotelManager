@@ -91,6 +91,8 @@ flowchart LR
 | D15 | Identificadores | **UUIDv7** gerados na aplicação, com números legíveis por sequência (`R-2026-000123`) | Permite gerar IDs offline no cliente, é ordenável e se indexa bem | Autoincremento |
 | D16 | Tempo e dinheiro | `timestamptz` em UTC, `date` para datas de negócio, fuso do hotel na configuração. `Money` sobre `BigDecimal`/`numeric(14,2)`. | RN-01 e RN-02 | `double`, horário local no banco |
 | D17 | Idioma do código | Código, API e banco em **inglês**; termos de domínio mapeados no glossário do SPEC | Convenção do ecossistema; evita acentos em identificadores | Português no código |
+| D18 | Venda do PDV | A comanda paga no ponto de venda abre uma **conta `WALK_IN`** no `billing`, com lançamentos e pagamentos existentes (usuário, 2026-11-06) | O dinheiro entra no turno de caixa, na taxa de serviço e em `billing.report_postings` sem caminho novo; o A&B do snapshot tem uma só fonte | Livro financeiro próprio no `pos` (duplica taxa e conferência de caixa e cria duas fontes de receita) |
+| D19 | Alertas | **Prometheus e Alertmanager** no compose, sem porta pública, com destino de entrega configurável (usuário, 2026-11-06) | As regras já existem, e o caminho é o mesmo em nuvem ou no hotel; o monitor externo do host fica no checklist de inauguração | Monitor externo gerenciado (fornecedor novo e, no hotel, endpoint exposto); decidir só com a Q-06 (alertas sem destinatário até lá) |
 
 ---
 
@@ -130,7 +132,7 @@ flowchart LR
 
 O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo.
 
-**Regra por camadas.** A tabela acima registra as dependências conhecidas, mas a regra que vale é a das camadas de §3.2: um módulo pode depender de qualquer módulo de uma **camada inferior** e de qualquer módulo da camada **Plataforma**, desde que o grafo continue acíclico. Uma dependência nova que siga essa regra não precisa de aprovação: basta acrescentá-la à tabela na mesma mudança. Depender de um módulo da mesma camada (fora da Plataforma) ou de uma camada superior exige inversão.
+**Regra por camadas.** A tabela acima registra as dependências conhecidas, mas a regra que vale é a das camadas de §3.2: um módulo pode depender de qualquer módulo de uma **camada inferior** e de qualquer módulo da camada **Plataforma**, desde que o grafo continue acíclico. Uma dependência nova que siga essa regra não precisa de aprovação: basta acrescentá-la à tabela na mesma mudança. Depender de um módulo da mesma camada (fora da Plataforma) ou de uma camada superior exige inversão; as arestas de mesma camada já na tabela (como `billing` → `payments`, `reservations` → `rates` e `endofday` → `reporting`) são exceções registradas, e uma nova exige decisão.
 
 Consequências práticas:
 
@@ -382,10 +384,10 @@ sequenceDiagram
   - credenciais de integrações;
   - dados sensíveis da FNRH;
   - número de documento.
-- **Busca em coluna cifrada** só por **índice cego** (M3 E01): HMAC-SHA256 do valor normalizado com chave derivada por HKDF de cada chave do anel (porta `BlindIndex` do `shared`), gravado com o id da chave; a busca procura o hash calculado com cada chave do anel, então a rotação segue a do anel sem segredo novo e nenhuma busca decifra a tabela. As consultas devolvem o documento mascarado, pelo sufixo guardado em claro (nenhuma listagem decifra); o número inteiro sai só por uma ação própria, com permissão e cada acesso na trilha. Na rotação, o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede ainda na chave antiga antes de ela sair do anel; os demais valores cifrados (dados sensíveis da FNRH, nome original dos anexos, token de push, anexos sensíveis no bucket) ainda não têm job (pendência do M8).
+- **Busca em coluna cifrada** só por **índice cego** (M3 E01): HMAC-SHA256 do valor normalizado com chave derivada por HKDF de cada chave do anel (porta `BlindIndex` do `shared`), gravado com o id da chave; a busca procura o hash calculado com cada chave do anel, então a rotação segue a do anel sem segredo novo e nenhuma busca decifra a tabela. As consultas devolvem o documento mascarado, pelo sufixo guardado em claro (nenhuma listagem decifra); o número inteiro sai só por uma ação própria, com permissão e cada acesso na trilha. Na rotação, o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede ainda na chave antiga antes de ela sair do anel; os demais valores cifrados (dados sensíveis da FNRH, nome original dos anexos, token de push, anexos sensíveis no bucket, configuração da FNRH) ainda não têm job (pendência da M8 E15).
 - Anexos sensíveis são cifrados no armazenamento e servidos por URL assinada de curta duração. **Todo acesso é auditado.**
 - **LGPD**:
-  - um job de retenção anonimiza perfis vencidos e expurga dados sensíveis da FNRH (RN-19, RN-20);
+  - um job expurga dados sensíveis da FNRH no prazo da Q-07, antes da inauguração (RN-19, M8 E16), e outro anonimiza perfis vencidos (RN-20, M10 E13);
   - exportar os dados de um titular gera um pacote auditado.
 - **PCI-DSS**: o servidor nunca recebe número de cartão. A captura acontece no terminal (TEF/Smart POS) ou no componente do provedor, e o servidor guarda só token, bandeira e 4 últimos dígitos.
 - A **auditoria** fica numa tabela *append-only* (`audit.audit_entry`): o papel do banco da aplicação só tem `SELECT` e `INSERT` nela, e a partida recusa um papel que possa alterá-la (§11). Os valores antes e depois nunca levam senha, PIN, token, hash nem valor decifrado: os retratos de cada módulo os omitem e a trilha mascara o que escapar, pelo nome da propriedade, pela anotação `@AuditMasked` e pelo formato do valor (texto cifrado, hash, JWT).
@@ -481,7 +483,14 @@ Cada integração segue o mesmo padrão:
 - **idempotência** nos recebimentos;
 - **retry** com backoff exponencial;
 - **log de integração** com payload redigido de dados sensíveis;
-- **painel de saúde**.
+- **painel de saúde**, alimentado por um endpoint de status e por métricas.
+
+Regras que a FNRH (M5 E07) provou e que valem para toda integração:
+
+- **Resultado incerto:** timeout de leitura numa escrita não diz se o provedor gravou. Nunca se repete às cegas: reenvio só com a mesma referência idempotente do provedor ou depois de conciliar pela consulta. A conciliação ambígua falha fechado.
+- **Registro de integração** em tabela *append-only* sem texto livre do provedor, porque ela não admite expurgo; a mensagem saneada vai só para o log e para a exceção, sem causa encadeada.
+- **Credencial** cifrada, nunca na trilha (nem o usuário), nunca devolvida na API e removível por uma ação com trilha. O administrador escolhe o ambiente, as URLs ficam em propriedade, e trocar de ambiente pede a credencial de novo.
+- **Falha** alerta por chamada direta a `notifications`, com o tipo `notifications.integration-failure` e sem dado pessoal. A readiness nunca depende de provedor externo.
 
 Os testes de contrato usam WireMock.
 
@@ -517,7 +526,8 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 | Renovação de pré-autorizações perto do vencimento | No fechamento |
 | Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |
 | Alertas de estoque mínimo | Por evento, com consolidação diária |
-| Retenção LGPD (anonimização e expurgo) | Semanal |
+| Expurgo dos dados sensíveis da FNRH (M8 E16) | Semanal |
+| Anonimização de perfis por prazo (M10 E13) | Semanal |
 
 ---
 
@@ -580,7 +590,7 @@ flowchart LR
 **Migrações**
 
 - Flyway roda no boot da `api`, com uma conexão própria do dono dos schemas (`ZENY_DB_MIGRATION_*`); a aplicação usa o papel restrito (§11). Com uma única instância, não há corrida.
-- **Pendência (M8 E11, decidida em 2026-10-14):** as migrações passam a um job ou container de uso único com o dono dos schemas, e a `api` deixa de receber `ZENY_DB_MIGRATION_*`; até lá a `api` guarda as credenciais do dono, que no compose é o superusuário do container.
+- **Pendência (M8 E14, decidida em 2026-10-14):** as migrações passam a um job ou container de uso único com o dono dos schemas, e a `api` deixa de receber `ZENY_DB_MIGRATION_*`; até lá a `api` guarda as credenciais do dono, que no compose é o superusuário do container.
 
 ### 15.2 Nuvem vs. local
 
@@ -608,7 +618,8 @@ A decisão está em aberto (SPEC Q-06). O código é o mesmo nos dois casos; mud
 - **Métricas**: Micrometer com endpoint Prometheus.
   - Técnicas: latência, erros, pool do banco, JVM.
   - De negócio: falhas por integração, duração do fechamento, eventos pendentes no outbox, comandos offline rejeitados.
-- **Health**: liveness e readiness, mais indicadores por integração.
+- **Alertas**: regras em `docker/prometheus/alerts.yaml`, avaliadas e entregues por Prometheus e Alertmanager (D19, M8 E18).
+- **Health**: liveness e readiness. A saúde de cada integração sai por endpoint de status e métricas, sem `HealthIndicator`: a readiness não depende de provedor externo.
 - **Tracing**: OpenTelemetry opcional.
 - **Painel de integrações** (RF-DIS-06) alimentado pelos logs de integração no banco.
 

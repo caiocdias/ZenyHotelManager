@@ -1,6 +1,6 @@
 # Roadmap — M10 Comercial e gestão: eventos, contas a receber, preventiva, relatórios gerenciais e LGPD
 
-> Arquivo: `docs/roadmaps/roadmap-m10-comercial-gestao.md` · branch de execução: `roadmap/m10-comercial-gestao` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m10-comercial-gestao.md` · branch de execução: `roadmap/m10-comercial-gestao` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 10 de 11 (último) · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M9 — Suprimentos](roadmap-m9-suprimentos.md) · não há próximo marco: o gate deste roadmap fecha a v1.
 >
@@ -10,7 +10,7 @@
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m10-comercial-gestao`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m10-comercial-gestao`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 ## Objetivo
 
@@ -41,10 +41,12 @@ Completar a gestão do hotel (SPEC §9, Fase 4) e fechar a v1. Ao fim do marco, 
 ## Restrições e invariantes
 
 - Respeitar a regra por camadas da ARCHITECTURE §3.1: um módulo só chama a API pública de módulos de camada inferior da §3.2 ou da Plataforma, sem ciclo; o resto vai por evento ou porta. Aresta nova que siga a regra não exige aprovação, mas deve ser acrescentada à tabela §3.1 na mesma etapa e citada no handoff. Dependência para a mesma camada (fora da Plataforma) ou para cima exige parar e perguntar.
+- **Sistema em produção:** este marco roda depois da inauguração. Migração só aditiva ou em duas fases, compatível com a versão anterior da `api`; cada versão sai pelo procedimento de `docs/operacao/implantacao.md`, com backup recente; contrato sem *breaking change* para os clientes em uso. Decisão em `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, R12.
+- Enum de resposta que cresce sai como `x-extensible-enum`; `pattern` válido em ECMA-262; sem `DELETE`. Biblioteca nova entra pelo catálogo, com os lockfiles regravados e sem High ou Critical novo no scanner.
 - RN-03: lançamentos, pagamentos e faturas não são editados nem excluídos; correção por estorno ou ajuste vinculado.
 - Toda operação com efeito financeiro exige `Idempotency-Key` (ARCHITECTURE §7) e turno de caixa aberto quando há recebimento (RF-CTA-10).
 - Retenção LGPD: anonimizar perfis preserva registros fiscais e contas por 5 anos (RN-20); dados sensíveis da FNRH nunca aparecem em relatórios (RN-19).
-- Indicadores usam as estatísticas diárias de `endofday` (M6) e as views `report_*`; `reporting` nunca lê tabelas internas.
+- Indicadores usam as estatísticas diárias de `reporting` (M6) e as views `report_*`; `reporting` nunca lê tabelas internas.
 - Dados de teste fictícios; nenhum dado pessoal real no repositório.
 - Documentação: o que muda a referência técnica do projeto (módulo, API pública, convenção, estado do marco) vai na captura `ZenyHotelManager - atualização m10-comercial-gestao Eyy` do brain, com o texto novo ou alterado das notas de tema afetadas (um módulo novo, como `events`, propõe a nota `ZenyHotelManager - Módulo events`), nunca no `CLAUDE.md`; o `README.md`, a ARCHITECTURE e o `api/openapi.yaml` continuam atualizados no repositório na mesma etapa.
 
@@ -55,9 +57,9 @@ Completar a gestão do hotel (SPEC §9, Fase 4) e fechar a v1. Ao fim do marco, 
 | H1 | Pacote base `com.zeny.hotel` e convenções de M0–M9 conforme os handoffs. | Ajustar caminhos na sincronização inicial. | todas |
 | H2 | Decidido (2026-10-13): o módulo dono do documento monta os dados e chama `printing` para renderizar e enfileirar. `events` → `printing` e `billing` → `printing` já estão na ARCHITECTURE §3.1; `events` gera os PDFs de proposta e BEO, e `billing` gera o da fatura pelo mesmo mecanismo do extrato (RF-CTA-12, M5). | Se a API de `printing` registrada no handoff de M5 for diferente, ajustar a chamada. | E01, E05, E07 |
 | H3 | Q-15: cortesia conta na ocupação e não no ADR; uso da casa não conta em nenhum dos dois (padrão da SPEC §10). | Indicadores divergentes do que a gerência espera; regra centralizada facilita mudar. | E10 |
-| H4 | Q-07: dados sensíveis da FNRH expurgados 30 dias após o check-out; perfis anonimizados 5 anos após a última estadia, ambos configuráveis (padrão da SPEC §10). | Retenção maior ou menor que a exigida; prazos em configuração. | E13 |
+| H4 | Q-07: perfis anonimizados 5 anos após a última estadia, configurável (padrão da SPEC §10). O expurgo dos dados sensíveis da FNRH é da M8 E16. | Retenção maior ou menor que a exigida; prazo em configuração. | E13 |
 | H5 | A data da última estadia chega a `guests` por uma porta definida em `guests` e implementada por `reservations` (inversão por porta: `guests` não depende de `reservations`). | Se `guests` já guardar a última estadia (handoff de M3/M4), usar o dado existente. | E13 |
-| H6 | Os dados sensíveis da FNRH ficam no módulo indicado pelos handoffs de M3 e M5 (provável `fnrh`), e o expurgo roda nesse módulo. | Ajustar o dono do job na sincronização. | E13 |
+| H6 | Resolvida em 2026-11-06: os dados sensíveis da FNRH ficam em `guests` (`sensitive_data`), e o expurgo é da M8 E16. A anonimização desta etapa reaproveita a porta de última estadia criada lá. | Se a porta tiver outro desenho, seguir o handoff da M8 E16. | E13 |
 | H7 | Parcelas de contrato são cobradas por Pix pela API de `payments` (M7). Se o adaptador Pix de M7 estiver bloqueado (SPEC Q-05), a parcela aceita registro manual de pagamento. | Cobrança manual até o PSP ser definido. | E06 |
 | H8 | A distribuição do BEO aos setores (A&B, governança, manutenção) é feita por checklists de montagem atribuídos por setor (`events` depende de `checklists` ✓) e pelo PDF do BEO, que é a solução mais simples; a SPEC (RF-EVT-07) não pede notificação push. Pela regra por camadas, `events` poderia chamar `notifications`, `housekeeping` ou `maintenance` se surgir a necessidade, registrando a aresta na §3.1. | Se a operação pedir aviso push do BEO, acrescentar a chamada a `notifications` numa etapa futura. | E07 |
 | H9 | Conflito de agenda de espaços e equipamentos é garantido no banco com `EXCLUDE USING gist` sobre `tstzrange` que inclui montagem e desmontagem (ARCHITECTURE §11). | Reservas sobrepostas se só a aplicação validar. | E03 |
@@ -69,7 +71,7 @@ Completar a gestão do hotel (SPEC §9, Fase 4) e fechar a v1. Ao fim do marco, 
 - [ ] `events` existe como módulo do Modulith com agenda sem conflito, locação simples, evento completo (proposta, contrato, parcelas, bloqueio de UHs, BEO, checklists, faturamento e baixa de A&B).
 - [ ] Ativos e planos preventivos geram OS automaticamente após `BusinessDateAdvanced`, sem duplicar.
 - [ ] Indicadores (ocupação, ADR, RevPAR, TRevPAR, permanência), flash, produção e relatórios financeiros conferem com cálculo manual e exportam CSV.
-- [ ] A retenção LGPD anonimiza perfis vencidos e expurga dados sensíveis da FNRH, preservando registros fiscais.
+- [ ] A retenção LGPD anonimiza perfis vencidos, preservando registros fiscais, e a retenção da trilha de auditoria está decidida; o expurgo dos dados sensíveis da FNRH segue ativo desde a M8 E16.
 - [ ] A exportação contábil está implementada, ou D1 segue em aberto e o usuário registrou a decisão de fechar a v1 sem ela.
 - [ ] Build, testes, lint, verificação do contrato e oasdiff passam numa cópia limpa; `ApplicationModules.verify()` passa com o grafo final documentado na ARCHITECTURE §3.1.
 
@@ -83,8 +85,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -117,12 +119,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -136,9 +138,9 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m10-comercial-gestao com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
@@ -181,7 +183,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E13 | Retenção LGPD automática | #pendente | — | Job semanal de anonimização de perfis e expurgo de dados sensíveis da FNRH |
+| E13 | Retenção LGPD automática | #pendente | — | Job semanal de anonimização de perfis e retenção da trilha de auditoria |
 | E14 | Gate do marco M10 e da v1 | #pendente | E02, E04, E09, E12, E13 | Definição global de pronto e prontidão da v1 verificadas |
 
 ---
@@ -210,7 +212,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Transferir o saldo de uma conta para uma empresa zera a conta de origem com lançamento de transferência vinculado e cria o débito de mesmo valor no devedor; repetir com a mesma `Idempotency-Key` não duplica.
 - [ ] Transferência que excede o limite de crédito da empresa → `403` com `code` `APPROVAL_REQUIRED`; com `X-Approval-Token` válido, conclui e audita o aprovador.
 - [ ] Fatura recebe número legível e vencimento; recebimento parcial muda para parcialmente paga, total para paga; a soma das alocações é igual ao valor recebido.
-- [ ] Recebimento sem turno de caixa aberto do usuário → `409` com `code` estável.
+- [ ] Recebimento sem turno de caixa aberto do usuário → `422 CASHIER_SHIFT_REQUIRED`.
 - [ ] Faturas, recebimentos e lançamentos não têm caminho de edição ou exclusão; correção por estorno.
 - [ ] Aging 30/60/90 e extrato por cliente conferem com cálculo manual em teste de integração.
 - [ ] Views `report_*` do razão de contas a receber existem.
@@ -228,7 +230,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Leia os handoffs de M3 (`billing`: contas e `FolioOwner`, lançamentos de transferência, caixa, formas de pagamento) e de M5 (PDF do extrato pelo `printing`), e as notas `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)` e `ZenyHotelManager - Módulo guests` (empresa e limite de crédito).
 - H2: o PDF da fatura sai pelo mesmo mecanismo do extrato (M5).
 - A forma "faturado" (RF-CTA-06) é o `CITY_LEDGER`, que o M3 E08 deixou recusado com `422 PAYMENT_METHOD_NOT_AVAILABLE` "até o M10"; `PaymentMethod` é `x-extensible-enum` nas respostas justamente para recebê-lo.
-- Divergência a resolver na sincronização: o critério pede `409` para recebimento sem turno aberto, mas o código usa `422 CASHIER_SHIFT_REQUIRED` desde o M3 E07/E08 (código mantido pelo usuário na revisão humana do M3 E08).
+- O recebimento sem turno aberto usa `422 CASHIER_SHIFT_REQUIRED` desde o M3 E07/E08 (código mantido pelo usuário na revisão humana do M3 E08); mudá-lo agora seria quebra de contrato.
 - Armadilhas apontadas para a revisão: saldo transferido duas vezes; soma das alocações diferente do recebido; limite de crédito ignorado.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
@@ -710,7 +712,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Escopo:**
 
 - Fórmulas centralizadas em `reporting`, com a regra de Q-15 (H3) explícita: cortesia conta na ocupação e não no ADR; uso da casa não conta em nenhum; OOO fora do denominador de UHs disponíveis (conforme `DailyStatistics`).
-- Leitura só de views `report_*` e das estatísticas diárias de `endofday`.
+- Leitura só de views `report_*` e das estatísticas diárias de `reporting`.
 - Flash: UHs vendidas, cortesias, OOO, ocupação, ADR, RevPAR, receitas por departamento (hospedagem, A&B, eventos, outras), no-shows e cancelamentos, para dia, mês até a data e ano até a data, com comparação.
 - Exportação CSV; o PDF do flash arquivado no fechamento segue o mecanismo de M6, se existir.
 
@@ -872,18 +874,17 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ## E13 — Retenção LGPD automática — #pendente
 
-**Objetivo:** automatizar a retenção LGPD (RN-19, RN-20, RF-HOS-07): um job semanal anonimiza perfis de hóspedes inativos após o prazo configurado e expurga os dados sensíveis da FNRH após o prazo pós-checkout, preservando contas e documentos fiscais por 5 anos e auditando cada execução.
+**Objetivo:** automatizar a retenção LGPD (RN-20, RF-HOS-07): um job semanal anonimiza perfis de hóspedes inativos após o prazo configurado, preservando contas e documentos fiscais por 5 anos e auditando cada execução. O expurgo dos dados sensíveis da FNRH (RN-19) já roda desde a M8 E16.
 
-**Por que agora:** é a última obrigação legal da v1 sem automação; independente das demais etapas do marco.
+**Por que agora:** é a última obrigação legal da v1 sem automação; independente das demais etapas do marco. O prazo padrão de 5 anos faz com que nenhum perfil vença antes desta etapa.
 
 **Dependências:** nenhuma dentro deste roadmap; exige o gate de M9 `#concluida`. Independente de E01, E03 e E09.
 
 **Escopo:**
 
-- Prazos configuráveis (H4): expurgo dos sensíveis da FNRH (padrão 30 dias após o check-out) e anonimização de perfis (padrão 5 anos após a última estadia).
-- Data da última estadia via porta em `guests` implementada por `reservations` (H5), ou o dado já existente.
+- Prazo configurável (H4): anonimização de perfis (padrão 5 anos após a última estadia).
+- Data da última estadia pela porta em `guests` implementada por `reservations` na M8 E16 (H5, H6).
 - Anonimização em `guests`: substitui nome, documento, contato, endereço, preferências e restrições por valores irreversíveis; remove anexos em `files`; mantém o ID para que contas e notas continuem referenciando; reutiliza a anonimização manual de M3, se existir.
-- Expurgo dos sensíveis da FNRH no módulo dono (H6), incluindo a chave de cifragem por registro, se houver.
 - Job semanal com ShedLock (ARCHITECTURE §13), idempotente e retomável; registro de auditoria por execução com contagens, sem dados pessoais.
 - Pendência do M1 E04 (decidida pelo usuário em 2026-10-14): decidir a retenção da própria trilha de auditoria (`audit.audit_entry`), que cresce sem limite (todo refresh de token gera uma entrada). O papel da aplicação não apaga a trilha (H4): um expurgo dela precisa rodar com o dono dos schemas.
 - Modo simulação (lista o que seria afetado) com permissão própria.
@@ -895,7 +896,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Perfil com última estadia além do prazo é anonimizado: nome, documento, contato, endereço, preferências e restrições substituídos de forma irreversível e anexos removidos de `files`.
 - [ ] Contas, lançamentos e documentos fiscais do perfil anonimizado continuam íntegros e consultáveis (teste).
 - [ ] Perfil com estadia dentro do prazo ou reserva futura não é alterado.
-- [ ] Dados sensíveis da FNRH são expurgados após o prazo pós-checkout e não antes.
+- [ ] O expurgo da M8 E16 convive com a anonimização: nenhum dos dois falha num perfil já tratado pelo outro (teste).
+- [ ] A retenção da trilha de auditoria (`audit.audit_entry`) está decidida e, se houver expurgo, roda com o dono dos schemas num container de uso único, porque a `api` não tem essas credenciais desde a M8 E14.
 - [ ] Reexecutar o job não altera nada (idempotência); o job não roda em paralelo (ShedLock).
 - [ ] Modo simulação lista os afetados sem escrever.
 - [ ] Cada execução gera registro de auditoria com contagens e sem dados pessoais.
@@ -911,7 +913,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Notas para o plano:**
 
-- H4, H5 e H6. Leia os handoffs de M3 E03 e de M5 e a nota `ZenyHotelManager - Módulo guests`: a anonimização manual já existe (`POST /api/v1/guests/{id}/anonymize`, ação sensível, com a cadeia de mesclagens e a porta `GuestActiveStayCheck` implementada por `reservations`); os dados sensíveis da FNRH (RN-19) estão hoje cifrados em `guests` (`sensitive_data`), e a nota registra que a anonimização por prazo e o expurgo deles são do M10. Confira H6 contra o que o `fnrh` do M5 guardou.
+- H4, H5 e H6. Leia os handoffs de M3 E03 e de M5 e a nota `ZenyHotelManager - Módulo guests`: a anonimização manual já existe (`POST /api/v1/guests/{id}/anonymize`, ação sensível, com a cadeia de mesclagens e a porta `GuestActiveStayCheck` implementada por `reservations`); os dados sensíveis da FNRH (RN-19) estão cifrados em `guests` (`sensitive_data`), e o expurgo deles passou para a M8 E16 (a nota do brain ainda pode dizer M10). Leia o handoff dela: job, simulação e porta de última estadia são o ponto de partida.
 - A anonimização apaga anexos pela `FilesApi.delete` (objeto removido só depois do commit) e nunca recusa a revogação de consentimento; a trilha não guarda dado pessoal (H10 do M3).
 - Pendência do M1 E04 (no escopo): o papel da aplicação não apaga a trilha de auditoria; um expurgo dela precisa do dono dos schemas.
 - Armadilhas apontadas para a revisão: anonimização de hóspede com reserva futura ou estadia recente; registro fiscal alterado; dado pessoal sobrando (anexo, log, auditoria, view `report_*`); `guests` dependendo de `reservations`.
@@ -958,6 +960,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Os dois testes ponta a ponta passam usando só endpoints e APIs públicas.
 - [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
 - [ ] oasdiff não aponta *breaking change* em `/api/v1` em relação ao fim do M9.
+- [ ] Teste de atualização: partindo do esquema do gate do M9 com dados, as migrações do marco se aplicam, a `api` nova funciona e a do M9 ainda sobe (R12).
 - [ ] A tabela de cobertura da SPEC §9 (fase → marcos → gate concluído) está no handoff, sem lacunas não explicadas.
 - [ ] ARCHITECTURE §3.1 descreve o grafo final e `ModularityTest` passa com ele.
 - [ ] A captura de atualização do brain documenta `events` (nota de tema nova `ZenyHotelManager - Módulo events`), contas a receber e a retenção LGPD; `docs/roadmaps/README.md` registra a conclusão do M10 e da v1.
@@ -977,7 +980,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - A captura de atualização do gate leva o estado final (M10 e v1) para `ZenyHotelManager - Estado por marco` e propõe ou completa as notas de `events`, contas a receber (billing) e retenção LGPD (guests).
 - Armadilhas apontadas para a revisão: item da definição de pronto sem evidência; teste ponta a ponta com atalhos (escrita direta em tabelas); ARCHITECTURE §3.1 divergente do `ModularityTest`; pendência de marco anterior esquecida.
 
-**Bloqueios:** Nenhum bloqueio conhecido. Depende de E12, que está `#bloqueada` até D1.
+**Bloqueios:** Nenhum bloqueio conhecido. Depende de E12, que está `#bloqueada` até D1. Se o usuário decidir fechar a v1 sem a exportação contábil, como a "Definição global de pronto" admite, a E12 sai do índice e das dependências com o motivo no histórico.
 
 **Riscos e mitigação:**
 
@@ -1003,3 +1006,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m10-comercial-gestao`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. O expurgo dos dados sensíveis da FNRH saiu da E13 para a M8 E16, por decisão do usuário, porque o hotel inaugura antes deste marco; a E13 ficou com a anonimização por prazo e a retenção da trilha. H4 e H6 atualizadas. Novas restrições: sistema em produção e convenções de contrato e de dependências. Nota da E14 sobre fechar a v1 sem a E12. Depois da revisão do `revisor-arquitetura`: as estatísticas diárias são de `reporting`, a E01 usa `422 CASHIER_SHIFT_REQUIRED`, o expurgo da trilha roda fora da `api` e o gate ganhou o teste de atualização. Nenhuma etapa renumerada; tags inalteradas.

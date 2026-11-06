@@ -1,6 +1,6 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
@@ -8,9 +8,9 @@
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m6-operacao-fechamento`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m6-operacao-fechamento`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
-**Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, APIs públicas dos módulos de M1–M5 e convenções registradas nos handoffs e nas notas de tema do brain, e ajuste as etapas pendentes.
+**Este roadmap foi escrito antes do código existir e revisto em 2026-11-06 contra `ca9f9e2`, com o M5 ainda em andamento.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, APIs públicas dos módulos de M1–M5 e convenções registradas nos handoffs e nas notas de tema do brain, e ajuste as etapas pendentes.
 
 ## Objetivo
 
@@ -21,9 +21,10 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - Requisitos: SPEC §5.14 (GOV), §5.16 (MAN, só a parte corretiva: RF-MAN-01, 02, 03, 07), §5.13 (FEC), §5.23 RF-REL-01, RF-REL-06 e RF-REL-07, §5.22 RF-NOT-01 (avisos de tarefa atribuída, UH liberada, inspeção reprovada, OS urgente e pendência do fechamento).
 - Regras: RN-05, RN-08 (transições de status), RN-09 (sujeira automática), RN-13 (minimização no app operacional), RN-15 (multa de no-show pela política vigente), RN-16 (bloqueio vencido), RN-21 (fechamento único), RN-22 (offline), RN-23 (pré-reserva), RF-FEC-05 (não lançar em data fechada).
 - Modelo de domínio: SPEC §8.2.9 (`EndOfDayRun`, `EndOfDayStep`, `EndOfDayIssue`, `DailyStatistics`), §8.2.10 (`CleaningType`, `CreditRule`, `HousekeepingTask`, `AssignmentPlan`, `Inspection`, `ScheduledCleaning`, `LostAndFoundItem`, `DamageReport`), §8.2.12 (`WorkOrder`; `Asset`, `PreventivePlan` e `WorkOrderPart` ficam fora); máquinas de estado da tarefa de governança e do status de governança da UH em §8.4; eventos em §8.3 (`GuestCheckedOut`, `RoomMoved`, `ChecklistCompleted`, `HousekeepingTaskCompleted`, `BusinessDateAdvanced`).
-- Arquitetura: ARCHITECTURE §3.1 — `housekeeping` depende de `shared`, `hotel`, `rooms`, `reservations`, `staff`, `checklists`, `billing`, `notifications`; `maintenance` depende de `shared`, `hotel`, `rooms`, `staff`, `checklists`, `inventory`, `files`, `notifications` (`inventory` só existe em M9); `endofday` depende de `shared`, `hotel`, `rooms`, `reservations`, `billing`, `payments`, `reporting`, `notifications`, `files`; `reporting` consulta só views `report_*` (§11). Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação, desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança; `notifications` e `printing` nunca escutam eventos de negócio — quem gera o aviso ou é dono do documento os chama. Fluxo offline em §6.2 e §9; jobs em §13 (fechamento idempotente e retomável com ShedLock; geração de tarefas após `BusinessDateAdvanced`); inversão de dependência em §3.1 (`housekeeping` escuta `BusinessDateAdvanced` de `hotel`).
+- Arquitetura: ARCHITECTURE §3.1 — `housekeeping` depende de `shared`, `hotel`, `rooms`, `reservations`, `staff`, `checklists`, `billing`, `notifications`; `maintenance` depende de `shared`, `hotel`, `rooms`, `staff`, `checklists`, `inventory`, `files`, `notifications` (`inventory` só existe em M9); `endofday` depende de `shared`, `hotel`, `rooms`, `reservations`, `billing`, `payments`, `reporting`, `notifications`; `reporting` consulta só views `report_*` (§11). Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação, desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança; `notifications` e `printing` nunca escutam eventos de negócio — quem gera o aviso ou é dono do documento os chama. Fluxo offline em §6.2 e §9; jobs em §13 (fechamento idempotente e retomável com ShedLock; geração de tarefas após `BusinessDateAdvanced`); inversão de dependência em §3.1 (`housekeeping` escuta `BusinessDateAdvanced` de `hotel`).
 - Comandos de build, teste, lint e verificação do contrato: na tabela de comandos oficiais do `CLAUDE.md`; não são repetidos aqui.
-- Convenções herdadas, documentadas nas notas de tema do brain (lista abaixo): M0 (API, erros, migrações, `Money`, IDs, idempotência, outbox, ShedLock), M1 (autenticação, `authz.require`/escopo `OWN`/limites/step-up, `@Audited`, data operacional, `staff` e escala, `files`), M2 (`rooms` e status, SSE, sync offline com `OfflineCommandHandler`, `checklists`, `notifications`), M3 (`guests`, `billing`, `payments` manual), M4 (`rates`, `reservations`, disponibilidade), M5 (`frontdesk`, eventos de hospedagem, `fnrh.report_pending_submissions`, documentos montados pelo módulo dono e renderizados por `printing`).
+- Convenções herdadas, documentadas nas notas de tema do brain (lista abaixo): M0 (API, erros, migrações, `Money`, IDs, idempotência, outbox, ShedLock), M1 (autenticação, `authz.require`/escopo `OWN`/limites/step-up, `@Audited`, data operacional, `staff` e escala, `files`), M2 (`rooms` e status, SSE, sync offline com `OfflineCommandHandler`, `checklists`, `notifications`), M3 (`guests`, `billing`, `payments` manual), M4 (`rates`, `reservations`, disponibilidade), M5 (`frontdesk`, eventos de hospedagem, `fnrh.report_submissions`, documentos montados pelo módulo dono e renderizados por `printing`).
+- Revisão de arquitetura dos roadmaps: `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`.
 - Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Estado por marco`, `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Schemas, migrações e views de relatório`, `ZenyHotelManager - Tipos do kernel`, `ZenyHotelManager - Convenções de API`, `ZenyHotelManager - Segurança, autenticação e autorização`, `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Eventos e jobs`, `ZenyHotelManager - Tempo real (SSE)`, `ZenyHotelManager - Sincronização offline`, `ZenyHotelManager - Testes de integração`, `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo files`, `ZenyHotelManager - Módulo rooms`, `ZenyHotelManager - Módulo checklists`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)`, `ZenyHotelManager - Módulo rates`, `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Hospedagem e recepção` e `ZenyHotelManager - Docker, observabilidade e CI` (este para o gate).
 - Caminhos de código previstos: um pacote por módulo sob o pacote base `com.zeny.hotel` (hipótese herdada de M0) — `housekeeping/`, `maintenance/`, `endofday/`, `reporting/` (a criar).
 
@@ -49,7 +50,8 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - RN-22: execução offline nunca é descartada; conflito é registrado e sinalizado à governanta.
 - Transições de status da UH seguem §8.4 e passam pela API de `rooms`, com histórico (RF-UH-06).
 - Ações sensíveis com step-up: fechamento manual, OOO (RF-ACS-08).
-- Toda mudança de API regenera o contrato `api/openapi.yaml` com `./gradlew updateOpenApi` na mesma mudança (nunca editado à mão); a verificação do contrato e a de breaking change em `/api/v1` (`.github/scripts/check-api-breaking.sh`) passam.
+- Toda mudança de API regenera o contrato `api/openapi.yaml` com `./gradlew updateOpenApi` na mesma mudança (nunca editado à mão); a verificação do contrato e a de breaking change em `/api/v1` (`.github/scripts/check-api-breaking.sh`) passam. Enum de resposta que cresce sai como `x-extensible-enum`; `pattern` precisa ser válido em ECMA-262; a API não expõe `DELETE`: o que sai é desativado.
+- Biblioteca nova entra pelo catálogo `gradle/libs.versions.toml`, com os lockfiles regravados, sem vulnerabilidade High ou Critical nova no scanner da revisão final (M5 E13 e E14).
 - Documentação: a referência técnica não volta para o `CLAUDE.md`. Ao fechar cada etapa que muda algo descrito no brain (inclusive o estado do marco), o orquestrador publica a captura `ZenyHotelManager - atualização m6-operacao-fechamento Eyy` com o texto novo ou alterado das notas de tema afetadas; os módulos novos (`housekeeping`, `maintenance`, `reporting`, `endofday`) propõem cada um uma nota de tema nova (`ZenyHotelManager - Módulo housekeeping` e assim por diante). O `README.md` do repositório continua sendo atualizado quando a etapa muda algo que ele descreve.
 
 ## Hipóteses e decisões em aberto
@@ -57,11 +59,11 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | # | Hipótese ou decisão | Impacto se errada / sem decisão | Etapa afetada |
 |---|---|---|---|
 | H1 | Pacote base `com.zeny.hotel` (herdado de M0). | Ajuste mecânico de caminhos. | todas |
-| H2 | M2 entregou `OfflineCommandHandler`, o feed `GET /api/v1/sync/changes` com `change_seq` e a API de execução de checklist (`complete(execution, answers, occurredAt)`), e `ChecklistCompleted` carrega as ocorrências configuradas (manutenção, achado, dano). | Se faltar, a etapa afetada para e relata; não reimplementar a base de sync. | E04, E06, E08 |
-| H3 | `rooms` (M2) expõe comandos de status de governança (`markClean` com inspeção pendente, `markInspected`, `markDirty`), sinalização do hóspede (DND), OOO/OOS e registro de discrepância (RF-UH-08). | Acrescentar à API pública de `rooms` o que faltar (dependência permitida). | E04, E05, E07, E11 |
-| H4 | `reservations` (M4/M5) expõe consultas por data (chegadas, saídas, hospedados) e comandos `markNoShow`, expiração de pré-reservas e liberação de bloqueios vencidos. | Acrescentar à API pública de `reservations` o que faltar. | E02, E11 |
-| H5 | `billing` (M3) aceita lançamento com chave de idempotência por origem (ex.: `(reserva, data, EOD)`) e já impede lançamento em data fechada (RF-FEC-05). | Se não, E11 acrescenta a chave e o bloqueio em `billing`. | E06, E11 |
-| H6 | Os PDFs do fechamento são guardados em `files` (S3/MinIO) pelo próprio `reporting`, com um índice por data no schema `reporting`; o download é por URL assinada. A aresta `reporting` → `files` é permitida pela regra por camadas e entra na tabela §3.1 em E09. | Se preferir que `endofday` guarde (aresta `endofday` → `files` já listada na §3.1), mover só a chamada de armazenamento. | E09 |
+| H2 | Conferida no código em 2026-11-06: `OfflineCommandHandler`, o feed `GET /api/v1/sync/changes` e a execução de checklist (`ChecklistsApi.startExecution` e `completeExecution`) existem, e `ChecklistCompleted` carrega as ocorrências configuradas (`MAINTENANCE`, `LOST_AND_FOUND`, `DAMAGE`). | Se faltar, a etapa afetada para e relata; não reimplementar a base de sync. | E04, E06, E08 |
+| H3 | Conferida em parte em 2026-11-06: a `RoomsApi` tem `markClean`, `markInspected`, `rejectInspection`, `markDirty`, `setServiceFlag` e OOO. O registro de discrepância (RF-UH-08) só existe por endpoint. | E04 acrescenta a discrepância à API pública de `rooms` (dependência permitida). | E04, E05, E07, E11 |
+| H4 | Conferida em 2026-11-06, **caiu**: a `ReservationsApi` tem `releaseUnused`, `blocksDueForRelease` e `cancelReservation`, mas não tem no-show nem consultas por data, que só existem nos endpoints. | E11 acrescenta a transição e as consultas à API pública de `reservations`; E02 reutiliza as consultas. | E02, E11 |
+| H5 | Conferida em 2026-11-06: `NewPosting.sourceReference` dá a idempotência, com a chave do fechamento definida na `BillingApi.post`. Não há bloqueio de data fechada: `post` grava na data corrente. | E11 prova RF-FEC-05 e acrescenta o bloqueio só se a prova falhar. | E06, E11 |
+| H6 | Os PDFs do fechamento são guardados em `files` (S3/MinIO) pelo próprio `reporting`, com um índice por data no schema `reporting`; o download é por URL assinada. A aresta `reporting` → `files` já consta na tabela §3.1; `endofday` não acessa `files`. | Mudar de dono pede aresta nova na §3.1. | E09 |
 | H7 | Exportação XLSX com biblioteca leve (ex.: fastexcel ou Apache POI) declarada no *version catalog*; os PDFs são renderizados por `printing` (M5): `reporting` monta os dados e chama `printing`, como todo módulo dono de documento. | Troca local ao `reporting`. | E09 |
 | H8 | Avisos de pendência do fechamento (RF-NOT-01) são enviados por `endofday` chamando `notifications` (push e painel) para quem tem permissão de acompanhar o fechamento, além do andamento no SSE e do endpoint de pendências. | Ajuste de destinatários é configuração. | E10 |
 | H9 | Q-14 (turndown) e Q-15 (cortesia e uso da casa) seguem os padrões da SPEC §10: turndown como tipo de limpeza desativado; cortesia conta na ocupação e não no ADR, uso da casa não conta em nenhum dos dois. | Ajuste de configuração e do cálculo de `DailyStatistics`. | E01, E09 |
@@ -79,6 +81,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
 - [ ] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis.
 - [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
+- [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -91,8 +94,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -125,12 +128,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -144,21 +147,29 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m6-operacao-fechamento com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
 
 ## Índice de etapas
 
+**Fechamento do dia**
+
+| ID | Etapa | Estado | Dependências | Entrega principal |
+|---|---|---|---|---|
+| E10 | Motor do fechamento do dia | #pendente | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
+| E11 | Etapas financeiras e operacionais do fechamento | #pendente | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
+| E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
+
 **Governança**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #pendente | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
-| E02 | Geração automática de tarefas | #pendente | E01 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
+| E02 | Geração automática de tarefas | #pendente | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
@@ -171,19 +182,180 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E07 | Ordens de serviço corretivas e OOO/OOS | #pendente | — | `WorkOrder` com estados, custos, anexos e bloqueio da UH |
 | E08 | OS por checklist e app offline da manutenção | #pendente | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
 
-**Relatórios e fechamento**
+**Relatórios**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E09 | Relatórios operacionais e painel do dia | #pendente | E05, E08 | Views `report_*`, painel, relatórios, CSV/XLSX, `DailyStatistics`, arquivo de PDFs |
-| E10 | Motor do fechamento do dia | #pendente | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual |
-| E11 | Etapas do fechamento do dia | #pendente | E02, E09, E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, estatísticas, PDFs, avanço da data, pendências |
+| E13 | Snapshot e arquivo do fechamento | #pendente | E09, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E11 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+
+---
+
+## E10 — Motor do fechamento do dia — #pendente
+
+**Objetivo:** criar o módulo `endofday` com o motor do fechamento (RF-FEC-01, RF-FEC-03, RN-21, ARCHITECTURE §13): `EndOfDayRun` com etapas persistidas, execução ordenada, retomada da etapa pendente, uma execução por data e nunca em paralelo, disparo automático no horário configurado em `hotel` (fuso do hotel) e manual com step-up.
+
+**Por que agora:** é a primeira etapa do marco porque as etapas de negócio (E11) se encaixam neste motor, e o fechamento é o que grava dinheiro imutável (RN-03) e faz a data andar. Separá-lo permite testar idempotência e retomada com etapas falsas antes de mexer em dinheiro.
+
+**Dependências:** nenhuma dentro deste roadmap; exige o gate de M5 `#concluida`. Independente de E01–E09 (conflito esperado em `api/openapi.yaml` se rodarem em branches separadas).
+
+**Escopo:** pacote `endofday` (a criar):
+
+- `EndOfDayRun`, `EndOfDayStep`, `EndOfDayIssue` (SPEC §8.2.9), com a data por valor: a data operacional continua só em `hotel` (`BusinessDay`), e "data fechada" deriva da execução concluída; restrição única por data de execução concluída; lock por ShedLock e lock de banco contra execução paralela.
+- Interface interna de etapa (nome, ordem, `execute(date)` idempotente) e registro ordenado; falha numa etapa interrompe e deixa a execução retomável.
+- Gatilho automático por `@Scheduled` no horário de RF-CFG-04, no fuso do hotel; `POST /api/v1/end-of-day/runs` manual, ação sensível com step-up (RF-ACS-08); `POST …/runs/{id}/resume`; `GET` de execução, etapas e pendências.
+- Publicação do andamento no SSE e aviso de pendências via `notifications` (push e painel) para quem acompanha o fechamento (H8, RF-NOT-01).
+- Métricas de duração e de falha do fechamento e alerta de fechamento que falhou ou não rodou no horário (ARCHITECTURE §16).
+
+**Fora de escopo:** as etapas de negócio (E11).
+
+**Critérios de aceite:**
+
+- [ ] Execução com etapas falsas percorre todas na ordem e registra início, fim e resultado de cada uma.
+- [ ] Falha forçada na terceira etapa deixa a execução retomável; `POST …/resume` continua da terceira sem reexecutar as duas primeiras (contador no teste).
+- [ ] Dois disparos simultâneos para a mesma data resultam em uma única execução.
+- [ ] Nova execução para data já fechada → `409` com `code` estável.
+- [ ] `POST /api/v1/end-of-day/runs` sem permissão → `403` `APPROVAL_REQUIRED`; com aprovação → executa e audita solicitante e aprovador.
+- [ ] O gatilho automático calcula o horário no fuso do hotel (teste com relógio fixo e fuso diferente de UTC).
+- [ ] Andamento publicado no SSE.
+- [ ] Uma `EndOfDayIssue` registrada gera notificação de pendência do fechamento via `notifications` para quem tem a permissão de acompanhar o fechamento (RF-NOT-01).
+- [ ] A duração e a falha do fechamento aparecem em `/actuator/prometheus`, e a regra de alerta está em `docker/prometheus/alerts.yaml`; a entrega a uma pessoa é da M8 E18.
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** H8; SPEC §5.13, RN-21 e §8.2.9 e ARCHITECTURE §13; etapas falsas nos testes (as de negócio são da E11). O tipo `notifications.end-of-day-pending` já existe no catálogo do `notifications` e é obrigatório no painel (nota `ZenyHotelManager - Módulo notifications`). Convenções de jobs (nota `ZenyHotelManager - Eventos e jobs`): método com `@SchedulerLock` não devolve tipo primitivo; o ShedLock trava pela hora do banco. Nos testes (nota `ZenyHotelManager - Testes de integração`), os jobs ficam adiados no `@IntegrationTest` e são chamados direto, o relógio avança pelo `MutableClockConfiguration` (devolvido no fim, porque o contexto é compartilhado) e a JVM roda em `America/Sao_Paulo`. Armadilhas do formato antigo: duas execuções simultâneas para a mesma data; retomada que reexecuta etapa concluída; gatilho calculado em UTC; fechamento manual sem step-up; testar a retomada depois de uma "queda" simulada.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Restart no meio da execução (ARCHITECTURE §13): o estado persistido por etapa e o ShedLock com tempo máximo cobrem; testar retomada após "queda" simulada.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E11 — Etapas financeiras e operacionais do fechamento — #pendente
+
+**Objetivo:** implementar no motor de E10, na ordem de RF-FEC-02, as etapas que não dependem de `reporting`: no-show com multa pela política copiada na reserva (RN-15), alerta de saídas pendentes, lançamento de diárias, pacotes e taxas, liberação de bloqueios vencidos (RN-16), expiração de pré-reservas (RN-23), renovação de pré-autorizações (não aplicável até M7), UHs ocupadas → Sujo (RN-09) e avanço da data operacional via `hotel` (que publica `BusinessDateAdvanced`).
+
+**Por que agora:** é o que faz a data operacional andar e as diárias entrarem nas contas; sem isso o hotel não opera. Lançamento é imutável (RN-03), então esta é a parte mais cara de errar do marco e vem antes das demais. As rotinas de checklist do M2 passam a rodar em produção a partir daqui.
+
+**Dependências:** E10.
+
+**Escopo:** `endofday`, chamando só `hotel`, `rooms`, `reservations`, `billing`, `payments` e `notifications`, e o que falta nas APIs públicas de quem é dono do dado:
+
+- `reservations`: transição para `NO_SHOW` e as consultas por data, que hoje só existem nos endpoints (H4); evento de no-show com `performedBy`, publicado pelo outbox.
+- Cada etapa idempotente por chave natural; os lançamentos usam a mesma chave do check-out (`NewPosting.sourceReference`, H5). `EndOfDayIssue` para saídas pendentes e falhas não fatais.
+- Prova de RF-FEC-05: nada é lançado em data fechada, inclusive com um lançamento concorrente ao avanço da data; correção entra na data corrente com referência ao original.
+- Etapa de pré-autorizações registrada como "não aplicável" até M7, com nota na captura de atualização do brain.
+- Avanço da data por `hotel`, como última etapa desta entrega.
+
+**Fora de escopo:** snapshot e PDFs (E13); no-show na FNRH (E14); geração das tarefas do novo dia (E02, que escuta o evento); pendências de notas rejeitadas e ARI (M7, M8).
+
+**Critérios de aceite:**
+
+- [ ] Só a reserva confirmada com chegada pendente vira `NO_SHOW`, com a multa da política copiada nela (RN-15), e a UH alocada é solta no mesmo commit.
+- [ ] Saída pendente gera `EndOfDayIssue` e o check-out não é feito automaticamente.
+- [ ] Diárias, pacotes e taxas das reservas hospedadas são lançados uma única vez por reserva e data, mesmo com a etapa repetida, e o lançamento do check-out e o do fechamento na mesma data não duplicam (teste com os dois caminhos).
+- [ ] Pacotes inclusos saem à parte da hospedagem, no código de cada um, sem taxa de serviço, como no check-out (decisão M5 E04 a).
+- [ ] Falha forçada no meio do lançamento de diárias e retomada não duplicam nenhum lançamento.
+- [ ] Bloqueios vencidos devolvem as UHs não utilizadas ao inventário; pré-reservas vencidas são expiradas.
+- [ ] UHs ocupadas passam a Sujo; a etapa de pré-autorizações registra "não aplicável".
+- [ ] A data operacional avança só depois de todas as etapas anteriores concluídas, e o evento publicado gera as rotinas de checklist do novo dia (teste).
+- [ ] Lançamento depois do avanço cai na data nova, e nenhum lançamento fica numa data fechada, com o caminho concorrente testado (RF-FEC-05).
+- [ ] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** H4 e H5; RF-FEC-02, RF-FEC-05, RN-09, RN-15, RN-16 e RN-23; ler o handoff de E10 e os de M5 E04 e E05. A chave da diária já está definida no comentário de `BillingApi.post`: `reservations.reservation:<id>:<data>:room` ou `…:package:<packageId>`. `post` não recebe data: grava na data operacional corrente, então RF-FEC-05 pode estar coberto por construção, mas a etapa precisa provar a corrida com o avanço. Pendências que marcos anteriores deixaram endereçadas a este fechamento, registradas nas notas do brain (conferir na sincronização): só o fechamento chama `ReservationsApi.releaseUnused` para os ids de `blocksDueForRelease()` (M4 E11); a reserva `NO_SHOW` precisa soltar a UH alocada no mesmo commit (gatilho adiado `reservation_assignment_released`, M4 E10); a multa usa o código `NO_SHOW_FEE` (M4 E08); as hospedadas com a saída passada nunca têm check-out automático (RF-FEC-02); o `ProvisionalExpiryJob` já expira pré-reservas a cada 5 min (M4 E09), e a etapa do fechamento convive com ele; turnos de caixa esquecidos abertos ficam para o fechamento listar (M3 E07); `RoomsApi.markDirty(END_OF_DAY)` é a mudança prevista para as ocupadas (M2 E02); `BillingApi.cardPreAuthorizationsExpiring` serve à renovação do M7; a tarifa de grupo não aplica os pacotes do plano (M4 E11: decidir aqui se o bloqueio leva pacotes no lançamento diário). Notas `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)` e `ZenyHotelManager - Módulos hotel e staff` (`HotelApi.advanceBusinessDate(expectedCurrent)` é o único caminho de avanço). Nos testes, as datas partem da `HotelApi.currentBusinessDate()`, porque outros testes avançam a data no banco compartilhado. Armadilhas do formato antigo: diária lançada duas vezes após retomada; lançamento aceito em data fechada; multa pela política atual em vez da copiada na reserva; data avançada antes das etapas anteriores concluírem.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Lançamento de pacotes e taxa de turismo (RF-CFG-03) pode exigir dados de `rates` não expostos por `reservations`: se faltar, acrescentar à API de `reservations` (que depende de `rates`) em vez de `endofday` chamar `rates`.
+
+**Rollback / migração:** lançamentos são imutáveis (RN-03); um erro de cálculo em produção se corrige por estorno na data corrente, nunca apagando linhas. Por isso os testes de idempotência são obrigatórios antes do uso real.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E14 — No-show na FNRH — #pendente
+
+**Objetivo:** enviar à FNRH o no-show publicado pelo fechamento, pela fila de submissões do M5 E08, com a operação nova na porta `FnrhGateway` e no adaptador Serpro.
+
+**Por que agora:** a M5 E08 deixou o no-show de fora (H15 do M5), porque o evento só nasce na E11 e o caminho individual diverge no PDF da API.
+
+**Dependências:** E11. Exige a M5 E08, coberta pelo gate do M5.
+
+**Escopo:** `fnrh`: listener do evento de no-show, operação na porta e no adaptador, testes de contrato com WireMock a partir de `docs/fnrh/api-fnrh-v2.4.md`.
+
+**Fora de escopo:** a confirmação no ambiente real, que fica com a M5 E09.
+
+**Critérios de aceite:**
+
+- [ ] O no-show gera uma única `FnrhSubmission`; o evento reentregue não duplica.
+- [ ] A submissão segue a ordem por reserva e só sai depois do registro da reserva.
+- [ ] O caminho escolhido (`/no-show` ou `/noshow`) e o motivo da escolha ficam no handoff e na lista do que a M5 E09 confirma; se a E09 já tiver fechado, o roteiro dela é reexecutado para o no-show, ou fica a pendência que o gate de inauguração (M8 E13) cobra.
+- [ ] Com o Serpro fora do ar, o fechamento conclui e a submissão fica pendente.
+- [ ] Build, testes, verificação do contrato e oasdiff sem `ERR` passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:** leia o handoff da M5 E07 ("Notas para a E09") e o da M5 E08. Se a M5 E09 já tiver sido feita, o no-show entra no roteiro de homologação dela e a divergência se resolve lá.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Divergência no PDF sobre o caminho: sem credencial não há como confirmar; registrar a escolha e cobrá-la na homologação.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
 
 ---
 
@@ -238,9 +410,9 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Objetivo:** gerar as tarefas de governança (RF-GOV-02) a partir de saídas (`GuestCheckedOut`), troca de UH (`RoomMoved`, UH de origem), permanências e chegadas da data (ao receber `BusinessDateAdvanced`), faxinas programadas vencidas e solicitações avulsas da recepção, com créditos e prioridade do tipo de limpeza.
 
-**Por que agora:** sem tarefas não há distribuição nem execução; o fechamento (E11) depende de as tarefas do dia nascerem ao avançar a data.
+**Por que agora:** sem tarefas não há distribuição nem execução, e o fechamento (E11) já publica o avanço da data que gera as tarefas do dia.
 
-**Dependências:** E01. Mesmo módulo que E03–E06 (sem paralelismo com elas).
+**Dependências:** E01 e E11 (as consultas por data na `ReservationsApi` e o avanço real da data). Mesmo módulo que E03–E06 (sem paralelismo com elas).
 
 **Escopo:** `housekeeping`:
 
@@ -250,7 +422,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - `GET /api/v1/housekeeping-tasks?date=…` com filtros e paginação.
 - Faxinas programadas: tarefa gerada quando `nextDueOn` ≤ data operacional; `lastDoneOn` atualizado na conclusão (E04).
 
-**Fora de escopo:** distribuição (E03); disparo do avanço de data (E11 publica via `hotel`; aqui o evento é simulado nos testes).
+**Fora de escopo:** distribuição (E03); disparo do avanço de data (E11 publica via `hotel`).
 
 **Critérios de aceite:**
 
@@ -602,13 +774,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Objetivo:** criar o módulo `reporting` com o painel do dia (RF-REL-01), os relatórios operacionais de governança e manutenção (RF-REL-06, RF-GOV-11), o snapshot `DailyStatistics` (SPEC §8.2.9), a exportação CSV/XLSX (RF-REL-07), a geração e o arquivo de PDFs por data e o relatório de pendências do fechamento (RF-FEC-04), consultando só views `report_*` publicadas pelos módulos (ARCHITECTURE §11).
 
-**Por que agora:** o fechamento (E11) gera o snapshot e os PDFs por meio de `reporting`, e a gerência precisa do painel na operação.
+**Por que agora:** o fechamento (E13) gera o snapshot e os PDFs por meio de `reporting`, e a gerência precisa do painel na operação.
 
 **Dependências:** E05, E08. Independente de E10; E09, E10 e E11 tocam `api/openapi.yaml` (conflito se rodarem em branches separadas).
 
 **Escopo:**
 
-- Views `report_*` (migrações nos schemas donos, como parte da API de cada módulo): `rooms` (status), `reservations` (chegadas, saídas, hospedados, ocupação futura), `housekeeping` (tarefas, tempos, créditos, reprovações), `maintenance` (OS por estado, categoria e tempo), `billing` (contas com saldo de hóspedes que saíram, caixas abertos). `fnrh.report_pending_submissions` já existe (M5).
+- Views `report_*` (migrações nos schemas donos, como parte da API de cada módulo): `rooms` (status), `reservations` (chegadas, saídas, hospedados, ocupação futura), `housekeeping` (tarefas, tempos, créditos, reprovações), `maintenance` (OS por estado, categoria e tempo), `billing` (contas com saldo de hóspedes que saíram, caixas abertos). `fnrh.report_submissions` vem da M5 E08.
 - `reporting` (a criar): `GET /api/v1/reports/day-panel`, relatórios de governança e manutenção com filtros, exportação `?format=csv|xlsx` (H7), relatório de pendências.
 - API pública para o fechamento: `snapshotDailyStatistics(date)` (UHs disponíveis, OOO, vendidas, cortesias, uso da casa, chegadas, saídas, no-shows, cancelamentos, receitas por departamento; regras de Q-15 — H9) e `archiveDayReports(date)` (PDFs renderizados por `printing` e guardados em `files`, com índice por data no schema `reporting` — H6, H7), ambos idempotentes por data.
 - `GET /api/v1/reports/archive?date=…` e download dos PDFs arquivados por URL assinada de `files`.
@@ -655,91 +827,23 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E10 — Motor do fechamento do dia — #pendente
+## E13 — Snapshot e arquivo do fechamento — #pendente
 
-**Objetivo:** criar o módulo `endofday` com o motor do fechamento (RF-FEC-01, RF-FEC-03, RN-21, ARCHITECTURE §13): `EndOfDayRun` com etapas persistidas, execução ordenada, retomada da etapa pendente, uma execução por data e nunca em paralelo, disparo automático no horário configurado em `hotel` (fuso do hotel) e manual com step-up.
+**Objetivo:** acrescentar ao fechamento, antes do avanço da data, as etapas de snapshot de `DailyStatistics` e de arquivo dos PDFs da data (RF-FEC-02), pela API pública de `reporting`.
 
-**Por que agora:** as etapas de negócio (E11) se encaixam neste motor; separá-lo permite testar idempotência e retomada com etapas falsas antes de mexer em dinheiro.
+**Por que agora:** `reporting` só existe depois da E09; o motor e as etapas financeiras já rodam desde a E11, e estas duas se encaixam neles sem mexer em dinheiro.
 
-**Dependências:** nenhuma dentro deste roadmap; exige o gate de M5 `#concluida`. Independente de E01–E09 (conflito esperado em `api/openapi.yaml` se rodarem em branches separadas).
+**Dependências:** E09, E11.
 
-**Escopo:** pacote `endofday` (a criar):
+**Escopo:** `endofday` chama `snapshotDailyStatistics(date)` e `archiveDayReports(date)` do `reporting`, ambas idempotentes por data, numa posição anterior ao avanço; pendências da E09 registradas como `EndOfDayIssue`.
 
-- `BusinessDay`, `EndOfDayRun`, `EndOfDayStep`, `EndOfDayIssue` (SPEC §8.2.9); restrição única por data de execução concluída; lock por ShedLock e lock de banco contra execução paralela.
-- Interface interna de etapa (nome, ordem, `execute(date)` idempotente) e registro ordenado; falha numa etapa interrompe e deixa a execução retomável.
-- Gatilho automático por `@Scheduled` no horário de RF-CFG-04, no fuso do hotel; `POST /api/v1/end-of-day/runs` manual, ação sensível com step-up (RF-ACS-08); `POST …/runs/{id}/resume`; `GET` de execução, etapas e pendências.
-- Publicação do andamento no SSE e aviso de pendências via `notifications` (push e painel) para quem acompanha o fechamento (H8, RF-NOT-01).
-
-**Fora de escopo:** as etapas de negócio (E11).
+**Fora de escopo:** os relatórios em si (E09); pendências de notas rejeitadas e ARI (M7, M8).
 
 **Critérios de aceite:**
 
-- [ ] Execução com etapas falsas percorre todas na ordem e registra início, fim e resultado de cada uma.
-- [ ] Falha forçada na terceira etapa deixa a execução retomável; `POST …/resume` continua da terceira sem reexecutar as duas primeiras (contador no teste).
-- [ ] Dois disparos simultâneos para a mesma data resultam em uma única execução.
-- [ ] Nova execução para data já fechada → `409` com `code` estável.
-- [ ] `POST /api/v1/end-of-day/runs` sem permissão → `403` `APPROVAL_REQUIRED`; com aprovação → executa e audita solicitante e aprovador.
-- [ ] O gatilho automático calcula o horário no fuso do hotel (teste com relógio fixo e fuso diferente de UTC).
-- [ ] Andamento publicado no SSE.
-- [ ] Uma `EndOfDayIssue` registrada gera notificação de pendência do fechamento via `notifications` para quem tem a permissão de acompanhar o fechamento (RF-NOT-01).
-- [ ] Build, testes e verificação do contrato passam.
-
-**Validação obrigatória:**
-
-- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
-- Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
-
-**Revisão humana:** sim
-
-**Notas para o plano:** H8; SPEC §5.13, RN-21 e §8.2.9 e ARCHITECTURE §13; etapas falsas nos testes (as de negócio são da E11). O tipo `notifications.end-of-day-pending` já existe no catálogo do `notifications` e é obrigatório no painel (nota `ZenyHotelManager - Módulo notifications`). Convenções de jobs (nota `ZenyHotelManager - Eventos e jobs`): método com `@SchedulerLock` não devolve tipo primitivo; o ShedLock trava pela hora do banco. Nos testes (nota `ZenyHotelManager - Testes de integração`), os jobs ficam adiados no `@IntegrationTest` e são chamados direto, o relógio avança pelo `MutableClockConfiguration` (devolvido no fim, porque o contexto é compartilhado) e a JVM roda em `America/Sao_Paulo`. Armadilhas do formato antigo: duas execuções simultâneas para a mesma data; retomada que reexecuta etapa concluída; gatilho calculado em UTC; fechamento manual sem step-up; testar a retomada depois de uma "queda" simulada.
-
-**Bloqueios:** Nenhum bloqueio conhecido.
-
-**Riscos e mitigação:**
-
-- Restart no meio da execução (ARCHITECTURE §13): o estado persistido por etapa e o ShedLock com tempo máximo cobrem; testar retomada após "queda" simulada.
-
-**Evidências e handoff:**
-
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
-
----
-
-## E11 — Etapas do fechamento do dia — #pendente
-
-**Objetivo:** implementar as etapas de RF-FEC-02 no motor de E10, na ordem: no-show com multa pela política vigente (RN-15), alerta de saídas pendentes, lançamento de diárias, pacotes e taxas, liberação de bloqueios vencidos (RN-16), expiração de pré-reservas (RN-23), renovação de pré-autorizações (não aplicável até M7), UHs ocupadas → Sujo (RN-09), snapshot de estatísticas, arquivo dos PDFs e avanço da data operacional via `hotel` (que publica `BusinessDateAdvanced`).
-
-**Por que agora:** é o que faz a data operacional andar e as diárias entrarem nas contas; sem isso o hotel não opera.
-
-**Dependências:** E02, E09, E10 (sem paralelismo).
-
-**Escopo:** `endofday`, chamando só `hotel`, `rooms`, `reservations`, `billing`, `payments`, `reporting` e `notifications`:
-
-- Cada etapa idempotente por chave natural (ex.: diária por `(reserva, data, origem=EOD)` — H5); `EndOfDayIssue` para saídas pendentes e falhas não fatais.
-- Lançamento em data operacional fechada bloqueado em `billing` (RF-FEC-05), com teste; correção entra na data corrente com referência ao original.
-- Etapa de pré-autorizações registrada como "não aplicável" até M7, com nota na captura de atualização do brain.
-- Avanço da data por `hotel`; `housekeeping` (E02) gera as tarefas do novo dia ao receber `BusinessDateAdvanced`.
-- No-show publicado por `reservations` para a FNRH (listener de M5 E08).
-
-**Fora de escopo:** pendências de notas rejeitadas e ARI (M7, M8).
-
-**Critérios de aceite:**
-
-- [ ] Chegada pendente vira `NO_SHOW` com multa calculada pela política vigente no momento da reserva (RN-15).
-- [ ] Saída pendente gera `EndOfDayIssue` e o check-out não é feito automaticamente.
-- [ ] Diárias, pacotes e taxas das reservas hospedadas são lançados uma única vez por `(reserva, data, EOD)`, mesmo com a etapa repetida.
-- [ ] Falha forçada no meio do lançamento de diárias e retomada não duplicam nenhum lançamento.
-- [ ] Bloqueios vencidos devolvem as UHs não utilizadas ao inventário; pré-reservas vencidas são expiradas.
-- [ ] UHs ocupadas passam a Sujo; a etapa de pré-autorizações registra "não aplicável".
-- [ ] Snapshot de estatísticas e PDFs da data ficam em `reporting`.
-- [ ] A data operacional avança só depois de todas as etapas anteriores concluídas; `BusinessDateAdvanced` gera as tarefas do dia em `housekeeping` (teste de módulo).
-- [ ] Lançamento em data operacional fechada é rejeitado com `code` estável (RF-FEC-05).
-- [ ] No-show gera submissão em `fnrh`.
+- [ ] Depois de um fechamento, o snapshot da data e os PDFs ficam em `reporting`, uma única vez, mesmo com a etapa repetida ou retomada.
+- [ ] Falha na geração do PDF deixa a execução retomável e a data sem avançar (teste).
+- [ ] Um fechamento executado antes desta etapa existir continua válido: datas sem snapshot não quebram o painel nem os relatórios (teste).
 - [ ] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
 
 **Validação obrigatória:**
@@ -747,17 +851,15 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
 
-**Revisão humana:** sim
+**Revisão humana:** não
 
-**Notas para o plano:** H4 e H5; RF-FEC-02, RF-FEC-05, RN-09, RN-15, RN-16 e RN-23; ler os handoffs de E02, E09 e E10. Pendências que marcos anteriores deixaram endereçadas a este fechamento, registradas nas notas do brain (conferir na sincronização): só o fechamento chama `ReservationsApi.releaseUnused` para os ids de `blocksDueForRelease()` (M4 E11); só a confirmada vira no-show, e a reserva `NO_SHOW` precisa soltar a UH alocada no mesmo commit (gatilho adiado `reservation_assignment_released`, M4 E10); a multa da reserva é a da política **copiada** nela na criação (RN-15, M4 E08), com o código `NO_SHOW_FEE`; as hospedadas com a saída passada nunca têm check-out automático (RF-FEC-02); o `ProvisionalExpiryJob` já expira pré-reservas a cada 5 min (M4 E09), e a etapa do fechamento convive com ele; turnos de caixa esquecidos abertos ficam para o fechamento listar (M3 E07); `RoomsApi.markDirty(END_OF_DAY)` é a mudança prevista para as ocupadas (M2 E02); `BillingApi.cardPreAuthorizationsExpiring` serve à renovação do M7; a tarifa de grupo não aplica os pacotes do plano (M4 E11: decidir aqui se o bloqueio leva pacotes no lançamento diário). Notas `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)` e `ZenyHotelManager - Módulos hotel e staff` (`HotelApi.advanceBusinessDate(expectedCurrent)` é o único caminho de avanço). Nos testes, as datas partem da `HotelApi.currentBusinessDate()`, porque outros testes avançam a data no banco compartilhado. O formato antigo pedia um teste de retomada real (falha depois de lançar parte das diárias) e um teste de módulo do avanço da data com as tarefas em `housekeeping` e a submissão de no-show em `fnrh`. Armadilhas do formato antigo: diária lançada duas vezes após retomada; lançamento aceito em data fechada; multa pela política atual em vez da vigente na reserva; data avançada antes das etapas anteriores concluírem.
+**Notas para o plano:** o `endofday` depende de `reporting` por exceção registrada na tabela da ARCHITECTURE §3.1, na mesma camada; não amplie essa aresta além da API de snapshot e arquivo. Leia os handoffs de E09 e E11.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
-- Lançamento de pacotes e taxa de turismo (RF-CFG-03) pode exigir dados de `rates` não expostos por `reservations`: se faltar, acrescentar à API de `reservations` (que depende de `rates`) em vez de `endofday` chamar `rates`.
-
-**Rollback / migração:** lançamentos são imutáveis (RN-03); um erro de cálculo em produção se corrige por estorno na data corrente, nunca apagando linhas. Por isso os testes de idempotência são obrigatórios antes do uso real.
+- Geração de PDF lenta no meio do fechamento: medir a duração na métrica da E10 e registrar no handoff.
 
 **Evidências e handoff:**
 
@@ -776,7 +878,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** marca o fim da Fase 1 da SPEC ("o hotel opera a hospedagem") e é o critério de entrada do M7.
 
-**Dependências:** E06, E11 (cobrem transitivamente todas as demais; sem paralelismo).
+**Dependências:** E06, E13, E14 (cobrem transitivamente todas as demais; sem paralelismo).
 
 **Escopo:**
 
@@ -800,7 +902,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** sim
 
-**Notas para o plano:** ler o handoff de todas as etapas E01 a E11. Convenção dos gates anteriores (nota `ZenyHotelManager - Estado por marco`): o cenário do marco também vira teste de integração na raiz do pacote de testes (como `MilestoneM3EndToEndTest` e `MilestoneM4EndToEndTest`, com os modelos de role e o `MutableClock`), e o gate confere o ambiente ponta a ponta num `docker compose` isolado, pelo proxy, registrando o que só os testes provam. A nota herdada do M2 "Rotinas de checklist" (em "Hipóteses e decisões em aberto") pede conferir aqui que as rotinas passam a ser geradas quando o `endofday` avança a data. A captura de atualização do brain desta etapa leva o fim do M6 e da Fase 1 para `ZenyHotelManager - Estado por marco`. Armadilhas do formato antigo: item sem evidência; ponta a ponta com mocks entre módulos; pendências herdadas omitidas.
+**Notas para o plano:** ler o handoff de todas as etapas do marco. Convenção dos gates anteriores (nota `ZenyHotelManager - Estado por marco`): o cenário do marco também vira teste de integração na raiz do pacote de testes (como `MilestoneM3EndToEndTest` e `MilestoneM4EndToEndTest`, com os modelos de role e o `MutableClock`), e o gate confere o ambiente ponta a ponta num `docker compose` isolado, pelo proxy, registrando o que só os testes provam. A nota herdada do M2 "Rotinas de checklist" (em "Hipóteses e decisões em aberto") pede conferir aqui que as rotinas passam a ser geradas quando o `endofday` avança a data. A captura de atualização do brain desta etapa leva o fim do M6 e da Fase 1 para `ZenyHotelManager - Estado por marco`. Armadilhas do formato antigo: item sem evidência; ponta a ponta com mocks entre módulos; pendências herdadas omitidas.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -827,3 +929,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m6-operacao-fechamento`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. O fechamento passou para o início do roadmap: E10 e E11 vêm antes da governança, porque gravam dinheiro imutável e fazem a data andar. A E11 passou a depender só da E10 e foi dividida: o snapshot e os PDFs foram para a nova E13, e o no-show na FNRH para a nova E14. O gate passou a depender de E06, E13 e E14. A E10 ganhou métricas e alerta (ARCHITECTURE §16). Hipóteses H2 a H6 conferidas no código: a H4 caiu, e a H6 e o contexto citavam a aresta `endofday` → `files`, que não existe; o nome da view da FNRH foi corrigido para `fnrh.report_submissions`. Nenhuma etapa renumerada; tags inalteradas. Depois da revisão do `revisor-arquitetura`: `BusinessDay` fica só em `hotel`, a entrega do alerta passa à M8 E18, a E14 cobra o no-show na homologação e a H2 foi fechada.
