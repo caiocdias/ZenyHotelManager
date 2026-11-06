@@ -96,6 +96,7 @@ class GuestsApiService(
                 nationality = guest.nationality,
                 birthDate = guest.birthDate,
                 gender = guest.gender,
+                genderDescription = guest.genderDescription,
                 email = guest.email,
                 phone = guest.phone,
                 residenceCountry = guest.residenceCountry,

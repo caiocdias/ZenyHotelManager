@@ -170,7 +170,8 @@ enum class GuestStatus {
  * em `takeFromMerged` vem do absorvido, se ele o tiver (a mesclagem nunca apaga um valor). [RESIDENCE] é o país de
  * residência com o endereço (o endereço completo é só de quem reside no Brasil) e [PREFERENCES], as três
  * preferências; [SENSITIVE_DATA], os dados sensíveis da FNRH. VIP, restrição, documentos e consentimentos têm regras
- * próprias (os consentimentos do absorvido passam todos para o sobrevivente; M3 E03).
+ * próprias (os consentimentos do absorvido passam todos para o sobrevivente; M3 E03). [GENDER] leva junto a
+ * descrição do gênero: ela anda com o gênero.
  */
 enum class GuestMergeField {
     FULL_NAME,
@@ -306,6 +307,7 @@ data class FnrhGuestData(
     val nationality: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
+    val genderDescription: String? = null,
     val email: String?,
     val phone: String?,
     val residenceCountry: String?,
