@@ -611,6 +611,71 @@ class GuestsApiTest(
         }
 
     @Test
+    fun `the gender description is read decrypted by id, list and document search, with the read permission`(): Unit =
+        with(iam) {
+            val reader = createUserWith(read)
+            val text = "Pessoa não binária ${guests.suffix(6)}"
+            val name = "Leitura Descrição ${guests.suffix(10)}"
+            val cpf = newCpf()
+            val created =
+                guests.createGuest(
+                    guests.createBody(
+                        profile =
+                            guests.profileBody(
+                                fullName = name,
+                                extra =
+                                    mapOf(
+                                        "gender" to "OTHER",
+                                        "genderDescription" to text,
+                                    ),
+                            ),
+                        documents = listOf(guests.document("CPF", formattedCpf(cpf))),
+                    ),
+                )
+            val id = UUID.fromString(created["id"].asString())
+            created["genderDescription"].asString() shouldBe text
+
+            call(GET, "/api/v1/guests/$id", asTestUser(reader)).ok()["genderDescription"].asString() shouldBe text
+            call(GET, "/api/v1/guests?name=$name", asTestUser(reader))
+                .ok()["items"]
+                .values()
+                .single()["genderDescription"]
+                .asString() shouldBe text
+            call(
+                POST,
+                "/api/v1/guests/search-by-document",
+                asTestUser(reader),
+                guests.document("CPF", formattedCpf(cpf)),
+            ).ok()["items"]
+                .values()
+                .single()["genderDescription"]
+                .asString() shouldBe text
+
+            call(GET, "/api/v1/guests/$id", asTestUser(createUser())).problem(403, "PERMISSION_DENIED")
+
+            // Sem descrição, o campo volta nulo.
+            val plain = guests.createGuest(guests.createBody())
+            plain["genderDescription"].isNull shouldBe true
+        }
+
+    @Test
+    fun `an update that resends the description it read changes nothing, neither the ETag nor the trail`(): Unit =
+        with(iam) {
+            val text = "Gênero fluido ${guests.suffix(6)}"
+            val profile = otherProfile(text)
+            val created = guests.createGuest(guests.createBody(profile = profile))
+            val id = UUID.fromString(created["id"].asString())
+            val path = "/api/v1/guests/$id"
+            val read = call(GET, path, asAdmin()).ok()["genderDescription"].asString()
+            read shouldBe text
+
+            val resent = call(PUT, path, asAdmin(), profile + ("genderDescription" to read), ifMatch = "\"0\"")
+            resent.getHeader(HttpHeaders.ETAG) shouldBe "\"0\""
+            resent.ok()["genderDescription"].asString() shouldBe text
+            auditEntries(id, "guests.guest.update").shouldBeEmpty()
+        }
+
+    @Test
     fun `the report view of guests has no gender column`() {
         jdbc
             .sql(

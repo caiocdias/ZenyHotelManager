@@ -17912,6 +17912,12 @@ components:
           - OTHER
           - NOT_INFORMED
           nullable: true
+        genderDescription:
+          type: string
+          description: "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado\
+            \ cifrado e devolvido só a quem tem `guests.profiles.read`. Nula com qualquer\
+            \ outro gênero."
+          nullable: true
         hasSensitiveData:
           type: boolean
           description: Se os dados sensíveis da FNRH já foram gravados (os valores

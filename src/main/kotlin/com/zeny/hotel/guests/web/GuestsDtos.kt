@@ -284,6 +284,12 @@ data class GuestResponse(
     val nationality: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
+    @field:Schema(
+        description =
+            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado e devolvido só a quem tem " +
+                "`guests.profiles.read`. Nula com qualquer outro gênero.",
+    )
+    val genderDescription: String?,
     val email: String?,
     val phone: String?,
     val residenceCountry: String?,
@@ -329,6 +335,7 @@ data class GuestResponse(
                 nationality = view.nationality,
                 birthDate = view.birthDate,
                 gender = view.gender,
+                genderDescription = view.genderDescription,
                 email = view.email,
                 phone = view.phone,
                 residenceCountry = view.residenceCountry,
