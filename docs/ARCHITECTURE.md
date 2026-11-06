@@ -383,8 +383,9 @@ sequenceDiagram
 - **Cifragem em nível de campo** (AES-GCM, chave fora do banco, com identificador de chave para rotação) em:
   - credenciais de integrações;
   - dados sensíveis da FNRH;
-  - número de documento.
-- **Busca em coluna cifrada** só por **índice cego** (M3 E01): HMAC-SHA256 do valor normalizado com chave derivada por HKDF de cada chave do anel (porta `BlindIndex` do `shared`), gravado com o id da chave; a busca procura o hash calculado com cada chave do anel, então a rotação segue a do anel sem segredo novo e nenhuma busca decifra a tabela. As consultas devolvem o documento mascarado, pelo sufixo guardado em claro (nenhuma listagem decifra); o número inteiro sai só por uma ação própria, com permissão e cada acesso na trilha. Na rotação, o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede ainda na chave antiga antes de ela sair do anel; os demais valores cifrados (dados sensíveis da FNRH, nome original dos anexos, token de push, anexos sensíveis no bucket, configuração da FNRH) ainda não têm job (pendência da M8 E15).
+  - número de documento;
+  - restrições alimentares e descrição de gênero do hóspede (M5 E15).
+- **Busca em coluna cifrada** só por **índice cego** (M3 E01): HMAC-SHA256 do valor normalizado com chave derivada por HKDF de cada chave do anel (porta `BlindIndex` do `shared`), gravado com o id da chave; a busca procura o hash calculado com cada chave do anel, então a rotação segue a do anel sem segredo novo e nenhuma busca decifra a tabela. As consultas devolvem o documento mascarado, pelo sufixo guardado em claro (nenhuma listagem decifra); o número inteiro sai só por uma ação própria, com permissão e cada acesso na trilha. Na rotação, o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede ainda na chave antiga antes de ela sair do anel; os demais valores cifrados (dados sensíveis da FNRH, restrições alimentares, descrição de gênero, nome original dos anexos, token de push, anexos sensíveis no bucket, configuração da FNRH) ainda não têm job (pendência da M8 E15).
 - Anexos sensíveis são cifrados no armazenamento e servidos por URL assinada de curta duração. **Todo acesso é auditado.**
 - **LGPD**:
   - um job expurga dados sensíveis da FNRH no prazo da Q-07, antes da inauguração (RN-19, M8 E16), e outro anonimiza perfis vencidos (RN-20, M10 E13);

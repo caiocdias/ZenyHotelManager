@@ -319,7 +319,7 @@ Convenção: **RF-<módulo>-NN**. A fase de entrega de cada módulo está indica
 - **RF-HOS-01** — Perfil de hóspede (pessoa física) com os campos exigidos pela FNRH:
   - nome e nome social;
   - nacionalidade (ISO);
-  - data de nascimento e gênero;
+  - data de nascimento e gênero, com a descrição quando o gênero é "outro";
   - documento: CPF ou passaporte para a FNRH, com outros aceitos para conferência;
   - e-mail e telefone;
   - país de residência;
@@ -1260,6 +1260,7 @@ classDiagram
     String socialName
     LocalDate birthDate
     String gender
+    String genderDescription
     String nationality
     String email
     String phone

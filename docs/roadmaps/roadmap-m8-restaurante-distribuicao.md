@@ -855,7 +855,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
 
-**Escopo:** todo valor cifrado em nível de campo ou de conteúdo. Conhecidos em 2026-11-06: `guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token`, os anexos sensíveis no bucket, `guests.guest.dietary_restrictions`, `fnrh.settings` e `fnrh.requester`; o conteúdo de impressão da M5 E10 e as credenciais de M7 e M8 entram pela lista obtida na etapa.
+**Escopo:** todo valor cifrado em nível de campo ou de conteúdo. Conhecidos em 2026-11-06: `guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token`, os anexos sensíveis no bucket, `guests.guest.dietary_restrictions`, `guests.guest.gender_description` (M5 E15), `fnrh.settings` e `fnrh.requester`; o conteúdo de impressão da M5 E10 e as credenciais de M7 e M8 entram pela lista obtida na etapa.
 
 **Fora de escopo:** a rotação das chaves JWT, que já tem caminho próprio; a troca do algoritmo de cifragem.
 
