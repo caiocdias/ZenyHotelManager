@@ -2,7 +2,10 @@ package com.zeny.hotel.guests
 
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.iam.TestGrant
+import com.zeny.hotel.iam.TestUser
 import com.zeny.hotel.shared.FieldCipher
+import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -18,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
 import org.springframework.http.HttpMethod.PUT
 import org.springframework.http.MediaType
@@ -46,7 +50,9 @@ class GuestGenderDescriptionApiTest(
     @Autowired private val jsonMapper: JsonMapper,
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val cipher: FieldCipher,
+    @Autowired private val guestsApi: GuestsApi,
 ) {
+    private val readGrant = TestGrant(GuestsTestSupport.definition(GuestsPermissions.PROFILES_READ), ALL)
     private val guests = GuestsTestSupport(iam)
 
     // --- Entrada externa ------------------------------------------------------------------------------------
@@ -133,10 +139,16 @@ class GuestGenderDescriptionApiTest(
             listOf("a\u0000b-SEGREDO1", "linha1\nlinha2-SEGREDO2", "tab\there-SEGREDO3", "esc\u001b[31m-SEGREDO4")
                 .forEach { text ->
                     val response = call(POST, "/api/v1/guests", guests.createBody(profile = otherProfile(text)))
-                    withClue("controle: ${response.getContentAsString(Charsets.UTF_8)}") {
-                        (response.status in listOf(201, 400)) shouldBe true
+                    val body = response.getContentAsString(Charsets.UTF_8)
+                    withClue("controle: $body") { (response.status in listOf(201, 400)) shouldBe true }
+                    if (response.status == 400) {
+                        body shouldNotContain "SEGREDO"
+                    } else {
+                        // O 201 devolve a descrição (D-E15-4): confere o valor aparado, na resposta e no banco.
+                        val id = UUID.fromString(json(response)["id"].asString())
+                        json(response)["genderDescription"].asString() shouldBe text.trim()
+                        cipher.decrypt(stored(id).shouldNotBeNull()) shouldBe text.trim()
                     }
-                    response.getContentAsString(Charsets.UTF_8) shouldNotContain "SEGREDO"
                 }
         }
 
@@ -431,6 +443,190 @@ class GuestGenderDescriptionApiTest(
             }
     }
 
+    // --- Leitura (Task 3) -----------------------------------------------------------------------------------
+
+    @Test
+    fun `every path that returns the profile carries the description of that profile without mixing profiles`(): Unit =
+        with(iam) {
+            val email = guests.uniqueEmail()
+            val textA = "Descrição A ${guests.suffix(6)}"
+            val textB = "Descrição B ${guests.suffix(6)}"
+            val cpfA = GuestsTestSupport.formattedCpf(GuestsTestSupport.newCpf())
+            val a = createFull("Leitura Alfa ${guests.suffix(10)}", email, "OTHER", textA, cpfA)
+            val b = createFull("Leitura Beta ${guests.suffix(10)}", email, "OTHER", textB, null)
+            val c = createFull("Leitura Gama ${guests.suffix(10)}", email, "MALE", null, null)
+            val expected = mapOf(a to textA, b to textB, c to null)
+
+            fun check(node: JsonNode) {
+                val id = UUID.fromString(node["id"].asString())
+                val text = expected.getValue(id)
+                if (text == null) {
+                    node["genderDescription"].isNull shouldBe true
+                } else {
+                    node["genderDescription"].asString() shouldBe text
+                }
+            }
+
+            expected.keys.forEach { check(call(GET, "/api/v1/guests/$it").ok()) }
+            // Listagem: os três, cada um com a sua.
+            call(GET, "/api/v1/guests?name=Leitura&limit=200")
+                .ok()["items"]
+                .values()
+                .filter { UUID.fromString(it["id"].asString()) in expected.keys }
+                .also { it.size shouldBe 3 }
+                .forEach(::check)
+            // Busca por documento.
+            call(POST, "/api/v1/guests/search-by-document", guests.document("CPF", cpfA))
+                .ok()["items"]
+                .values()
+                .single()
+                .also(::check)
+            // Candidatos a duplicado: os dois lados de cada par.
+            val pairs = call(GET, "/api/v1/guests/duplicate-candidates?guestId=$a&limit=50").ok()["items"].values()
+            pairs.isEmpty() shouldBe false
+            pairs.forEach {
+                check(it["first"])
+                check(it["second"])
+            }
+            // Restringir e levantar a restrição devolvem o perfil com a descrição.
+            check(call(POST, "/api/v1/guests/$a/restrict", mapOf("reason" to "Teste")).ok())
+            check(call(POST, "/api/v1/guests/$a/lift-restriction").ok())
+            // Mesclagem: o sobrevivente C (MALE) toma o GENDER de B, e a resposta traz a descrição de B.
+            val merged = merge(c, b, listOf("GENDER")).ok()
+            merged["id"].asString() shouldBe c.toString()
+            merged["genderDescription"].asString() shouldBe textB
+            call(GET, "/api/v1/guests/$c").ok()["genderDescription"].asString() shouldBe textB
+        }
+
+    @Test
+    fun `the POST and PUT responses carry the description that was written`(): Unit =
+        with(iam) {
+            val text = "Escrita ${guests.suffix(6)}"
+            val created = guests.createGuest(guests.createBody(profile = otherProfile(text), documents = emptyList()))
+            created["genderDescription"].asString() shouldBe text
+            val path = "/api/v1/guests/${created["id"].asString()}"
+            val newText = "Reescrita ${guests.suffix(6)}"
+            call(PUT, path, otherProfile(newText), ifMatch = "\"0\"").ok()["genderDescription"].asString() shouldBe
+                newText
+            call(PUT, path, profileWith("MALE", null), ifMatch = "\"1\"").ok()["genderDescription"].isNull shouldBe true
+        }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `without guests profiles read every read path is 403 with no text, and reads never log it`(
+        output: CapturedOutput,
+    ): Unit =
+        with(iam) {
+            val tag = "LEITURA${guests.suffix(8)}"
+            val cpf = GuestsTestSupport.formattedCpf(GuestsTestSupport.newCpf())
+            val id = createFull("Sem Leitura ${guests.suffix(10)}", guests.uniqueEmail(), "OTHER", tag, cpf)
+            val denied = createUserWith()
+            val reader = createUserWith(readGrant)
+
+            listOf(
+                call(GET, "/api/v1/guests/$id", user = denied),
+                call(GET, "/api/v1/guests?name=Sem", user = denied),
+                call(POST, "/api/v1/guests/search-by-document", guests.document("CPF", cpf), user = denied),
+                call(GET, "/api/v1/guests/duplicate-candidates?guestId=$id", user = denied),
+                call(PUT, "/api/v1/guests/$id", otherProfile("Tentativa $tag"), ifMatch = "\"0\"", user = reader),
+            ).forEach {
+                it.problem(403, "PERMISSION_DENIED")
+                it.getContentAsString(Charsets.UTF_8) shouldNotContain tag
+            }
+            call(GET, "/api/v1/guests/$id", user = reader).ok()["genderDescription"].asString() shouldBe tag
+            call(GET, "/api/v1/guests?name=Sem", user = reader).ok()
+            output.all shouldNotContain tag
+        }
+
+    @Test
+    fun `an anonymized profile reads a null description`(): Unit =
+        with(iam) {
+            val id =
+                createFull("Anon ${guests.suffix(10)}", guests.uniqueEmail(), "OTHER", "Some ${guests.suffix(6)}", null)
+            call(POST, "/api/v1/guests/$id/anonymize").ok()["genderDescription"].isNull shouldBe true
+            val read = call(GET, "/api/v1/guests/$id").ok()
+            read["status"].asString() shouldBe "ANONYMIZED"
+            read["genderDescription"].isNull shouldBe true
+        }
+
+    @Test
+    fun `a merged profile reads its own stored description and the survivor reads its own`(): Unit =
+        with(iam) {
+            val survivorText = "Sobrevivente ${guests.suffix(6)}"
+            val absorbedText = "Absorvida ${guests.suffix(6)}"
+            val survivor = createFull("Sv ${guests.suffix(10)}", guests.uniqueEmail(), "OTHER", survivorText, null)
+            val absorbed = createFull("Ab ${guests.suffix(10)}", guests.uniqueEmail(), "OTHER", absorbedText, null)
+            merge(survivor, absorbed).ok()["genderDescription"].asString() shouldBe survivorText
+            val readAbsorbed = call(GET, "/api/v1/guests/$absorbed").ok()
+            readAbsorbed["status"].asString() shouldBe "MERGED"
+            readAbsorbed["genderDescription"].asString() shouldBe absorbedText
+            call(GET, "/api/v1/guests/$survivor").ok()["genderDescription"].asString() shouldBe survivorText
+        }
+
+    @Test
+    fun `the public GuestsApi summaries do not carry the description`(): Unit =
+        with(iam) {
+            val text = "Pública ${guests.suffix(8)}-PUBLICA"
+            val cpf = GuestsTestSupport.formattedCpf(GuestsTestSupport.newCpf())
+            val id = createFull("Pub ${guests.suffix(10)}", guests.uniqueEmail(), "OTHER", text, cpf)
+            val summary = guestsApi.guest(GuestId(id)).shouldNotBeNull()
+            summary.toString() shouldNotContain "PUBLICA"
+            GuestSummary::class.members.none { it.name.contains("gender", ignoreCase = true) } shouldBe true
+            val identification = guestsApi.identification(GuestId(id)).shouldNotBeNull()
+            identification.toString() shouldNotContain "PUBLICA"
+            GuestIdentification::class.members.none { it.name.contains("gender", ignoreCase = true) } shouldBe true
+        }
+
+    @Test
+    fun `the ETag is stable on reads and on a PUT that changes nothing, and moves only with a change`(): Unit =
+        with(iam) {
+            val text = "Etag ${guests.suffix(6)}"
+            val profile = otherProfile(text)
+            val id = UUID.fromString(guests.createGuest(guests.createBody(profile = profile))["id"].asString())
+            val path = "/api/v1/guests/$id"
+            val e0 = call(GET, path).getHeader("ETag")
+            e0 shouldBe "\"0\""
+            call(GET, path).getHeader("ETag") shouldBe e0
+            call(PUT, path, profile, ifMatch = e0).getHeader("ETag") shouldBe e0
+            // Falha de validação não mexe na versão.
+            call(PUT, path, otherProfile("y".repeat(101)), ifMatch = e0).problem(400, "VALIDATION_FAILED")
+            call(GET, path).getHeader("ETag") shouldBe e0
+            // Mudar só a descrição move a versão.
+            call(PUT, path, otherProfile("$text 2"), ifMatch = e0).getHeader("ETag") shouldBe "\"1\""
+        }
+
+    @Test
+    fun `a read response is not marked public for shared caches`(): Unit =
+        with(iam) {
+            val id =
+                createFull(
+                    "Cache ${guests.suffix(10)}",
+                    guests.uniqueEmail(),
+                    "OTHER",
+                    "Cache ${guests.suffix(6)}",
+                    null,
+                )
+            call(GET, "/api/v1/guests/$id").getHeader("Cache-Control").orEmpty().contains("public", true) shouldBe false
+        }
+
+    @Test
+    fun `the contract exposes the description in the profile response only, nullable, with a personal data note`() {
+        val lines = Files.readAllLines(Path.of("api/openapi.yaml"))
+        val field = propertyBlock(schemaBlock(lines, "GuestResponse"), "genderDescription")
+        field shouldContain "type: string"
+        field shouldContain "nullable: true"
+        field shouldContain "guests.profiles.read"
+        field.contains("example") shouldBe false
+        lines
+            .filter { it.matches(Regex("^    \\w*(Summary|Identification)\\w*:$")) }
+            .forEach { header ->
+                withClue(header) {
+                    schemaBlock(lines, header.trim().removeSuffix(":"))
+                        .none { it.trim() == "genderDescription:" } shouldBe true
+                }
+            }
+    }
+
     // --- Apoio ----------------------------------------------------------------------------------------------
 
     private fun otherProfile(description: String?): Map<String, Any?> = profileWith("OTHER", description)
@@ -457,7 +653,30 @@ class GuestGenderDescriptionApiTest(
         path: String,
         body: Any? = null,
         ifMatch: String? = null,
-    ): MockHttpServletResponse = iam.call(method, path, iam.asAdmin(), body, ifMatch)
+        user: TestUser? = null,
+    ): MockHttpServletResponse =
+        iam.call(method, path, if (user == null) iam.asAdmin() else iam.asTestUser(user), body, ifMatch)
+
+    private fun json(response: MockHttpServletResponse): JsonNode = iam.json(response)
+
+    private fun createFull(
+        name: String,
+        email: String,
+        gender: String,
+        description: String?,
+        cpf: String?,
+    ): UUID {
+        val profile =
+            guests.profileBody(
+                fullName = name,
+                email = email,
+                extra = mapOf("gender" to gender, "genderDescription" to description),
+            )
+        val documents = if (cpf == null) emptyList() else listOf(guests.document("CPF", cpf))
+        return UUID.fromString(
+            guests.createGuest(guests.createBody(profile = profile, documents = documents))["id"].asString(),
+        )
+    }
 
     private fun MockHttpServletResponse.problem(
         status: Int,
