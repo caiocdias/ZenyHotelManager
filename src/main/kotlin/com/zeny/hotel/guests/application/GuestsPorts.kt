@@ -47,6 +47,8 @@ data class GuestCommand(
     val nationality: String? = null,
     val birthDate: LocalDate? = null,
     val gender: Gender? = null,
+    /** Descrição do gênero `OTHER` (FNRH): só com esse gênero, gravada cifrada. */
+    val genderDescription: String? = null,
     val email: String? = null,
     val phone: String? = null,
     val residenceCountry: String? = null,

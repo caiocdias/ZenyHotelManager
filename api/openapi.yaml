@@ -17818,6 +17818,14 @@ components:
           - OTHER
           - NOT_INFORMED
           nullable: true
+        genderDescription:
+          type: string
+          description: "Descrição do gênero, exigida pela FNRH quando o gênero é `OTHER`:\
+            \ dado pessoal, gravado cifrado e recusado com outro gênero (400 `GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`).\
+            \ Mudar o gênero para outro valor sem reenviá-la a apaga."
+          maxLength: 100
+          minLength: 0
+          nullable: true
         nationality:
           type: string
           description: "Nacionalidade. País pela ISO 3166-1 alfa-2 (BR, AR, US…)."
@@ -18705,11 +18713,13 @@ components:
         takeFromMerged:
           type: array
           description: "Os dados do perfil que vêm do absorvido (por padrão, nenhum:\
-            \ vale o do sobrevivente)."
+            \ vale o do sobrevivente). A descrição do gênero acompanha o gênero (`GENDER`):\
+            \ só existe com `OTHER`."
           items:
             type: string
             description: "Os dados do perfil que vêm do absorvido (por padrão, nenhum:\
-              \ vale o do sobrevivente)."
+              \ vale o do sobrevivente). A descrição do gênero acompanha o gênero\
+              \ (`GENDER`): só existe com `OTHER`."
             enum:
             - FULL_NAME
             - SOCIAL_NAME

@@ -523,6 +523,104 @@ class GuestsApiTest(
             auditEntries(UUID.fromString(id), "guests.guest.lift-restriction").single()
         }
 
+    // --- Descrição de gênero (FNRH, M5 E15) ---------------------------------------------------------------------
+
+    @Test
+    fun `the gender description is written encrypted on create and update, only with the gender OTHER`(): Unit =
+        with(iam) {
+            val created =
+                guests.createGuest(guests.createBody(profile = otherProfile("Pessoa não binária ${guests.suffix(6)}")))
+            val id = UUID.fromString(created["id"].asString())
+            storedGenderDescription(id).shouldNotBeNull() shouldStartWith "v1:"
+            storedGenderDescription(id).shouldNotBeNull() shouldNotContain "binária"
+
+            val path = "/api/v1/guests/$id"
+            val newText = "Gênero fluido ${guests.suffix(6)}"
+            call(PUT, path, asAdmin(), otherProfile(newText), ifMatch = "\"0\"").ok()
+            val stored = storedGenderDescription(id).shouldNotBeNull()
+            stored shouldStartWith "v1:"
+            stored shouldNotContain "fluido"
+
+            // OTHER -> MALE reenviando a descrição: 400 e a coluna fica como estava.
+            val refused =
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    guests.profileBody(extra = mapOf("gender" to "MALE", "genderDescription" to newText)),
+                    ifMatch = "\"1\"",
+                ).problem(400, "GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER")
+            refused["errors"][0]["field"].asString() shouldBe "genderDescription"
+            refused.toString() shouldNotContain newText
+            storedGenderDescription(id) shouldBe stored
+
+            // OTHER -> MALE sem descrição: 200 e a coluna fica nula.
+            call(
+                PUT,
+                path,
+                asAdmin(),
+                guests.profileBody(extra = mapOf("gender" to "MALE")),
+                ifMatch = "\"1\"",
+            ).ok()
+            storedGenderDescription(id).shouldBeNull()
+        }
+
+    @Test
+    fun `a gender description with another gender or over 100 characters is refused without echoing it`(): Unit =
+        with(iam) {
+            val text = "Descrição reservada ${guests.suffix(6)}"
+            val withMale = guests.profileBody(extra = mapOf("gender" to "MALE", "genderDescription" to text))
+            val problem =
+                call(POST, "/api/v1/guests", asAdmin(), guests.createBody(profile = withMale))
+                    .problem(400, "GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER")
+            problem["errors"][0]["field"].asString() shouldBe "genderDescription"
+            problem.toString() shouldNotContain text
+
+            call(POST, "/api/v1/guests", asAdmin(), guests.createBody(profile = otherProfile("x".repeat(101))))
+                .problem(400, "VALIDATION_FAILED")
+            guests.createGuest(guests.createBody(profile = otherProfile("x".repeat(100))))
+        }
+
+    @Test
+    @ExtendWith(OutputCaptureExtension::class)
+    fun `the trail of a gender description change has the field name and neither the trail nor the log has the text`(
+        output: CapturedOutput,
+    ): Unit =
+        with(iam) {
+            val text = "Descrição íntima ${guests.suffix(6)}"
+            val created =
+                guests.createGuest(
+                    guests.createBody(
+                        profile =
+                            guests.profileBody(
+                                extra =
+                                    mapOf("gender" to "OTHER"),
+                            ),
+                    ),
+                )
+            val id = UUID.fromString(created["id"].asString())
+            call(PUT, "/api/v1/guests/$id", asAdmin(), otherProfile(text), ifMatch = "\"0\"").ok()
+
+            val update = auditEntries(id, "guests.guest.update").single()["after_state"] as String
+            jsonMapper
+                .readTree(update)["changedFields"]
+                .values()
+                .map { it.asString() } shouldContain "genderDescription"
+            update shouldNotContain text
+            output.all shouldNotContain text
+        }
+
+    @Test
+    fun `the report view of guests has no gender column`() {
+        jdbc
+            .sql(
+                "SELECT column_name FROM information_schema.columns " +
+                    "WHERE table_schema = 'guests' AND table_name = 'report_guests' AND column_name LIKE '%gender%'",
+            ).query(String::class.java)
+            .list()
+            .shouldBeEmpty()
+    }
+
     // --- Trilha, log, API pública e exclusão --------------------------------------------------------------------
 
     @Test
@@ -665,6 +763,17 @@ class GuestsApiTest(
         GuestsPermissions.permissions.filter { it.sensitive }.map { it.code } shouldContainExactlyInAnyOrder
             listOf(GuestsPermissions.DATA_EXPORT, GuestsPermissions.DATA_ANONYMIZE)
     }
+
+    private fun otherProfile(description: String): Map<String, Any?> =
+        guests.profileBody(extra = mapOf("gender" to "OTHER", "genderDescription" to description))
+
+    private fun storedGenderDescription(id: UUID): String? =
+        jdbc
+            .sql("SELECT gender_description FROM guests.guest WHERE id = :id")
+            .param("id", id)
+            .query(String::class.java)
+            .optional()
+            .orElse(null)
 
     private fun storedSensitiveData(id: UUID): String = storedSensitiveDataOrNull(id).shouldNotBeNull()
 

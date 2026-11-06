@@ -316,6 +316,7 @@ class GuestService(
             nationality = command.nationality,
             birthDate = command.birthDate,
             gender = command.gender,
+            genderDescription = command.genderDescription,
             email = command.email,
             phone = command.phone,
             residenceCountry = command.residenceCountry,
