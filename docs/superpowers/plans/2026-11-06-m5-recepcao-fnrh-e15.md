@@ -21,6 +21,16 @@
 | D-E15-5 | Na mesclagem, a descrição anda **com o gênero** (`GuestMergeField.GENDER`), como o endereço anda com o país de residência. | Tomar o gênero de um perfil e a descrição de outro quebraria a regra e o `CHECK`. | Regra local a `Guest.mergedProfile`. |
 | D-E15-6 | O saneador da E07 **não muda**: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada (`MIN_VALUE_LENGTH = 3`, comportamento fixado por `FnrhMessageSanitizerTest`). Risco residual aceito; vai às "Decisões para o usuário". | Mascarar valores curtos em geral atinge artigos e preposições das mensagens (motivo do teste existente), e um parâmetro só para esse campo atravessaria o `errorMessage` e o gateway por um eco hipotético. O restante da mensagem continua saneado (nome, documento, contato), então não há dado identificador direto nela; a linha de log traz a referência da reserva ou da submissão, que quem tem acesso ao sistema liga ao hóspede. Recusar valor curto impediria uma autodeclaração legítima. | Exceção literal ao critério "não aparece em log", em caso raro e hipotético. Corrigir depois é local ao adaptador; a E09 confere se o Serpro ecoa o campo. |
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas.
+- **Rodadas:** 2.
+- **Modelo:** opus (`revisor-arquitetura`).
+- **Notas Menores:**
+  - M-R2: a cláusula nova de `guest_anonymized_ck` é redundante em relação às outras duas regras e fica provada só pelo `pg_get_constraintdef`. Um teste de comportamento dependeria da ordem de avaliação dos `CHECK`, por isso é opcional.
+  - D-E15-6 é exceção literal ao critério "não aparece em log": o handoff cita a exceção ao marcar o critério.
+  - D-E15-4 e D-E15-6 vão às "Decisões para o usuário".
+
 ## Global Constraints
 
 - Respeitar o grafo de módulos da ARCHITECTURE §3.1; `fnrh` já depende de `guests`. Nenhuma aresta nova.
@@ -77,7 +87,7 @@ Em `GuestPrivacyDomainTest`: `anonymize clears the gender description`.
 
 Em `GuestGenderDescriptionConstraintsTest`, por `JdbcClient` contra o banco migrado (a migração só roda aqui, porque o `MigrationConventionTest` confere o texto, sem banco):
 - `guest_gender_description_ck` recusa `MALE` com descrição, recusa gênero **nulo** com descrição (`'v1:x'`) e recusa texto sem o prefixo `v1:`;
-- `guest_anonymized_ck` recusa perfil anonimizado com descrição. Use a linha que só viola a cláusula nova e confira o nome da constraint no erro: com `OTHER`, a cláusula antiga `gender IS NULL` já recusaria, e o teste não provaria a nova. Como a outra constraint também recusa descrição com gênero nulo, se não houver linha que viole só a nova, a prova desta cláusula fica no `pg_get_constraintdef` abaixo; diga isso no relatório;
+- não existe linha que viole só a cláusula nova de `guest_anonymized_ck`: com `OTHER`, a cláusula antiga `gender IS NULL` já recusa; com gênero nulo, `guest_gender_description_ck` recusa. A cláusula nova é defesa em profundidade, e a prova dela é o `pg_get_constraintdef` abaixo; diga isso no relatório;
 - `pg_get_constraintdef` de `guest_anonymized_ck` contém as cláusulas de `V2026_10_17_0440__add_guest_privacy.sql`, linhas 34 a 46 (nenhuma se perdeu ao recriar), mais `gender_description IS NULL`. O PostgreSQL normaliza o texto (`::text`, `~~` no lugar de `LIKE`): confira por fragmentos normalizados, cláusula a cláusula, sem comparar ao pé da letra.
 
 - [ ] **Step 2: Rode e veja falhar**
