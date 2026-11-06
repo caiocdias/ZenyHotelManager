@@ -19,7 +19,7 @@
 | D-E15-3 | Descrição com gênero diferente de `OTHER` → `400 GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`, com o campo `genderDescription` e sem repetir o valor. | Mesma forma de `400 ADDRESS_REQUIRES_BRAZIL_RESIDENCE`: incoerência entre dois campos do corpo. | Só o código; publicado, não muda. |
 | D-E15-4 | O campo volta em toda resposta de perfil (`GuestResponse`: detalhe, listagem, busca por documento e candidatos a duplicado), com `guests.profiles.read` (Gerente, Recepcionista, Financeiro), e **não** entra em `GuestSummary`. Fica até a anonimização; a M8 E16 decide se segue o prazo do expurgo (roadmap do M8, linha 935). Vai às "Decisões para o usuário". | Precedente direto: `dietaryRestrictions`, dado de saúde, segue o mesmo caminho e a mesma permissão. O `PUT` troca o perfil inteiro, então o cliente precisa ler para reenviar. Descartadas: só no `GET /{id}` (a listagem devolveria nulo, e um `PUT` feito a partir dela apagaria o valor); escrita sem leitura, com `hasGenderDescription` e `PUT` que preserva (quebra a semântica do `PUT`, e a recepção não confere o dado com o hóspede). | Reduzir depois é incompatível para clientes gerados, e o Financeiro lê um dado de que não precisa. Nenhum cliente consome o campo ainda: revisar antes da E09 custa pouco. |
 | D-E15-5 | Na mesclagem, a descrição anda **com o gênero** (`GuestMergeField.GENDER`), como o endereço anda com o país de residência. | Tomar o gênero de um perfil e a descrição de outro quebraria a regra e o `CHECK`. | Regra local a `Guest.mergedProfile`. |
-| D-E15-6 | O saneador da E07 **não muda**: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada (`MIN_VALUE_LENGTH = 3`, comportamento fixado por `FnrhMessageSanitizerTest`). Risco residual aceito; vai às "Decisões para o usuário". | Mascarar valores curtos em geral atinge artigos e preposições das mensagens (motivo do teste existente), e um parâmetro só para esse campo atravessaria o `errorMessage` e o gateway por um eco hipotético. O restante da mensagem continua saneado (nome, documento, contato), então o valor curto sai sem identificar a pessoa. Recusar valor curto impediria uma autodeclaração legítima. | Exceção literal ao critério "não aparece em log", em caso raro e hipotético. Corrigir depois é local ao adaptador; a E09 confere se o Serpro ecoa o campo. |
+| D-E15-6 | O saneador da E07 **não muda**: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada (`MIN_VALUE_LENGTH = 3`, comportamento fixado por `FnrhMessageSanitizerTest`). Risco residual aceito; vai às "Decisões para o usuário". | Mascarar valores curtos em geral atinge artigos e preposições das mensagens (motivo do teste existente), e um parâmetro só para esse campo atravessaria o `errorMessage` e o gateway por um eco hipotético. O restante da mensagem continua saneado (nome, documento, contato), então não há dado identificador direto nela; a linha de log traz a referência da reserva ou da submissão, que quem tem acesso ao sistema liga ao hóspede. Recusar valor curto impediria uma autodeclaração legítima. | Exceção literal ao critério "não aparece em log", em caso raro e hipotético. Corrigir depois é local ao adaptador; a E09 confere se o Serpro ecoa o campo. |
 
 ## Global Constraints
 
@@ -76,9 +76,9 @@ Em `GuestMergeDomainTest`:
 Em `GuestPrivacyDomainTest`: `anonymize clears the gender description`.
 
 Em `GuestGenderDescriptionConstraintsTest`, por `JdbcClient` contra o banco migrado (a migração só roda aqui, porque o `MigrationConventionTest` confere o texto, sem banco):
-- `guest_gender_description_ck` recusa `MALE` com descrição e recusa texto sem o prefixo `v1:`;
-- `guest_anonymized_ck` recusa perfil anonimizado com descrição;
-- `pg_get_constraintdef` de `guest_anonymized_ck` contém as cláusulas de `V2026_10_17_0440__add_guest_privacy.sql`, linhas 34 a 46 (nenhuma se perdeu ao recriar), mais `gender_description IS NULL`.
+- `guest_gender_description_ck` recusa `MALE` com descrição, recusa gênero **nulo** com descrição (`'v1:x'`) e recusa texto sem o prefixo `v1:`;
+- `guest_anonymized_ck` recusa perfil anonimizado com descrição. Use a linha que só viola a cláusula nova e confira o nome da constraint no erro: com `OTHER`, a cláusula antiga `gender IS NULL` já recusaria, e o teste não provaria a nova. Como a outra constraint também recusa descrição com gênero nulo, se não houver linha que viole só a nova, a prova desta cláusula fica no `pg_get_constraintdef` abaixo; diga isso no relatório;
+- `pg_get_constraintdef` de `guest_anonymized_ck` contém as cláusulas de `V2026_10_17_0440__add_guest_privacy.sql`, linhas 34 a 46 (nenhuma se perdeu ao recriar), mais `gender_description IS NULL`. O PostgreSQL normaliza o texto (`::text`, `~~` no lugar de `LIKE`): confira por fragmentos normalizados, cláusula a cláusula, sem comparar ao pé da letra.
 
 - [ ] **Step 2: Rode e veja falhar**
 
@@ -89,7 +89,7 @@ Expected: falha de compilação (`genderDescription` não existe).
 
 `ALTER TABLE guests.guest`:
 - `ADD COLUMN gender_description TEXT`;
-- `ADD CONSTRAINT guest_gender_description_ck CHECK (gender_description IS NULL OR (gender = 'OTHER' AND gender_description LIKE 'v1:%'))`;
+- `ADD CONSTRAINT guest_gender_description_ck CHECK (gender_description IS NULL OR (gender IS NOT DISTINCT FROM 'OTHER' AND gender_description LIKE 'v1:%'))` (com `gender = 'OTHER'`, um gênero nulo daria `NULL`, e o `CHECK` passaria);
 - `DROP CONSTRAINT guest_anonymized_ck` e `ADD CONSTRAINT guest_anonymized_ck`, com o texto idêntico ao de `V2026_10_17_0440__add_guest_privacy.sql` acrescido de `AND gender_description IS NULL`.
 
 Comentário no topo dizendo que o valor é cifrado e por quê (D-E15-1).
@@ -115,7 +115,7 @@ val genderDescription =
 
 Nas duas últimas linhas, a descrição do outro perfil só existe se ele for `OTHER` (o `CHECK` garante), e a regra "vazio recebe o do outro" fica igual à de `pick`.
 
-Atualize os KDocs que listam campos: `Guest.anonymize`, `Guest.absorb` e `GuestMergeField.GENDER` (`GuestsApi.kt`, só o comentário: a descrição anda com o gênero).
+Atualize os KDocs que listam campos: `Guest.anonymize` e `Guest.absorb`. O de `GuestMergeField.GENDER` fica na Task 5, que já modifica `GuestsApi.kt`.
 
 - [ ] **Step 5: Rode os testes de domínio, os de `CHECK` e o de migração**
 
@@ -195,7 +195,7 @@ Expected: PASS.
 
 - [ ] **Step 1: Escreva os testes que falham**
 
-Em `GuestsApiTest`: `POST` seguido de `GET /{id}` devolve o valor decifrado; a listagem e a busca por documento também; o `PUT` que reenvia o que o `GET` devolveu não muda nada (`changedFields` sem o campo); sem `guests.profiles.read`, `403`.
+Em `GuestsApiTest`: `POST` seguido de `GET /{id}` devolve o valor decifrado; a listagem e a busca por documento também; o `PUT` que reenvia o que o `GET` devolveu não muda nada (o caso de uso chama `audit.noChanges()`: nenhuma entrada nova na trilha, e o `ETag` não muda); sem `guests.profiles.read`, `403`.
 
 - [ ] **Step 2: Rode e veja falhar**
 
@@ -281,7 +281,7 @@ Expected: falha de compilação.
 
 - [ ] **Step 3: Implemente**
 
-`FnrhGuestData.genderDescription`; no `GuestsApiService.fnrhData`, `genderDescription = guest.genderDescription`; no mapeador, `genderDescription = guest.genderDescription.takeIf { guest.gender == Gender.OTHER }`.
+`FnrhGuestData.genderDescription`; no `GuestsApiService.fnrhData`, `genderDescription = guest.genderDescription`; no mapeador, `genderDescription = guest.genderDescription.takeIf { guest.gender == Gender.OTHER }`. No KDoc de `GuestMergeField.GENDER` (`GuestsApi.kt`, só o comentário), diga que a descrição anda com o gênero.
 
 - [ ] **Step 4: Rode**
 
@@ -300,7 +300,7 @@ Expected: PASS.
 - `README.md`, seção "API": o campo novo.
 - `docs/ARCHITECTURE.md` §8.3: a descrição de gênero e as restrições alimentares na lista do que se cifra e dos valores sem job de re-cifragem.
 - `docs/SPEC.md`: RF-HOS-01 (descrição quando o gênero é "outro") e §8.2.4 (`genderDescription`).
-- `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`: "Decisões do lote E15" com D-E15-1 a 6; handoff com a nota para a E09 (limite real e eco de `GeneroDescricao`).
+- `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`: "Decisões do lote E15" com D-E15-1 a 6; handoff com "Decisões para o usuário" (D-E15-4 e D-E15-6, ao menos) e a nota para a E09 (limite real e eco de `GeneroDescricao`).
 - `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md`, linha 858: `guests.guest.gender_description` nos "Conhecidos" da M8 E15.
 
 - [ ] **Step 1:** edite os documentos.
