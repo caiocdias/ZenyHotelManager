@@ -1373,12 +1373,33 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+**Ponto de retomada (execução interrompida a pedido do usuário em 2026-11-06, com as Tasks 1 a 5 concluídas):**
+
+- **Onde:** worktree `.claude/worktrees/roadmap-m5-recepcao-fnrh`, branch `roadmap/m5-recepcao-fnrh`. Nada entrou na `main`. O ledger está em `.superpowers/sdd/2026-11-06-m5-recepcao-fnrh-e15/progress.md`, no worktree (ignorado pelo Git), com os relatórios de cada tarefa. Não refaça tarefa com linha `Task N: complete`.
+- **Falta, nesta ordem:**
+  1. Rodar `./gradlew build` na ponta. A execução em `8d6203a` foi interrompida no fim e não deixou a linha `BUILD SUCCESSFUL`, então não conta como evidência.
+  2. Rodar `.github/scripts/check-api-breaking.sh`, que ainda não rodou. Use `main` como referência, porque a `origin/main` está atrás.
+  3. Rodar `osv-scanner scan source -r .`, que ainda não rodou.
+  4. Rodar `check_test_integrity.py --base ca9f9e2`.
+  5. Despachar a revisão final da `revisor-seguranca` no modelo mais capaz, com o pacote de `ca9f9e2..HEAD`, o plano, as linhas `Plano:` e as de minor e parked do ledger.
+  6. Fechar a etapa: "Decisões do lote E15" (D-E15-1 a 6), este handoff, a tag `#concluida`, o histórico e a captura `ZenyHotelManager - atualização m5-recepcao-fnrh E15`, que ainda não foi publicada.
+- **Task 6:** falta só a parte do roadmap, listada no item 6; README, ARCHITECTURE, SPEC e M8 estão em `fb5eb58`.
+- **Depois da E15:** a próxima elegível é a E08, com "Revisão humana: sim", e o lote para ao concluí-la. A E08 precisa do plano e da revisão de arquitetura.
+- **Ondas paralelas não funcionam nesta sessão:** com a sessão isolada num worktree, o harness recusa git de subagente em outro worktree. As Tasks 4 e 5 rodaram em sequência.
+- **Formato do trailer:** `Soul:` e `Co-Authored-By` no mesmo último parágrafo, senão o Git não reconhece o trailer. Lembre isso em cada despacho.
+- **Merge na `main`:** a árvore da `main` tem a revisão de arquitetura de 2026-11-06 sem commit (10 arquivos alterados e a spec não rastreada). O mesmo conteúdo está nesta branch, no commit `340846c`, e o `git merge` vai recusar enquanto essas mudanças existirem. São trabalho do usuário: não as descarte nem as guarde sem a decisão dele. Antes de perguntar, confira se elas ainda são idênticas às de `340846c`.
+
+- Plano: `docs/superpowers/plans/2026-11-06-m5-recepcao-fnrh-e15.md`. Revisão de arquitetura aprovada com notas, em 2 rodadas (`revisor-arquitetura`, opus).
+- Commits: `340846c` (revisão de arquitetura trazida da árvore da `main`); `fea187c`, `fcb70c2`, `724cf9e` e `0518d13` (plano); Task 1 `cd722ea` e `d8d0abb`; Task 2 `6927a9b`, `423059d` e `7165250`; Task 3 `43d18ac` e `a354f09`; Task 4 `b8dd5fd` e `cd8ffad`; Task 5 `b8de5e0`, `3964ec3` e `8d6203a`; documentos `fb5eb58`.
+- Revisão final: pendente. As revisões das Tasks 1 a 5 fecharam "Approved".
+- Critérios verificados: pendente, até o gate e a revisão final.
+- Decisões para o usuário (a confirmar no fechamento):
+  - D-E15-4: a descrição volta em toda resposta de perfil, com `guests.profiles.read`, inclusive para o Financeiro.
+  - D-E15-6: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada. É exceção literal ao critério "não aparece em log".
+  - Exceção ao plano: o saneador passou a normalizar o controle nos valores enviados (`8d6203a`), para todos os campos.
+- Notas para a próxima etapa:
+  - E08: teste o alerta de falha com um hóspede que tenha descrição, para provar que ela não chega à notificação.
+  - E09: confirme o limite real de `GeneroDescricao` (reduzir os 100 caracteres é mudança restritiva de contrato) e se o Serpro ecoa esse campo.
 
 ---
 
