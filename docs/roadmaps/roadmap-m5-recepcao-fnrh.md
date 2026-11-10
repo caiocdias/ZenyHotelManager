@@ -196,7 +196,18 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E07 (e) Descrição de gênero:** etapa própria antes do envio (E15). Descartadas: embutir na E08 e aceitar a limitação.
 - **E07 (i) Limpar a credencial:** antes da credencial real (E16), como pré-requisito da E09. Descartada: deixar para a prontidão do M8.
 
-**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14 e E07, tomadas pela opção recomendada, e a revisão humana da E13 e da E07.
+**Decisões do lote E15** (entrevista do fim do lote). Em 2026-11-10, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras, salvo decisão de arquitetura. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-06 e 2026-11-10**. O detalhe está no plano da E15 (D-E15-1 a 6) e no handoff dela.
+
+- **E15 (a) Cifra (D-E15-1):** a descrição fica cifrada (`EncryptedStringConverter`), como as restrições alimentares. Autodeclaração de identidade de gênero é dado pessoal e pode revelar dado sensível. Custo: mais um valor para a re-cifragem da M8 E15.
+- **E15 (b) Tamanho (D-E15-2):** até 100 caracteres, sem `pattern`. A API v2.4 não documenta limite; a E09 confirma. Reduzir depois é mudança restritiva de contrato.
+- **E15 (c) Erro (D-E15-3):** descrição com gênero diferente de `OTHER` → `400 GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`, sem repetir o valor.
+- **E15 (d) Leitura (D-E15-4):** a descrição volta em toda resposta de perfil (`GuestResponse`), com `guests.profiles.read` (Gerente, Recepcionista e **Financeiro**), e fica fora do `GuestSummary`. Precedente: `dietaryRestrictions`. Contra: o Financeiro lê um dado de que não precisa. Reduzir depois é incompatível para clientes gerados, mas nenhum cliente consome o campo ainda.
+- **E15 (e) Mesclagem (D-E15-5):** a descrição anda com o gênero.
+- **E15 (f) Eco curto (D-E15-6):** descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada no log. Exceção literal ao critério "não aparece em log", em caso raro e hipotético; a E09 confere se o Serpro ecoa o campo.
+- **E15 (g) Saneador:** passou a normalizar o caractere de controle também nos valores enviados (`8d6203a`), para todos os campos. O plano dizia "o saneador não muda"; a mudança só aumenta o mascaramento.
+- **E15 (h) Leitura nas respostas das escritas (I-1 da revisão final):** `restrict`, `lift-restriction` e `merge` do `guests` devolvem o perfil inteiro, com a descrição e as restrições alimentares, conferindo só a permissão da escrita. Com os modelos de role padrão não há exposição (só o Gerente tem essas permissões, e ele lê). Uma role customizada com `guests.restrictions.manage` sem `guests.profiles.read` leria. A lacuna é do M3; a E15 só corrigiu o texto do contrato, do KDoc e do README para não prometer o contrário. Recomendação: exigir `guests.profiles.read` para o corpo completo dessas respostas (ou devolver um corpo mínimo) numa etapa de manutenção do `guests`.
+
+**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07 e E15, tomadas pela opção recomendada, e a revisão humana da E13 e da E07.
 
 ## Definição global de pronto
 
@@ -308,7 +319,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E07 | Configuração, domínios e adaptador Serpro da FNRH | #concluida | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
-| E15 | Descrição de gênero no perfil do hóspede | #em-andamento | E07 | Campo no perfil e nos dados da FNRH: o hóspede de gênero `OUTRO` passa a poder ser enviado |
+| E15 | Descrição de gênero no perfil do hóspede | #concluida | E07 | Campo no perfil e nos dados da FNRH: o hóspede de gênero `OUTRO` passa a poder ser enviado |
 | E08 | Envio assíncrono e pendências da FNRH | #pendente | E01, E02, E07, E15 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
 | E16 | Limpar a credencial do Serpro | #pendente | E07 | Ação explícita, com trilha, que apaga a credencial e desliga a integração |
 | E09 | Homologação da FNRH com o Serpro | #bloqueada | E08, E16 | Envios reais no ambiente de homologação |
@@ -1331,7 +1342,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E15 — Descrição de gênero no perfil do hóspede — #em-andamento
+## E15 — Descrição de gênero no perfil do hóspede — #concluida
 
 **Objetivo:** guardar no perfil do hóspede a descrição de gênero que a API da FNRH exige quando o gênero é `OUTRO` e levá-la aos dados da FNRH, para que esse hóspede possa ser enviado sem falsear o dado.
 
@@ -1373,33 +1384,46 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-**Ponto de retomada (execução interrompida a pedido do usuário em 2026-11-06, com as Tasks 1 a 5 concluídas):**
-
-- **Onde:** worktree `.claude/worktrees/roadmap-m5-recepcao-fnrh`, branch `roadmap/m5-recepcao-fnrh`. Nada entrou na `main`. O ledger está em `.superpowers/sdd/2026-11-06-m5-recepcao-fnrh-e15/progress.md`, no worktree (ignorado pelo Git), com os relatórios de cada tarefa. Não refaça tarefa com linha `Task N: complete`.
-- **Falta, nesta ordem:**
-  1. Rodar `./gradlew build` na ponta. A execução em `8d6203a` foi interrompida no fim e não deixou a linha `BUILD SUCCESSFUL`, então não conta como evidência.
-  2. Rodar `.github/scripts/check-api-breaking.sh`, que ainda não rodou. Use `main` como referência, porque a `origin/main` está atrás.
-  3. Rodar `osv-scanner scan source -r .`, que ainda não rodou.
-  4. Rodar `check_test_integrity.py --base ca9f9e2`.
-  5. Despachar a revisão final da `revisor-seguranca` no modelo mais capaz, com o pacote de `ca9f9e2..HEAD`, o plano, as linhas `Plano:` e as de minor e parked do ledger.
-  6. Fechar a etapa: "Decisões do lote E15" (D-E15-1 a 6), este handoff, a tag `#concluida`, o histórico e a captura `ZenyHotelManager - atualização m5-recepcao-fnrh E15`, que ainda não foi publicada.
-- **Task 6:** falta só a parte do roadmap, listada no item 6; README, ARCHITECTURE, SPEC e M8 estão em `fb5eb58`.
-- **Depois da E15:** a próxima elegível é a E08, com "Revisão humana: sim", e o lote para ao concluí-la. A E08 precisa do plano e da revisão de arquitetura.
-- **Ondas paralelas não funcionam nesta sessão:** com a sessão isolada num worktree, o harness recusa git de subagente em outro worktree. As Tasks 4 e 5 rodaram em sequência.
-- **Formato do trailer:** `Soul:` e `Co-Authored-By` no mesmo último parágrafo, senão o Git não reconhece o trailer. Lembre isso em cada despacho.
-- **Merge na `main`:** a árvore da `main` tem a revisão de arquitetura de 2026-11-06 sem commit (10 arquivos alterados e a spec não rastreada). O mesmo conteúdo está nesta branch, no commit `340846c`, e o `git merge` vai recusar enquanto essas mudanças existirem. São trabalho do usuário: não as descarte nem as guarde sem a decisão dele. Antes de perguntar, confira se elas ainda são idênticas às de `340846c`.
-
-- Plano: `docs/superpowers/plans/2026-11-06-m5-recepcao-fnrh-e15.md`. Revisão de arquitetura aprovada com notas, em 2 rodadas (`revisor-arquitetura`, opus).
-- Commits: `340846c` (revisão de arquitetura trazida da árvore da `main`); `fea187c`, `fcb70c2`, `724cf9e` e `0518d13` (plano); Task 1 `cd722ea` e `d8d0abb`; Task 2 `6927a9b`, `423059d` e `7165250`; Task 3 `43d18ac` e `a354f09`; Task 4 `b8dd5fd` e `cd8ffad`; Task 5 `b8de5e0`, `3964ec3` e `8d6203a`; documentos `fb5eb58`.
-- Revisão final: pendente. As revisões das Tasks 1 a 5 fecharam "Approved".
-- Critérios verificados: pendente, até o gate e a revisão final.
-- Decisões para o usuário (a confirmar no fechamento):
+- **Plano:** `docs/superpowers/plans/2026-11-06-m5-recepcao-fnrh-e15.md`, com 6 tarefas e as decisões D-E15-1 a 6, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`).
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 2 rodadas. A inicial bloqueou com 5 Importantes; a rodada 1, com 2 novos (o `CHECK` com gênero nulo e um 4º arquivo de produção numa tarefa).
+  - A linha D-E15-6 do plano ganhou uma "Atualização da execução (Task 5)" depois da aprovação, sem re-revisão: registra a exceção do saneador (M-2 da revisão final).
+  - A execução foi interrompida a pedido do usuário em 2026-11-06, com as Tasks 1 a 5 concluídas, e retomada em 2026-11-10 pelo ledger.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `ca9f9e2`):
+  - `340846c`: a revisão de arquitetura de 2026-11-06, trazida da árvore da `main`, onde segue sem commit (só documentos).
+  - `fea187c`, `fcb70c2`, `724cf9e` e `0518d13`: início da etapa, plano e as correções da revisão de arquitetura.
+  - Task 1 (coluna cifrada, regra no agregado, `CHECK` e mesclagem): `cd722ea` e `d8d0abb`.
+  - Task 2 (escrita pela API): `6927a9b`, `423059d` e `7165250`.
+  - Task 3 (leitura pela API): `43d18ac` e `a354f09`.
+  - Task 4 (exportação do titular e anonimização): `b8dd5fd` e `cd8ffad`.
+  - Task 5 (dados da FNRH e envio ao Serpro): `b8de5e0`, `3964ec3` e `8d6203a` (correção do saneador).
+  - Documentos: `fb5eb58`, `e718190` (ponto de retomada) e o commit de fechamento (este handoff).
+  - `5b11231`: tira do Git um relatório do testador commitado por engano em `cd8ffad` (sem segredo nem dado real; fica no histórico).
+  - Onda da revisão final: `54d51cd`, `1fe2c77` e `2059a16`.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `340846c..5b11231`, com resultado "With fixes" e nenhum Crítico.
+  - **I-1:** o contrato, o KDoc e o README prometiam a descrição "só a quem tem `guests.profiles.read`", mas `restrict`, `lift-restriction` e `merge` devolvem o perfil inteiro com a permissão da escrita. Corrigido o texto (`54d51cd` e o README no fechamento), sem mudar comportamento; a lacuna, que é do M3, vai às "Decisões para o usuário" (E15 h).
+  - **M-1:** o teste de controle aceitava `201` ou `400`; fixado em `201` (`1fe2c77`). O teste de contrato do testador fixava a promessa falsa da I-1 e foi ajustado à nota verdadeira (`2059a16`).
+  - **Re-revisão restrita da onda** (`revisor-seguranca`, sonnet): "all findings addressed", sem quebra nova.
+  - As minors do ledger foram triadas: nenhuma bloqueia.
+- **Integridade dos testes:** `check_test_integrity.py --base ca9f9e2` → "OK: nenhum apontamento", na revisão final e depois da onda.
+- **Critérios verificados:**
+  - [x] O perfil aceita a descrição com `OTHER` e a recusa com outro gênero (`400 GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`, sem o valor); o contrato traz `maxLength: 100`, sem `pattern` (`GuestGenderDescriptionApiTest`).
+  - [x] Hóspede `OTHER` com descrição passa na validação local; sem ela, `person.genderDescription`/`REQUIRED` (testes do mapeador e do validador).
+  - [x] O WireMock confere `pessoa.GeneroDescricao` no `POST /pessoas` (`SerproFnrhGatewayGenderDescriptionTest`).
+  - [x] A descrição não aparece em log, retrato da trilha, `toString`, evento, notificação nem view (`GuestGenderDescriptionPrivacyTest`, `FnrhGenderDescriptionLogTest`). **Exceção literal:** a D-E15-6 (eco de 1 ou 2 caracteres não mascarado no log).
+  - [x] A descrição entra na exportação do titular e sai na anonimização, também dos perfis absorvidos da cadeia.
+  - [x] `./gradlew build` em `5b11231`: BUILD SUCCESSFUL in 15m 19s, 1809 testes, 0 falhas; depois da onda, em `2059a16`: BUILD SUCCESSFUL in 7m 17s, 1809 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1`.
+  - Scanner (`osv-scanner scan source -r --no-ignore .`, porque o worktree fica sob `.claude/worktrees/`, ignorado pelo `.gitignore` do checkout principal): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14.
+- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E15"):
   - D-E15-4: a descrição volta em toda resposta de perfil, com `guests.profiles.read`, inclusive para o Financeiro.
-  - D-E15-6: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada. É exceção literal ao critério "não aparece em log".
+  - D-E15-6: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada no log.
   - Exceção ao plano: o saneador passou a normalizar o controle nos valores enviados (`8d6203a`), para todos os campos.
-- Notas para a próxima etapa:
+  - E15 (h): as respostas de `restrict`, `lift-restriction` e `merge` do `guests` trazem o perfil inteiro com a permissão da escrita (lacuna do M3).
+- **Notas para a próxima etapa:**
   - E08: teste o alerta de falha com um hóspede que tenha descrição, para provar que ela não chega à notificação.
   - E09: confirme o limite real de `GeneroDescricao` (reduzir os 100 caracteres é mudança restritiva de contrato) e se o Serpro ecoa esse campo.
+  - E10 e E11: o texto livre do perfil aceita caracteres de controle e de formatação Unicode (bidi, largura zero); a renderização da ficha e dos PDFs precisa tratá-los (M-3 da revisão final).
+  - Ondas paralelas: com a sessão num worktree, o harness recusou git de subagente em outro worktree; as tarefas rodaram em sequência.
+  - Trailer: `Soul:` e `Co-Authored-By` no mesmo último parágrafo, senão o Git não reconhece o trailer.
 
 ---
 
@@ -1767,3 +1791,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-11-04 — E14 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: Spring Boot 4.1.2, plataforma do Jackson 2 na 2.22.4, restrição do freemarker 2.3.35 no classpath dos plugins, lockfiles regravados e o passo "Lockfiles em dia com o catálogo" na CI. O scanner passou de 5 Critical e 15 High a 0 e 0, e os resíduos Medium/Low ficaram em "Decisões do lote E14". O risco do item "Restrição de versão esquecida" foi corrigido: o passo de CI não acusa a sobra. Handoff preenchido. As demais tags não mudaram.
 - 2026-11-05 — E07 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: módulo `fnrh` com configuração cifrada, CPF solicitante por usuário, porta `FnrhGateway` com o adaptador Serpro v2.4 (levantamento em `docs/fnrh/api-fnrh-v2.4.md`), registro de integração sem dado pessoal, status e métricas, domínios com cache e validação local com a lista do IBGE. Handoff preenchido, decisões em "Decisões do lote E07" e ARCHITECTURE §12 corrigida (o `cpf_solicitante` vale só nas operações de pessoa e de hospedagem completa). O lote parou na revisão humana da E07. As demais tags não mudaram.
 - 2026-11-06 — revisão de arquitetura (`claude --agent arquiteto`; `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05: merge local na `main` no fim do lote, ondas paralelas, testador por risco, decisões pela opção recomendada, salvo as de arquitetura. Novas E15 (descrição de gênero, antes da E08) e E16 (limpar a credencial, antes da E09), que resolvem as decisões E07 (e) e (i). A E08 passou a depender da E15, com critérios de resultado incerto e da SPEC §8.2.17 e revisão humana, por fixar o padrão de M7 e M8; a E09 passou a depender da E16; a E12 passou a depender da E16. Contexto defasado corrigido. Nenhuma etapa renumerada; etapas concluídas, evidências e tags existentes inalteradas.
+- 2026-11-10 — E15 retomada pelo ledger e `#concluida` na branch `roadmap/m5-recepcao-fnrh`: descrição de gênero cifrada no perfil, na API, na exportação, na anonimização e no envio ao Serpro (`GeneroDescricao`). Revisão final "With fixes" (I-1, texto do contrato) corrigida numa onda; "Decisões do lote E15" acrescentadas, com a lacuna de leitura nas respostas das escritas do `guests` (E15 h) para o usuário.
