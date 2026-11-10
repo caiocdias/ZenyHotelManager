@@ -108,9 +108,9 @@ class FnrhReservationSync(
     /**
      * A escrita da reserva pode estar em curso: a marca da própria submissão ou a de outra da mesma reserva, em
      * qualquer status (um `UPDATE` com o `POST` sem resposta e o `REGISTER` atrasado, ou um `REGISTER` marcado e
-     * encerrado com `dismiss`). O recurso é da reserva, não da submissão (D-E08-15).
+     * encerrado com `dismiss`). O recurso é da reserva, não da submissão (D-E08-15). Vale também para os hóspedes.
      */
-    private fun writeInFlight(submission: FnrhSubmission): Boolean =
+    fun writeInFlight(submission: FnrhSubmission): Boolean =
         submission.inFlight || store.anyInFlight(submission.reservationId)
 
     /** `POST /reservas` com a escrita em curso marcada antes; grava o id e o link, o que limpa a marca. */
@@ -256,6 +256,23 @@ class FnrhReservationSteps(
     }
 }
 
+/** O passo de cada operação; a operação sem passo não é enviada. */
+@Component
+class FnrhOperationSteps(
+    reservationSteps: FnrhReservationSteps,
+    checkInStep: FnrhCheckInStep,
+) {
+    private val steps: Map<FnrhOperation, FnrhOperationStep> =
+        mapOf(
+            FnrhOperation.REGISTER_RESERVATION to FnrhOperationStep(reservationSteps::register),
+            FnrhOperation.UPDATE_RESERVATION to FnrhOperationStep(reservationSteps::update),
+            FnrhOperation.CANCEL_RESERVATION to FnrhOperationStep(reservationSteps::cancel),
+            FnrhOperation.CHECK_IN to checkInStep,
+        )
+
+    operator fun get(operation: FnrhOperation): FnrhOperationStep? = steps[operation]
+}
+
 /**
  * O envio da fila à FNRH (RF-FNRH-03; D-E08-3, 5, 17). **Sem transação**: lê a fila, chama o Serpro pelo passo da
  * operação e grava o resultado pelo [FnrhSubmissionRecorder], em transação própria. Sem conexão configurada, não toca
@@ -268,17 +285,10 @@ class FnrhSubmissionSender(
     private val store: FnrhSubmissionStore,
     private val connections: FnrhConnectionSource,
     private val recorder: FnrhSubmissionRecorder,
-    reservationSteps: FnrhReservationSteps,
+    private val steps: FnrhOperationSteps,
     private val clock: Clock,
     @Value("\${zeny.fnrh.submissions.batch-size}") private val batchSize: Int,
 ) {
-    private val steps: Map<FnrhOperation, FnrhOperationStep> =
-        mapOf(
-            FnrhOperation.REGISTER_RESERVATION to FnrhOperationStep(reservationSteps::register),
-            FnrhOperation.UPDATE_RESERVATION to FnrhOperationStep(reservationSteps::update),
-            FnrhOperation.CANCEL_RESERVATION to FnrhOperationStep(reservationSteps::cancel),
-        )
-
     /** As cabeças vencidas de todas as reservas, até [batchSize]. */
     fun sendDue(): FnrhSendRun = run { now, limit -> store.dueHeads(now, limit) }
 
