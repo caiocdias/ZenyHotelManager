@@ -182,21 +182,19 @@ class FnrhReservationSteps(
     private val gateway: FnrhGateway,
     private val remoteIds: FnrhRemoteIds,
 ) {
-    /**
-     * Com a escrita em curso, concilia antes (e guarda o id mesmo com a reserva já cancelada, para o cancelamento
-     * seguinte a cancelar). Sem id remoto, a reserva cancelada ou no-show não é registrada; a demais é.
-     */
+    /** Registra a reserva pelo estado atual (ver `registerIfValid`). */
     fun register(
         submission: FnrhSubmission,
         connection: FnrhConnection,
     ): FnrhStepOutcome {
-        val reservation = sync.reservationOf(submission)
-        val known = sync.existing(submission, reservation, connection)
-        if (known == null && reservation.status !in NOT_REGISTERED) sync.register(submission, reservation, connection)
+        registerIfValid(submission, sync.reservationOf(submission), connection)
         return FnrhStepOutcome.Sent
     }
 
-    /** A remota cancelada não reativa; sem id remoto, registra (sem o `PUT`); senão, `PUT` com os dados atuais. */
+    /**
+     * A remota cancelada não reativa; sem id remoto, faz o que o registro faria (sem o `PUT`); senão, `PUT` com os
+     * dados atuais.
+     */
     fun update(
         submission: FnrhSubmission,
         connection: FnrhConnection,
@@ -205,7 +203,7 @@ class FnrhReservationSteps(
         val remote = remoteIds.reservation(reservation.id.value, connection.environment)
         when {
             remote?.cancelled == true -> return FnrhStepOutcome.FailedLocally(FnrhSubmissionFailure.REMOTE_CANCELLED)
-            remote == null -> sync.ensureReservation(submission, reservation, connection)
+            remote == null -> registerIfValid(submission, reservation, connection)
             else -> gateway.updateReservation(remote.remoteId, sync.data(reservation), submission.id.toString())
         }
         return FnrhStepOutcome.Sent
@@ -222,6 +220,20 @@ class FnrhReservationSteps(
             remoteIds.saveReservation(remote.copy(cancelled = true), submission.id)
         }
         return FnrhStepOutcome.Sent
+    }
+
+    /**
+     * Pelo estado atual (D-E08-9): com a escrita em curso, concilia antes (e guarda o id mesmo com a reserva já
+     * cancelada, para o cancelamento seguinte a cancelar); sem id remoto, a reserva cancelada ou no-show não é
+     * registrada; a demais é.
+     */
+    private fun registerIfValid(
+        submission: FnrhSubmission,
+        reservation: ReservationSummary,
+        connection: FnrhConnection,
+    ) {
+        val known = sync.existing(submission, reservation, connection)
+        if (known == null && reservation.status !in NOT_REGISTERED) sync.register(submission, reservation, connection)
     }
 
     private companion object {

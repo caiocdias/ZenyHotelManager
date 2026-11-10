@@ -515,6 +515,71 @@ class FnrhReservationSendTest(
         }
     }
 
+    /** Uma alteração gravada pelo store, antes do cancelamento da reserva (versão 1). */
+    private fun recordUpdate(reservation: UUID): UUID {
+        val update =
+            FnrhSubmission.create(
+                reservationId = reservation,
+                reservationCode = codeOf(reservation),
+                operation = FnrhOperation.UPDATE_RESERVATION,
+                eventKey = "changed:v1",
+                causalVersion = 1,
+                performedBy = null,
+                occurredAt = clock.instant(),
+                now = clock.instant(),
+            )
+        store.recordIfAbsent(update) shouldBe true
+        return update.id
+    }
+
+    @Test
+    fun `a change of a reservation now cancelled and without a remote id is sent without a call`() {
+        val id = reservation()
+        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
+        jdbc.sql("DELETE FROM fnrh.submission WHERE id = :id").param("id", register.id).update()
+        val update = recordUpdate(id)
+        cancel(id)
+        iam.enableFnrh()
+        FnrhTestServer.stubRegisterReservation_v2_4(remoteId())
+
+        sender.send(id) shouldBe FnrhSendRun(sent = 2, postponed = 0, failed = 0, invalid = 0)
+
+        FnrhTestServer.requests().shouldBeEmpty()
+        row(update).status shouldBe FnrhSubmissionStatus.SENT
+        rows(id).map { it.status }.toSet() shouldBe setOf(FnrhSubmissionStatus.SENT)
+        remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldBeNull()
+    }
+
+    @Test
+    fun `a change in flight of a reservation now cancelled is reconciled, kept and then cancelled`() {
+        val id = reservation()
+        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
+        jdbc.sql("DELETE FROM fnrh.submission WHERE id = :id").param("id", register.id).update()
+        val update = recordUpdate(id)
+        cancel(id)
+        store.markInFlight(update)
+        iam.enableFnrh()
+        val remote = remoteId()
+        FnrhTestServer.stubFindReservationByCode_v2_4(codeOf(id), remote)
+        FnrhTestServer.stubRegisterReservation_v2_4(remoteId())
+        FnrhTestServer.stubUpdateReservation_v2_4(remote)
+        FnrhTestServer.stubCancelReservation_v2_4(remote)
+
+        sender.send(id).sent shouldBe 2
+
+        requests("POST", "/reservas").shouldBeEmpty()
+        requests("PUT", "/reservas/$remote").shouldBeEmpty()
+        requests("POST", "/reservas/$remote/cancelar") shouldHaveSize 1
+        row(update).also {
+            it.status shouldBe FnrhSubmissionStatus.SENT
+            it.inFlight shouldBe false
+        }
+        remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldNotBeNull().also {
+            it.remoteId shouldBe FnrhRemoteId(remote)
+            it.cancelled shouldBe true
+        }
+    }
+
     // --- Fora de ordem --------------------------------------------------------------------------------------------
 
     @Test

@@ -10,11 +10,16 @@ import com.zeny.hotel.fnrh.domain.FnrhReservationData
 import com.zeny.hotel.shared.Cpf
 import java.time.Instant
 
-/** O resultado de `POST /reservas`: o id remoto e o link de pré-check-in (RF-FNRH-04), quando o Serpro o dá. */
+/**
+ * O resultado de `POST /reservas`: o id remoto e o link de pré-check-in (RF-FNRH-04), quando o Serpro o dá. O
+ * [toString] não mostra o link (URL de acesso ao preenchimento de dados pessoais).
+ */
 data class FnrhReservationRegistered(
     val reservationId: FnrhRemoteId,
     val precheckinLink: String?,
-)
+) {
+    override fun toString(): String = "FnrhReservationRegistered(reservationId=$reservationId)"
+}
 
 /** Um hóspede da reserva no Serpro: os ids dele e da pessoa. Só ids; nenhum dado pessoal da resposta é guardado. */
 data class FnrhRemoteGuestRef(
