@@ -1,10 +1,15 @@
 package com.zeny.hotel.fnrh.application
 
+import com.zeny.hotel.fnrh.FnrhPermissions
+import com.zeny.hotel.fnrh.domain.FnrhOperation
 import com.zeny.hotel.fnrh.domain.FnrhRetryPolicy
 import com.zeny.hotel.fnrh.domain.FnrhSubmission
 import com.zeny.hotel.fnrh.domain.FnrhSubmissionError
 import com.zeny.hotel.fnrh.domain.FnrhSubmissionFailure
 import com.zeny.hotel.fnrh.domain.FnrhSubmissionStatus
+import com.zeny.hotel.notifications.NotificationRecipients
+import com.zeny.hotel.notifications.NotificationsApi
+import com.zeny.hotel.notifications.NotificationsTypes
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import org.slf4j.Logger
@@ -20,7 +25,11 @@ import java.util.UUID
  * o `@Transactional` e o `@Audited`.
  *
  * Numa submissão que já está em estado terminal (por exemplo, cancelada pelo listener do desfazer enquanto o job a
- * enviava), não grava nada e só registra no log (D-E08-17). Cada método devolve a situação da submissão depois dele.
+ * enviava), não grava nada, não alerta e só registra no log (D-E08-17). Cada método devolve a situação da submissão
+ * depois dele.
+ *
+ * Quando a submissão passa a `FAILED` ou `INVALID`, notifica na mesma transação quem tem `fnrh.submissions.manage`
+ * (D-E08-11): o texto leva só o código da reserva e rótulos fixos, nunca dado de hóspede.
  */
 @Component
 class FnrhSubmissionRecorder(
@@ -28,6 +37,7 @@ class FnrhSubmissionRecorder(
     private val audit: AuditContext,
     private val policy: FnrhRetryPolicy,
     private val clock: Clock,
+    private val notifications: NotificationsApi,
 ) {
     /** O Serpro recebeu a operação (ou ela não precisava de chamada). */
     @Audited(FnrhAudit.SEND_SUBMISSION)
@@ -71,8 +81,31 @@ class FnrhSubmissionRecorder(
         audit.track(FnrhAudit.SUBMISSION, id) { submission.auditState() }
         submission.transition()
         store.save(submission)
+        if (submission.status == FnrhSubmissionStatus.FAILED || submission.status == FnrhSubmissionStatus.INVALID) {
+            alert(submission)
+        }
         return submission.status
     }
+
+    private fun alert(submission: FnrhSubmission) {
+        val situation = if (submission.status == FnrhSubmissionStatus.INVALID) "dados inválidos" else "falhou"
+        notifications.notify(
+            NotificationsTypes.INTEGRATION_FAILURE,
+            "Falha no envio à FNRH",
+            "Reserva ${submission.reservationCode}: ${label(submission.operation)} — $situation",
+            NotificationRecipients.withPermission(FnrhPermissions.SUBMISSIONS_MANAGE),
+        )
+    }
+
+    private fun label(operation: FnrhOperation): String =
+        when (operation) {
+            FnrhOperation.REGISTER_RESERVATION -> "registro da reserva"
+            FnrhOperation.UPDATE_RESERVATION -> "atualização da reserva"
+            FnrhOperation.CANCEL_RESERVATION -> "cancelamento da reserva"
+            FnrhOperation.CHECK_IN -> "check-in"
+            FnrhOperation.UNDO_CHECK_IN -> "desfazer check-in"
+            FnrhOperation.CHECK_OUT -> "check-out"
+        }
 
     private companion object {
         val log: Logger = LoggerFactory.getLogger(FnrhSubmissionRecorder::class.java)
