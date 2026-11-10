@@ -286,8 +286,9 @@ data class GuestResponse(
     val gender: Gender?,
     @field:Schema(
         description =
-            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado e devolvido só a quem tem " +
-                "`guests.profiles.read`. Nula com qualquer outro gênero.",
+            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil, " +
+                "inclusive nas das escritas (criação, alteração, restrição e mesclagem). Nula com qualquer " +
+                "outro gênero.",
     )
     val genderDescription: String?,
     val email: String?,
