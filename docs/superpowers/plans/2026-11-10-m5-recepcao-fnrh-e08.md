@@ -32,6 +32,16 @@
 | D-E08-16 | **Encerramento manual:** `POST /api/v1/fnrh/submissions/{id}/dismiss` (`fnrh.submissions.manage`, `@Audited`), só de `FAILED` ou `INVALID` (senão `409 FNRH_SUBMISSION_NOT_DISMISSABLE`), leva ao estado terminal `DISMISSED`, que **não segura a fila**. Para quem corrigiu no portal (`NO_REMOTE_OPERATION`, `REMOTE_CANCELLED`) ou para um `PUT` recusado que seguraria o check-out. | I2 da revisão: sem ele, uma falha que o `retry` não resolve trava a reserva para sempre. `status` é `x-extensible-enum`: valor novo é aditivo. | Um código publicado não muda. |
 | D-E08-17 | **Isolamento por submissão:** o envio de cada submissão roda em `try/catch`; exceção que não é `FnrhGatewayException` conta como falha temporária `INTERNAL_ERROR`, com log só de ids. O recorder é no-op (com log) numa submissão que já está em estado terminal (por exemplo, cancelada pelo listener do desfazer enquanto o job a enviava). | I4 da revisão: uma submissão envenenada não pode parar o lote. | Nenhum. |
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas.
+- **Rodadas:** 2.
+- **Modelo:** opus (`revisor-arquitetura`).
+- **Notas Menores** (aplicadas no plano depois da aprovação, sem re-revisão, por serem pontuais):
+  - M-a: o `UNDO_CHECK_IN` superado por um novo check-in fica `SENT` sem chamada (Task 8).
+  - M-b: a conferência "pessoa já na reserva" vale para o `person_id` vindo de `knownPerson` ou da consulta por documento (Task 7).
+- Premissas que só a E09 confirma: `dados.id` na consulta por documento, documento repetido no `POST /pessoas`, `PUT` numa reserva `EM_ANDAMENTO`, link de pré-check-in no `GET /reservas`.
+
 ## Global Constraints
 
 - Respeitar o grafo da ARCHITECTURE §3.1: `fnrh` → `shared`, `guests`, `reservations`, `notifications`; nunca `iam`, `frontdesk` nem tabela de outro schema. `frontdesk` nunca chama `fnrh`.
@@ -296,7 +306,7 @@ Expected: falha de compilação.
   1. Lê a reserva; para cada `StayGuestSummary`: id do sobrevivente (`GuestsApi.identification(id).id`, D-E08-7); `fnrhData` → `toPerson`; `FnrhGuest(principal = primary, checkedInAt = checkedInAt ?: submission.occurredAt, travelReason, transportMode, responsibleGuestId = null)`; `responsibleKnown` = há `minorAuthorization` e o `responsibleGuestId` dela é hóspede da reserva. Valida **todos** antes de qualquer chamada; com erro, `Invalid` com `FnrhSubmissionError(guestId, field, code)`.
   2. `ensureReservation`.
   3. Ordem: hóspedes sem `minorAuthorization` primeiro (o principal à frente), depois os menores.
-  4. Por hóspede ainda sem `guestRemoteId` (e cujo `person_id`, se conhecido, não está já num `remote_guest` da reserva com `guestRemoteId`): pessoa = `knownPerson`; senão `findPersonByDocument` (D-E08-6); senão `markInFlight` → `registerPerson` → `saveGuest` com o `person_id` (limpa a marca). Hóspede: com `inFlight`, procure em `listReservationGuests` o `pessoa_id`; senão `markInFlight` → `addGuestToReservation` com o `responsibleGuestId` = `guestRemoteId` do responsável → `saveGuest` (limpa a marca).
+  4. Por hóspede ainda sem `guestRemoteId`: pessoa = `knownPerson`; senão `findPersonByDocument` (D-E08-6). Obtido o `person_id` por qualquer dos dois, se ele já está num `remote_guest` da reserva com `guestRemoteId`, pule o hóspede. Sem pessoa, `markInFlight` → `registerPerson` → `saveGuest` com o `person_id` (limpa a marca). Hóspede: com `inFlight`, procure em `listReservationGuests` o `pessoa_id`; senão `markInFlight` → `addGuestToReservation` com o `responsibleGuestId` = `guestRemoteId` do responsável → `saveGuest` (limpa a marca).
   5. Ao fim, `Sent`.
 
 - [ ] **Step 1: Escreva os testes que falham:**
@@ -336,13 +346,14 @@ Expected: falha de compilação.
 **Interfaces:**
 - Produces:
   - Passo de `CHECK_OUT`: se algum hóspede da reserva tem `checkedInAt` e não tem `guestRemoteId` no ambiente, roda antes `FnrhCheckInStep.registerGuests` (e devolve o resultado dele se não for `Sent`). Depois, para cada `FnrhRemoteGuest` com `guestRemoteId` e `checkedOut = false`: `checkOut(guestRemoteId, at = StayGuestSummary.checkedOutAt ?: submission.occurredAt)` e grava `checkedOut = true` em seguida. Nunca `Sent` sem ter enviado o check-out de cada hóspede com check-in.
-  - Passo de `UNDO_CHECK_IN` (D-E08-8): sem hóspede remoto, `Sent` sem chamada; com algum, `FailedLocally(NO_REMOTE_OPERATION)`.
+  - Passo de `UNDO_CHECK_IN` (D-E08-8): se a reserva está com check-in de novo (`IN_HOUSE` ou `CHECKED_OUT`), o desfazer foi superado: `Sent` sem chamada. Senão, sem hóspede remoto, `Sent` sem chamada; com algum, `FailedLocally(NO_REMOTE_OPERATION)`.
 
 - [ ] **Step 1: Escreva os testes que falham:**
 - Check-in e check-out gravados com o `CHECK_IN` ainda `PENDING` e o Serpro respondendo `503` ao check-in: `sendDueFor` nunca chama o `PATCH …/checkout` antes de o check-in sair; depois de sair, o check-out sai com o instante do check-out; falha no 2º hóspede e nova tentativa não repete o 1º.
 - Fora de ordem: só o `CHECK_OUT` gravado (o `CHECK_IN` apagado no teste, como um listener que ainda não rodou): o passo registra a reserva e os hóspedes, depois faz o check-out; o `CHECK_IN` que chega depois fica `SENT` sem nova chamada de hóspede.
 - Desfazer check-in antes do envio: `CHECK_IN` `CANCELLED`, `UNDO_CHECK_IN` `SENT`, nenhuma chamada de hóspede; depois do envio: `UNDO_CHECK_IN` `FAILED` com `NO_REMOTE_OPERATION`.
 - `CHECK_IN` com `inFlight` (timeout no `POST` do 1º hóspede) e o check-in desfeito: o `CHECK_IN` não é cancelado; no envio, concilia por `GET /reservas/{id}/hospedes`, não faz nenhum `POST /pessoas` nem `POST …/hospedes` novo e fica `SENT`; o `UNDO_CHECK_IN` fica `FAILED` com `NO_REMOTE_OPERATION` se o Serpro tinha o hóspede, ou `SENT` se não tinha.
+- Check-in, desfazer e novo check-in antes do envio: o `UNDO_CHECK_IN` fica `SENT` sem chamada e sem alerta (desfazer superado).
 
 - [ ] **Step 2–4:** `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhCheckOutSendTest'` falha, implemente, passa.
 
