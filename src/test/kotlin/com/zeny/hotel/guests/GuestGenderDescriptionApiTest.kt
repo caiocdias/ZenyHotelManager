@@ -607,12 +607,13 @@ class GuestGenderDescriptionApiTest(
         }
 
     @Test
-    fun `the contract exposes the description in the profile response only, nullable, with a personal data note`() {
+    fun `the contract exposes the description in profile responses only, nullable, with a truthful note`() {
         val lines = Files.readAllLines(Path.of("api/openapi.yaml"))
         val field = propertyBlock(schemaBlock(lines, "GuestResponse"), "genderDescription")
         field shouldContain "type: string"
         field shouldContain "nullable: true"
-        field shouldContain "guests.profiles.read"
+        field shouldContain "dado pessoal"
+        field shouldContain "inclusive nas das escritas"
         field.contains("example") shouldBe false
         lines
             .filter { it.matches(Regex("^    \\w*(Summary|Identification)\\w*:$")) }
