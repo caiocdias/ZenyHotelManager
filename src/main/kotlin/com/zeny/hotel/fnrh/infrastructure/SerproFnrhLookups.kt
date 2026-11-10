@@ -14,10 +14,11 @@ internal fun documentTypeId(type: FnrhDocumentType): String = if (type == FnrhDo
 internal class AmbiguousMatchException : RuntimeException()
 
 /**
- * Os `reserva_id` da página que são da reserva [reservationCode]; `null` se `dados` não é uma lista. Falha fechado
- * (I2): os itens com `numero_reserva` igual ao código valem; um item sem `numero_reserva` só vale se for o único da
- * página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso lança [AmbiguousMatchException], sem escolher
- * item: se o Serpro ignorasse o filtro, a reserva seria ligada ao id de outra.
+ * Os `reserva_id` da página que são da reserva [reservationCode], sem repetição; `null` se `dados` não é uma lista.
+ * Falha fechado (I2, D-E08-6): os itens com `numero_reserva` igual ao código valem; um item sem `numero_reserva` só
+ * vale se for o único da página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso, ou com mais de um id
+ * casando, lança [AmbiguousMatchException], sem escolher item: se o Serpro ignorasse o filtro, ou tivesse a reserva
+ * duas vezes, ela seria ligada ao id de outra.
  */
 internal fun reservationIdsFor(
     tree: JsonNode,
@@ -31,7 +32,9 @@ internal fun reservationIdsFor(
     val onlyOne =
         items.size() == 1 && (total == null || total.isNull || (total.isIntegralNumber && total.asLong() == 1L))
     if (matched.isEmpty() && unnumbered.isNotEmpty() && !onlyOne) throw AmbiguousMatchException()
-    return (matched.ifEmpty { unnumbered }).mapNotNull { it.text("reserva_id") }
+    val ids = (matched.ifEmpty { unnumbered }).mapNotNull { it.text("reserva_id") }.distinct()
+    if (ids.size > 1) throw AmbiguousMatchException()
+    return ids
 }
 
 /** Uma resposta de consulta que não traz o esperado: o resultado é incerto e falha fechado (`UNKNOWN_OUTCOME`). */
