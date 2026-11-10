@@ -112,11 +112,17 @@ class FnrhSubmissionListenersTest(
     private fun codeOf(reservation: UUID): String =
         checkNotNull(reservationsApi.reservation(ReservationId(reservation))).code.toString()
 
+    /** Os eventos da reserva, depois de a sonda assíncrona recebê-los (ao menos um). */
     private fun <T> eventsOf(
         events: List<T>,
         reservation: UUID,
         id: (T) -> UUID,
-    ): List<T> = events.filter { id(it) == reservation }
+    ): List<T> {
+        await().atMost(Duration.ofSeconds(30)).pollInterval(Duration.ofMillis(50)).until {
+            events.any { id(it) == reservation }
+        }
+        return events.filter { id(it) == reservation }
+    }
 
     // --- Reserva --------------------------------------------------------------------------------------------------
 
@@ -280,7 +286,10 @@ class FnrhSubmissionListenersTest(
         listeners.on(event)
         listeners.on(event)
 
-        rows(id).filter { it.operation == FnrhOperation.CHECK_IN } shouldHaveSize 1
+        // O listener roda no executor: dá tempo de uma gravação indevida aparecer.
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(10)).until {
+            rows(id).count { it.operation == FnrhOperation.CHECK_IN } == 1
+        }
         rows(id).single { it.operation == FnrhOperation.CHECK_IN }.status shouldBe FnrhSubmissionStatus.SENT
     }
 
@@ -302,7 +311,7 @@ class FnrhSubmissionListenersTest(
             ),
         )
 
-        rows(unknown) shouldHaveSize 0
+        await().during(Duration.ofSeconds(1)).atMost(Duration.ofSeconds(10)).until { rows(unknown).isEmpty() }
     }
 
     // --- Desfazer o check-in --------------------------------------------------------------------------------------

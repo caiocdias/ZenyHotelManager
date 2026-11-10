@@ -99,7 +99,7 @@ class FnrhSubmissionListeners(
             event.performedBy,
             event.undoneAt,
         )
-        cancelUnsentCheckIns(event.reservationId)
+        cancelUnsentCheckIns(event.reservationId, event.version)
     }
 
     @ApplicationModuleListener
@@ -144,14 +144,18 @@ class FnrhSubmissionListeners(
         if (!inserted) log.debug("FNRH: {} {} da reserva {} já gravada", operation, eventKey, reservationId)
     }
 
-    private fun cancelUnsentCheckIns(reservationId: UUID) {
+    /** Só os `CHECK_IN` anteriores ao desfazer: a reentrega, ou um check-in posterior, não cancela o check-in novo. */
+    private fun cancelUnsentCheckIns(
+        reservationId: UUID,
+        undoVersion: Long,
+    ) {
         val environment = connection.current()?.environment
         val hasRemoteGuest = environment != null && remoteIds.guests(reservationId, environment).isNotEmpty()
         if (hasRemoteGuest) return
         val now = clock.instant()
         submissions
             .unresolvedOf(reservationId, FnrhOperation.CHECK_IN)
-            .filterNot { it.inFlight }
+            .filter { it.causalVersion < undoVersion && !it.inFlight }
             .forEach {
                 it.cancel(now)
                 submissions.save(it)
