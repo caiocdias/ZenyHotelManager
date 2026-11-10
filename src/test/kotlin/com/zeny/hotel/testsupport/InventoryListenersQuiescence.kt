@@ -8,9 +8,10 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import java.time.Duration
 
 /**
- * Espera os listeners do inventário do `reservations` (M4 E05) e o da marca de realocação (E10) terminarem: a
- * criação, a troca de tipo, a desativação e a reativação de UH e cada OOO disparam um listener assíncrono que abre
- * uma transação de escrita para refazer os contadores. Enquanto ela está aberta, o download da sincronização offline
+ * Espera os listeners do inventário do `reservations` (M4 E05), o da marca de realocação (E10) e os da submissão à
+ * FNRH (M5 E08) terminarem: a criação, a troca de tipo, a desativação e a reativação de UH e cada OOO disparam um
+ * listener assíncrono que abre uma transação de escrita para refazer os contadores. Enquanto ela está aberta, o
+ * download da sincronização offline
  * (H6 do M2) não serve nenhuma mudança confirmada depois de ela começar (o cursor só anda até as transações
  * terminadas), então um teste que baixa logo depois de mexer numa UH, ou logo depois de outro teste que mexeu, veria
  * o download incompleto. Chame antes de todo download e no `@BeforeEach` dos testes da sincronização.
@@ -35,9 +36,11 @@ object InventoryListenersQuiescence {
         jdbc
             .sql(
                 "SELECT count(*) FROM shared.event_publication WHERE completion_date IS NULL " +
-                    "AND status IS DISTINCT FROM 'FAILED' AND (listener_id LIKE :inventory OR listener_id LIKE :marks)",
+                    "AND status IS DISTINCT FROM 'FAILED' AND (listener_id LIKE :inventory " +
+                    "OR listener_id LIKE :marks OR listener_id LIKE :fnrh)",
             ).param("inventory", "%reservations.application.InventoryListeners%")
             .param("marks", "%reservations.application.ReallocationListener%")
+            .param("fnrh", "%fnrh.application.FnrhSubmissionListeners%")
             .query(Int::class.java)
             .single()
 
