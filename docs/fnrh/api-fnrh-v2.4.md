@@ -37,7 +37,7 @@ Levantamento feito em 2026-11-04 (M5 E07, hipótese H6). A fonte é o "Documento
 - `PUT /reservas/{id}`: substitui os dados (`numero_reserva`, `numero_reserva_ota`, `data_entrada`, `data_saida`, `quantidade_hospede_adulto`, `quantidade_hospede_menor`). Resposta: corpo vazio.
 - `DELETE /reservas/{id}`: só em `CRIADA`. Resposta: corpo vazio.
 - `POST /reservas/{reserva_id}/cancelar`: cancela a reserva e os hóspedes; **só em `CRIADA`**. Resposta: corpo vazio.
-- `GET /reservas/{reserva_id}/hospedes`: hóspedes da reserva.
+- `GET /reservas/{reserva_id}/hospedes`: hóspedes da reserva. Resposta `{"dados": [{"pessoa": {"pessoa_id", "nome", …, "numero", "tipo_documento_id"}, "hospede": {"hospede_id", "reserva_id", "pessoa_id", "situacao_hospede_id", "checkin_em", "checkout_em", …}}]}` (PDF, p. "Listar Hóspedes da Reserva"). Traz dado pessoal: o adaptador só lê `hospede.hospede_id` e `hospede.pessoa_id`.
 - `POST /reservas/{reserva_id}/hospedes`: põe uma pessoa já registrada na reserva. Corpo: `pessoa_id`, `is_principal`, `situacao_hospede_id`, `checkin_em` e `checkout_em` (quando a situação os pede), `fnrh: {motivo_viagem_id, meio_transporte_id}` (quando `CHECKIN_REALIZADO`/`CHECKOUT_REALIZADO`), `responsavel_id` (id do **hóspede** responsável, para menor de 18 anos). Resposta `{"hospede_id": "<uuid>"}`.
 - `POST /reservas/{reserva_id}/checkin`, `…/checkout`: em lote; corpo opcional **`text/plain`** com a data e hora UTC. `POST /reservas/{reserva_id}/noshow`: em lote, sem corpo. Resposta `{"dados": [{"hospede_id", "situacao_id", "data_hora"}]}`.
 - `POST /reservas/{reserva_id}/vincular-hospede/{hospede_id}`: vincula um pré-check-in de balcão.
@@ -53,6 +53,7 @@ Levantamento feito em 2026-11-04 (M5 E07, hipótese H6). A fonte é o "Documento
 
 - `POST /pessoas`: corpo `{"pessoa": {nome, nome_social, PaisNacionalidade_id, genero_id, GeneroDescricao (obrigatório se OUTRO), data_nascimento, raca_id, deficiencia_id, tipo_deficiencia_id (obrigatório se deficiencia_id = SIM), documento_id: {numero_documento (só dígitos/letras), tipo_documento_id}, contato: {email, telefone, PaisResidencia_id, cep (8 dígitos), logradouro/numero/bairro (obrigatórios se cep), complemento, cidade_id e estado_id (obrigatórios se PaisResidencia_id = BR)}}}`. Resposta `{"pessoa_id": "<uuid>"}`.
 - `GET /pessoas/{id}` e `GET /pessoas/documento/{tipo}/{numero}`: consulta. O número de documento vai no caminho, fora do nosso controle; nunca registrar a URL no log.
+- `GET /pessoas/documento/{tipo}/{numero}` (exige `cpf_solicitante`; `tipo` = `CPF` ou `PASSAPORTE`): o PDF a indica para "validar se uma pessoa já existe no sistema antes de criar um registro". Resposta `{"dados": {"documento": {…}, "dado_pessoal": {"nome", "data_nascimento", …}, "contato": {…}}}`. Segundo a observação do PDF, **se a pessoa não está cadastrada no meio de hospedagem**, a resposta vem sem `id`, `dado_pessoal.genero`, `dado_pessoal.raca`, `dado_pessoal.deficiencia`, `contato.Email` e `contato.Telefone`. Logo: `dados.id` presente = pessoa já cadastrada neste meio de hospedagem (reaproveitar); ausente = criar com `POST /pessoas`. O exemplo do PDF não mostra o `id`; o nome do campo (`dados.id`) vem da observação, e a E09 confirma. Traz dado pessoal: o adaptador só lê `dados.id`.
 
 ## Hospedagem
 
