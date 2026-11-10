@@ -124,6 +124,7 @@ class SerproFnrhGateway(
             method = HttpMethod.GET,
             segments = listOf("reservas", reservationId.value, "hospedes"),
             knownRemoteId = reservationId.value,
+            echoServerMessage = false, // a `mensagem` pode ecoar dado pessoal que não enviamos
         ) { tree -> tree?.let(::guestRefsOf) }
 
     override fun findPersonByDocument(
@@ -138,7 +139,7 @@ class SerproFnrhGateway(
                 method = HttpMethod.GET,
                 segments = listOf("pessoas", "documento", documentTypeId(document.type), document.number),
                 headers = mapOf(REQUESTER_HEADER to requesterCpf.digits),
-                sentValues = listOf(document.number, requesterCpf.digits),
+                echoServerMessage = false, // a `mensagem` pode ecoar o nome, que não enviamos
                 remoteIdOf = { it.firstOrNull() },
             ) { tree -> tree?.let(::personIdsOf) }.firstOrNull()?.let(::FnrhRemoteId)
         } catch (e: FnrhGatewayException) {
@@ -227,6 +228,7 @@ class SerproFnrhGateway(
         headers: Map<String, String> = emptyMap(),
         sentValues: Collection<String> = emptyList(),
         knownRemoteId: String? = null,
+        echoServerMessage: Boolean = true,
         remoteIdOf: (T) -> String? = { null },
         parse: (JsonNode?) -> T?,
     ): T {
@@ -256,7 +258,11 @@ class SerproFnrhGateway(
             }
         val tree = readTree(reply.body)
         if (reply.status !in HTTP_OK_RANGE) {
-            fail(failureOf(reply.status), reply.status, errorMessage(tree, sentValues))
+            fail(
+                failureOf(reply.status),
+                reply.status,
+                if (echoServerMessage) errorMessage(tree, sentValues) else null,
+            )
         }
         val result =
             try {

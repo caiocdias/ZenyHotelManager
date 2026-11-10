@@ -53,10 +53,13 @@ internal fun guestRefsOf(tree: JsonNode): List<FnrhRemoteGuestRef> {
 }
 
 /**
- * O `dados.id` de `GET /pessoas/documento/…` (lista vazia se a pessoa não está cadastrada neste meio de
- * hospedagem). Sem `dados` como objeto lança [AmbiguousMatchException] (`UNKNOWN_OUTCOME`). Nenhum outro campo é lido.
+ * O `dados.id` de `GET /pessoas/documento/…` (lista vazia se `dados` não tem a chave `id`, isto é, a pessoa não está
+ * cadastrada neste meio de hospedagem). Sem `dados` como objeto, ou com `id` que não é texto não vazio, lança
+ * [AmbiguousMatchException] (`UNKNOWN_OUTCOME`). Nenhum outro campo é lido.
  */
 internal fun personIdsOf(tree: JsonNode): List<String> {
     val data = tree.get("dados")?.takeIf { it.isObject } ?: incomplete()
-    return listOfNotNull(data.text("id"))
+    if (data.get("id") == null) return emptyList()
+    // `id` presente mas vazio, nulo ou não-texto: não se sabe se a pessoa existe; criar duplicaria (falha fechado).
+    return listOf(data.text("id") ?: incomplete())
 }

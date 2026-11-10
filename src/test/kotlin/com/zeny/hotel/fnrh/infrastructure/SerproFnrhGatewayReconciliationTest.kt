@@ -234,4 +234,27 @@ class SerproFnrhGatewayReconciliationTest {
         val text = output.all + failure.message + calls.joinToString { it.toString() }
         leaks.forEach { text shouldNotContain it }
     }
+
+    @Test
+    fun `findPersonByDocument fails closed when dados id is present but empty, null or not text`() {
+        listOf("\"\"", "null", "123", "{}").forEach { raw ->
+            FnrhTestServer.reset()
+            FnrhTestServer.stubFindPersonByDocument_v2_4(
+                "CPF",
+                "11144477735",
+                "52998224725",
+                body = """{"dados":{"id":$raw,"documento":{}}}""",
+            )
+            failureOf { gateway.findPersonByDocument(cpfDocument, requesterCpf, "c") }.failure shouldBe
+                FnrhFailure.UNKNOWN_OUTCOME
+        }
+    }
+
+    @Test
+    fun `error messages of the lookups are never echoed`(output: CapturedOutput) {
+        FnrhTestServer.stub("/pessoas/documento/CPF/11144477735", 400, """{"mensagem":"Pessoa Joaquim Teixeira"}""")
+        val e = failureOf { gateway.findPersonByDocument(cpfDocument, requesterCpf, "c") }
+        e.sanitizedMessage.shouldBeNull()
+        (output.all + e.message) shouldNotContain "Joaquim"
+    }
 }
