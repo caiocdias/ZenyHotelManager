@@ -320,7 +320,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E07 | Configuração, domínios e adaptador Serpro da FNRH | #concluida | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
 | E15 | Descrição de gênero no perfil do hóspede | #concluida | E07 | Campo no perfil e nos dados da FNRH: o hóspede de gênero `OUTRO` passa a poder ser enviado |
-| E08 | Envio assíncrono e pendências da FNRH | #pendente | E01, E02, E07, E15 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
+| E08 | Envio assíncrono e pendências da FNRH | #em-andamento | E01, E02, E07, E15 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
 | E16 | Limpar a credencial do Serpro | #pendente | E07 | Ação explícita, com trilha, que apaga a credencial e desliga a integração |
 | E09 | Homologação da FNRH com o Serpro | #bloqueada | E08, E16 | Envios reais no ambiente de homologação |
 
@@ -1427,7 +1427,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E08 — Envio assíncrono e pendências da FNRH — #pendente
+## E08 — Envio assíncrono e pendências da FNRH — #em-andamento
 
 **Objetivo:** ligar o `fnrh` aos eventos de `reservations` (`ReservationCreated`, `ReservationChanged`, `ReservationCancelled`, `ReservationReactivated`, `ReservationConfirmed` do M4 e `GuestCheckedIn`, `GuestCheckInUndone`, `GuestCheckedOut` da E01; o no-show fica para o M6, H15) para criar `FnrhSubmission`, enviá-las por um job com retry e backoff, guardar os IDs remotos (RF-FNRH-04), vincular menores ao responsável (RF-FNRH-05), enviar o número da reserva na OTA (RF-FNRH-07), expor a fila de pendências (RF-FNRH-03) e alertar a falha.
 
