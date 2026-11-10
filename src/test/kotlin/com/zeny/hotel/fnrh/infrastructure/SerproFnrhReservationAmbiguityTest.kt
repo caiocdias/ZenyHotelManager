@@ -12,6 +12,8 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import tools.jackson.databind.json.JsonMapper
 import java.net.URI
 import java.time.Duration
@@ -74,6 +76,43 @@ class SerproFnrhReservationAmbiguityTest {
             )
 
         reservationIdsFor(tree, "RES-1") shouldContainExactly listOf("b")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["", ""","reserva_id":null""", ""","reserva_id":""""", ""","reserva_id":42"""])
+    fun `a matching item without a valid reserva_id is ambiguous, never a missing reservation`(idField: String) {
+        val tree = mapper.readTree("""{"dados":[{"numero_reserva":"RES-1"$idField}]}""")
+
+        shouldThrow<AmbiguousMatchException> { reservationIdsFor(tree, "RES-1") }
+    }
+
+    @Test
+    fun `a single item without numero_reserva nor reserva_id is ambiguous`() {
+        val tree = mapper.readTree("""{"dados":[{"situacao":"CRIADA"}],"pagination":{"TotalRegistros":1}}""")
+
+        shouldThrow<AmbiguousMatchException> { reservationIdsFor(tree, "RES-1") }
+    }
+
+    @Test
+    fun `a matching item with an id next to one without it is ambiguous`() {
+        val tree =
+            mapper.readTree(
+                """{"dados":[{"reserva_id":"a","numero_reserva":"RES-1"},{"numero_reserva":"RES-1"}]}""",
+            )
+
+        shouldThrow<AmbiguousMatchException> { reservationIdsFor(tree, "RES-1") }
+    }
+
+    @Test
+    fun `findReservationByCode with a match without reserva_id fails with UNKNOWN_OUTCOME`() {
+        FnrhTestServer.stub(
+            "/reservas?page_number=1&codigo_reserva=RES-1",
+            body = """{"dados":[{"numero_reserva":"RES-1","reserva_id":""}]}""",
+        )
+
+        val error = shouldThrow<FnrhGatewayException> { gateway.findReservationByCode("RES-1", "ref-1") }
+
+        error.failure shouldBe FnrhFailure.UNKNOWN_OUTCOME
     }
 
     @Test

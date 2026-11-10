@@ -17,7 +17,10 @@ interface FnrhSubmissionStore {
 
     fun save(submission: FnrhSubmission)
 
-    /** Grava a escrita em curso (D-E08-15) em transação própria (`REQUIRES_NEW`), que sobrevive ao chamador. */
+    /**
+     * Grava a escrita em curso (D-E08-15) em transação própria (`REQUIRES_NEW`), que sobrevive ao chamador. Só marca a
+     * submissão não resolvida (`PENDING`, `FAILED`, `INVALID`); numa terminal, não faz nada.
+     */
     fun markInFlight(id: UUID)
 
     /**

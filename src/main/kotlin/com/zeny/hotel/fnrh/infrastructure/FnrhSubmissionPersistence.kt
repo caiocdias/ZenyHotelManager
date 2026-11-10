@@ -111,7 +111,12 @@ class JpaFnrhSubmissionStore(
 
     override fun markInFlight(id: UUID) {
         ownTransaction.executeWithoutResult {
-            jdbc.sql("UPDATE fnrh.submission SET in_flight = true WHERE id = :id").param("id", id).update()
+            jdbc
+                .sql(
+                    "UPDATE fnrh.submission SET in_flight = true " +
+                        "WHERE id = :id AND status IN ('PENDING', 'FAILED', 'INVALID')",
+                ).param("id", id)
+                .update()
         }
     }
 

@@ -25,6 +25,7 @@ import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import com.zeny.hotel.testsupport.enableFnrh
 import com.zeny.hotel.testsupport.resetFnrhSettings
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.comparables.shouldBeLessThan
@@ -45,6 +46,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.net.URI
@@ -95,6 +97,7 @@ class FnrhReservationSendTest(
     @Autowired private val clock: MutableClock,
     @Autowired mockMvc: MockMvc,
     @Autowired private val jsonMapper: JsonMapper,
+    @Autowired private val tx: TransactionTemplate,
 ) {
     private val support = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
     private val today: LocalDate get() = hotelApi.currentBusinessDate()
@@ -578,6 +581,66 @@ class FnrhReservationSendTest(
             it.remoteId shouldBe FnrhRemoteId(remote)
             it.cancelled shouldBe true
         }
+    }
+
+    @Test
+    fun `a change of a reservation cancelled here and in Serpro is sent without a call`() {
+        val id = reservation()
+        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
+        iam.enableFnrh()
+        remoteIds.saveReservation(
+            FnrhRemoteReservation(id, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId(remoteId()), null, cancelled = true),
+            register.id,
+        )
+        val update = recordUpdate(id)
+        cancel(id)
+
+        sender.send(id) shouldBe FnrhSendRun(sent = 3, postponed = 0, failed = 0, invalid = 0)
+
+        FnrhTestServer.requests().shouldBeEmpty()
+        row(update).also {
+            it.status shouldBe FnrhSubmissionStatus.SENT
+            it.lastFailure.shouldBeNull()
+        }
+    }
+
+    // --- Marca e transação ----------------------------------------------------------------------------------------
+
+    @Test
+    fun `the write in flight is never marked on a submission already resolved`() {
+        val id = reservation()
+        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
+        iam.enableFnrh()
+        FnrhTestServer.stubRegisterReservation_v2_4(remoteId())
+        sender.send(id).sent shouldBe 1
+        cancel(id)
+        val cancelled = rows(id).single { it.operation == FnrhOperation.CANCEL_RESERVATION }
+        store.cancelIfIdle(cancelled.id, clock.instant()) shouldBe true
+
+        store.markInFlight(register.id)
+        store.markInFlight(cancelled.id)
+
+        row(register.id).also {
+            it.status shouldBe FnrhSubmissionStatus.SENT
+            it.inFlight shouldBe false
+        }
+        row(cancelled.id).also {
+            it.status shouldBe FnrhSubmissionStatus.CANCELLED
+            it.inFlight shouldBe false
+        }
+    }
+
+    @Test
+    fun `the sender refuses to run inside a database transaction`() {
+        val id = reservation()
+        iam.enableFnrh()
+        FnrhTestServer.stubRegisterReservation_v2_4(remoteId())
+
+        shouldThrow<IllegalStateException> { tx.execute { sender.sendDueFor(id) } }
+        shouldThrow<IllegalStateException> { tx.execute { sender.sendDue() } }
+
+        FnrhTestServer.requests().shouldBeEmpty()
+        awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION).status shouldBe FnrhSubmissionStatus.PENDING
     }
 
     // --- Fora de ordem --------------------------------------------------------------------------------------------

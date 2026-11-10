@@ -16,6 +16,7 @@ import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -192,7 +193,8 @@ class FnrhReservationSteps(
     }
 
     /**
-     * A remota cancelada não reativa; sem id remoto, faz o que o registro faria (sem o `PUT`); senão, `PUT` com os
+     * A remota cancelada não reativa: com a reserva ativa aqui (reativada), falha com `REMOTE_CANCELLED`; cancelada ou
+     * no-show aqui também, nada a enviar. Sem id remoto, faz o que o registro faria (sem o `PUT`); senão, `PUT` com os
      * dados atuais.
      */
     fun update(
@@ -202,6 +204,7 @@ class FnrhReservationSteps(
         val reservation = sync.reservationOf(submission)
         val remote = remoteIds.reservation(reservation.id.value, connection.environment)
         when {
+            remote?.cancelled == true && reservation.status in NOT_REGISTERED -> Unit
             remote?.cancelled == true -> return FnrhStepOutcome.FailedLocally(FnrhSubmissionFailure.REMOTE_CANCELLED)
             remote == null -> registerIfValid(submission, reservation, connection)
             else -> gateway.updateReservation(remote.remoteId, sync.data(reservation), submission.id.toString())
@@ -272,6 +275,10 @@ class FnrhSubmissionSender(
         run { now, limit -> reservationIds.flatMap { store.dueHeads(now, limit, it) } }
 
     private fun run(heads: (Instant, Int) -> List<UUID>): FnrhSendRun {
+        // O Serpro nunca é chamado dentro de uma transação do banco (ARCHITECTURE §12).
+        check(!TransactionSynchronizationManager.isActualTransactionActive()) {
+            "O envio à FNRH não pode rodar dentro de uma transação."
+        }
         val connection = connections.current() ?: return FnrhSendRun(0, 0, 0, 0)
         var result = FnrhSendRun(0, 0, 0, 0)
         val attempted = mutableSetOf<UUID>()

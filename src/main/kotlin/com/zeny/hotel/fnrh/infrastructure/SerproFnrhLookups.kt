@@ -16,9 +16,9 @@ internal class AmbiguousMatchException : RuntimeException()
 /**
  * Os `reserva_id` da página que são da reserva [reservationCode], sem repetição; `null` se `dados` não é uma lista.
  * Falha fechado (I2, D-E08-6): os itens com `numero_reserva` igual ao código valem; um item sem `numero_reserva` só
- * vale se for o único da página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso, ou com mais de um id
- * casando, lança [AmbiguousMatchException], sem escolher item: se o Serpro ignorasse o filtro, ou tivesse a reserva
- * duas vezes, ela seria ligada ao id de outra.
+ * vale se for o único da página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso, com mais de um id
+ * casando ou com um item considerado sem `reserva_id` válido, lança [AmbiguousMatchException], sem escolher item: se
+ * o Serpro ignorasse o filtro, ou tivesse a reserva duas vezes, ela seria ligada ao id de outra.
  */
 internal fun reservationIdsFor(
     tree: JsonNode,
@@ -31,13 +31,17 @@ internal fun reservationIdsFor(
     // Sem `pagination` (ou sem o total), um item só basta: o total não pode desmentir o que não foi dito.
     val onlyOne =
         items.size() == 1 && (total == null || total.isNull || (total.isIntegralNumber && total.asLong() == 1L))
-    if (matched.isEmpty() && unnumbered.isNotEmpty() && !onlyOne) throw AmbiguousMatchException()
-    val ids = (matched.ifEmpty { unnumbered }).mapNotNull { it.text("reserva_id") }.distinct()
-    if (ids.size > 1) throw AmbiguousMatchException()
+    if (matched.isEmpty() && unnumbered.isNotEmpty() && !onlyOne) incomplete()
+    // Um item considerado sem `reserva_id` válido não diz que a reserva não existe: falha fechado.
+    val ids = (matched.ifEmpty { unnumbered }).map { it.text("reserva_id") ?: incomplete() }.distinct()
+    if (ids.size > 1) incomplete()
     return ids
 }
 
-/** Uma resposta de consulta que não traz o esperado: o resultado é incerto e falha fechado (`UNKNOWN_OUTCOME`). */
+/**
+ * Uma resposta de consulta ambígua ou que não traz o esperado: o resultado é incerto e falha fechado
+ * (`UNKNOWN_OUTCOME`).
+ */
 private fun incomplete(): Nothing = throw AmbiguousMatchException()
 
 /**
