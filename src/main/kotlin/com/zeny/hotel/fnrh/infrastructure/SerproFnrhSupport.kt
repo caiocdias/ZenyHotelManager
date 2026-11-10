@@ -1,9 +1,13 @@
 package com.zeny.hotel.fnrh.infrastructure
 
 import com.zeny.hotel.fnrh.application.FnrhCall
+import com.zeny.hotel.fnrh.application.FnrhConnection
 import com.zeny.hotel.fnrh.application.FnrhIntegrationLog
 import com.zeny.hotel.fnrh.domain.FnrhPersonData
 import org.slf4j.Logger
+import org.springframework.http.HttpMethod
+import org.springframework.http.MediaType
+import org.springframework.web.client.RestClient
 import tools.jackson.databind.JsonNode
 import java.net.URI
 import java.time.format.DateTimeFormatter
@@ -124,26 +128,56 @@ internal fun logCall(
     if (call.outcome == "SUCCESS") log.info("{}", line) else log.warn("{}", line)
 }
 
-/** O Serpro devolveu uma página da qual não se pode dizer qual item é a reserva pedida. */
-internal class AmbiguousMatchException : RuntimeException()
+/** Registra uma chamada ao Serpro (linha de log e `fnrh.integration_call`) com o que a chamada já sabe. */
+internal class CallRecorder(
+    private val log: Logger,
+    private val integrationLog: FnrhIntegrationLog,
+    private val connection: FnrhConnection,
+    private val operation: String,
+    private val correlationRef: String?,
+) {
+    private val started = System.nanoTime()
 
-/**
- * Os `reserva_id` da página que são da reserva [reservationCode]; `null` se `dados` não é uma lista. Falha fechado
- * (I2): os itens com `numero_reserva` igual ao código valem; um item sem `numero_reserva` só vale se for o único da
- * página e o `pagination.TotalRegistros`, quando vem, for 1. Fora disso lança [AmbiguousMatchException], sem escolher
- * item: se o Serpro ignorasse o filtro, a reserva seria ligada ao id de outra.
- */
-internal fun reservationIdsFor(
-    tree: JsonNode,
-    reservationCode: String,
-): List<String>? {
-    val items = tree.get("dados")?.takeIf { it.isArray } ?: return null
-    val (numbered, unnumbered) = items.partition { it.get("numero_reserva")?.isNull == false }
-    val matched = numbered.filter { matchesCode(it, reservationCode) }
-    val total = tree.get("pagination")?.get("TotalRegistros")
-    // Sem `pagination` (ou sem o total), um item só basta: o total não pode desmentir o que não foi dito.
-    val onlyOne =
-        items.size() == 1 && (total == null || total.isNull || (total.isIntegralNumber && total.asLong() == 1L))
-    if (matched.isEmpty() && unnumbered.isNotEmpty() && !onlyOne) throw AmbiguousMatchException()
-    return (matched.ifEmpty { unnumbered }).mapNotNull { it.text("reserva_id") }
+    fun record(
+        outcome: String,
+        status: Int?,
+        remoteId: String?,
+        message: String?,
+    ) {
+        val call =
+            FnrhCall(
+                operation = operation,
+                environment = connection.environment,
+                outcome = outcome,
+                httpStatus = status,
+                durationMs = (System.nanoTime() - started) / NANOS_PER_MILLI,
+                correlationRef = correlationRef,
+                remoteId = remoteId,
+            )
+        logCall(log, call, message)
+        recordSafely(log, integrationLog, operation, call)
+    }
+
+    private companion object {
+        const val NANOS_PER_MILLI = 1_000_000L
+    }
 }
+
+/** Envia a requisição e lê o status e o corpo (até 1 MiB); nunca lança por status HTTP. */
+internal fun RestClient.sendRequest(
+    connection: FnrhConnection,
+    method: HttpMethod,
+    uri: URI,
+    body: Payload?,
+    headers: Map<String, String>,
+): Reply =
+    method(method)
+        .uri(uri)
+        .headers { h ->
+            h.setBasicAuth(connection.username, connection.password, Charsets.UTF_8)
+            h.set("Content-Type", body?.contentType ?: MediaType.APPLICATION_JSON_VALUE)
+            headers.forEach { (name, value) -> h.set(name, value) }
+        }.apply { body?.let { body(it.bytes) } }
+        .exchange { _, response -> Reply(response.statusCode.value(), response.body.readNBytes(MAX_BODY_BYTES)) }
+
+private const val MAX_BODY_BYTES = 1 shl 20
