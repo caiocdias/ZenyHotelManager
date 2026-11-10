@@ -15,7 +15,12 @@ import com.zeny.hotel.shared.Audited
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
 import java.util.UUID
 
@@ -38,7 +43,13 @@ class FnrhSubmissionRecorder(
     private val policy: FnrhRetryPolicy,
     private val clock: Clock,
     private val notifications: NotificationsApi,
+    transactionManager: PlatformTransactionManager,
 ) {
+    private val alertTransaction =
+        TransactionTemplate(transactionManager).apply {
+            propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW
+        }
+
     /** O Serpro recebeu a operação (ou ela não precisava de chamada). */
     @Audited(FnrhAudit.SEND_SUBMISSION)
     @Transactional
@@ -73,7 +84,7 @@ class FnrhSubmissionRecorder(
         transition: FnrhSubmission.() -> Unit,
     ): FnrhSubmissionStatus {
         val submission = checkNotNull(store.find(id)) { "Submissão $id não encontrada." }
-        if (submission.isTerminal) {
+        if (submission.status != FnrhSubmissionStatus.PENDING) {
             log.info("FNRH: submissão {} já está {}; o resultado do envio não é gravado", id, submission.status)
             audit.noChanges()
             return submission.status
@@ -82,19 +93,46 @@ class FnrhSubmissionRecorder(
         submission.transition()
         store.save(submission)
         if (submission.status == FnrhSubmissionStatus.FAILED || submission.status == FnrhSubmissionStatus.INVALID) {
-            alert(submission)
+            alertAfterCommit(submission)
         }
         return submission.status
     }
 
-    private fun alert(submission: FnrhSubmission) {
-        val situation = if (submission.status == FnrhSubmissionStatus.INVALID) "dados inválidos" else "falhou"
+    /**
+     * O resultado é gravado independentemente do alerta: este sai depois do commit, em transação própria, e uma
+     * falha do `notifications` só vai ao log (id, operação e classe da exceção), sem desfazer nada. Custo aceito: o
+     * alerta pode se perder; a submissão segue visível na fila e na métrica.
+     */
+    private fun alertAfterCommit(submission: FnrhSubmission) {
+        val id = submission.id
+        val operation = submission.operation
+        val text = alertText(submission)
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() {
+                    @Suppress("TooGenericExceptionCaught") // o alerta nunca pode derrubar o envio
+                    try {
+                        alertTransaction.executeWithoutResult { notify(text) }
+                    } catch (e: Exception) {
+                        log.warn("FNRH: alerta da submissão {} ({}) não enviado: {}", id, operation, e.javaClass.name)
+                    }
+                }
+            },
+        )
+    }
+
+    private fun notify(text: String) {
         notifications.notify(
             NotificationsTypes.INTEGRATION_FAILURE,
             "Falha no envio à FNRH",
-            "Reserva ${submission.reservationCode}: ${label(submission.operation)} — $situation",
+            text,
             NotificationRecipients.withPermission(FnrhPermissions.SUBMISSIONS_MANAGE),
         )
+    }
+
+    private fun alertText(submission: FnrhSubmission): String {
+        val situation = if (submission.status == FnrhSubmissionStatus.INVALID) "dados inválidos" else "falhou"
+        return "Reserva ${submission.reservationCode}: ${label(submission.operation)} — $situation"
     }
 
     private fun label(operation: FnrhOperation): String =
