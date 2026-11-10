@@ -32,6 +32,12 @@ object FnrhErrorCodes {
 
     /** 502: o Serpro recusou a operação (a mensagem dele, saneada, vai só ao log). */
     val FNRH_REJECTED = ErrorCode("FNRH_REJECTED")
+
+    /** 409: só uma submissão `FAILED` ou `INVALID` pode ser reenviada. */
+    val SUBMISSION_NOT_RETRYABLE = ErrorCode("FNRH_SUBMISSION_NOT_RETRYABLE")
+
+    /** 409: só uma submissão `FAILED` ou `INVALID` pode ser encerrada à mão. */
+    val SUBMISSION_NOT_DISMISSABLE = ErrorCode("FNRH_SUBMISSION_NOT_DISMISSABLE")
 }
 
 /** Códigos de campo (`errors[].code`) do `fnrh`, além de `REQUIRED`, `INVALID_VALUE` e `INVALID_FORMAT`. */
