@@ -120,6 +120,13 @@ class JpaFnrhSubmissionStore(
         }
     }
 
+    override fun anyInFlight(reservationId: UUID): Boolean =
+        jdbc
+            .sql("SELECT EXISTS (SELECT 1 FROM fnrh.submission WHERE reservation_id = :id AND in_flight)")
+            .param("id", reservationId)
+            .query(Boolean::class.java)
+            .single()
+
     // O `UPDATE` incrementa `version`: uma entidade lida antes não grava por cima do cancelamento.
     override fun cancelIfIdle(
         id: UUID,

@@ -24,6 +24,12 @@ interface FnrhSubmissionStore {
     fun markInFlight(id: UUID)
 
     /**
+     * Se alguma submissão da reserva, em qualquer status (inclusive `DISMISSED` e `CANCELLED`), tem a escrita em curso:
+     * o recurso é da reserva, e a marca de outra submissão também obriga a conciliar antes de criar (D-E08-15).
+     */
+    fun anyInFlight(reservationId: UUID): Boolean
+
+    /**
      * Cancela a submissão `PENDING`, `FAILED` ou `INVALID` **sem escrita em curso**, de forma condicional no banco (um
      * só `UPDATE`): se o job marcou `in_flight` entre a leitura e o cancelamento, não cancela. `false` se não cancelou.
      */

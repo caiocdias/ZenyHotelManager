@@ -83,8 +83,9 @@ class FnrhReservationSync(
         }
 
     /**
-     * O id remoto da reserva no ambiente da [connection]: o guardado; senão, com a escrita em curso, o que o
-     * `findReservationByCode` achar, gravado (sem link: só o `POST /reservas` o devolve); senão o registro novo.
+     * O id remoto da reserva no ambiente da [connection]: o guardado; senão, com a escrita em curso (desta ou de outra
+     * submissão da reserva), o que o `findReservationByCode` achar, gravado (sem link: só o `POST /reservas` o
+     * devolve); senão o registro novo.
      */
     fun ensureReservation(
         submission: FnrhSubmission,
@@ -92,14 +93,25 @@ class FnrhReservationSync(
         connection: FnrhConnection,
     ): FnrhRemoteId = existing(submission, reservation, connection) ?: register(submission, reservation, connection)
 
-    /** O id remoto guardado ou, com a escrita em curso, o conciliado; `null` se o Serpro não tem a reserva. */
+    /**
+     * O id remoto guardado ou, com a escrita em curso (desta ou de outra submissão da reserva), o conciliado; `null`
+     * se o Serpro não tem a reserva.
+     */
     fun existing(
         submission: FnrhSubmission,
         reservation: ReservationSummary,
         connection: FnrhConnection,
     ): FnrhRemoteId? =
         remoteIds.reservation(reservation.id.value, connection.environment)?.remoteId
-            ?: if (submission.inFlight) reconcile(submission, reservation, connection) else null
+            ?: if (writeInFlight(submission)) reconcile(submission, reservation, connection) else null
+
+    /**
+     * A escrita da reserva pode estar em curso: a marca da própria submissão ou a de outra da mesma reserva, em
+     * qualquer status (um `UPDATE` com o `POST` sem resposta e o `REGISTER` atrasado, ou um `REGISTER` marcado e
+     * encerrado com `dismiss`). O recurso é da reserva, não da submissão (D-E08-15).
+     */
+    private fun writeInFlight(submission: FnrhSubmission): Boolean =
+        submission.inFlight || store.anyInFlight(submission.reservationId)
 
     /** `POST /reservas` com a escrita em curso marcada antes; grava o id e o link, o que limpa a marca. */
     fun register(
