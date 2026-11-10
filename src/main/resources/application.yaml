@@ -308,6 +308,16 @@ zeny:
     provisional-expiry:
       interval: PT5M
       initial-delay: PT1M
+  # Envio assíncrono à FNRH (M5 E08): o job de envio, sob trava do ShedLock, processa um lote por rodada; a falha
+  # temporária reagenda com espera initial-backoff x 2^(n-1) até max-backoff e, na max-attempts-ésima, vira FAILED.
+  fnrh:
+    submissions:
+      interval: PT1M
+      initial-delay: PT1M
+      batch-size: 50
+      max-attempts: 8
+      initial-backoff: PT1M
+      max-backoff: PT1H
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.
