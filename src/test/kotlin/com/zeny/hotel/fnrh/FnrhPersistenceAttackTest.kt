@@ -164,6 +164,8 @@ class FnrhPersistenceAttackTest(
         templatesGranting("fnrh.domains.read") shouldContainExactlyInAnyOrder readers
         templatesGranting("fnrh.submissions.read") shouldContainExactlyInAnyOrder readers
         templatesGranting("fnrh.settings.manage") shouldContainExactlyInAnyOrder adminOnly
+        templatesGranting("fnrh.submissions.manage") shouldContainExactlyInAnyOrder
+            listOf(RoleTemplate.MANAGER, RoleTemplate.ADMINISTRATOR).map { it.name }
     }
 
     @Test
@@ -174,7 +176,7 @@ class FnrhPersistenceAttackTest(
             )
 
         rows.map { it["code"] } shouldContainExactlyInAnyOrder
-            listOf("fnrh.settings.manage", "fnrh.domains.read", "fnrh.submissions.read")
+            listOf("fnrh.settings.manage", "fnrh.domains.read", "fnrh.submissions.read", "fnrh.submissions.manage")
         rows.all { it["sensitive"] == false } shouldBe true
         rows.all { it["scopes"] == "{ALL}" } shouldBe true
     }
