@@ -134,21 +134,18 @@ class GuestGenderDescriptionApiTest(
         }
 
     @Test
-    fun `control characters never cause a server error or an echo of the text`(): Unit =
+    fun `control characters in the description are accepted with 201 and stored trimmed`(): Unit =
         with(iam) {
             listOf("a\u0000b-SEGREDO1", "linha1\nlinha2-SEGREDO2", "tab\there-SEGREDO3", "esc\u001b[31m-SEGREDO4")
                 .forEach { text ->
                     val response = call(POST, "/api/v1/guests", guests.createBody(profile = otherProfile(text)))
                     val body = response.getContentAsString(Charsets.UTF_8)
-                    withClue("controle: $body") { (response.status in listOf(201, 400)) shouldBe true }
-                    if (response.status == 400) {
-                        body shouldNotContain "SEGREDO"
-                    } else {
-                        // O 201 devolve a descrição (D-E15-4): confere o valor aparado, na resposta e no banco.
-                        val id = UUID.fromString(json(response)["id"].asString())
-                        json(response)["genderDescription"].asString() shouldBe text.trim()
-                        cipher.decrypt(stored(id).shouldNotBeNull()) shouldBe text.trim()
-                    }
+                    // Decidido: o cadastro aceita (201); o valor é cifrado e o envio ao Serpro o sanea.
+                    withClue("controle: $body") { response.status shouldBe 201 }
+                    // O 201 devolve a descrição (D-E15-4): confere o valor aparado, na resposta e no banco.
+                    val id = UUID.fromString(json(response)["id"].asString())
+                    json(response)["genderDescription"].asString() shouldBe text.trim()
+                    cipher.decrypt(stored(id).shouldNotBeNull()) shouldBe text.trim()
                 }
         }
 
