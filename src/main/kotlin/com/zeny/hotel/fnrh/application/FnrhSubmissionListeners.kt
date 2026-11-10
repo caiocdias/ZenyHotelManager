@@ -155,11 +155,8 @@ class FnrhSubmissionListeners(
         val now = clock.instant()
         submissions
             .unresolvedOf(reservationId, FnrhOperation.CHECK_IN)
-            .filter { it.causalVersion < undoVersion && !it.inFlight }
-            .forEach {
-                it.cancel(now)
-                submissions.save(it)
-            }
+            .filter { it.causalVersion < undoVersion }
+            .forEach { submissions.cancelIfIdle(it.id, now) }
     }
 
     private companion object {

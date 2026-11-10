@@ -21,6 +21,15 @@ interface FnrhSubmissionStore {
     fun markInFlight(id: UUID)
 
     /**
+     * Cancela a submissão `PENDING`, `FAILED` ou `INVALID` **sem escrita em curso**, de forma condicional no banco (um
+     * só `UPDATE`): se o job marcou `in_flight` entre a leitura e o cancelamento, não cancela. `false` se não cancelou.
+     */
+    fun cancelIfIdle(
+        id: UUID,
+        now: Instant,
+    ): Boolean
+
+    /**
      * As cabeças vencidas da fila: por reserva, a de menor `(causalVersion, posto, sequence)` entre as não resolvidas
      * (`PENDING`, `FAILED`, `INVALID`), e só se estiver `PENDING` com `nextAttemptAt <= now`. Ordenadas por `sequence`.
      */

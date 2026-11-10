@@ -115,6 +115,22 @@ class JpaFnrhSubmissionStore(
         }
     }
 
+    // O `UPDATE` incrementa `version`: uma entidade lida antes não grava por cima do cancelamento.
+    override fun cancelIfIdle(
+        id: UUID,
+        now: Instant,
+    ): Boolean =
+        jdbc
+            .sql(
+                """
+                UPDATE fnrh.submission
+                   SET status = 'CANCELLED', next_attempt_at = :now, version = version + 1
+                 WHERE id = :id AND in_flight = false AND status IN ('PENDING', 'FAILED', 'INVALID')
+                """.trimIndent(),
+            ).param("id", id)
+            .param("now", now.atOffset(ZoneOffset.UTC))
+            .update() == 1
+
     override fun dueHeads(
         now: Instant,
         limit: Int,
