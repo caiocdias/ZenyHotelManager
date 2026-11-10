@@ -261,6 +261,7 @@ class FnrhReservationSteps(
 class FnrhOperationSteps(
     reservationSteps: FnrhReservationSteps,
     checkInStep: FnrhCheckInStep,
+    checkOutSteps: FnrhCheckOutSteps,
 ) {
     private val steps: Map<FnrhOperation, FnrhOperationStep> =
         mapOf(
@@ -268,6 +269,8 @@ class FnrhOperationSteps(
             FnrhOperation.UPDATE_RESERVATION to FnrhOperationStep(reservationSteps::update),
             FnrhOperation.CANCEL_RESERVATION to FnrhOperationStep(reservationSteps::cancel),
             FnrhOperation.CHECK_IN to checkInStep,
+            FnrhOperation.UNDO_CHECK_IN to FnrhOperationStep(checkOutSteps::undoCheckIn),
+            FnrhOperation.CHECK_OUT to FnrhOperationStep(checkOutSteps::checkOut),
         )
 
     operator fun get(operation: FnrhOperation): FnrhOperationStep? = steps[operation]
