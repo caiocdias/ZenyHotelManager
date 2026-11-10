@@ -21,27 +21,34 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import com.zeny.hotel.testsupport.enableFnrh
-import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.reset
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.system.CapturedOutput
+import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.json.JsonMapper
+import java.time.Duration
 
 /**
  * O que acontece com o resultado gravado quando a notificação do alerta falha (M5 E08, Task 9): o alerta vai na mesma
- * transação do resultado, então a falha dele desfaz a gravação, e o `FnrhSubmissionSender` registra e segue.
+ * transação do resultado: o resultado fica gravado, o recorder registra um `WARN` e não relança.
  */
 @IntegrationTest
+@ExtendWith(OutputCaptureExtension::class)
 @Import(
     IamTestConfiguration::class,
     InventoryTestConfiguration::class,
@@ -87,40 +94,53 @@ class FnrhFailureAlertTransactionTest(
     }
 
     @Test
-    fun `when the alert fails the recorder throws and the failure result is not saved`() {
-        val reservation = reservation()
+    fun `when the alert fails the failure result is still saved, nothing is notified and the log has the id only`(
+        output: CapturedOutput,
+    ) {
+        val guest = fullGuest()
+        val reservation = checkedIn(guest.id)
         user(FnrhPermissions.SUBMISSIONS_MANAGE)
         val id = submit(reservation, FnrhOperation.UPDATE_RESERVATION)
         failAlert(reservation, "atualização da reserva")
 
-        shouldThrow<IllegalStateException> { recorder.failed(id, FnrhSubmissionFailure.VALIDATION) }
+        recorder.failed(id, FnrhSubmissionFailure.VALIDATION) shouldBe FnrhSubmissionStatus.FAILED
 
         val after = row(id)
-        after.status shouldBe FnrhSubmissionStatus.PENDING
-        after.attempts shouldBe 0
-        after.lastFailure shouldBe null
+        after.status shouldBe FnrhSubmissionStatus.FAILED
+        after.attempts shouldBe 1
+        after.lastFailure shouldBe FnrhSubmissionFailure.VALIDATION
         alertsOf(reservation).shouldBeEmpty()
+        val warn = output.all.lines().filter { "alerta da submissão" in it }
+        warn shouldHaveSize 1
+        warn.single() shouldContain "WARN"
+        warn.single() shouldContain id.toString()
+        warn.single() shouldContain "UPDATE_RESERVATION"
+        warn.single() shouldContain "IllegalStateException"
+        guest.leaks.forEach { leak -> withClue("o log vazou $leak") { warn.single() shouldNotContain leak } }
     }
 
     @Test
-    fun `when the alert fails the send run skips the submission, keeps it pending and alerts after the next run`() {
+    fun `when the alert fails the send run still counts the failure and does not call the Serpro again`() {
         val reservation = reservation()
-        val manager = user(FnrhPermissions.SUBMISSIONS_MANAGE)
+        user(FnrhPermissions.SUBMISSIONS_MANAGE)
         iam.enableFnrh()
         FnrhTestServer.stubAny(400, """{"mensagem":"dado inválido"}""")
         failAlert(reservation, "registro da reserva")
 
-        val broken = sender.send(reservation)
-
-        broken.failed shouldBe 0
-        row(rows(reservation).first().id).status shouldBe FnrhSubmissionStatus.PENDING
-        alertsOf(reservation).shouldBeEmpty()
-
-        reset(notifications)
         sender.send(reservation).failed shouldBe 1
 
-        rows(reservation).first().status shouldBe FnrhSubmissionStatus.FAILED
-        alertsOf(reservation).filter { it.recipient == manager.id.value } shouldHaveSize 1
+        val first = rows(reservation).first()
+        first.status shouldBe FnrhSubmissionStatus.FAILED
+        first.attempts shouldBe 1
+        alertsOf(reservation).shouldBeEmpty()
+        val calls = FnrhTestServer.requests().size
+
+        advance(Duration.ofHours(1))
+        sender.send(reservation).failed shouldBe 0
+
+        FnrhTestServer.requests().size shouldBe calls
+        rows(reservation).first().attempts shouldBe 1
+        alertsOf(reservation).shouldBeEmpty()
     }
 
     /** Faz o `notify` do alerta daquela reserva e operação falhar; os outros alertas seguem normais. */
