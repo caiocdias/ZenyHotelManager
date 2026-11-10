@@ -16,7 +16,9 @@ import jakarta.persistence.JoinColumn
 import jakarta.persistence.Table
 import jakarta.persistence.Version
 import org.hibernate.annotations.Generated
+import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.generator.EventType
+import org.hibernate.type.SqlTypes
 import java.time.Instant
 import java.util.UUID
 
@@ -107,6 +109,7 @@ class FnrhSubmission private constructor(
     val createdAt: Instant,
 ) {
     /** O posto da operação, gravado junto para a fila ordenar no banco (D-E08-3). */
+    @JdbcTypeCode(SqlTypes.SMALLINT)
     @Column(name = "operation_rank", nullable = false)
     val operationRank: Int = operation.rank
 
@@ -134,7 +137,9 @@ class FnrhSubmission private constructor(
     var lastFailure: FnrhSubmissionFailure? = null
         protected set
 
-    @Column(name = "in_flight", nullable = false)
+    // updatable = false: quem grava e limpa a marca é o `FnrhSubmissionStore` (D-E08-15); um `save` com a entidade
+    // lida antes da marca não pode desfazê-la. O banco é a verdade; a entidade só a reflete na leitura.
+    @Column(name = "in_flight", nullable = false, updatable = false)
     var inFlight: Boolean = false
         protected set
 
