@@ -3428,6 +3428,117 @@ paths:
       summary: Consultar o status da integração com a FNRH
       tags:
       - FNRH
+  /api/v1/fnrh/submissions:
+    get:
+      description: "Exige `fnrh.submissions.read`. Paginação por cursor, da mais antiga\
+        \ à mais nova; `status` filtra por situação. Sem dado de hóspede nem o link\
+        \ de pré-check-in."
+      operationId: listFnrhSubmissions
+      parameters:
+      - description: Só as submissões nesta situação.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - SENT
+          - FAILED
+          - INVALID
+          - CANCELLED
+          - DISMISSED
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageFnrhSubmissionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as submissões à FNRH
+      tags:
+      - FNRH
+  /api/v1/fnrh/submissions/{id}/dismiss:
+    post:
+      description: "Exige `fnrh.submissions.manage`. Só `FAILED` e `INVALID` (senã\
+        o 409 `FNRH_SUBMISSION_NOT_DISMISSABLE`): passa a `DISMISSED` e deixa de segurar\
+        \ as submissões seguintes da reserva. Inexistente: 404 `FNRH_SUBMISSION_NOT_FOUND`."
+      operationId: dismissFnrhSubmission
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSubmissionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Encerrar à mão uma submissão que falhou ou ficou inválida
+      tags:
+      - FNRH
+  /api/v1/fnrh/submissions/{id}/retry:
+    post:
+      description: "Exige `fnrh.submissions.manage`. Só `FAILED` e `INVALID` (senã\
+        o 409 `FNRH_SUBMISSION_NOT_RETRYABLE`): volta a `PENDING`, sem tentativas\
+        \ nem erros. Inexistente: 404 `FNRH_SUBMISSION_NOT_FOUND`."
+      operationId: retryFnrhSubmission
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSubmissionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reenviar uma submissão que falhou ou ficou inválida
+      tags:
+      - FNRH
   /api/v1/folios:
     get:
       description: "Da mais nova para a mais antiga, com o saldo. Exige `billing.folios.read`."
@@ -15652,6 +15763,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageFnrhSubmissionResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FnrhSubmissionResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageFolioResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -17046,6 +17171,96 @@ components:
       - configured
       - enabled
       - environment
+    FnrhSubmissionErrorResponse:
+      type: object
+      description: "Um erro de validação local de um hóspede: campo e código, nunca\
+        \ o valor."
+      properties:
+        code:
+          type: string
+        field:
+          type: string
+        guestId:
+          type: string
+          format: uuid
+      required:
+      - code
+      - field
+      - guestId
+    FnrhSubmissionResponse:
+      type: object
+      description: Uma submissão à FNRH.
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/FnrhSubmissionErrorResponse"
+        id:
+          type: string
+          format: uuid
+        lastFailure:
+          type: string
+          description: Por que falhou. A lista pode crescer (`x-extensible-enum`).
+          nullable: true
+          x-extensible-enum:
+          - VALIDATION
+          - UNAUTHORIZED
+          - FORBIDDEN
+          - NOT_FOUND
+          - SERVER_ERROR
+          - UNAVAILABLE
+          - UNKNOWN_OUTCOME
+          - INTERNAL_ERROR
+          - REMOTE_CANCELLED
+          - NO_REMOTE_OPERATION
+        nextAttemptAt:
+          type: string
+          format: date-time
+        operation:
+          type: string
+          description: A operação. A lista pode crescer (`x-extensible-enum`).
+          x-extensible-enum:
+          - REGISTER_RESERVATION
+          - UPDATE_RESERVATION
+          - CANCEL_RESERVATION
+          - CHECK_IN
+          - UNDO_CHECK_IN
+          - CHECK_OUT
+        reservationCode:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          description: A situação. A lista pode crescer (`x-extensible-enum`).
+          x-extensible-enum:
+          - PENDING
+          - SENT
+          - FAILED
+          - INVALID
+          - CANCELLED
+          - DISMISSED
+      required:
+      - attempts
+      - createdAt
+      - errors
+      - id
+      - nextAttemptAt
+      - operation
+      - reservationCode
+      - reservationId
+      - status
     FolioOpenRequest:
       type: object
       description: Uma conta nova.
