@@ -366,7 +366,7 @@ class PrintAgentAttackTest {
     }
 
     @Test
-    fun `os codigos de erro publicos sao dez, distintos e iguais ao nome do campo`() {
+    fun `os codigos de erro publicos sao doze, distintos e iguais ao nome do campo`() {
         val fields =
             PrintingErrorCodes::class.java.declaredFields
                 .filter {
@@ -384,6 +384,8 @@ class PrintAgentAttackTest {
             "PRINTER_INACTIVE",
             "UNKNOWN_PRINT_AGENT",
             "UNKNOWN_PRINTER",
+            "PRINT_AGENT_NOT_FOUND",
+            "PRINTER_NOT_FOUND",
             "PRINT_JOB_NOT_FOUND",
             "PRINT_JOB_NOT_ACKNOWLEDGEABLE",
             "PRINT_CONTENT_TOO_LARGE",
@@ -391,8 +393,8 @@ class PrintAgentAttackTest {
             "PRINT_CONTENT_NOT_PDF",
             "INVALID_FAILURE_CODE",
         )
-        assertThat(codes.toSet()).hasSize(10)
-        assertThat(fields).hasSize(10)
+        assertThat(codes.toSet()).hasSize(12)
+        assertThat(fields).hasSize(12)
     }
 
     @Test
