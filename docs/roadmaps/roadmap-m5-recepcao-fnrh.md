@@ -363,7 +363,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E10 | Agentes, impressoras e fila de impressão | #concluida | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
-| E11 | Documentos: ficha, extrato e confirmação | #pendente | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
+| E11 | Documentos: ficha, extrato e confirmação | #em-andamento | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
 
 **Gate**
 
@@ -1797,7 +1797,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E11 — Documentos: ficha, extrato e confirmação — #pendente
+## E11 — Documentos: ficha, extrato e confirmação — #em-andamento
 
 **Objetivo:** gerar a ficha de registro, o extrato de conta (RF-CTA-12) e a confirmação de reserva (RF-RES-12, com os textos da RN-11) em PDF A4 e em ESC/POS, para download (RF-NOT-04) e para impressão pela fila da E10 (RF-NOT-03), no modelo dono + `printing` (D2).
 
