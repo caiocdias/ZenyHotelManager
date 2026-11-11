@@ -22,6 +22,14 @@
 | D-E16-7 | **A forma da ação vira regra de toda integração** na ARCHITECTURE §12 (linha "Credencial"), porque M7 e M8 citam "como a M5 E16": `POST …/clear-credentials` com `If-Match`, sem `Idempotency-Key`; apaga a credencial e desliga a integração, mantendo o ambiente e o que não é credencial; repetir é `200` e mantém o `ETag`; religar exige credencial nova; trilha sem segredo nem usuário. | I-2 da revisão de arquitetura; precedente da Task 13 da E08. | Mudar a regra depois muda as etapas de M7 e M8 que a citam. |
 | D-E16-6 | **`ApiSecurityTest` não precisa de edição:** o teste `every other api endpoint rejects anonymous requests with a 401 problem` enumera todos os mapeamentos de `/api/**` do `RequestMappingHandlerMapping` e já cobre a rota nova; nenhum endpoint vira público. A Task 2 roda o teste e a revisão confere a rota na saída. | O critério "`ApiSecurityTest` atualizado" pede a cobertura, que é automática. | Se a revisão discordar, um teste explícito é aditivo. |
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado.
+- **Rodadas:** 2.
+- **Modelo:** opus (`revisor-arquitetura`).
+- A inicial bloqueou com 2 Importantes (I-1: risco da Task 1; I-2: a forma da ação fora da ARCHITECTURE §12, que M7 e M8 citam) e 5 Menores (trilha na repetição, teste concorrente por tempo, destino da M-3 da E08, tamanho da Task 2, KDoc da classe), todos aplicados. A rodada 1 bloqueou com 1 Importante novo (I-3: atraso do teste concorrente acima do `read-timeout` curto) e 1 Menor (build depois da Task 3), aplicados. A rodada 2 aprovou sem achado.
+- **Notas Menores em aberto:** nenhuma. Observação: a Task 3 abre um contexto Spring a mais nos testes (outro conjunto de `@Import`).
+
 ## Global Constraints
 
 - Respeitar o grafo de módulos da ARCHITECTURE §3.1: o `fnrh` continua com `allowedDependencies` atuais; nada de `iam`, nenhuma tabela de outro schema, nenhuma migração nova (a tabela `fnrh.settings` já aceita `NULL` nas três colunas e o `CHECK settings_enabled_ck` só exige as três com `enabled`).
