@@ -34,9 +34,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 
 /**
- * Ataques do testador à ação de limpar a credencial da FNRH (M5 E16, Task 2): segredos com caracteres especiais em
- * resposta, trilha e log, `If-Match` malformado, corpo e métodos inesperados, corrida com o `PUT`, ressurreição da senha,
- * contrato publicado e status/métrica. O banco é compartilhado: cada teste devolve a configuração ao estado inicial.
+ * Ataques do testador à ação de limpar a credencial da FNRH (M5 E16, Task 2): segredos com caracteres especiais
+ * em resposta, trilha e log, `If-Match` malformado, corpo e métodos inesperados, corrida com o `PUT`, ressurreição
+ * da senha, contrato publicado e status/métrica. O banco é compartilhado: cada teste devolve a configuração ao
+ * estado inicial.
  */
 @IntegrationTest
 @ExtendWith(OutputCaptureExtension::class)
