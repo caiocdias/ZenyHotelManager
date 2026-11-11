@@ -145,14 +145,14 @@ Expected: BUILD SUCCESSFUL.
 - [ ] **Step 1: Escrever os testes de envio** (`FnrhSettingsClearSendTest`, que liga a configuração no WireMock como a base faz):
   - `after clearing, the send run makes no call and the pending submission keeps zero attempts` — uma reserva com a submissão `REGISTER_RESERVATION` gravada (`awaitSubmission`); limpeza pela API; `sender.send(reservation)` → `FnrhSendRun(0, 0, 0, 0)`; a submissão continua `PENDING` com `attempts = 0`; o WireMock não recebeu nenhuma requisição desde a limpeza.
   - `after clearing, refreshing the domains is 422 FNRH_NOT_CONFIGURED without calling the Serpro`.
-  - `a clear in the middle of a send run stops the run before the next call` (Review Focus 1) — duas reservas com o registro pendente; o primeiro `POST /reservas` fica preso até a limpeza terminar, por sincronização determinística (um `CountDownLatch` num ouvinte de requisição do WireMock, se a instância da base aceitar extensão; senão `withFixedDelay(5000)` e a limpeza feita assim que `findAll(postRequestedFor(urlEqualTo("/reservas")))` tiver um item, com espera de até 2 s); o envio roda numa thread; depois do `join`, o WireMock recebeu exatamente um `POST /reservas` e a outra submissão continua `PENDING` com `attempts = 0`. Nunca `sleep` fixo para ordenar os passos.
+  - `a clear in the middle of a send run stops the run before the next call` (Review Focus 1) — duas reservas com o registro pendente; a classe **não** importa a `FnrhShortReadTimeoutConfiguration` (fica o `read-timeout` padrão de 20 s), para a primeira chamada terminar normalmente e não cair em `UNKNOWN_OUTCOME`; o primeiro `POST /reservas` fica preso até a limpeza terminar, por sincronização determinística (um `CountDownLatch` num ouvinte de requisição do WireMock, se a instância da base aceitar extensão; senão `withFixedDelay(5000)` e a limpeza feita assim que `findAll(postRequestedFor(urlEqualTo("/reservas")))` tiver um item, com espera de até 2 s), sempre abaixo do `read-timeout`; o envio roda numa thread; depois do `join`, o WireMock recebeu exatamente um `POST /reservas`, a primeira submissão terminou `SENT` e a outra continua `PENDING` com `attempts = 0`. Nunca `sleep` fixo para ordenar os passos.
 
 - [ ] **Step 2: Rodar**
 
 Run: `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhSettingsClearSendTest'`
 Expected: PASS (o comportamento vem do D-E08-5 e do adaptador da E07). Rode o teste concorrente 5 vezes seguidas (`--rerun`) e cole as 5 saídas.
 
-- [ ] **Step 3: Lint** — `./gradlew ktlintFormat lint` → BUILD SUCCESSFUL.
+- [ ] **Step 3: Lint e build** — `./gradlew ktlintFormat && ./gradlew build` → BUILD SUCCESSFUL (a evidência de build da etapa precisa ser posterior a esta tarefa).
 
 - [ ] **Step 4: Commit** — `git commit -m "Testa o envio à FNRH depois da limpeza da credencial (M5 E16, Task 3)"`, com o trailer `Soul: desenvolvedor`.
 
