@@ -21,10 +21,9 @@ internal object ServiceCredentialRealms {
     fun validate(realms: List<ServiceCredentialRealm>) {
         realms.forEach { realm ->
             val prefix = realm.pathPrefix
-            check(
-                prefix.startsWith("$API_V1/") && prefix.length > "$API_V1/".length && prefix.endsWith("/") &&
-                    !prefix.contains("//") && !prefix.contains('*') && !prefix.contains('{'),
-            ) { "Realm de serviço '${realm.name}': prefixo '$prefix' deve começar por $API_V1/ e terminar em /." }
+            check(isLiteralPrefix(prefix)) {
+                "Realm de serviço '${realm.name}': prefixo '$prefix' deve ser literal, em $API_V1/, e terminar em /."
+            }
         }
         check(realms.map { it.name }.toSet().size == realms.size) { "Realms de serviço com nome repetido." }
         check(realms.map { it.openApiScheme }.toSet().size == realms.size) {
@@ -40,6 +39,15 @@ internal object ServiceCredentialRealms {
             }
         }
     }
+
+    /**
+     * Prefixo literal: segmentos só com letras, dígitos e `._~-` (nada com sentido para o PathPattern, como `?`,
+     * `*`, `{`), sem segmentos `.` ou `..`, dentro de `/api/v1/` e terminado em `/`.
+     */
+    private fun isLiteralPrefix(prefix: String): Boolean =
+        LITERAL_PREFIX.matches(prefix) && prefix.split('/').none { it == "." || it == ".." }
+
+    private val LITERAL_PREFIX = Regex("^$API_V1/([A-Za-z0-9._~-]+/)+$")
 
     /** O casamento do realm: o prefixo sem a barra final também é do realm. */
     fun matcher(realm: ServiceCredentialRealm): RequestMatcher =
