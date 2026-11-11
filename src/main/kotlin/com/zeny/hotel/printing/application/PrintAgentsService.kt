@@ -41,7 +41,7 @@ class CreatedAgent(
     override fun toString(): String = "CreatedAgent(view=$view)"
 }
 
-/** Quem é o agente autenticado, para ele mesmo (`GET /print-agents/me`). */
+/** Quem é o agente autenticado, para ele mesmo (`GET /print-agents/me/identity`). */
 data class PrintAgentIdentity(
     val id: UUID,
     val name: String,
@@ -75,6 +75,15 @@ data class PrinterChange(
 interface PrintAgentStore {
     /** O agente ativo cujo token tem este SHA-256 (hex), ou `null`. */
     fun byTokenHash(hash: String): PrintAgent?
+
+    /**
+     * Grava o contato do agente [id] em [now], no máximo uma vez por minuto, sem tocar a versão do cadastro. Devolve
+     * `true` se gravou.
+     */
+    fun recordContact(
+        id: UUID,
+        now: Instant,
+    ): Boolean
 
     fun byId(id: UUID): PrintAgent?
 

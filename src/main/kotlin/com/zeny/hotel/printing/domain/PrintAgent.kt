@@ -8,6 +8,7 @@ import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.Version
+import org.hibernate.annotations.DynamicUpdate
 import org.hibernate.annotations.JdbcTypeCode
 import org.hibernate.type.SqlTypes
 import java.security.MessageDigest
@@ -27,6 +28,7 @@ import java.util.UUID
  * **Nunca** ponha o hash nem o token em `toString`, log ou trilha.
  */
 @Entity
+@DynamicUpdate
 @Table(name = "print_agent", schema = "printing")
 class PrintAgent private constructor(
     @Id
@@ -89,7 +91,7 @@ class PrintAgent private constructor(
     /** Registra o contato do agente; só muda (e devolve `true`) se o último tiver mais de 1 minuto. */
     fun touch(now: Instant): Boolean {
         val last = lastSeenAt
-        if (last != null && Duration.between(last, now) <= TOUCH_INTERVAL) return false
+        if (last != null && Duration.between(last, now) <= CONTACT_INTERVAL) return false
         lastSeenAt = now
         return true
     }
@@ -108,8 +110,10 @@ class PrintAgent private constructor(
         const val TOKEN_PREFIX = "zpa_"
 
         private const val TOKEN_BYTES = 32
-        private val TOUCH_INTERVAL: Duration = Duration.ofMinutes(1)
         private val random = SecureRandom()
+
+        /** O intervalo mínimo entre dois registros de contato. */
+        val CONTACT_INTERVAL: Duration = Duration.ofMinutes(1)
 
         /** O SHA-256 do [token] em hex minúsculo (64 caracteres). */
         fun hashOf(token: String): String =

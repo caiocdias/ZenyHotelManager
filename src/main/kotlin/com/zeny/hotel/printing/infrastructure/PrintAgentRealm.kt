@@ -4,7 +4,6 @@ import com.zeny.hotel.printing.application.PrintAgentStore
 import com.zeny.hotel.printing.domain.PrintAgent
 import com.zeny.hotel.shared.ServiceCredentialRealm
 import com.zeny.hotel.shared.ServicePrincipal
-import org.springframework.orm.ObjectOptimisticLockingFailureException
 import org.springframework.stereotype.Component
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -33,24 +32,12 @@ class PrintAgentRealm(
     override val openApiScheme = "printAgentToken"
 
     override fun authenticate(token: String): ServicePrincipal? =
-        if (token.startsWith(PrintAgent.TOKEN_PREFIX)) lookupWithRetry(PrintAgent.hashOf(token)) else null
-
-    /** O contato concorrente com uma troca do cadastro (versão otimista) repete uma vez, com o estado novo. */
-    private fun lookupWithRetry(hash: String): ServicePrincipal? =
-        try {
-            lookup(hash)
-        } catch (_: ObjectOptimisticLockingFailureException) {
-            lookup(hash)
-        }
+        if (token.startsWith(PrintAgent.TOKEN_PREFIX)) lookup(PrintAgent.hashOf(token)) else null
 
     private fun lookup(hash: String): ServicePrincipal? =
         transaction.execute {
             val agent = agents.byTokenHash(hash) ?: return@execute null
-            if (agent.touch(clock.instant())) agents.flush()
-            ServicePrincipal(REALM_NAME, agent.id, agent.credentialStamp)
+            agents.recordContact(agent.id, clock.instant())
+            ServicePrincipal(name, agent.id, agent.credentialStamp)
         }
-
-    private companion object {
-        const val REALM_NAME = "print-agent"
-    }
 }

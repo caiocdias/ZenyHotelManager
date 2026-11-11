@@ -2,6 +2,8 @@ package com.zeny.hotel.printing
 
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.printing.application.PrintAgentStore
+import com.zeny.hotel.printing.infrastructure.PrintAgentRealm
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
@@ -19,6 +21,8 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.json.JsonMapper
 import java.sql.Timestamp
 import java.time.Duration
@@ -28,12 +32,16 @@ import java.util.UUID
 /** O realm do agente: o token próprio autentica só o prefixo `/api/v1/print-agents/me/` (M5 E10, Task 7). */
 @IntegrationTest
 @Import(IamTestConfiguration::class, MutableClockConfiguration::class)
+@Suppress("LongParameterList") // os colaboradores injetados do teste
 class PrintAgentRealmTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val clock: MutableClock,
     @Autowired private val jsonMapper: JsonMapper,
+    @Autowired private val realm: PrintAgentRealm,
+    @Autowired private val store: PrintAgentStore,
+    @Autowired private val transactionManager: PlatformTransactionManager,
 ) {
     private val admin = "/api/v1/print-agents"
     private val identity = "/api/v1/print-agents/me/identity"
@@ -164,6 +172,51 @@ class PrintAgentRealmTest(
         clock.advance(Duration.ofSeconds(31))
         send(GET, identity, "Bearer ${agent.token}").status shouldBe 200
         lastSeen(agent.id).shouldBeNow()
+    }
+
+    @Test
+    fun `contacts never change the registration version`() {
+        val agent = newAgent("Agente versão")
+        val before =
+            iam.call(GET, "$admin/${agent.id}", iam.asAdmin()).let {
+                jsonMapper.readTree(it.contentAsString)["version"].asLong()
+            }
+
+        repeat(3) {
+            clock.advance(Duration.ofMinutes(2))
+            send(GET, identity, "Bearer ${agent.token}").status shouldBe 200
+            lastSeen(agent.id).shouldBeNow()
+        }
+
+        val after =
+            jsonMapper
+                .readTree(
+                    iam.call(GET, "$admin/${agent.id}", iam.asAdmin()).contentAsString,
+                )["version"]
+                .asLong()
+        after shouldBe before
+    }
+
+    @Test
+    fun `a contact between the read and the flush of an admin write does not fail it nor get overwritten`() {
+        val agent = newAgent("Agente corrida")
+        val id = UUID.fromString(agent.id)
+        clock.advance(Duration.ofMinutes(2))
+
+        TransactionTemplate(transactionManager).execute {
+            val loaded = store.byId(id)!!
+            loaded.rename("Agente corrida 2")
+            // O contato chega e grava em outra transação antes do flush do administrador.
+            realm.authenticate(agent.token) shouldNotBe null
+            store.flush()
+        }
+
+        lastSeen(agent.id).shouldBeNow()
+        jdbc
+            .sql("SELECT name FROM printing.print_agent WHERE id = :id")
+            .param("id", id)
+            .query(String::class.java)
+            .single() shouldBe "Agente corrida 2"
     }
 
     @Test

@@ -6,13 +6,27 @@ import com.zeny.hotel.printing.domain.PrintAgent
 import com.zeny.hotel.printing.domain.Printer
 import org.springframework.data.domain.Sort
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Component
+import java.time.Instant
 import java.util.UUID
 
 interface PrintAgentJpaRepository : JpaRepository<PrintAgent, UUID> {
     @Query("SELECT a FROM PrintAgent a WHERE a.tokenHash = :hash AND a.active = true")
     fun findActiveByTokenHash(hash: String): PrintAgent?
+
+    /** Só a coluna do contato: não passa pelo versionamento do cadastro. */
+    @Modifying
+    @Query(
+        "UPDATE PrintAgent a SET a.lastSeenAt = :now " +
+            "WHERE a.id = :id AND (a.lastSeenAt IS NULL OR a.lastSeenAt < :limit)",
+    )
+    fun markSeen(
+        id: UUID,
+        now: Instant,
+        limit: Instant,
+    ): Int
 }
 
 /** Os agentes por JPA, na transação corrente. */
@@ -21,6 +35,11 @@ class JpaPrintAgentStore(
     private val agents: PrintAgentJpaRepository,
 ) : PrintAgentStore {
     override fun byTokenHash(hash: String): PrintAgent? = agents.findActiveByTokenHash(hash)
+
+    override fun recordContact(
+        id: UUID,
+        now: Instant,
+    ): Boolean = agents.markSeen(id, now, now.minus(PrintAgent.CONTACT_INTERVAL)) > 0
 
     override fun byId(id: UUID): PrintAgent? = agents.findById(id).orElse(null)
 
