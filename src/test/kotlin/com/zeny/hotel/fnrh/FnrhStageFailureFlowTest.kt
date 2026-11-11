@@ -42,6 +42,7 @@ import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.util.UUID
+import kotlin.random.Random
 
 /**
  * As duas lacunas de critério de aceite da E08, ponta a ponta: a falha que esgota as 8 tentativas, aparece na lista,
@@ -140,6 +141,7 @@ class FnrhStageFailureFlowTest(
         val name = support.guests.uniqueName("Zuleica")
         val social = "Zu ${support.guests.suffix()}"
         val email = support.guests.uniqueEmail()
+        val phone = uniquePhone()
         val description = "Descrição não binária ${support.guests.suffix()}"
         val guest =
             UUID.fromString(
@@ -152,6 +154,7 @@ class FnrhStageFailureFlowTest(
                                     email = email,
                                     extra =
                                         mapOf(
+                                            "phone" to "+55 11 $phone",
                                             "socialName" to social,
                                             "gender" to "OTHER",
                                             "genderDescription" to description,
@@ -167,10 +170,7 @@ class FnrhStageFailureFlowTest(
                     )["id"]
                     .asString(),
             )
-        val front = frontdesk.stay()
-        val booked = front.book(guest, departure = today)
-        front.ready()
-        awaitSubmission(booked.id, FnrhOperation.REGISTER_RESERVATION)
+        val booked = bookedToday(guest)
         checkInAndOut(booked, guest)
         iam.enableFnrh()
         stubFullFlow(cpf, remoteId())
@@ -182,13 +182,20 @@ class FnrhStageFailureFlowTest(
         rows(failing).first().status shouldBe FnrhSubmissionStatus.FAILED
         alertsOf(failing).isNotEmpty() shouldBe true
 
-        val leaks = listOf(name, social, email, description, cpf, passport, "98765-4321", "INDIGENOUS", "VISUAL")
-        val audit = dump("audit.audit_entry")
-        val notifications = dump("notifications.notification")
-        for (leak in leaks) {
-            withClue("trilha de auditoria com $leak") { audit shouldNotContain leak }
-            withClue("notificação com $leak") { notifications shouldNotContain leak }
-        }
+        val leaks =
+            listOf(
+                name,
+                social,
+                email,
+                description,
+                cpf,
+                passport,
+                phone,
+                phone.replace("-", ""),
+                "INDIGENOUS",
+                "VISUAL",
+            )
+        assertNoLeaks(leaks)
     }
 
     // --- Apoio ----------------------------------------------------------------------------------------------------
@@ -220,6 +227,25 @@ class FnrhStageFailureFlowTest(
             call(POST, "/api/v1/reservations/${booked.id}/check-out", iam.asAdmin(), null).expect(200)
         }
         awaitSubmission(booked.id, FnrhOperation.CHECK_OUT)
+    }
+
+    private fun assertNoLeaks(leaks: List<String>) {
+        val audit = dump("audit.audit_entry")
+        val notifications = dump("notifications.notification")
+        for (leak in leaks) {
+            withClue("trilha de auditoria com $leak") { audit shouldNotContain leak }
+            withClue("notificação com $leak") { notifications shouldNotContain leak }
+        }
+    }
+
+    private fun uniquePhone() = "9${Random.nextInt(1000, 10_000)}-${Random.nextInt(1000, 10_000)}"
+
+    private fun bookedToday(guest: UUID): FrontdeskTestSupport.Booked {
+        val front = frontdesk.stay()
+        val booked = front.book(guest, departure = today)
+        front.ready()
+        awaitSubmission(booked.id, FnrhOperation.REGISTER_RESERVATION)
+        return booked
     }
 
     private fun dump(table: String): String =
