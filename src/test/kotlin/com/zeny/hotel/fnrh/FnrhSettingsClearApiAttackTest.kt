@@ -111,6 +111,7 @@ class FnrhSettingsClearApiAttackTest(
     fun `an If-Match that is not a single strong ETag is 412, blank is 428, and nothing changes`(): Unit =
         with(iam) {
             val etag = configure()
+            val before = clearEntries()
             val bare = etag.trim('"')
             val bad =
                 listOf(
@@ -133,7 +134,7 @@ class FnrhSettingsClearApiAttackTest(
 
             row().isConfigured() shouldBe true
             call(GET, path, asAdmin()).getHeader(HttpHeaders.ETAG) shouldBe etag
-            clearEntries() shouldBe 0
+            clearEntries() shouldBe before
         }
 
     @Test
@@ -188,6 +189,7 @@ class FnrhSettingsClearApiAttackTest(
     fun `GET, PUT, PATCH and DELETE on the clear route are refused without a 5xx and change nothing`(): Unit =
         with(iam) {
             val etag = configure()
+            val before = clearEntries()
 
             for (method in listOf(GET, PUT, HttpMethod.PATCH, HttpMethod.DELETE)) {
                 val response = call(method, clearPath, asAdmin(), ifMatch = etag)
@@ -196,7 +198,7 @@ class FnrhSettingsClearApiAttackTest(
             }
             row().isConfigured() shouldBe true
             call(GET, path, asAdmin()).getHeader(HttpHeaders.ETAG) shouldBe etag
-            clearEntries() shouldBe 0
+            clearEntries() shouldBe before
         }
 
     @Test
