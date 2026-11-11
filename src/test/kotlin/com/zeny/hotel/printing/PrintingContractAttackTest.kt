@@ -77,19 +77,35 @@ class PrintingContractAttackTest {
     }
 
     @Test
-    fun `only create and rotate return the token schema, and the rest return the plain agent`() {
-        fun ref(operationId: String): String? =
+    fun `only create and rotate return the token schema, with the exact success status`() {
+        fun success(operationId: String) =
             operations
                 .first { it.third.operationId == operationId }
-                .third.responses.entries
+                .third.responses
+
+        fun ref(responses: Map<String, io.swagger.v3.oas.models.responses.ApiResponse>): String? =
+            responses.entries
                 .first { it.key.startsWith("2") }
                 .value.content["application/json"]
                 ?.schema
                 ?.let { it.`$ref` ?: it.items?.`$ref` }
-        ref("createPrintAgent") shouldBe "#/components/schemas/PrintAgentTokenResponse"
-        ref("rotatePrintAgentToken") shouldBe "#/components/schemas/PrintAgentTokenResponse"
+        val tokenRef = "#/components/schemas/PrintAgentTokenResponse"
+        success("createPrintAgent").let {
+            withClue("createPrintAgent") {
+                it.keys.filter { k -> k.startsWith("2") } shouldBe listOf("201")
+                ref(it) shouldBe tokenRef
+            }
+        }
+        success("createPrinter").keys.filter { it.startsWith("2") } shouldBe listOf("201")
+        success("rotatePrintAgentToken").let {
+            it.keys.filter { k -> k.startsWith("2") } shouldBe listOf("200")
+            ref(it) shouldBe tokenRef
+        }
         listOf("getPrintAgent", "listPrintAgents", "deactivatePrintAgent").forEach {
-            withClue(it) { ref(it) shouldBe "#/components/schemas/PrintAgentResponse" }
+            withClue(it) {
+                success(it).keys.filter { k -> k.startsWith("2") } shouldBe listOf("200")
+                ref(success(it)) shouldBe "#/components/schemas/PrintAgentResponse"
+            }
         }
     }
 
