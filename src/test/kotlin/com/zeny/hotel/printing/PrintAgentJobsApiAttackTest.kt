@@ -288,12 +288,14 @@ class PrintAgentJobsApiAttackTest(
 
         listOf(printer.agent, newOwner).forEach { agent ->
             content(agent, sent).status shouldBe 404
-            ack(agent, sent, "PRINTED").status shouldBe 404
             delivery.unacknowledged(principalOf(agent), 0).map { it.id }.shouldBeEmpty()
         }
+        ack(printer.agent, sent, "PRINTED").status shouldBe 404 // a impressora já não é dele
+        ack(newOwner, sent, "PRINTED").status shouldBe 409 // a impressora é dele, o job foi entregue ao outro
         idsOf(poll(printer.agent)).shouldBeEmpty()
         idsOf(poll(newOwner)) shouldContainExactly listOf(pending)
         statusOf(sent) shouldBe "SENT"
+        trail(sent, "printing.job.ack").shouldBeEmpty()
     }
 
     @Test
@@ -454,8 +456,8 @@ class PrintAgentJobsApiAttackTest(
         val printer = newPrinter()
         val pending = enqueue(printer)
 
-        ack(printer.agent, pending, "PRINTED").status shouldBe 404
-        ack(printer.agent, pending, "FAILED", "X").status shouldBe 404
+        ack(printer.agent, pending, "PRINTED").status shouldBe 409
+        ack(printer.agent, pending, "FAILED", "X").status shouldBe 409
 
         statusOf(pending) shouldBe "PENDING"
         trail(pending, "printing.job.ack").shouldBeEmpty()
