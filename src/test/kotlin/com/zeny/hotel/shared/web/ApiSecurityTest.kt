@@ -1,6 +1,7 @@
 package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.shared.API_V1
+import com.zeny.hotel.shared.ServiceCredentialRealm
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.withClue
@@ -18,6 +19,7 @@ import org.springframework.context.ApplicationContext
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
+import org.springframework.http.server.PathContainer
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.userdetails.UserDetailsService
 import org.springframework.test.web.servlet.MockMvc
@@ -26,6 +28,7 @@ import org.springframework.test.web.servlet.request
 import org.springframework.web.method.HandlerMethod
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping
+import org.springframework.web.util.pattern.PathPatternParser
 import tools.jackson.databind.json.JsonMapper
 
 /**
@@ -167,6 +170,61 @@ class ApiSecurityTest(
         problem["code"].asString() shouldBe "MALFORMED_REQUEST"
         problem["instance"].asString() shouldBe "/api/v1/whatever"
         problem.toString().contains("segredo") shouldBe false
+    }
+
+    @Test
+    fun `every handler under a service realm prefix belongs to that realm and no public or user route is covered`() {
+        val realms = context.getBeansOfType(ServiceCredentialRealm::class.java).values
+        realms.map { it.name } shouldContain "print-agent"
+        val parser = PathPatternParser()
+
+        assertSoftly {
+            realms.forEach { realm ->
+                val bare = realm.pathPrefix.trimEnd('/')
+                val covered =
+                    applicationMappings().filter { (info, _) ->
+                        info.patterns().any { it == bare || it.startsWith(realm.pathPrefix) }
+                    }
+                withClue("realm ${realm.name} has handlers") { covered.shouldNotBeEmpty() }
+                covered.forEach { (info, handler) ->
+                    withClue("${handler.beanType.simpleName}: ${info.patterns()}") {
+                        handler.beanType.simpleName shouldBe "PrintAgentSelfController"
+                    }
+                }
+                // Nenhuma rota pública nem de usuário casa com um caminho do realm (nem com o prefixo sem a barra).
+                val samples = listOf(bare, realm.pathPrefix + "x", realm.pathPrefix + "x/y")
+                applicationMappings().filterNot { it in covered }.forEach { (info, handler) ->
+                    info.patterns().forEach { pattern ->
+                        samples.forEach { sample ->
+                            withClue("${handler.beanType.simpleName}: $pattern casa $sample") {
+                                parser.parse(pattern).matches(PathContainer.parsePath(sample)) shouldBe false
+                            }
+                        }
+                    }
+                }
+                PUBLIC_API_ENDPOINTS.forEach { (_, path) ->
+                    withClue("pública $path") { path.startsWith(realm.pathPrefix) shouldBe false }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the api description mentions the security schemes once, however many times it is requested`() {
+        fun description(language: String?): String =
+            jsonMapper
+                .readTree(
+                    mockMvc
+                        .get("/v3/api-docs") { if (language != null) header(HttpHeaders.ACCEPT_LANGUAGE, language) }
+                        .andReturn()
+                        .response.contentAsString,
+                )["info"]["description"]
+                .asString()
+
+        val descriptions = listOf(description(null), description(null), description("en-US"), description("pt-BR"))
+
+        descriptions.forEach { it shouldContain "printAgentToken" }
+        descriptions.forEach { Regex("Esquemas de segurança:").findAll(it).count() shouldBe 1 }
     }
 
     @Test

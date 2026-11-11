@@ -159,7 +159,10 @@ class PrintAgentsService(
         return agent.view()
     }
 
-    /** Quem é o agente [agentId], já autenticado pelo token: serve ao próprio agente, sem permissão de usuário. */
+    /**
+     * Quem é o agente [agentId], já autenticado pelo token: serve ao próprio agente, sem permissão de usuário. Não
+     * confere `active`: só é chamada depois da autenticação do realm, que já recusa o agente inativo.
+     */
     @Transactional(readOnly = true)
     fun identity(agentId: UUID): PrintAgentIdentity =
         agentOrNotFound(agentId).let { PrintAgentIdentity(it.id, it.name) }

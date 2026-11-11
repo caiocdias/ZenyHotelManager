@@ -15,18 +15,22 @@ internal object PrintingAudit {
 }
 
 /**
- * O retrato do agente para a trilha: nome, situação e a geração do token (que muda a cada rotação). **Nunca** o hash
- * nem o token. A [version] sobe a cada mudança gravada.
+ * O retrato do agente para a trilha: nome, situação e a quantidade de emissões do token (`emissionCount`, que sobe a
+ * cada rotação). **Nunca** o hash nem o token. O mascaramento da trilha troca por `***` todo campo com "token" no
+ * nome, por isso a contagem vem com outro nome, para a rotação ficar visível; `tokenGeneration` fica só por
+ * compatibilidade. A [version] sobe a cada mudança gravada.
  */
 internal data class PrintAgentAuditState(
     val id: String,
     val name: String,
     val active: Boolean,
     val tokenGeneration: Int,
+    val emissionCount: Int,
     val version: Long?,
 )
 
-internal fun PrintAgent.auditState() = PrintAgentAuditState(id.toString(), name, active, tokenGeneration, version)
+internal fun PrintAgent.auditState() =
+    PrintAgentAuditState(id.toString(), name, active, tokenGeneration, tokenGeneration, version)
 
 /** O retrato da impressora para a trilha. */
 internal data class PrinterAuditState(

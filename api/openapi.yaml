@@ -11,7 +11,10 @@ info:
     \ pede um refresh; os demais códigos de `401` (credenciais, bloqueio, refresh)\
     \ pedem um novo login. Ação sensível sem permissão (ou acima do limite): 403 `APPROVAL_REQUIRED`;\
     \ outro usuário aprova em `POST /api/v1/auth/approvals` e a requisição é repetida\
-    \ com `X-Approval-Token`."
+    \ com `X-Approval-Token`. Esquemas de segurança: `bearerAuth` (access token JWT\
+    \ de usuário, em quase toda a API) e `printAgentToken` (token opaco de serviç\
+    o, só nos caminhos do respectivo prefixo; um JWT de usuário ali, ou um token de\
+    \ serviço fora dele, é recusado com 401)."
   title: Zeny Hotel Manager API
   version: v1
 servers:
@@ -6713,6 +6716,29 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Cadastrar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/me/identity:
+    get:
+      description: "Autenticado pelo token do agente (`printAgentToken`), não por\
+        \ usuário. Token recusado, revogado ou anterior à última rotação: 401 `UNAUTHENTICATED`."
+      operationId: getPrintAgentIdentity
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentIdentityResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Quem é o agente autenticado
       tags:
       - Printing
   /api/v1/print-agents/{id}:
@@ -20554,6 +20580,18 @@ components:
       required:
       - children
       - oneAdult
+    PrintAgentIdentityResponse:
+      type: object
+      description: Quem é o agente de impressão autenticado.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
     PrintAgentRequest:
       type: object
       description: O agente de impressão a cadastrar.
@@ -26507,5 +26545,12 @@ components:
         \ /api/v1/auth/refresh`, válido por 15 min. Enquanto a troca de senha estiver\
         \ pendente, só `POST /api/v1/auth/password` e `POST /api/v1/auth/logout` respondem;\
         \ o resto devolve 403 `PASSWORD_CHANGE_REQUIRED`."
+      scheme: bearer
+      type: http
+    printAgentToken:
+      bearerFormat: opaque
+      description: "Token opaco de serviço do realm `print-agent`, enviado como `Authorization:\
+        \ Bearer …`, válido só nos caminhos `/api/v1/print-agents/me/**`. Recusado\
+        \ com 401 `UNAUTHENTICATED`."
       scheme: bearer
       type: http

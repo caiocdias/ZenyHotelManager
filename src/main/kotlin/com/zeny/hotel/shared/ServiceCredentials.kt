@@ -21,7 +21,9 @@ interface ServiceCredentialRealm {
 
     /**
      * O principal do [token], ou `null` se ele não vale (desconhecido, trocado, credencial inativa).
-     * Nunca lança por token inválido, nunca registra nem devolve o token.
+     * Nunca lança por token inválido, nunca registra nem devolve o token, e o token nunca vai em mensagem de
+     * exceção. Uma falha de infraestrutura no realm (banco fora do ar, por exemplo) propaga e vira `500` genérico, não
+     * `401`: o cliente não deve tomar a indisponibilidade por credencial recusada.
      */
     fun authenticate(token: String): ServicePrincipal?
 }
