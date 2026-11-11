@@ -163,9 +163,19 @@ class SseTestClient private constructor(
             lastEventId: String? = null,
         ): SseTestClient {
             val query = topics?.let { "?topics=${java.net.URLEncoder.encode(it, Charsets.UTF_8)}" }.orEmpty()
+            return openPath(baseUrl, "/api/v1/stream$query", accessToken, lastEventId)
+        }
+
+        /** Abre `GET` [path] (com a query) em [baseUrl] com o bearer [accessToken] e o `Last-Event-ID`, se houver. */
+        fun openPath(
+            baseUrl: String,
+            path: String,
+            accessToken: String?,
+            lastEventId: String? = null,
+        ): SseTestClient {
             val request =
                 HttpRequest
-                    .newBuilder(URI.create("$baseUrl/api/v1/stream$query"))
+                    .newBuilder(URI.create("$baseUrl$path"))
                     .header("Accept", "text/event-stream")
                     .apply { if (accessToken != null) header("Authorization", "Bearer $accessToken") }
                     .apply { if (lastEventId != null) header("Last-Event-ID", lastEventId) }

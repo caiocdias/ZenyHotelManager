@@ -17,6 +17,7 @@ import jakarta.validation.constraints.Size
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
@@ -59,6 +60,20 @@ class FnrhSettingsController(
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
         @Valid @RequestBody request: FnrhSettingsRequest,
     ): ResponseEntity<FnrhSettingsResponse> = ok(settings.update(ETags.expectedVersion(ifMatch), request.toCommand()))
+
+    @PostMapping("/clear-credentials")
+    @Operation(
+        operationId = "clearFnrhCredentials",
+        summary = "Limpar a credencial da FNRH",
+        description =
+            "Exige `fnrh.settings.manage` e o `If-Match` (ausente: 428; outra versão: 412). Apaga o usuário, a " +
+                "senha e o CPF solicitante padrão e desliga a integração; mantém o ambiente e o CPF por usuário. As " +
+                "submissões pendentes ficam na fila sem gastar tentativa. Religar exige uma nova credencial (422 " +
+                "`FNRH_SETTINGS_INCOMPLETE`). Repetir sobre uma configuração vazia é `200` e mantém o `ETag`.",
+    )
+    fun clearCredentials(
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+    ): ResponseEntity<FnrhSettingsResponse> = ok(settings.clearCredentials(ETags.expectedVersion(ifMatch)))
 
     private fun ok(view: FnrhSettingsView): ResponseEntity<FnrhSettingsResponse> =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(FnrhSettingsResponse.of(view))

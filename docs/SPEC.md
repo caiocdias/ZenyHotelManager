@@ -2750,19 +2750,26 @@ classDiagram
   }
   class PrintAgent {
     String name
+    boolean active
     Instant lastSeenAt
     String tokenHash
   }
+  %% Printer.kind: THERMAL_ESCPOS ou A4_PDF
   class Printer {
     String name
     String kind
     String address
+    boolean active
   }
   class PrintJob {
     String documentType
     String status
     int attempts
+    long position
+    UUID deliveredTo
     Instant createdAt
+    Instant finishedAt
+    String failureCode
   }
   class User {
     <<Acesso>>

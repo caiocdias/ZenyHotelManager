@@ -73,6 +73,22 @@ class FnrhSettingsService(
         return settings.view()
     }
 
+    /**
+     * Apaga usuário, senha e CPF padrão e desliga a integração, mantendo o ambiente. Sobre uma configuração já vazia e
+     * desligada nada muda: a versão fica e a trilha descarta a entrada.
+     */
+    @Audited(FnrhAudit.CLEAR_CREDENTIALS)
+    @Transactional
+    fun clearCredentials(expectedVersion: Long): FnrhSettingsView {
+        authorization.require(FnrhPermissions.SETTINGS_MANAGE)
+        val settings = store.settings()
+        requireCurrentVersion(expectedVersion, checkNotNull(settings.version))
+        audit.track(FnrhAudit.SETTINGS, FnrhSettings.SINGLETON_ID) { settings.auditState() }
+        settings.clearCredentials()
+        store.flush()
+        return settings.view()
+    }
+
     private fun FnrhSettings.view() =
         FnrhSettingsView(
             environment = environment,

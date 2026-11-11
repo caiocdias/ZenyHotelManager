@@ -7,6 +7,7 @@ import com.zeny.hotel.fnrh.domain.FnrhSubmission
 internal object FnrhAudit {
     const val SETTINGS = "fnrh.settings"
     const val UPDATE_SETTINGS = "fnrh.settings.update"
+    const val CLEAR_CREDENTIALS = "fnrh.settings.clear-credentials"
     const val REQUESTER = "fnrh.requester"
     const val SET_REQUESTER = "fnrh.requester.set"
     const val DEACTIVATE_REQUESTER = "fnrh.requester.deactivate"

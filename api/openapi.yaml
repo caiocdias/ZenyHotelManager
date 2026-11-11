@@ -11,7 +11,10 @@ info:
     \ pede um refresh; os demais códigos de `401` (credenciais, bloqueio, refresh)\
     \ pedem um novo login. Ação sensível sem permissão (ou acima do limite): 403 `APPROVAL_REQUIRED`;\
     \ outro usuário aprova em `POST /api/v1/auth/approvals` e a requisição é repetida\
-    \ com `X-Approval-Token`."
+    \ com `X-Approval-Token`. Esquemas de segurança: `bearerAuth` (access token JWT\
+    \ de usuário, em quase toda a API) e `printAgentToken` (token opaco de serviç\
+    o, só nos caminhos do respectivo prefixo; um JWT de usuário ali, ou um token de\
+    \ serviço fora dele, é recusado com 401)."
   title: Zeny Hotel Manager API
   version: v1
 servers:
@@ -25,6 +28,8 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
+- description: "Agentes de impressão, impressoras e fila de impressão."
+  name: Printing
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
@@ -3406,6 +3411,37 @@ paths:
       summary: Editar a configuração da FNRH
       tags:
       - FNRH
+  /api/v1/fnrh/settings/clear-credentials:
+    post:
+      description: "Exige `fnrh.settings.manage` e o `If-Match` (ausente: 428; outra\
+        \ versão: 412). Apaga o usuário, a senha e o CPF solicitante padrão e desliga\
+        \ a integração; mantém o ambiente e o CPF por usuário. As submissões pendentes\
+        \ ficam na fila sem gastar tentativa. Religar exige uma nova credencial (422\
+        \ `FNRH_SETTINGS_INCOMPLETE`). Repetir sobre uma configuração vazia é `200`\
+        \ e mantém o `ETag`."
+      operationId: clearFnrhCredentials
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSettingsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Limpar a credencial da FNRH
+      tags:
+      - FNRH
   /api/v1/fnrh/status:
     get:
       description: "Exige `fnrh.submissions.read`. Os instantes são os do último sucesso\
@@ -6632,6 +6668,575 @@ paths:
       summary: Listar o catálogo de permissões
       tags:
       - iam
+  /api/v1/print-agents:
+    get:
+      description: Exige `printing.agents.manage`. Nunca traz o token nem o hash.
+      operationId: listPrintAgents
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os agentes de impressão
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.agents.manage`. O `token` aparece só nesta resposta\
+        \ (`Cache-Control: no-store`) e não se recupera: guarde-o agora. Nome invá\
+        lido: 400 `VALIDATION_FAILED` (campo `name`). Sem `Idempotency-Key`: repetir\
+        \ o `POST` cria outro agente, que se desativa."
+      operationId: createPrintAgent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintAgentRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentTokenResponse"
+          description: "Agente cadastrado; traz o token, exibido uma única vez."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/me/identity:
+    get:
+      description: "Autenticado pelo token do agente (`printAgentToken`), não por\
+        \ usuário. Token recusado, revogado ou anterior à última rotação: 401 `UNAUTHENTICATED`."
+      operationId: getPrintAgentIdentity
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentIdentityResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Quem é o agente autenticado
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs:
+    get:
+      description: "Autenticado pelo token do agente. Reivindica os jobs `PENDING`\
+        \ das impressoras ativas do agente (eles passam a `SENT`) e, sem nenhum, espera\
+        \ até `wait` segundos (0 a 30; padrão 25) consultando a fila. Sem job até\
+        \ o fim da espera: `200` com `[]`. O agente também recebe `200` com `[]` na\
+        \ hora quando abre mais conexões que o limite (o long-poll mais antigo é despejado)\
+        \ e quando o servidor para: volte a pedir. Se a resposta se perde no caminho\
+        \ (o servidor já a tinha fechado por tempo), os jobs reivindicados voltam\
+        \ a `PENDING` sem gastar tentativa; se ela se perde depois de enviada, eles\
+        \ só voltam pelo prazo de confirmação, gastando uma tentativa. Na reentrega\
+        \ de um job já impresso, confirme de novo sem imprimir. `wait` fora de 0 a\
+        \ 30: 400 `VALIDATION_FAILED`."
+      operationId: pollPrintAgentJobs
+      parameters:
+      - description: "Segundos de espera, de 0 a 30 (padrão 25)."
+        in: query
+        name: wait
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 25
+          maximum: 30
+          minimum: 0
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveredJobResponse"
+          description: "Os jobs reivindicados; `[]` sem job até o fim da espera ou\
+            \ quando a conexão é despejada."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Receber os jobs de impressão por long-poll
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs/stream:
+    get:
+      description: "Autenticado pelo token do agente. Ao conectar, reenvia os jobs\
+        \ `SENT` do agente ainda sem confirmação de posição maior que o `Last-Event-ID`\
+        \ (todos, sem ele) e entrega os `PENDING` das impressoras ativas dele (que\
+        \ passam a `SENT`), sem filtro de posição; depois entrega os novos. Evento\
+        \ `job`, com o `id` igual à posição do job e `data` JSON com `id`, `printerId`,\
+        \ `documentType`, `mediaType`, `attempts` e `createdAt` (o conteúdo se busca\
+        \ em `/content`). Comentários `: heartbeat` e `: ping` mantêm a conexão viva\
+        \ (ignore-os). O servidor encerra o stream depois do tempo máximo, quando\
+        \ o token deixa de valer (agente desativado ou token trocado), quando o agente\
+        \ abre outro stream (só há um por agente: o anterior acaba) e na parada: reconecte\
+        \ com o `Last-Event-ID`."
+      operationId: streamPrintAgentJobs
+      parameters:
+      - description: A posição (`id`) do último evento recebido.
+        in: header
+        name: Last-Event-ID
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream SSE (`text/event-stream`).
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Receber os jobs de impressão por SSE
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs/{id}/ack:
+    post:
+      description: "Autenticado pelo token do agente. `PRINTED` ou `FAILED` (com `failureCode`\
+        \ opcional, `[A-Z][A-Z0-9_]{0,49}`, nunca texto livre: 400 `INVALID_FAILURE_CODE`).\
+        \ Job de impressora de outro agente ou inexistente: 404 `PRINT_JOB_NOT_FOUND`;\
+        \ job de impressora deste agente que não está `SENT` entregue a ele (já confirmado,\
+        \ reenviado ou expirado): 409 `PRINT_JOB_NOT_ACKNOWLEDGEABLE`. `result` só\
+        \ como string; número ou outro valor: 400 `VALIDATION_FAILED`."
+      operationId: acknowledgePrintJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintJobAckRequest"
+        required: true
+      responses:
+        "204":
+          description: Job confirmado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Confirmar um job de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs/{id}/content:
+    get:
+      description: "Autenticado pelo token do agente. Só o job `SENT` entregue a este\
+        \ agente, de uma impressora que ainda é dele; qualquer outro caso (de outro\
+        \ agente, inexistente, `PENDING`, `PRINTED`, `FAILED`): 404 `PRINT_JOB_NOT_FOUND`.\
+        \ O tipo de mídia é `application/pdf` ou `application/octet-stream`."
+      operationId: getPrintJobContent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: O conteúdo do documento.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Ler o conteúdo de um job entregue ao agente
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}:
+    get:
+      description: "Exige `printing.agents.manage`. Inexistente: 404 `PRINT_AGENT_NOT_FOUND`."
+      operationId: getPrintAgent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}/deactivate:
+    post:
+      description: Exige `printing.agents.manage`. Revoga o token na hora e mantém
+        o cadastro. Repetir é `200` e não muda nada.
+      operationId: deactivatePrintAgent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}/rotate-token:
+    post:
+      description: "Exige `printing.agents.manage`. O token anterior deixa de valer\
+        \ na hora. O `token` aparece só nesta resposta (`Cache-Control: no-store`)\
+        \ e não se recupera: guarde-o agora. Agente desativado: 422 `PRINT_AGENT_INACTIVE`.\
+        \ Sem `Idempotency-Key`, para não guardar o token."
+      operationId: rotatePrintAgentToken
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentTokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Trocar o token de um agente
+      tags:
+      - Printing
+  /api/v1/print-jobs:
+    get:
+      description: "Exige `printing.jobs.read`. Paginação por cursor, dos mais novos\
+        \ aos mais antigos; `status` e `printerId` filtram. Sem o conteúdo."
+      operationId: listPrintJobs
+      parameters:
+      - description: Só os jobs nesta situação.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - SENT
+          - PRINTED
+          - FAILED
+      - description: Só os jobs desta impressora.
+        in: query
+        name: printerId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePrintJobResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os jobs de impressão
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.jobs.manage` e `Idempotency-Key`. O conteúdo vai\
+        \ em base64 e tem no máximo 700 KiB (716800 bytes) decodificado; acima disso,\
+        \ 422 `PRINT_CONTENT_TOO_LARGE`. Corpo acima de 1 MB: 413 `PAYLOAD_TOO_LARGE`,\
+        \ recusado pela idempotência antes de chegar aqui. Base64 inválido: 400 `VALIDATION_FAILED`\
+        \ no campo `content`. Conteúdo vazio: 422 `PRINT_CONTENT_EMPTY`; impressora\
+        \ A4_PDF com conteúdo que não começa com `%PDF-`: 422 `PRINT_CONTENT_NOT_PDF`.\
+        \ Impressora inexistente: 400 `UNKNOWN_PRINTER`; desativada: 422 `PRINTER_INACTIVE`.\
+        \ O conteúdo nunca volta na resposta."
+      operationId: createPrintJob
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintJobRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJobResponse"
+          description: Job enfileirado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Enfileirar um job de impressão manual
+      tags:
+      - Printing
+  /api/v1/printers:
+    get:
+      description: Exige `printing.jobs.read`.
+      operationId: listPrinters
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as impressoras
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.agents.manage`. Nome ou endereço inválido: 400\
+        \ `VALIDATION_FAILED` no campo. Agente inexistente: 400 `UNKNOWN_PRINT_AGENT`;\
+        \ desativado: 422 `PRINT_AGENT_INACTIVE`."
+      operationId: createPrinter
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrinterRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: Impressora cadastrada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma impressora
+      tags:
+      - Printing
+  /api/v1/printers/{id}:
+    get:
+      description: "Exige `printing.jobs.read`. O `ETag` vai no `If-Match` da alteraç\
+        ão. Inexistente: 404 `PRINTER_NOT_FOUND`."
+      operationId: getPrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma impressora
+      tags:
+      - Printing
+    put:
+      description: "Exige `printing.agents.manage` e o `If-Match` (ausente: 428; outra\
+        \ versão: 412). Troca nome, endereço e agente; o `kind` não muda (um `kind`\
+        \ no corpo é ignorado). Impressora desativada: 422 `PRINTER_INACTIVE`. Agente\
+        \ inexistente: 400 `UNKNOWN_PRINT_AGENT`; desativado: 422 `PRINT_AGENT_INACTIVE`."
+      operationId: updatePrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrinterChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar uma impressora
+      tags:
+      - Printing
+  /api/v1/printers/{id}/deactivate:
+    post:
+      description: Exige `printing.agents.manage`. Mantém o cadastro. Repetir é `200`
+        e não muda nada.
+      operationId: deactivatePrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma impressora
+      tags:
+      - Printing
   /api/v1/push-devices:
     get:
       description: "Do mais novo para o mais antigo, sem o token. Exige só autenticaç\
@@ -15931,6 +16536,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPagePrintJobResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrintJobResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePushDeviceResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -16384,6 +17003,36 @@ components:
       - closed
       - closedToArrival
       - closedToDeparture
+    DeliveredJobResponse:
+      type: object
+      description: "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`)."
+      properties:
+        attempts:
+          type: integer
+          format: int32
+          description: "Quantas vezes o job foi entregue, esta inclusive."
+        createdAt:
+          type: string
+          format: date-time
+        documentType:
+          type: string
+        id:
+          type: string
+          format: uuid
+        mediaType:
+          type: string
+          description: O tipo de mídia do conteúdo.
+          example: application/pdf
+        printerId:
+          type: string
+          format: uuid
+      required:
+      - attempts
+      - createdAt
+      - documentType
+      - id
+      - mediaType
+      - printerId
     DepartmentRequest:
       type: object
       description: Nome de um setor.
@@ -20241,6 +20890,241 @@ components:
       required:
       - children
       - oneAdult
+    PrintAgentIdentityResponse:
+      type: object
+      description: Quem é o agente de impressão autenticado.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - id
+      - name
+    PrintAgentRequest:
+      type: object
+      description: O agente de impressão a cadastrar.
+      properties:
+        name:
+          type: string
+          description: "Nome de 1 a 100 caracteres, sem controle."
+          example: Agente da recepção
+      required:
+      - name
+    PrintAgentResponse:
+      type: object
+      description: Um agente de impressão. Nunca traz o token nem o hash.
+      properties:
+        active:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: "Última vez que o agente se apresentou, se alguma."
+          nullable: true
+        name:
+          type: string
+        version:
+          type: integer
+          format: int64
+          description: Versão do cadastro.
+      required:
+      - active
+      - id
+      - name
+      - version
+    PrintAgentTokenResponse:
+      type: object
+      description: Um agente de impressão com o token recém-emitido.
+      properties:
+        active:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        name:
+          type: string
+        token:
+          type: string
+          description: "O token do agente (`Authorization: Bearer`). Exibido uma ú\
+            nica vez; não se recupera."
+        version:
+          type: integer
+          format: int64
+      required:
+      - active
+      - id
+      - name
+      - token
+      - version
+    PrintJobAckRequest:
+      type: object
+      description: "A confirmação do agente: o job foi impresso ou falhou."
+      properties:
+        failureCode:
+          type: string
+          description: "Código da falha (só com `FAILED`), `[A-Z][A-Z0-9_]{0,49}`.\
+            \ Nunca texto livre."
+          example: PAPER_JAM
+          nullable: true
+        result:
+          type: string
+          description: O resultado da impressão.
+          enum:
+          - PRINTED
+          - FAILED
+      required:
+      - result
+    PrintJobRequest:
+      type: object
+      description: O job de impressão a enfileirar.
+      properties:
+        content:
+          type: string
+          format: byte
+          description: "O conteúdo em base64, até 716800 bytes decodificado. PDF para\
+            \ A4_PDF."
+        documentType:
+          type: string
+          description: "O tipo do documento, `[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+`\
+            \ (até 100)."
+          example: frontdesk.registration-card
+        printerId:
+          type: string
+          format: uuid
+          description: A impressora de destino (ativa).
+      required:
+      - content
+      - documentType
+      - printerId
+    PrintJobResponse:
+      type: object
+      description: "Um job de impressão, sem o conteúdo."
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        documentType:
+          type: string
+        failureCode:
+          type: string
+          description: "O código de falha, quando `FAILED`."
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        printerId:
+          type: string
+          format: uuid
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          description: "A situação do job. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PENDING
+          - SENT
+          - PRINTED
+          - FAILED
+      required:
+      - attempts
+      - createdAt
+      - documentType
+      - id
+      - printerId
+      - status
+    PrinterChangeRequest:
+      type: object
+      description: O que muda numa impressora. O tipo não muda.
+      properties:
+        address:
+          type: string
+        agentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - address
+      - agentId
+      - name
+    PrinterRequest:
+      type: object
+      description: A impressora a cadastrar.
+      properties:
+        address:
+          type: string
+          description: "Endereço da impressora no agente: 1 a 255 caracteres, sem\
+            \ controle nem espaço."
+          example: tcp://10.0.0.5:9100
+        agentId:
+          type: string
+          format: uuid
+          description: O agente que atende a impressora (deve estar ativo).
+        kind:
+          type: string
+          description: "O tipo, fixo depois da criação: decide o tipo de mídia do\
+            \ conteúdo."
+          enum:
+          - THERMAL_ESCPOS
+          - A4_PDF
+        name:
+          type: string
+          description: "Nome de 1 a 100 caracteres, sem controle."
+          example: Balcão da recepção
+      required:
+      - address
+      - agentId
+      - kind
+      - name
+    PrinterResponse:
+      type: object
+      description: Uma impressora.
+      properties:
+        active:
+          type: boolean
+        address:
+          type: string
+        agentId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: "O tipo da impressora. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - THERMAL_ESCPOS
+          - A4_PDF
+        name:
+          type: string
+      required:
+      - active
+      - address
+      - agentId
+      - id
+      - kind
+      - name
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
@@ -26057,5 +26941,12 @@ components:
         \ /api/v1/auth/refresh`, válido por 15 min. Enquanto a troca de senha estiver\
         \ pendente, só `POST /api/v1/auth/password` e `POST /api/v1/auth/logout` respondem;\
         \ o resto devolve 403 `PASSWORD_CHANGE_REQUIRED`."
+      scheme: bearer
+      type: http
+    printAgentToken:
+      bearerFormat: opaque
+      description: "Token opaco de serviço do realm `print-agent`, enviado como `Authorization:\
+        \ Bearer …`, válido só nos caminhos `/api/v1/print-agents/me/**`. Recusado\
+        \ com 401 `UNAUTHENTICATED`."
       scheme: bearer
       type: http

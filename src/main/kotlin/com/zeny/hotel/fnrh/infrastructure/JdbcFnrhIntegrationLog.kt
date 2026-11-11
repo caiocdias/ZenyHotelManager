@@ -102,11 +102,13 @@ class JdbcFnrhCallHistory(
     override fun lastSuccessAt(environment: FnrhEnvironment): Instant? =
         jdbc
             .sql(
-                "SELECT max(occurred_at) FROM fnrh.integration_call " +
-                    "WHERE environment = :environment AND outcome = 'SUCCESS'",
+                "SELECT occurred_at FROM fnrh.integration_call " +
+                    "WHERE environment = :environment AND outcome = 'SUCCESS' " +
+                    "ORDER BY occurred_at DESC, id DESC LIMIT 1",
             ).param("environment", environment.name)
-            .query { rs, _ -> rs.instant(1) }
-            .single()
+            .query { rs, _ -> checkNotNull(rs.instant(1)) }
+            .optional()
+            .orElse(null)
 
     override fun lastFailure(environment: FnrhEnvironment): FnrhLastFailure? =
         jdbc
