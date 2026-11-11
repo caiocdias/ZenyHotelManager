@@ -44,12 +44,14 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.system.CapturedOutput
 import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Import
+import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
 import org.springframework.http.HttpMethod.PUT
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import org.springframework.transaction.support.TransactionTemplate
+import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.LocalDate
@@ -201,6 +203,41 @@ class FnrhCheckInSendTest(
         FnrhTestServer.requests().map { "${it.method.value()} ${it.url}" } shouldContainExactly
             listOf("POST ${FnrhTestServer.BASE_PATH}/reservas")
         errorsOf(checkInRow(id).id) shouldContainExactly listOf(Triple(guest, "person.gender", "REQUIRED"))
+    }
+
+    @Test
+    fun `a disability out of the domain is invalid with a neutral error that neither the table nor the API names`() {
+        val withDisability =
+            fnrhGuest(newCpf(), sensitive = mapOf("raceColor" to "BROWN", "disability" to OUT_OF_DOMAIN))
+        val withoutRace = fnrhGuest(newCpf(), sensitive = mapOf("disability" to OUT_OF_DOMAIN))
+        val id = checkedIn(listOf(stayGuest(withDisability, primary = true), stayGuest(withoutRace)))
+        iam.enableFnrh()
+        FnrhTestServer.stubRegisterReservation_v2_4(remoteId())
+
+        sender.send(id).invalid shouldBe 1
+
+        val submission = checkInRow(id)
+        submission.status shouldBe FnrhSubmissionStatus.INVALID
+        errorsOf(submission.id) shouldContainExactlyInAnyOrder
+            listOf(
+                Triple(withDisability, "person.sensitiveData", "INVALID_VALUE"),
+                Triple(withoutRace, "person.sensitiveData", "INVALID_VALUE"),
+            )
+        jdbc
+            .sql("SELECT count(*) FROM fnrh.submission_error WHERE field IN (:fields)")
+            .param("fields", SENSITIVE_FIELDS)
+            .query(Long::class.java)
+            .single() shouldBe 0L
+        val item =
+            invalidSubmissionsPages().flatMap { it["items"].values() }.single {
+                it["id"].asString() == submission.id.toString()
+            }
+        item["errors"].values().map { it["field"].asString() }.toSet() shouldBe setOf("person.sensitiveData")
+        for (page in invalidSubmissionsPages().map { it.toString() }) {
+            for (field in SENSITIVE_FIELDS + OUT_OF_DOMAIN) {
+                withClue("API leaked $field") { page shouldNotContain field }
+            }
+        }
     }
 
     @Test
@@ -538,6 +575,20 @@ class FnrhCheckInSendTest(
         return booked.id
     }
 
+    /** Todas as páginas de `GET /api/v1/fnrh/submissions?status=INVALID`, lidas como o administrador. */
+    private fun invalidSubmissionsPages(): List<JsonNode> =
+        with(iam) {
+            val pages = mutableListOf<JsonNode>()
+            var cursor: String? = null
+            do {
+                val url = "/api/v1/fnrh/submissions?status=INVALID&limit=100" + cursor?.let { "&cursor=$it" }.orEmpty()
+                val page = call(GET, url, asAdmin()).ok()
+                pages.add(page)
+                cursor = page["nextCursor"].takeUnless { it.isNull }?.asString()
+            } while (cursor != null)
+            pages
+        }
+
     private fun checkInRow(reservation: UUID): Row = rows(reservation).single { it.operation == FnrhOperation.CHECK_IN }
 
     private fun errorsOf(submission: UUID): List<Triple<UUID, String, String>> =
@@ -610,5 +661,11 @@ class FnrhCheckInSendTest(
     private companion object {
         /** O CPF solicitante padrão de [enableFnrh], só com os dígitos. */
         const val DEFAULT_CPF = "52998224725"
+
+        /** Um código de deficiência que o perfil aceita e o domínio da FNRH não tem. */
+        const val OUT_OF_DOMAIN = "ZZ_FORA_DO_DOMINIO"
+
+        /** Os campos dos dados sensíveis (RN-19) que nunca aparecem nos erros gravados nem na API. */
+        val SENSITIVE_FIELDS = listOf("person.race", "person.disabilityOption", "person.disabilityType")
     }
 }

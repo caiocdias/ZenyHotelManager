@@ -1,5 +1,6 @@
 package com.zeny.hotel.fnrh.application
 
+import com.zeny.hotel.fnrh.domain.FnrhFieldError
 import com.zeny.hotel.fnrh.domain.FnrhGuest
 import com.zeny.hotel.fnrh.domain.FnrhLocalValidator
 import com.zeny.hotel.fnrh.domain.FnrhPersonData
@@ -14,6 +15,7 @@ import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.StayGuestSummary
 import com.zeny.hotel.shared.Cpf
+import com.zeny.hotel.shared.FieldViolationCodes
 import org.springframework.stereotype.Component
 
 /**
@@ -51,7 +53,8 @@ class FnrhCheckInStep(
      * Valida todos os hóspedes da reserva (com erro, `Invalid` sem nenhuma chamada), garante a reserva no Serpro e
      * põe nela cada hóspede que ainda não tem id remoto: os sem autorização de menor primeiro (o principal à frente),
      * depois os menores, cada um com o id remoto do responsável. Os erros saem sem repetição: o mesmo sobrevivente
-     * pode aparecer duas vezes na reserva depois de uma mesclagem, e a chave de `fnrh.submission_error` é o erro.
+     * pode aparecer duas vezes na reserva depois de uma mesclagem, e a chave de `fnrh.submission_error` é o erro. Os
+     * dos dados sensíveis (RN-19) viram um só erro neutro por hóspede ([neutral]).
      */
     fun registerGuests(
         submission: FnrhSubmission,
@@ -64,6 +67,7 @@ class FnrhCheckInStep(
                 .flatMap { guest ->
                     validator
                         .validate(guest.person, guest.guest, reservation.arrival, guest.responsibleKnown)
+                        .map { it.neutral() }
                         .map { FnrhSubmissionError(guest.guestId.value, it.field, it.code) }
                 }.distinct()
         if (errors.isNotEmpty()) return FnrhStepOutcome.Invalid(errors)
@@ -254,6 +258,17 @@ class FnrhCheckInStep(
 
     private companion object {
         val CHECKED_IN = setOf(ReservationStatus.IN_HOUSE, ReservationStatus.CHECKED_OUT)
+
+        /** Os campos dos dados sensíveis (RN-19): raça/cor e deficiência. */
+        val SENSITIVE_FIELDS = setOf("person.race", "person.disabilityOption", "person.disabilityType")
+        val SENSITIVE_DATA_ERROR = FnrhFieldError("person.sensitiveData", FieldViolationCodes.INVALID_VALUE)
+
+        /**
+         * O erro de um dado sensível vira `person.sensitiveData` / `INVALID_VALUE`: o campo e o código diriam, por
+         * exemplo, que o hóspede declarou deficiência (o tipo só existe com ela), e o erro é gravado em
+         * `fnrh.submission_error` e exposto na API. A validação local segue com o detalhe; só o gravado é neutro.
+         */
+        fun FnrhFieldError.neutral(): FnrhFieldError = if (field in SENSITIVE_FIELDS) SENSITIVE_DATA_ERROR else this
 
         /**
          * O hóspede do Serpro da pessoa; `null` se não há. Mais de um casamento é resultado incerto: falha fechado

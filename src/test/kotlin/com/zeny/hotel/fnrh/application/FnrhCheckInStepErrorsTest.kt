@@ -23,8 +23,9 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * Os erros que o `CHECK_IN` grava quando a validação local recusa os hóspedes (M5 E08, revisão final M-2): sem
- * duplicatas (a chave de `fnrh.submission_error` é o erro inteiro) e sem nenhuma chamada ao Serpro.
+ * Os erros que o `CHECK_IN` grava quando a validação local recusa os hóspedes (M5 E08, revisão final M-2 e I-3): sem
+ * duplicatas (a chave de `fnrh.submission_error` é o erro inteiro), sem dizer qual dado sensível (RN-19) está errado
+ * e sem nenhuma chamada ao Serpro.
  */
 class FnrhCheckInStepErrorsTest {
     private val guests = mockk<GuestsApi>()
@@ -60,6 +61,44 @@ class FnrhCheckInStepErrorsTest {
         outcome shouldBe
             FnrhStepOutcome.Invalid(listOf(FnrhSubmissionError(survivor.value, "person.gender", "REQUIRED")))
         verify(exactly = 0) { sync.writeInFlight(any()) }
+    }
+
+    @Test
+    fun `the errors of race and disability become one neutral sensitive data error per guest`() {
+        val guest = GuestId(UuidV7.generate())
+        survives(guest, guest)
+        every { guests.fnrhData(guest) } returns data(guest)
+        every { validator.validate(any(), any(), any(), any()) } returns
+            listOf(
+                FnrhFieldError("person.race", "REQUIRED"),
+                FnrhFieldError("person.gender", "REQUIRED"),
+                FnrhFieldError("person.disabilityOption", "NOT_IN_DOMAIN"),
+                FnrhFieldError("person.disabilityType", "NOT_IN_DOMAIN"),
+            )
+
+        val outcome = step.registerGuests(submission, reservation(listOf(guest)), connection())
+
+        outcome shouldBe
+            FnrhStepOutcome.Invalid(
+                listOf(
+                    FnrhSubmissionError(guest.value, "person.sensitiveData", "INVALID_VALUE"),
+                    FnrhSubmissionError(guest.value, "person.gender", "REQUIRED"),
+                ),
+            )
+    }
+
+    @Test
+    fun `a disability type error alone does not say which sensitive field is wrong`() {
+        val guest = GuestId(UuidV7.generate())
+        survives(guest, guest)
+        every { guests.fnrhData(guest) } returns data(guest)
+        every { validator.validate(any(), any(), any(), any()) } returns
+            listOf(FnrhFieldError("person.disabilityType", "REQUIRED"))
+
+        val outcome = step.registerGuests(submission, reservation(listOf(guest)), connection())
+
+        outcome shouldBe
+            FnrhStepOutcome.Invalid(listOf(FnrhSubmissionError(guest.value, "person.sensitiveData", "INVALID_VALUE")))
     }
 
     // --- Apoio ----------------------------------------------------------------------------------------------------
