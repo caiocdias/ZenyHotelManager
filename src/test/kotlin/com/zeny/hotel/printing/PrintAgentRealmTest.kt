@@ -260,6 +260,7 @@ class PrintAgentRealmTest(
                 "/api/v1/print-agents/me/jobs",
                 "/api/v1/print-agents/me/jobs/{id}/ack",
                 "/api/v1/print-agents/me/jobs/{id}/content",
+                "/api/v1/print-agents/me/jobs/stream",
             )
         bySchemes
             .filter { (path, _) -> path.startsWith("/api/v1/print-agents/me") }

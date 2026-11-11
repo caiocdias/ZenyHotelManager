@@ -41,6 +41,7 @@ class PrintingContractAttackTest {
             "pollPrintAgentJobs",
             "getPrintJobContent",
             "acknowledgePrintJob",
+            "streamPrintAgentJobs",
         )
     }
 

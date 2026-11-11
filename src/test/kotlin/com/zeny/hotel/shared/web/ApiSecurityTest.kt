@@ -190,7 +190,7 @@ class ApiSecurityTest(
                 covered.forEach { (info, handler) ->
                     withClue("${handler.beanType.simpleName}: ${info.patterns()}") {
                         handler.beanType.simpleName shouldBeIn
-                            setOf("PrintAgentSelfController", "PrintAgentJobsController")
+                            setOf("PrintAgentSelfController", "PrintAgentJobsController", "PrintAgentStreamController")
                     }
                 }
                 // Nenhuma rota pública nem de usuário casa com um caminho do realm (nem com o prefixo sem a barra).
