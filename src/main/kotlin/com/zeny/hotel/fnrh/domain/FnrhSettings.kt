@@ -18,7 +18,8 @@ import java.util.UUID
 /**
  * A configuração da integração com a FNRH (SPEC §8.2.17, D-E07-1): ambiente, usuário, senha, CPF solicitante padrão,
  * ligado e versão. Existe uma linha só, a semente da migração ([SINGLETON_ID]), para o primeiro `PUT` ter `ETag`.
- * Usuário, senha e CPF ficam cifrados no banco (`EncryptedStringConverter`).
+ * Usuário, senha e CPF ficam cifrados no banco (`EncryptedStringConverter`). Mudam por [update] ou, para apagar a
+ * credencial, por [clearCredentials] (M5 E16).
  *
  * **Nunca** interpole o [defaultCpf] em log, mensagem ou `toString`: `Cpf.toString()` devolve os dígitos.
  */
@@ -91,6 +92,17 @@ class FnrhSettings private constructor(
         this.password = newPassword
         this.encodedDefaultCpf = defaultCpf?.digits
         this.enabled = enabled
+    }
+
+    /**
+     * Apaga a credencial: usuário, senha e CPF solicitante padrão viram nulos e a integração desliga. O [environment]
+     * não muda. Ligar de novo exige informar a credencial inteira (M5 E16, D-E16-2).
+     */
+    fun clearCredentials() {
+        username = null
+        password = null
+        encodedDefaultCpf = null
+        enabled = false
     }
 
     private fun requireValidUsername(username: String?) {
