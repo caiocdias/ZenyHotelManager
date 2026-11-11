@@ -3406,6 +3406,37 @@ paths:
       summary: Editar a configuração da FNRH
       tags:
       - FNRH
+  /api/v1/fnrh/settings/clear-credentials:
+    post:
+      description: "Exige `fnrh.settings.manage` e o `If-Match` (ausente: 428; outra\
+        \ versão: 412). Apaga o usuário, a senha e o CPF solicitante padrão e desliga\
+        \ a integração; mantém o ambiente e o CPF por usuário. As submissões pendentes\
+        \ ficam na fila sem gastar tentativa. Religar exige uma nova credencial (422\
+        \ `FNRH_SETTINGS_INCOMPLETE`). Repetir sobre uma configuração vazia é `200`\
+        \ e mantém o `ETag`."
+      operationId: clearFnrhCredentials
+      parameters:
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FnrhSettingsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Limpar a credencial da FNRH
+      tags:
+      - FNRH
   /api/v1/fnrh/status:
     get:
       description: "Exige `fnrh.submissions.read`. Os instantes são os do último sucesso\
