@@ -74,6 +74,14 @@ interface PrintJobJpaRepository : JpaRepository<PrintJob, UUID> {
     fun ofInactivePrinters(page: PageRequest): List<PrintJob>
 
     @Query(
+        "SELECT j FROM PrintJob j WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PENDING, " +
+            "com.zeny.hotel.printing.PrintJobStatus.SENT) AND j.printerId IN " +
+            "(SELECT p.id FROM Printer p WHERE p.active = true AND p.agentId IN " +
+            "(SELECT a.id FROM PrintAgent a WHERE a.active = false)) ORDER BY j.position",
+    )
+    fun ofDeactivatedAgents(page: PageRequest): List<PrintJob>
+
+    @Query(
         "SELECT j FROM PrintJob j WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PRINTED, " +
             "com.zeny.hotel.printing.PrintJobStatus.FAILED) AND j.finishedAt < :before AND j.content IS NOT NULL " +
             "ORDER BY j.finishedAt, j.id",
@@ -153,6 +161,8 @@ class JpaPrintJobStore(
 
     override fun ofInactivePrinters(limit: Int): List<PrintJob> = jobs.ofInactivePrinters(PageRequest.ofSize(limit))
 
+    override fun ofDeactivatedAgents(limit: Int): List<PrintJob> = jobs.ofDeactivatedAgents(PageRequest.ofSize(limit))
+
     override fun purgeable(
         before: Instant,
         limit: Int,
@@ -164,4 +174,11 @@ class JpaPrintJobStore(
             .query { rs, _ -> PrintJobStatus.valueOf(rs.getString(1)) to rs.getLong(2) }
             .list()
             .toMap()
+
+    override fun countFailedSince(since: Instant): Long =
+        jdbc
+            .sql("SELECT count(*) FROM printing.print_job WHERE status = 'FAILED' AND finished_at >= :since")
+            .param("since", java.sql.Timestamp.from(since))
+            .query(Long::class.java)
+            .single()
 }

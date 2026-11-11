@@ -59,6 +59,8 @@ internal data class PrintJobAuditState(
     val status: String,
     val attempts: Int,
     val deliveredTo: String?,
+    val failureCode: String?,
+    val purged: Boolean,
 )
 
 internal fun PrintJob.auditState() =
@@ -69,4 +71,6 @@ internal fun PrintJob.auditState() =
         status.name,
         attempts,
         deliveredTo?.toString(),
+        failureCode,
+        contentPurgedAt != null,
     )

@@ -98,6 +98,9 @@ interface PrintJobStore {
     /** Os `PENDING` e `SENT` de impressoras desativadas. */
     fun ofInactivePrinters(limit: Int): List<PrintJob>
 
+    /** Os `PENDING` e `SENT` de impressoras **ativas** cujo agente foi desativado. */
+    fun ofDeactivatedAgents(limit: Int): List<PrintJob>
+
     /** Os `PRINTED`/`FAILED` terminados antes de [before] que ainda guardam o conteúdo. */
     fun purgeable(
         before: Instant,
@@ -105,6 +108,9 @@ interface PrintJobStore {
     ): List<PrintJob>
 
     fun countByStatus(): Map<PrintJobStatus, Long>
+
+    /** Quantos jobs `FAILED` terminaram em [since] ou depois (as falhas recentes). */
+    fun countFailedSince(since: Instant): Long
 }
 
 /** Os tetos do conteúdo (D-E10-5): o da [PrintingApi] e o menor, da rota manual. */

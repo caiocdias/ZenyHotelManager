@@ -31,6 +31,7 @@ import org.springframework.test.context.ContextConfiguration
         INVENTORY_HORIZON_DEFERRED,
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
+        PRINTING_MAINTENANCE_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
@@ -87,3 +88,9 @@ const val PROVISIONAL_EXPIRY_DEFERRED = "zeny.reservations.provisional-expiry.in
  * de outros testes e gastaria as respostas do WireMock global.
  */
 const val FNRH_SEND_DEFERRED = "zeny.fnrh.submissions.initial-delay=PT24H"
+
+/**
+ * A manutenção da fila de impressão só roda quando o teste a chama: ela reenvia, expira e apaga jobs de todo o banco
+ * compartilhado, e um contexto com o relógio adiantado ([MutableClock]) mexeria nos jobs de outros testes.
+ */
+const val PRINTING_MAINTENANCE_DEFERRED = "zeny.printing.maintenance-initial-delay=PT24H"
