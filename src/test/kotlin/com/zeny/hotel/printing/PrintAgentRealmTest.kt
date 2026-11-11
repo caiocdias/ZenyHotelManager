@@ -255,7 +255,12 @@ class PrintAgentRealmTest(
                 }
             }
         bySchemes.filter { (_, s) -> s == listOf("printAgentToken") }.map { it.first }.toSet() shouldBe
-            setOf("/api/v1/print-agents/me/identity")
+            setOf(
+                "/api/v1/print-agents/me/identity",
+                "/api/v1/print-agents/me/jobs",
+                "/api/v1/print-agents/me/jobs/{id}/ack",
+                "/api/v1/print-agents/me/jobs/{id}/content",
+            )
         bySchemes
             .filter { (path, _) -> path.startsWith("/api/v1/print-agents/me") }
             .forEach { (_, s) -> s shouldBe listOf("printAgentToken") }

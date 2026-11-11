@@ -6,6 +6,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
@@ -188,7 +189,8 @@ class ApiSecurityTest(
                 withClue("realm ${realm.name} has handlers") { covered.shouldNotBeEmpty() }
                 covered.forEach { (info, handler) ->
                     withClue("${handler.beanType.simpleName}: ${info.patterns()}") {
-                        handler.beanType.simpleName shouldBe "PrintAgentSelfController"
+                        handler.beanType.simpleName shouldBeIn
+                            setOf("PrintAgentSelfController", "PrintAgentJobsController")
                     }
                 }
                 // Nenhuma rota pública nem de usuário casa com um caminho do realm (nem com o prefixo sem a barra).

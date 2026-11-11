@@ -54,6 +54,9 @@ interface PrintJobStore {
     /** Grava na hora as mudanças pendentes. */
     fun flush()
 
+    /** O job sem travar (para leitura), ou `null`. */
+    fun byId(id: UUID): PrintJob?
+
     /** O job travado para escrita (`FOR UPDATE`), ou `null`. Quem chega depois vê o estado novo. */
     fun lockById(id: UUID): PrintJob?
 
@@ -103,18 +106,6 @@ interface PrintJobStore {
 
     fun countByStatus(): Map<PrintJobStatus, Long>
 }
-
-/** O retrato do job para a trilha (D-E10-3): sem conteúdo. */
-private data class PrintJobAuditState(
-    val id: String,
-    val printerId: String,
-    val documentType: String,
-    val status: String,
-    val attempts: Int,
-)
-
-private fun PrintJob.auditState() =
-    PrintJobAuditState(id.toString(), printerId.toString(), documentType, status.name, attempts)
 
 /** Os tetos do conteúdo (D-E10-5): o da [PrintingApi] e o menor, da rota manual. */
 @Component

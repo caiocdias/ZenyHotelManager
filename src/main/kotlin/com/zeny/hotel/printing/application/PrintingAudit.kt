@@ -1,6 +1,7 @@
 package com.zeny.hotel.printing.application
 
 import com.zeny.hotel.printing.domain.PrintAgent
+import com.zeny.hotel.printing.domain.PrintJob
 import com.zeny.hotel.printing.domain.Printer
 
 internal object PrintingAudit {
@@ -12,6 +13,9 @@ internal object PrintingAudit {
     const val CREATE_PRINTER = "printing.printer.create"
     const val UPDATE_PRINTER = "printing.printer.update"
     const val DEACTIVATE_PRINTER = "printing.printer.deactivate"
+    const val JOB = "printing.job"
+    const val CLAIM_JOB = "printing.job.claim"
+    const val ACK_JOB = "printing.job.ack"
 }
 
 /**
@@ -45,3 +49,23 @@ internal data class PrinterAuditState(
 
 internal fun Printer.auditState() =
     PrinterAuditState(id.toString(), name, kind.name, address, agentId.toString(), active, version)
+
+/** O retrato do job para a trilha (D-E10-3): sem conteúdo nem token. */
+internal data class PrintJobAuditState(
+    val id: String,
+    val printerId: String,
+    val documentType: String,
+    val status: String,
+    val attempts: Int,
+    val deliveredTo: String?,
+)
+
+internal fun PrintJob.auditState() =
+    PrintJobAuditState(
+        id.toString(),
+        printerId.toString(),
+        documentType,
+        status.name,
+        attempts,
+        deliveredTo?.toString(),
+    )

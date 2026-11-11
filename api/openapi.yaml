@@ -6741,6 +6741,117 @@ paths:
       summary: Quem é o agente autenticado
       tags:
       - Printing
+  /api/v1/print-agents/me/jobs:
+    get:
+      description: "Autenticado pelo token do agente. Reivindica os jobs `PENDING`\
+        \ das impressoras ativas do agente (eles passam a `SENT`) e, sem nenhum, espera\
+        \ até `wait` segundos (0 a 30; padrão 25) consultando a fila. Sem job até\
+        \ o fim da espera: `200` com `[]`. O agente também recebe `200` com `[]` na\
+        \ hora quando abre mais conexões que o limite (o long-poll mais antigo é despejado)\
+        \ e quando o servidor para: volte a pedir. Na reentrega de um job já impresso,\
+        \ confirme de novo sem imprimir. `wait` fora de 0 a 30: 400 `VALIDATION_FAILED`."
+      operationId: pollPrintAgentJobs
+      parameters:
+      - description: "Segundos de espera, de 0 a 30 (padrão 25)."
+        in: query
+        name: wait
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DeliveredJobResponse"
+          description: "Os jobs reivindicados; `[]` sem job até o fim da espera ou\
+            \ quando a conexão é despejada."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Receber os jobs de impressão por long-poll
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs/{id}/ack:
+    post:
+      description: "Autenticado pelo token do agente. `PRINTED` ou `FAILED` (com `failureCode`\
+        \ opcional, `[A-Z][A-Z0-9_]{0,49}`, nunca texto livre: 400 `INVALID_FAILURE_CODE`).\
+        \ Job de outro agente ou inexistente: 404 `PRINT_JOB_NOT_FOUND`; job deste\
+        \ agente que já não está `SENT` (já confirmado, reenviado ou expirado): 409\
+        \ `PRINT_JOB_NOT_ACKNOWLEDGEABLE`."
+      operationId: acknowledgePrintJob
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintJobAckRequest"
+        required: true
+      responses:
+        "204":
+          description: Job confirmado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Confirmar um job de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/me/jobs/{id}/content:
+    get:
+      description: "Autenticado pelo token do agente. Só o job `SENT` entregue a este\
+        \ agente, de uma impressora que ainda é dele; qualquer outro caso (de outro\
+        \ agente, inexistente, `PENDING`, `PRINTED`, `FAILED`): 404 `PRINT_JOB_NOT_FOUND`.\
+        \ O tipo de mídia é `application/pdf` ou `application/octet-stream`."
+      operationId: getPrintJobContent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: O conteúdo do documento.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Ler o conteúdo de um job entregue ao agente
+      tags:
+      - Printing
   /api/v1/print-agents/{id}:
     get:
       description: "Exige `printing.agents.manage`. Inexistente: 404 `PRINT_AGENT_NOT_FOUND`."
@@ -16845,6 +16956,36 @@ components:
       - closed
       - closedToArrival
       - closedToDeparture
+    DeliveredJobResponse:
+      type: object
+      description: "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`)."
+      properties:
+        attempts:
+          type: integer
+          format: int32
+          description: "Quantas vezes o job foi entregue, esta inclusive."
+        createdAt:
+          type: string
+          format: date-time
+        documentType:
+          type: string
+        id:
+          type: string
+          format: uuid
+        mediaType:
+          type: string
+          description: O tipo de mídia do conteúdo.
+          example: application/pdf
+        printerId:
+          type: string
+          format: uuid
+      required:
+      - attempts
+      - createdAt
+      - documentType
+      - id
+      - mediaType
+      - printerId
     DepartmentRequest:
       type: object
       description: Nome de um setor.
@@ -20777,6 +20918,23 @@ components:
       - name
       - token
       - version
+    PrintJobAckRequest:
+      type: object
+      description: "A confirmação do agente: o job foi impresso ou falhou."
+      properties:
+        failureCode:
+          type: string
+          description: "Código da falha (só com `FAILED`), `[A-Z][A-Z0-9_]{0,49}`.\
+            \ Nunca texto livre."
+          example: PAPER_JAM
+          nullable: true
+        result:
+          type: string
+          enum:
+          - PRINTED
+          - FAILED
+      required:
+      - result
     PrintJobRequest:
       type: object
       description: O job de impressão a enfileirar.

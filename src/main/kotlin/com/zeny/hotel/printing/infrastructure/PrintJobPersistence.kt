@@ -104,6 +104,8 @@ class JpaPrintJobStore(
 
     override fun flush() = jobs.flush()
 
+    override fun byId(id: UUID): PrintJob? = jobs.findById(id).orElse(null)
+
     override fun lockById(id: UUID): PrintJob? = jobs.lockById(id)
 
     override fun page(
