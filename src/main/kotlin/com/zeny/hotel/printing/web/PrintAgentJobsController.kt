@@ -3,6 +3,9 @@ package com.zeny.hotel.printing.web
 import com.zeny.hotel.printing.application.DeliveredJob
 import com.zeny.hotel.printing.application.PrintAgentJobsService
 import com.zeny.hotel.shared.ApiV1Controller
+import com.zeny.hotel.shared.ErrorCodes
+import com.zeny.hotel.shared.FieldViolation
+import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.ServicePrincipal
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -122,16 +125,17 @@ class PrintAgentJobsController(
         summary = "Confirmar um job de impressão",
         description =
             "Autenticado pelo token do agente. `PRINTED` ou `FAILED` (com `failureCode` opcional, " +
-                "`[A-Z][A-Z0-9_]{0,49}`, nunca texto livre: 400 `INVALID_FAILURE_CODE`). Job de outro agente ou " +
-                "inexistente: 404 `PRINT_JOB_NOT_FOUND`; job deste agente que já não está `SENT` (já confirmado, " +
-                "reenviado ou expirado): 409 `PRINT_JOB_NOT_ACKNOWLEDGEABLE`.",
+                "`[A-Z][A-Z0-9_]{0,49}`, nunca texto livre: 400 `INVALID_FAILURE_CODE`). Job de impressora de " +
+                "outro agente ou inexistente: 404 `PRINT_JOB_NOT_FOUND`; job de impressora deste agente que não está " +
+                "`SENT` entregue a ele (já confirmado, reenviado ou expirado): 409 `PRINT_JOB_NOT_ACKNOWLEDGEABLE`. " +
+                "`result` só como string; número ou outro valor: 400 `VALIDATION_FAILED`.",
     )
     @ApiResponse(responseCode = "204", description = "Job confirmado.")
     fun acknowledge(
         @AuthenticationPrincipal principal: ServicePrincipal,
         @PathVariable id: UUID,
         @RequestBody request: PrintJobAckRequest,
-    ) = service.acknowledge(principal, id, request.result == PrintJobAckResult.PRINTED, request.failureCode)
+    ) = service.acknowledge(principal, id, request.printed(), request.failureCode)
 }
 
 @Schema(description = "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`).")
@@ -151,15 +155,34 @@ data class DeliveredJobResponse(
     }
 }
 
-enum class PrintJobAckResult { PRINTED, FAILED }
-
 @Schema(description = "A confirmação do agente: o job foi impresso ou falhou.")
 data class PrintJobAckRequest(
-    val result: PrintJobAckResult,
+    @field:Schema(description = "O resultado da impressão.", allowableValues = ["PRINTED", "FAILED"])
+    val result: String,
     @field:Schema(
         description = "Código da falha (só com `FAILED`), `[A-Z][A-Z0-9_]{0,49}`. Nunca texto livre.",
         nullable = true,
         example = "PAPER_JAM",
     )
     val failureCode: String? = null,
-)
+) {
+    /** Só a string `PRINTED` ou `FAILED`: número (que o Jackson leria como ordinal), nulo ou outro texto é `400`. */
+    fun printed(): Boolean =
+        when (result) {
+            "PRINTED" -> {
+                true
+            }
+
+            "FAILED" -> {
+                false
+            }
+
+            else -> {
+                throw InvalidInputException(
+                    ErrorCodes.VALIDATION_FAILED,
+                    "O result deve ser PRINTED ou FAILED.",
+                    listOf(FieldViolation("result", "INVALID_VALUE", "Use PRINTED ou FAILED.")),
+                )
+            }
+        }
+}

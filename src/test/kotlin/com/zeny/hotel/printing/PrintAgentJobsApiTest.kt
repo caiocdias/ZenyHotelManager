@@ -278,11 +278,41 @@ class PrintAgentJobsApiTest(
         val printer = newPrinter()
         val pending = enqueue(printer)
 
-        ack(printer.agent, pending, "PRINTED").status shouldBe 404
+        ack(printer.agent, pending, "PRINTED").status shouldBe 409
         poll(printer.agent)
         ack(printer.agent, pending, "MAYBE").status shouldBe 400
         ack(printer.agent, pending, "FAILED", "texto livre").status shouldBe 400
         statusOf(pending) shouldBe "SENT"
+    }
+
+    @Test
+    fun `a job of an own printer that is not SENT to the agent is 409 and one of a foreign printer is 404`() {
+        val printer = newPrinter()
+        val pending = enqueue(printer)
+        val finished = enqueue(printer)
+        poll(printer.agent)
+        ack(printer.agent, finished, "PRINTED").status shouldBe 204
+        jdbc
+            .sql("UPDATE printing.print_job SET status = 'PENDING', delivered_to = NULL WHERE id = :id")
+            .param("id", pending)
+            .update()
+
+        ack(printer.agent, pending, "PRINTED").status shouldBe 409
+        ack(printer.agent, finished, "PRINTED").status shouldBe 409
+        ack(newAgent(), pending, "PRINTED").status shouldBe 404
+        statusOf(pending) shouldBe "PENDING"
+    }
+
+    @Test
+    fun `a numeric or unknown result is 400 on the field`() {
+        val printer = newPrinter()
+        val job = enqueue(printer)
+        poll(printer.agent)
+
+        listOf("0", "1", "0.0", "1.0", "\"MAYBE\"", "null").forEach {
+            send(POST, "$base/$job/ack", printer.agent.token, "{\"result\":$it}").status shouldBe 400
+        }
+        statusOf(job) shouldBe "SENT"
     }
 
     @Test

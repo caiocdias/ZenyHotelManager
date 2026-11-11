@@ -6784,9 +6784,10 @@ paths:
     post:
       description: "Autenticado pelo token do agente. `PRINTED` ou `FAILED` (com `failureCode`\
         \ opcional, `[A-Z][A-Z0-9_]{0,49}`, nunca texto livre: 400 `INVALID_FAILURE_CODE`).\
-        \ Job de outro agente ou inexistente: 404 `PRINT_JOB_NOT_FOUND`; job deste\
-        \ agente que já não está `SENT` (já confirmado, reenviado ou expirado): 409\
-        \ `PRINT_JOB_NOT_ACKNOWLEDGEABLE`."
+        \ Job de impressora de outro agente ou inexistente: 404 `PRINT_JOB_NOT_FOUND`;\
+        \ job de impressora deste agente que não está `SENT` entregue a ele (já confirmado,\
+        \ reenviado ou expirado): 409 `PRINT_JOB_NOT_ACKNOWLEDGEABLE`. `result` só\
+        \ como string; número ou outro valor: 400 `VALIDATION_FAILED`."
       operationId: acknowledgePrintJob
       parameters:
       - in: path
@@ -20930,6 +20931,7 @@ components:
           nullable: true
         result:
           type: string
+          description: O resultado da impressão.
           enum:
           - PRINTED
           - FAILED

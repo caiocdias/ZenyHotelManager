@@ -150,8 +150,9 @@ class PrintAgentJobsService(
     }
 
     /**
-     * O agente confirma o job: `PRINTED` ([printed]) ou `FAILED` com o [failureCode] opcional. Job de outro agente ou
-     * inexistente: `404`; job dele fora de `SENT`: `409`. A linha é travada: quem chega depois vê o estado novo.
+     * O agente confirma o job: `PRINTED` ([printed]) ou `FAILED` com o [failureCode] opcional. Impressora de outro
+     * agente ou job inexistente: `404`; job de impressora dele fora de `SENT` para ele: `409`. A linha é travada:
+     * quem chega depois vê o estado novo.
      */
     @Audited(PrintingAudit.ACK_JOB)
     @Transactional
@@ -163,7 +164,9 @@ class PrintAgentJobsService(
     ) {
         requireValid(principal)
         val job = store.lockById(jobId)
-        if (job == null || !job.isDeliveredTo(principal.id) || !ownsPrinterOf(job, principal.id)) throw notFound()
+        // Impressora de outro agente ou job inexistente: 404. Impressora própria e job fora de SENT para este
+        // agente (voltou a PENDING, terminado, entregue a outro antes da troca de dono): 409 do domínio.
+        if (job == null || !ownsPrinterOf(job, principal.id)) throw notFound()
         audit.track(PrintingAudit.JOB, job.id) { job.auditState() }
         job.acknowledge(principal.id, printed, failureCode, clock.instant())
         store.flush()
