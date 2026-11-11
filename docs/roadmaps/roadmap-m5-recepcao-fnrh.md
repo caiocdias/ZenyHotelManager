@@ -339,7 +339,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E07 | Configuração, domínios e adaptador Serpro da FNRH | #concluida | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
 | E15 | Descrição de gênero no perfil do hóspede | #concluida | E07 | Campo no perfil e nos dados da FNRH: o hóspede de gênero `OUTRO` passa a poder ser enviado |
 | E08 | Envio assíncrono e pendências da FNRH | #concluida | E01, E02, E07, E15 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
-| E16 | Limpar a credencial do Serpro | #pendente | E07 | Ação explícita, com trilha, que apaga a credencial e desliga a integração |
+| E16 | Limpar a credencial do Serpro | #em-andamento | E07 | Ação explícita, com trilha, que apaga a credencial e desliga a integração |
 | E09 | Homologação da FNRH com o Serpro | #bloqueada | E08, E16 | Envios reais no ambiente de homologação |
 
 **Impressão e documentos**
@@ -1578,7 +1578,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E16 — Limpar a credencial do Serpro — #pendente
+## E16 — Limpar a credencial do Serpro — #em-andamento
 
 **Objetivo:** permitir ao administrador apagar a credencial do Serpro por uma ação explícita, com trilha, deixando a integração desligada.
 
