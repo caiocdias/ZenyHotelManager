@@ -450,6 +450,9 @@ class GuestPrivacyApiTest(
                 mapOf("CPF" to data.cpf, "PASSPORT" to data.passport)
             survivor["raceColor"].asString() shouldBe "BROWN"
             survivor["disability"].asString() shouldBe "VISUAL"
+            survivor["genderDescription"].asString() shouldBe GENDER_DESCRIPTION
+            profiles.getValue(data.absorbed.toString())["genderDescription"].asString() shouldBe
+                ABSORBED_GENDER_DESCRIPTION
             profiles.getValue(data.absorbed.toString())["email"].asString() shouldBe data.absorbedEmail
             section["consents"].values().map { it["purpose"].asString() } shouldContain "DIETARY_RESTRICTIONS"
             body["sections"][1]["data"]["guestIds"].values().map { it.asString() } shouldContainExactlyInAnyOrder
@@ -465,8 +468,17 @@ class GuestPrivacyApiTest(
             val exportEntry = tree(entries.single { it["entity_type"] == "guests.guest" }["after_state"])
             exportEntry["access"].asString() shouldBe "export"
             exportEntry.toString().let { audit ->
-                listOf(data.name, data.email, data.cpf, data.passport, DIETARY, RESTRICTION, "BROWN", "VISUAL")
-                    .forEach { audit shouldNotContain it }
+                listOf(
+                    data.name,
+                    data.email,
+                    data.cpf,
+                    data.passport,
+                    DIETARY,
+                    RESTRICTION,
+                    "BROWN",
+                    "VISUAL",
+                    GENDER_DESCRIPTION,
+                ).forEach { audit shouldNotContain it }
             }
             tree(entries.single { it["entity_type"] == "iam.approval" }["after_state"])["approverId"]
                 .asString() shouldBe approver.user.id.toString()
@@ -522,6 +534,7 @@ class GuestPrivacyApiTest(
                 "socialName",
                 "birthDate",
                 "gender",
+                "genderDescription",
                 "email",
                 "phone",
                 "address",
@@ -535,6 +548,8 @@ class GuestPrivacyApiTest(
             anonymized["hasSensitiveData"].asBoolean() shouldBe false
 
             // No banco: nenhuma coluna dos dois perfis tem um dado pessoal; documentos e índices cegos saíram.
+            column(data.survivor, "gender_description").shouldBeNull()
+            column(data.absorbed, "gender_description").shouldBeNull()
             val rows = rowsAsText(listOf(data.survivor, data.absorbed))
             rows.forEach { row -> data.personalValues().forEach { withClue(it) { row shouldNotContain it } } }
             jdbc
@@ -568,6 +583,12 @@ class GuestPrivacyApiTest(
                 .map { it["entity_id"] } shouldContainExactlyInAnyOrder
                 listOf(data.survivor.toString(), data.absorbed.toString())
             val trail = auditRows(listOf(data.survivor, data.absorbed) + documentIds, null)
+            auditByApproval("guests.guest.anonymize", approvalId)
+                .filter { it["entity_type"] == "guests.guest" }
+                .forEach { entry ->
+                    tree(entry["after_state"])["changedFields"].values().map { it.asString() } shouldContain
+                        "genderDescription"
+                }
             trail.forEach { entry ->
                 val text = "${entry["before_state"]} ${entry["after_state"]}"
                 data.personalValues().forEach { withClue(it) { text shouldNotContain it } }
@@ -597,6 +618,32 @@ class GuestPrivacyApiTest(
             view["ibge_city_code"] shouldBe "3550308"
             view["vip"] shouldBe true
             reportRow(data.absorbed)["anonymized"] shouldBe true
+        }
+
+    // --- Descrição de gênero fora de notificações e eventos ------------------------------------------------
+
+    @Test
+    fun `the gender description never reaches notifications or event publications`(): Unit =
+        with(iam) {
+            val body =
+                guests.profileBody(extra = mapOf("gender" to "OTHER", "genderDescription" to GENDER_MARKER))
+            val survivor = guestId(guests.createGuest(guests.createBody(profile = body)))
+            val merged = guestId(guests.createGuest(guests.createBody(profile = body, documents = emptyList())))
+            call(GET, "/api/v1/guests/$survivor", asAdmin()).ok()
+            call(PUT, "/api/v1/guests/$survivor", asAdmin(), body, ifMatch = guests.etagOf("/api/v1/guests/$survivor"))
+                .ok()
+            mergeInto(survivor, merged).ok()
+            val anonymizer = approverWith(anonymize)
+            val requester = Requester(createUserWith(read))
+            val required =
+                call(POST, "/api/v1/guests/$survivor/anonymize", requester.auth).problem(403, "APPROVAL_REQUIRED")
+            val token = approve(requester, required, anonymizer).expectStatus(201)!!["approvalToken"].asString()
+            call(POST, "/api/v1/guests/$survivor/anonymize", requester.auth, approvalToken = token).ok()
+
+            leaks("SELECT count(*) FROM shared.event_publication WHERE serialized_event LIKE :v") shouldBe 0
+            leaks("SELECT count(*) FROM notifications.notification WHERE title LIKE :v OR body LIKE :v") shouldBe 0
+            leaks("SELECT count(*) FROM notifications.notification n WHERE CAST(to_jsonb(n) AS text) LIKE :v") shouldBe
+                0
         }
 
     // --- View de leitura -----------------------------------------------------------------------------------
@@ -654,7 +701,16 @@ class GuestPrivacyApiTest(
             val absorbedEmail = guests.uniqueEmail()
             val passport = guests.passport("PX")
             val profile =
-                guests.profileBody(fullName = name, email = email, extra = mapOf("dietaryRestrictions" to DIETARY)) +
+                guests.profileBody(
+                    fullName = name,
+                    email = email,
+                    extra =
+                        mapOf(
+                            "dietaryRestrictions" to DIETARY,
+                            "gender" to "OTHER",
+                            "genderDescription" to GENDER_DESCRIPTION,
+                        ),
+                ) +
                     mapOf(
                         "vip" to true,
                         "companyId" to guests.createCompany(),
@@ -671,19 +727,7 @@ class GuestPrivacyApiTest(
                     ),
                 )
             call(POST, "/api/v1/guests/$survivor/restrict", asAdmin(), mapOf("reason" to RESTRICTION)).ok()
-            val absorbed =
-                guestId(
-                    guests.createGuest(
-                        guests.createBody(
-                            profile =
-                                guests.profileBody(
-                                    email = absorbedEmail,
-                                    extra = mapOf("phone" to ABSORBED_PHONE),
-                                ),
-                            documents = listOf(guests.document("PASSPORT", passport, "AR")),
-                        ),
-                    ),
-                )
+            val absorbed = absorbedProfile(absorbedEmail, passport)
             val clerk = createUserWith(attachmentsRead, attachmentsManage)
             val fileIds =
                 listOf(survivor, absorbed).mapIndexed { index, guest ->
@@ -696,6 +740,29 @@ class GuestPrivacyApiTest(
             mergeInto(survivor, absorbed).ok()
             Titular(survivor, absorbed, name, email, absorbedEmail, cpf, passport, fileIds)
         }
+
+    /** O perfil que o titular tem a mais: telefone, descrição de gênero própria e um passaporte. */
+    private fun absorbedProfile(
+        email: String,
+        passport: String,
+    ): UUID =
+        guestId(
+            guests.createGuest(
+                guests.createBody(
+                    profile =
+                        guests.profileBody(
+                            email = email,
+                            extra =
+                                mapOf(
+                                    "phone" to ABSORBED_PHONE,
+                                    "gender" to "OTHER",
+                                    "genderDescription" to ABSORBED_GENDER_DESCRIPTION,
+                                ),
+                        ),
+                    documents = listOf(guests.document("PASSPORT", passport, "AR")),
+                ),
+            ),
+        )
 
     private data class Titular(
         val survivor: UUID,
@@ -722,6 +789,8 @@ class GuestPrivacyApiTest(
                 "Prefere quarto silencioso",
                 RESTRICTION,
                 DIETARY,
+                GENDER_DESCRIPTION,
+                ABSORBED_GENDER_DESCRIPTION,
                 "1990-05-20",
             )
     }
@@ -800,6 +869,13 @@ class GuestPrivacyApiTest(
                 .query(Int::class.java)
                 .single()
         }
+
+    private fun leaks(sql: String): Int =
+        jdbc
+            .sql(sql)
+            .param("v", "%$GENDER_MARKER%")
+            .query(Int::class.java)
+            .single()
 
     private fun reportRow(id: UUID): Map<String, Any?> =
         jdbc
@@ -921,6 +997,9 @@ class GuestPrivacyApiTest(
         const val PDF = "guests.document-pdf"
         const val DIETARY = "Sem glúten e sem lactose"
         const val RESTRICTION = "Danos ao quarto 12"
+        const val GENDER_DESCRIPTION = "Pessoa não binária, pronome elu"
+        const val ABSORBED_GENDER_DESCRIPTION = "Agênero do perfil absorvido"
+        const val GENDER_MARKER = "MARCADOR-GENERO-7f3a91"
         const val ABSORBED_PHONE = "+55 21 97777-1234"
         const val PHOTO_WIDTH = 64
         const val PHOTO_HEIGHT = 48

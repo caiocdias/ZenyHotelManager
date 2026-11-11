@@ -188,6 +188,79 @@ class GuestsDomainTest {
         guest.email shouldBe "maria@example.com"
     }
 
+    // --- Descrição do gênero (M5 E15) ----------------------------------------------------------------------
+
+    private fun otherGuest(description: String? = "Pessoa não binária") =
+        Guest.create(GuestProfile("Maria da Silva", gender = Gender.OTHER, genderDescription = description), now)
+
+    @Test
+    fun `gender description is accepted with OTHER`() {
+        val guest = Guest.create(GuestProfile("Maria da Silva", gender = Gender.OTHER), now)
+
+        guest.update(
+            GuestProfile("Maria da Silva", gender = Gender.OTHER, genderDescription = " Pessoa não binária "),
+            now,
+        ) shouldContainExactly listOf("genderDescription")
+        guest.genderDescription shouldBe "Pessoa não binária"
+        otherGuest().genderDescription shouldBe "Pessoa não binária"
+    }
+
+    @Test
+    fun `gender description is refused with another gender`() {
+        listOf(Gender.MALE, Gender.FEMALE, Gender.NOT_INFORMED, null).forEach { gender ->
+            val guest = Guest.create(GuestProfile("Maria da Silva", gender = gender), now)
+
+            val error =
+                shouldThrow<InvalidInputException> {
+                    guest.update(
+                        GuestProfile("Maria da Silva", gender = gender, genderDescription = "Texto reservado"),
+                        now,
+                    )
+                }
+
+            error.code.value shouldBe "GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER"
+            error.violations.single().field shouldBe "genderDescription"
+            error.message shouldNotContain "Texto reservado"
+            error.violations.single().message shouldNotContain "Texto reservado"
+            guest.gender shouldBe gender
+            guest.genderDescription.shouldBeNull()
+        }
+        shouldThrow<InvalidInputException> {
+            Guest.create(GuestProfile("Maria da Silva", gender = Gender.MALE, genderDescription = "x"), now)
+        }.code.value shouldBe "GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER"
+    }
+
+    @Test
+    fun `blank gender description becomes null`() {
+        val guest = otherGuest("   ")
+
+        guest.genderDescription.shouldBeNull()
+        // Em branco com outro gênero não é descrição: nada a recusar.
+        Guest
+            .create(GuestProfile("Maria", gender = Gender.MALE, genderDescription = " "), now)
+            .genderDescription
+            .shouldBeNull()
+    }
+
+    @Test
+    fun `gender description over 100 characters is refused`() {
+        otherGuest("a".repeat(100)).genderDescription shouldBe "a".repeat(100)
+        shouldThrow<InvalidInputException> { otherGuest("a".repeat(101)) }.code.value shouldBe "GUESTS_DATA_INVALID"
+    }
+
+    @Test
+    fun `to string never shows the gender description`() {
+        val guest = otherGuest("Pessoa não binária")
+
+        guest.toString() shouldNotContain "binária"
+        GuestProfile(
+            "Maria",
+            gender = Gender.OTHER,
+            genderDescription = "Pessoa não binária",
+        ).toString() shouldNotContain
+            "binária"
+    }
+
     @Test
     fun `the search key has no accents, is lower-case and collapses spaces`() {
         GuestsRules.searchKey("  José  da Conceição ", "Zé") shouldBe "jose da conceicao ze"

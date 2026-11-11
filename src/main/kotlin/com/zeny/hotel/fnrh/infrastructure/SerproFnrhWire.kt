@@ -3,7 +3,6 @@ package com.zeny.hotel.fnrh.infrastructure
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.zeny.hotel.fnrh.application.FnrhFailure
-import com.zeny.hotel.fnrh.domain.FnrhDocumentType
 import com.zeny.hotel.fnrh.domain.FnrhGuest
 import com.zeny.hotel.fnrh.domain.FnrhGuestStatus
 import com.zeny.hotel.fnrh.domain.FnrhPersonData
@@ -194,13 +193,7 @@ internal class PersonBody(
                 race = p.race,
                 disabilityOption = p.disabilityOption,
                 disabilityType = p.disabilityType,
-                document =
-                    p.document?.let {
-                        DocumentBody(
-                            it.number,
-                            if (it.type == FnrhDocumentType.CPF) "CPF" else "PASSAPORTE",
-                        )
-                    },
+                document = p.document?.let { DocumentBody(it.number, documentTypeId(it.type)) },
                 contact = ContactBody.of(p),
             )
     }

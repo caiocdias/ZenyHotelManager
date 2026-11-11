@@ -18,11 +18,12 @@ import java.util.UUID
 
 /**
  * A seção `guests` da exportação dos dados do titular ([GuestPersonalDataContributor], RF-HOS-07): os perfis (o
- * pedido e os absorvidos por ele) com os dados cadastrais, as preferências, as observações, as restrições
- * alimentares, a restrição com o motivo e os consentimentos, e **o pacote completo** (direito de acesso, LGPD art.
- * 18; decisão do usuário em 2026-10-17): os documentos com o **número inteiro** decifrado e os **dados sensíveis da
- * FNRH** decifrados (raça/cor e deficiência). É a exceção à RN-19 ("só a integração FNRH tem acesso"): quem recebe é
- * o próprio titular, por uma ação sensível, aprovada e auditada (a trilha nunca leva os dados).
+ * pedido e os absorvidos por ele) com os dados cadastrais (inclusive a descrição de gênero, texto livre), as
+ * preferências, as observações, as restrições alimentares, a restrição com o motivo e os consentimentos, e **o pacote
+ * completo** (direito de acesso, LGPD art. 18; decisão do usuário em 2026-10-17): os documentos com o **número
+ * inteiro** decifrado e os **dados sensíveis da FNRH** decifrados (raça/cor e deficiência). É a exceção à RN-19 ("só a
+ * integração FNRH tem acesso"): quem recebe é o próprio titular, por uma ação sensível, aprovada e auditada (a trilha
+ * nunca leva os dados).
  */
 @Component
 class GuestsOwnPersonalData(
@@ -63,6 +64,7 @@ class GuestsOwnPersonalData(
             nationality = nationality,
             birthDate = birthDate,
             gender = gender,
+            genderDescription = genderDescription,
             email = email,
             phone = phone,
             residenceCountry = residenceCountry,
@@ -116,6 +118,8 @@ data class ExportedGuestProfile(
     val nationality: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
+    /** Descrição de gênero (texto livre, decifrada), só para o titular. */
+    val genderDescription: String?,
     val email: String?,
     val phone: String?,
     val residenceCountry: String?,

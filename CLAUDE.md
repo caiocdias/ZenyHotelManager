@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Servidor do Zeny Hotel Manager: PMS e operações de **um único hotel** de até 30 UHs. Este repositório contém **só o servidor**. Os clientes (desktop, mobile, PDV, tela de produção e agente de impressão) ficam em outros repositórios e geram seus SDKs a partir do contrato OpenAPI (`api/openapi.yaml`, gerado; nunca edite à mão).
 
 - `docs/SPEC.md` diz **o quê**: requisitos `RF-<MÓDULO>-NN`, regras `RN-NN`, modelo de domínio (§8), fases (§9) e questões em aberto `Q-NN` (§10).
-- `docs/ARCHITECTURE.md` diz **como**: decisões D1–D17 (§2), módulos e dependências (§3), convenções de API (§7), segurança (§8), offline (§9), persistência (§11) e integrações (§12).
+- `docs/ARCHITECTURE.md` diz **como**: decisões D1–D19 (§2), módulos e dependências (§3), convenções de API (§7), segurança (§8), offline (§9), persistência (§11) e integrações (§12).
 - `docs/roadmaps/` traz o plano de execução: `README.md` com o mapa dos 11 marcos (M0–M10) e um `roadmap-mN-*.md` por marco.
 
 Documentação, mensagens ao usuário e commits ficam em pt-BR. Código, API e banco ficam em inglês (D17); o glossário da SPEC §4 faz o mapeamento dos termos.
@@ -45,7 +45,7 @@ Profiles: `local` (desenvolvimento) e `prod` (implantação), em `src/main/resou
 
 ## Como trabalhar com os roadmaps
 
-- Os roadmaps ficam em `docs/roadmaps/`, um por marco (M5 a M10 no formato da skill `development-roadmap` com o plugin superpowers; M0 a M4, concluídos, no formato antigo). Para executar, inicie uma sessão limpa com `claude --agent orquestrador` (souls do Second Brain) e cole o "Prompt de execução" do roadmap: ela segue o "Protocolo de execução" dele, planeja cada etapa com `superpowers:writing-plans`, submete o plano à revisão de arquitetura do `revisor-arquitetura` antes de executar, executa com `superpowers:subagent-driven-development` pelas souls (`desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`) na branch `roadmap/<slug>` e para no limite de etapas do lote. A tag de cada etapa (`#pendente`, `#em-andamento`, `#concluida` ou `#bloqueada`) e o "Evidências e handoff" ficam em dia na branch.
+- Os roadmaps ficam em `docs/roadmaps/`, um por marco (M5 a M10 no formato da skill `development-roadmap` com o plugin superpowers; M0 a M4, concluídos, no formato antigo). Para executar, inicie uma sessão limpa com `claude --agent orquestrador` (souls do Second Brain) e cole o "Prompt de execução" do roadmap: ela segue o "Protocolo de execução" dele, planeja cada etapa com `superpowers:writing-plans`, submete o plano à revisão de arquitetura do `revisor-arquitetura` antes de executar, executa com `superpowers:subagent-driven-development` pelas souls (`desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`) na branch `roadmap/<slug>`, para no limite de etapas do lote e integra o lote na `main` com merge local. A tag de cada etapa (`#pendente`, `#em-andamento`, `#concluida` ou `#bloqueada`) e o "Evidências e handoff" ficam em dia na branch. Desenho e revisão de roadmap ficam com `claude --agent arquiteto`, que não escreve código nem plano de etapa.
 - Um marco só começa quando o gate do marco anterior estiver `#concluida`. As exceções estão em `docs/roadmaps/README.md`.
 - Antes da primeira etapa de um marco, sincronize o roadmap com o código real usando a skill `development-roadmap` no modo atualização.
 - Valide qualquer roadmap editado com `python3 ~/.claude/skills/development-roadmap/scripts/check_roadmap.py <arquivo>`.
@@ -56,4 +56,4 @@ Pontos que cabem ao usuário decidir (hipóteses, trade-offs, escolhas de versã
 
 ## Git
 
-Fora da execução de roadmap, trabalhe direto na branch `main`, sem criar branch de feature, salvo pedido explícito, e faça commit e push só quando o usuário pedir. A execução de roadmap é a exceção (decisão do usuário, 2026-10-22): roda na branch `roadmap/<slug>`, com os commits por tarefa do superpowers; merge, PR e push só com a decisão do usuário no fim do lote (`superpowers:finishing-a-development-branch`).
+Fora da execução de roadmap, trabalhe direto na branch `main`, sem criar branch de feature, salvo pedido explícito, e faça commit e push só quando o usuário pedir. A execução de roadmap é a exceção (decisão do usuário, 2026-11-06, que substitui a de 2026-10-22): roda na branch `roadmap/<slug>`, com os commits por tarefa do superpowers; no fim do lote, com o gate verde, o orquestrador faz o merge local na `main` (`superpowers:finishing-a-development-branch`) e deixa pronto o `git push origin main`. Push e deploy são sempre do usuário.

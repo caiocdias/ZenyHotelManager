@@ -1,6 +1,6 @@
 # Roadmap — M7 Pagamentos integrados e fiscal
 
-> Arquivo: `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md` · branch de execução: `roadmap/m7-pagamentos-fiscal` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md` · branch de execução: `roadmap/m7-pagamentos-fiscal` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 7 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · anterior: [M6 — Operação diária e fechamento](roadmap-m6-operacao-fechamento.md) · próximo: [M8 — Restaurante, distribuição e inauguração](roadmap-m8-restaurante-distribuicao.md)
 >
@@ -8,7 +8,7 @@
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m7-pagamentos-fiscal`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m7-pagamentos-fiscal`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, comandos e convenções registrados nos handoffs de M0–M6 e nas notas de tema do brain e ajuste as etapas pendentes.
 
@@ -22,7 +22,8 @@ Integrar os meios de pagamento e a emissão fiscal ao servidor: cobrança Pix co
 - Modelo de domínio: SPEC §8.2.7 (`Folio`, `Payment`, `CashierShift`, `CardPreAuthorization` em contas) e §8.2.8 (`PaymentIntent`, `PixCharge`, `CardTransaction`, `CardToken`, `PaymentProvider`, `FiscalProfile`, `FiscalDocument`, `FiscalDocumentItem`, `TaxAmount`, `FiscalProvider`).
 - Máquina de estados do documento fiscal: SPEC §8.4. Eventos `PaymentSucceeded` e `FiscalDocumentAuthorized`/`Rejected`: SPEC §8.3.
 - Regras: RN-02 (arredondamento único validado com o middleware), RN-03 (imutabilidade financeira), RN-12 (ações sensíveis), RNF-02 (sem portas abertas com servidor local), RNF-10 (PCI-DSS).
-- Arquitetura: módulos `payments` (depende de `shared`), `fiscal` (depende de `shared`, `hotel`, `files`), `billing` (depende de `payments` e `fiscal`), `frontdesk` (depende de `payments`, `fiscal`, `billing`) e `endofday` (depende de `payments`, `billing`) — ARCHITECTURE §3.1. Padrão de integração, tabela de integrações e conciliação de TEF: ARCHITECTURE §12. Jobs de polling e renovação de pré-autorizações: §13. Idempotência: §7. PCI e cifragem de credenciais: §8.3. XMLs fiscais no armazenamento de arquivos: §14. Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação, desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança.
+- Revisão de arquitetura dos roadmaps: `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`.
+- Arquitetura: módulos `payments` (depende de `shared` e `notifications`; o código ainda só de `shared`), `fiscal` (depende de `shared`, `hotel`, `files`, `notifications`), `billing` (depende de `payments` e `fiscal`), `frontdesk` (depende de `payments`, `fiscal`, `billing`) e `endofday` (depende de `payments`, `billing`) — ARCHITECTURE §3.1. Padrão de integração, tabela de integrações e conciliação de TEF: ARCHITECTURE §12. Jobs de polling e renovação de pré-autorizações: §13. Idempotência: §7. PCI e cifragem de credenciais: §8.3. XMLs fiscais no armazenamento de arquivos: §14. Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação, desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança.
 - Convenções herdadas (ler nos handoffs e nas notas de tema do brain): M0 (API, erros, `Money`, IDs, `Idempotency-Key`, outbox, ShedLock, CI), M1 (autorização, step-up por PIN, auditoria, `hotel`, `files`), M2 (notificações), M3 (`billing` e `payments` com registro manual e `PaymentIntent` neutro), M5 (padrão de integração porta + adaptador + outbox + WireMock da FNRH, credenciais de serviço), M6 (etapas do fechamento do dia).
 - Caminhos previstos (a criar, sob o pacote base `com.zeny.hotel`, hipótese herdada de M0): `payments/` e `fiscal/` com `domain/`, `application/`, `infrastructure/`, `web/`; migrações nas pastas `payments` e `fiscal` de `src/main/resources/db/migration/`.
 - Comandos de build, teste e lint: os oficiais da tabela do `CLAUDE.md` (definidos em M0 E01).
@@ -44,10 +45,14 @@ Integrar os meios de pagamento e a emissão fiscal ao servidor: cobrança Pix co
 
 - **PCI-DSS (RNF-10):** o servidor nunca recebe nem grava número de cartão ou CVV. Só token, bandeira, 4 últimos dígitos, NSU e autorização. DTOs e logs rejeitam/mascaram qualquer campo parecido com PAN.
 - **Imutabilidade (RN-03):** pagamentos, estornos e documentos fiscais não são editados nem excluídos; correções são novas linhas.
-- **Grafo de módulos (ARCHITECTURE §3.1):** `payments` não chama `billing`, `frontdesk` nem `pos`; quem reage a pagamento escuta `PaymentSucceeded`. `fiscal` não chama `billing`; `billing` escuta `FiscalDocumentAuthorized`/`Rejected`. `notifications` nunca escuta eventos de `fiscal` nem de `payments`: os alertas de RF-NOT-01 (falha de integração, rejeição de nota) saem do módulo que detecta o problema (`fiscal`, `payments`, `billing` ou `endofday`), que chama `notifications` diretamente ou pelo mecanismo genérico de falha de integração de M5 (H2); as arestas novas para `notifications` entram na tabela §3.1 na mesma etapa.
+- **Grafo de módulos (ARCHITECTURE §3.1):** `payments` não chama `billing`, `frontdesk` nem `pos`; quem reage a pagamento escuta `PaymentSucceeded`. `fiscal` não chama `billing`; `billing` escuta `FiscalDocumentAuthorized`/`Rejected`. `notifications` nunca escuta eventos de `fiscal` nem de `payments`: os alertas de RF-NOT-01 (falha de integração, rejeição de nota) saem do módulo que detecta o problema (`fiscal`, `payments`, `billing` ou `endofday`), que chama `notifications` diretamente, com o tipo `notifications.integration-failure` (H2).
 - **Idempotência:** POSTs com efeito financeiro ou externo exigem `Idempotency-Key` (ARCHITECTURE §7); confirmações recebidas por webhook ou polling são idempotentes pelo identificador do provedor (txid, NSU, chave de acesso).
 - **Webhook e polling:** toda confirmação funciona nos dois modos, selecionados por configuração (RNF-02, Q-06). Nenhum fluxo depende só de webhook.
-- **Segredos:** credenciais de provedores cifradas em campo (ARCHITECTURE §8.3) e fora do repositório; logs de integração com payload redigido.
+- **Resultado incerto (ARCHITECTURE §12):** um timeout de leitura numa escrita não diz se o provedor gravou. Dinheiro e nota nunca são reenviados às cegas: reenvio só com a mesma referência idempotente do provedor ou depois de conciliar pela consulta.
+- **Segredos:** credenciais de provedores cifradas em campo (ARCHITECTURE §8.3) e fora do repositório; nunca na trilha, nem o usuário; removíveis por uma ação com trilha, como a M5 E16; ambiente (homologação ou produção) escolhido na configuração, com as URLs em propriedade e a credencial pedida de novo ao trocar.
+- **Registro de integração:** log com payload redigido; tabela *append-only* sem texto livre do provedor, porque não admite expurgo; a mensagem saneada vai só para o log e para a exceção.
+- **Saúde:** status por endpoint e métricas; a readiness não depende de provedor externo, sem `HealthIndicator` novo (ARCHITECTURE §16).
+- **Contrato:** enum de resposta que cresce sai como `x-extensible-enum`; `pattern` válido em ECMA-262; sem `DELETE`. Biblioteca nova entra pelo catálogo, com os lockfiles regravados e sem High ou Critical novo no scanner.
 - **Arredondamento:** só a função única de `Money` (M0 E03); nenhum módulo arredonda por conta própria.
 
 ## Hipóteses e decisões em aberto
@@ -55,8 +60,8 @@ Integrar os meios de pagamento e a emissão fiscal ao servidor: cobrança Pix co
 | # | Hipótese ou decisão | Impacto se errada / sem decisão | Etapa afetada |
 |---|---|---|---|
 | H1 | M3 entregou `PaymentIntent` neutro, registro manual e evento `PaymentSucceeded` consumido por `billing`; `CardPreAuthorization` vive em `billing` (SPEC §8.2.7). | Se o modelo divergir, E01 adapta a porta ao que existe e registra no handoff. | E01 |
-| H2 | M5 estabeleceu o padrão de integração (porta, adaptador, outbox, retry com backoff, log redigido, painel de saúde, evento genérico de falha) e ele é reutilizável aqui. | Se o padrão ficou acoplado à FNRH, E01 o extrai para `shared` antes de usar. | E01, E06 |
-| H3 | O recebimento de webhook usa credencial de serviço ou assinatura do provedor, no padrão de M1/M5. | Ajuste local na etapa que cria o endpoint. | E02, E06 |
+| H2 | Conferida em 2026-11-06 até a M5 E07: o padrão é porta e adaptador, classificação de falhas com resultado incerto, saneador, registro *append-only* sem texto livre, status por endpoint e `MeterBinder`, sem `HealthIndicator`. **Não existe** evento genérico de falha: o alerta é uma chamada direta a `notifications`. O envio com retry é da M5 E08. Tudo está em `fnrh`, sem nada em `shared`. | E01 decide, com a segunda integração à frente, o que extrair para `shared`, e registra no handoff. | E01, E06 |
+| H3 | Webhook não tem padrão pronto: o M1 não criou credencial de serviço, e a cadeia própria da M5 E10 é só do agente de impressão. O recebimento usa a assinatura ou a credencial do provedor, num endpoint fora do access token de usuário. | E02 fixa o padrão, com revisão humana; E06 e M8 E08 o seguem. | E02, E06 |
 | H4 | Pix confirmado de forma assíncrona é registrado no turno de caixa de quem criou a cobrança (RF-CTA-10). | Se o turno já tiver fechado, o pagamento vai para o turno aberto do mesmo ponto de caixa ou fica pendente de alocação; E02 registra a regra como decisão. | E02 |
 | H5 | Decidido em 2026-10-13: `fiscal` depende de `files` para guardar XML e PDF (ARCHITECTURE §14); a aresta já consta na tabela §3.1. | Nenhum: deixou de ser hipótese. | E07 |
 | H6 | Q-04 segue o padrão adotado na SPEC §10: NFC-e do consumo de A&B lançado no quarto emitida no check-out, agrupada; café incluso entra na NFS-e da hospedagem. | Mudar depois troca o momento de emissão; a API de E08 aceita os dois. | E07, E08 |
@@ -85,8 +90,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -119,12 +124,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -138,9 +143,9 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m7-pagamentos-fiscal com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
@@ -161,7 +166,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E06 | Núcleo fiscal: perfis, documento e fila de emissão | #pendente | — | `FiscalProfile`, `FiscalDocument` com máquina de estados, `FiscalProvider` falso, fila com reprocessamento |
+| E06 | Núcleo fiscal: perfis, documento e fila de emissão | #pendente | E02 | `FiscalProfile`, `FiscalDocument` com máquina de estados, `FiscalProvider` falso, fila com reprocessamento |
 | E07 | NFS-e da hospedagem no check-out | #pendente | E06 | Emissão por conta ou seleção de lançamentos, IBS/CBS, XML e PDF guardados, vínculo na conta |
 | E08 | NFC-e de A&B, relatórios e exportação de XMLs | #pendente | E07 | Serviço de NFC-e para o PDV, NFC-e agrupada no check-out, relatórios e exportação |
 
@@ -193,7 +198,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - `payments/` (existente desde M3; arquivos novos a criar): porta `PaymentProvider` (criar cobrança Pix, consultar status, devolver, iniciar operação de cartão em terminal remoto, consultar transações para conciliação), seleção do provedor por configuração, credenciais cifradas.
 - `PaymentIntent`: estados (criado, pendente, sucesso, falha, expirado, reembolsado parcial/total), expiração, `markSucceeded`/`markFailed`/`refund` (SPEC §8.2.8), idempotência por identificador do provedor; publica `PaymentSucceeded` (já consumido por `billing` desde M3) e eventos de falha/reembolso.
-- Infraestrutura de integração (padrão de M5, H2): outbox, retry com backoff, log de integração com payload redigido, indicador de saúde e evento genérico de falha.
+- Infraestrutura de integração (padrão de M5, H2): pedido idempotente e envio por job, retry com backoff, classificação de falhas com resultado incerto, log de integração redigido, status e métricas, e alerta direto por `notifications`.
 - Adaptador falso com cliente HTTP real apontado para WireMock nos testes.
 - Migração na pasta `payments`.
 
@@ -203,10 +208,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - [ ] Testes de domínio cobrem todas as transições do `PaymentIntent`, incluindo transição inválida rejeitada com `code` estável e expiração.
 - [ ] Uma confirmação repetida com o mesmo identificador do provedor não muda o estado nem publica um segundo `PaymentSucceeded` (teste).
-- [ ] O adaptador falso, testado com WireMock, cobre sucesso, timeout com retry e backoff, e erro permanente que gera o evento genérico de falha.
-- [ ] Credenciais do provedor ficam cifradas no banco; o log de integração não contém credenciais nem dados pessoais (teste).
-- [ ] O indicador de saúde da integração de pagamentos aparece no actuator/painel do padrão de M5.
-- [ ] `ApplicationModules.verify()` passa sem novas dependências de `payments` além de `shared`.
+- [ ] O adaptador falso, testado com WireMock, cobre sucesso, falha temporária com retry e backoff, e erro permanente que gera a notificação `notifications.integration-failure` a quem tem a permissão de gerir pagamentos.
+- [ ] Timeout de leitura numa escrita vira resultado incerto: nada é confirmado nem reenviado sem conciliar pela consulta ou repetir a mesma referência (teste).
+- [ ] Credenciais do provedor ficam cifradas no banco, fora da trilha e removíveis por uma ação com trilha; o log de integração não contém credenciais nem dados pessoais (teste).
+- [ ] Status e métricas da integração de pagamentos seguem o padrão do M5; a readiness não depende do provedor (`ActuatorExposureTest` intacto).
+- [ ] O desenho da porta consta numa matriz em `docs/`, que cruza cada operação com a documentação pública de ao menos um PSP Pix e um adquirente.
+- [ ] `ApplicationModules.verify()` passa com `payments` dependendo só de `shared` e `notifications`, como na tabela da ARCHITECTURE §3.1.
 - [ ] Build, testes e verificação do contrato oficiais passam.
 
 **Validação obrigatória:**
@@ -219,9 +226,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Notas para o plano:**
 
 - Leia o handoff da M3 E08 (`docs/roadmaps/roadmap-m3-hospedes-contas.md`, "Notas para o marco M7"): a porta `PaymentProvider`, o `PaymentProviderCode` e o provedor `MANUAL` já existem no `payments` e o `PaymentIntentService.start` já trata `ProviderOutcome.Pending` e `Failed`; falta o caminho de confirmação posterior (caso de uso que trava a intenção, `markSucceeded`/`markFailed` e publica o evento) e o `PaymentSucceededListener` do `billing` hoje **falha** com intenção sem pagamento (H1).
-- H2: se o padrão de integração do M5 (FNRH) ficou acoplado a ela, extraia a parte genérica para `shared` antes de usar.
-- Valide o desenho da porta contra a documentação pública de ao menos um PSP Pix e de um adquirente (risco abaixo).
-- Tensão a resolver na sincronização com o código: o critério de módulos desta etapa mantém `payments` só com `shared`, mas o handoff da M3 E08 prevê a aresta `payments` → `notifications` no M7 (alerta `notifications.integration-failure`, ARCHITECTURE §3.1); até o usuário decidir, o alerta de falha sai pelo mecanismo genérico de falha de integração do M5 (H2).
+- H2: o padrão do M5 está em `fnrh`; leia os handoffs da M5 E07 e E08. Extrair para `shared` é decisão desta etapa, com registro.
+- A aresta `payments` → `notifications` já está na tabela da ARCHITECTURE §3.1 e entra no `PaymentsModule` e no `ModularityTest` nesta etapa.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -267,6 +273,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Webhook sem autenticação/assinatura válida → `401` ou `403`, sem efeito.
 - [ ] Cobrança vencida passa a expirada e não aceita confirmação posterior sem registro de divergência.
 - [ ] Devolução sem aprovação → `403 APPROVAL_REQUIRED`; com aprovação, gera reembolso auditado; valor acima do pago → erro com `code` estável.
+- [ ] O endpoint de webhook consta em `SecurityConfiguration` e no `ApiSecurityTest` como exceção explícita, sem abrir outro caminho (teste).
 - [ ] Build, testes e verificação do contrato oficiais passam.
 
 **Validação obrigatória:**
@@ -274,11 +281,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Comandos oficiais de build e teste → sucesso.
 - Verificação do contrato → sem diff pendente e sem *breaking change*.
 
-**Revisão humana:** não
+**Revisão humana:** sim
 
 **Notas para o plano:**
 
-- H3 (autenticação do webhook por credencial de serviço ou assinatura do provedor, no padrão de M1/M5) e H4 (turno de caixa da confirmação assíncrona): registre a regra do turno como decisão no handoff, inclusive o caso de o turno já ter fechado antes da confirmação (pendência da H13 do M3, citada nas "Notas para o marco M7" do handoff da M3 E08).
+- A revisão humana vem do webhook: é o primeiro endpoint chamado por terceiro, e o `fiscal` (E06) e o `distribution` (M8 E08) repetem o padrão.
+- H3 (autenticação do webhook, sem padrão pronto) e H4 (turno de caixa da confirmação assíncrona): registre a regra do turno como decisão no handoff, inclusive o caso de o turno já ter fechado antes da confirmação (pendência da H13 do M3, citada nas "Notas para o marco M7" do handoff da M3 E08).
 - O handoff da M3 E08 descreve o encaixe esperado no `billing`: o recebimento integrado aceita a intenção `PENDING` e guarda o pedido (conta, forma, turno, depósito) até a confirmação, e o listener registra o `Payment` com `INSERT … ON CONFLICT (payment_intent_id) DO NOTHING`; a devolução integrada passa por um `PaymentsApi.refund` do provedor da intenção original, e o reembolso manual continua para o `MANUAL`.
 - Modele txid, endToEndId e estados pelo padrão da API Pix do Banco Central (cob, cobv, webhook, devolução).
 
@@ -381,7 +389,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Caução por Pix gera cobrança e, no check-out, devolução do excedente.
 - [ ] Check-out captura só o saldo devido (limitado ao pré-autorizado) e libera a sobra; o saldo da conta fica zero (RN-06).
 - [ ] A etapa de renovação do fechamento renova pré-autorizações que vencem antes da próxima data configurada e, retomada após falha, não renova de novo as já renovadas (teste).
-- [ ] Falha na renovação gera notificação via `notifications` (RF-NOT-01), diretamente ou pelo mecanismo genérico de falha de integração.
+- [ ] Falha na renovação gera notificação via `notifications` (RF-NOT-01).
 - [ ] Reembolso sem aprovação → `403 APPROVAL_REQUIRED`; com aprovação, auditado e refletido na conta como nova linha (RN-03).
 - [ ] `ApplicationModules.verify()` passa; toda dependência nova segue a regra por camadas e está na tabela da ARCHITECTURE §3.1.
 - [ ] Build, testes e verificação do contrato oficiais passam.
@@ -476,7 +484,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** NFS-e (E07) e NFC-e (E08) usam o mesmo núcleo; o contrato fiscal precisa ser revisado antes de se espalhar por contas, recepção e PDV.
 
-**Dependências:** nenhuma dentro deste roadmap; exige o gate de M6 concluído. Independente de E01–E05 (podem rodar em branches separadas); conflito possível só em `api/openapi.yaml` e na configuração de integrações.
+**Dependências:** E02, que fixa o padrão de webhook e, com a E01, o de integração. Conflito possível só em `api/openapi.yaml` e na configuração de integrações.
 
 **Escopo:**
 
@@ -484,7 +492,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - `FiscalProfile` (código de serviço municipal/NBS, NCM, CFOP, ISS, CST e cClassTrib de IBS/CBS, regime específico) com CRUD protegido por permissão; vínculo por código de lançamento e por produto de venda (referência por ID).
 - `FiscalDocument`, `FiscalRecipient`, `FiscalDocumentItem`, `TaxAmount` (SPEC §8.2.8); estados pendente → processando → autorizado/rejeitado → cancelado; correção e reenvio de rejeitado; cancelamento sensível (step-up) e dentro do prazo legal configurável.
 - Porta `FiscalProvider` (`submit`, `queryStatus`, `cancel`); adaptador falso com WireMock; webhook de status e job de polling com ShedLock; fila com retry e backoff quando o middleware, a SEFAZ ou a prefeitura estiverem indisponíveis.
-- Eventos `FiscalDocumentAuthorized` e `FiscalDocumentRejected`; alerta de rejeição (RF-NOT-01) enviado por `fiscal` via `notifications`, diretamente ou pelo mecanismo genérico de falha de M5; aresta `fiscal` → `notifications` acrescentada à tabela §3.1 se for direta.
+- Eventos `FiscalDocumentAuthorized` e `FiscalDocumentRejected`; alerta de rejeição (RF-NOT-01) enviado por `fiscal`, chamando `notifications` diretamente (aresta já na tabela §3.1).
 - API pública do módulo para solicitar emissão a partir de itens já calculados (sem conhecer `billing` nem `pos`).
 
 **Fora de escopo:** montagem da NFS-e a partir da conta (E07); NFC-e e relatórios (E08); middleware real (E11).
@@ -498,7 +506,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Status chega por webhook autenticado e, com o webhook desligado, por polling.
 - [ ] Cancelamento sem aprovação → `403 APPROVAL_REQUIRED`; fora do prazo configurado → erro com `code` estável; cancelamento válido é auditado.
 - [ ] CRUD de perfis fiscais exige permissão própria e audita alterações.
-- [ ] `ApplicationModules.verify()` passa; `fiscal` depende só de `shared`, `hotel`, `files` e, se usado diretamente, `notifications`, todos listados na tabela da ARCHITECTURE §3.1.
+- [ ] `ApplicationModules.verify()` passa; `fiscal` depende só de `shared`, `hotel`, `files` e `notifications`, como na tabela da ARCHITECTURE §3.1.
+- [ ] O desenho da porta consta numa matriz em `docs/`, que cruza cada operação com a documentação pública de ao menos dois middlewares.
 - [ ] Nota rejeitada gera notificação via `notifications` (RF-NOT-01).
 - [ ] Build, testes e verificação do contrato oficiais passam.
 
@@ -511,7 +520,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Notas para o plano:**
 
-- H2 e H7; leia o handoff do M5 sobre o padrão de integração (porta, adaptador, outbox, retry, log redigido, saúde, falha genérica).
+- H2, H3 e H7; leia o handoff de E01 e os da M5 E07 e E08 sobre o padrão de integração.
 - Modele a porta `FiscalProvider` a partir de ao menos dois middlewares conhecidos (PlugNotas, Focus NFe, NFE.io): envio, status, cancelamento e webhooks; os campos de IBS/CBS (CST, cClassTrib) seguem o que a NFS-e nacional exige desde 01/10/2026 (RF-FIS-04), no perfil fiscal, sem regra fixa em código.
 - Módulo novo: a captura de atualização do brain desta etapa propõe a nota de tema nova `ZenyHotelManager - Módulo fiscal`; as arestas novas do `fiscal` entram na tabela da ARCHITECTURE §3.1 na mesma mudança.
 - O `billing` já guarda em `TransactionCode` uma classificação fiscal em texto livre (`fiscal_classification`, H2 do M3), à espera do vínculo com `FiscalProfile` sem migração destrutiva.
@@ -616,6 +625,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] No check-out, o consumo de A&B lançado no quarto gera uma NFC-e agrupada; com a configuração "emitir no consumo", a emissão acontece no lançamento.
 - [ ] Nenhum lançamento entra em NFS-e e NFC-e ao mesmo tempo (teste).
 - [ ] Relatório fiscal por período, tipo, status e regime com totais de ISS e IBS/CBS.
+- [ ] Notas rejeitadas pendentes aparecem no relatório de pendências do fechamento, por `fiscal.report_*`, e geram `EndOfDayIssue` (RF-FEC-04).
 - [ ] Exportação de XMLs por período gera arquivo compactado, baixado por URL assinada, com acesso auditado.
 - [ ] A API de NFC-e que o PDV deve chamar está descrita no handoff.
 - [ ] Build, testes e verificação do contrato oficiais passam.
@@ -841,7 +851,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Comandos oficiais de build, teste e verificação do contrato numa cópia limpa → sucesso.
 - Cenário ponta a ponta em homologação → evidências registradas.
 
-**Revisão humana:** não
+**Revisão humana:** sim
 
 **Notas para o plano:**
 
@@ -872,3 +882,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m7-pagamentos-fiscal`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. H2 e H3 reescritas pelo que o M5 provou: não existe mecanismo genérico de falha, e o alerta é chamada direta a `notifications`; a saúde é status e métricas, sem `HealthIndicator`; webhook não tem padrão pronto. Novas restrições: resultado incerto, credenciais, registro de integração, saúde e contrato. A tensão sobre `payments` → `notifications` foi resolvida pela tabela §3.1. E01 e E06 ganharam a matriz da porta como critério; E02 e o gate E12 passaram a ter revisão humana. Depois da revisão do `revisor-arquitetura`: E06 depende da E02, e notas rejeitadas entram nas pendências do fechamento (E08). Nenhuma etapa nova, renumerada ou com tag alterada.

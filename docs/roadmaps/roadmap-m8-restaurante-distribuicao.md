@@ -1,18 +1,18 @@
 # Roadmap — M8 Restaurante, distribuição e inauguração
 
-> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · branch de execução: `roadmap/m8-restaurante-distribuicao` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · branch de execução: `roadmap/m8-restaurante-distribuicao` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 8 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · anterior: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md) · próximo: [M9 — Suprimentos](roadmap-m9-suprimentos.md)
 >
-> **Pré-requisito:** o gate do marco M7 (E12 de `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md`) está `#concluida`. Exceção controlada: se o gate de M7 ainda estiver pendente **apenas** porque os adaptadores reais de fornecedores (M7 E09, E10, E11) esperam a SPEC Q-05, as etapas E01–E08, E10 e E12 deste marco podem começar com M7 E01–E08 `#concluida`, usando os adaptadores falsos. O gate E13 deste marco exige o gate de M7 concluído.
+> **Pré-requisito:** o gate do marco M7 (E12 de `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md`) está `#concluida`. Exceção controlada: se o gate de M7 ainda estiver pendente **apenas** porque os adaptadores reais de fornecedores (M7 E09, E10, E11) esperam a SPEC Q-05, as etapas E01–E08, E10, E12 e E14–E18 deste marco podem começar com M7 E01–E08 `#concluida`, usando os adaptadores falsos. O gate E13 deste marco exige o gate de M7 concluído e a homologação da FNRH (M5 E09).
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m8-restaurante-distribuicao`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m8-restaurante-distribuicao`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, comandos e convenções registrados nos handoffs de M0–M7 e nas notas de tema do brain e ajuste as etapas pendentes.
 
-Este marco tem três trilhas independentes: restaurante (E01–E06), distribuição (E07–E09) e implantação (E10–E11). Num lote, as etapas rodam em sequência na mesma branch; a independência entre trilhas é só informativa.
+Este marco tem quatro trilhas independentes: restaurante (E01–E06), distribuição (E07–E09), prontidão para operação real (E10, E14–E18) e implantação (E11). Num lote, as etapas rodam em sequência na mesma branch; a independência entre trilhas é só informativa.
 
 ## Objetivo
 
@@ -20,19 +20,20 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 ## Contexto confirmado
 
+- Revisão de arquitetura dos roadmaps: `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`.
 - Requisitos do PDV: SPEC §5.19 (RF-PDV-01 a 06, 08 a 11; RF-PDV-07, ficha técnica, é do M9), RF-CTA-09 e RF-CTA-14 (§5.10, caixa e taxa de serviço), RN-10 (taxa de serviço), RN-12 (ações sensíveis).
 - Requisitos de distribuição: SPEC §5.21 (RF-DIS-01 a 06).
 - Requisitos não funcionais: RNF-01, RNF-02, RNF-04 (≤ 2 s em tempo real), RNF-06 (p95 < 300 ms com ~30 usuários), RNF-07 (backup, RPO ≤ 1h, RTO ≤ 4h, restauração testada), RNF-08 (TLS) — SPEC §7.
 - Modelo de domínio: SPEC §8.2.15 (`Outlet`, `ProductionStation`, `MenuCategory`, `MenuItem`, `Modifier`, `DiningTable`, `Tab`, `TabItem`, `ProductionTicket`, `BreakfastAttendance`) e §8.2.17 (`ChannelConnection`, `Channel`, `RoomTypeMapping`, `RatePlanMapping`, `AriUpdate`, `InboundBookingMessage`, `ChannelManagerProvider`). Eventos `TabClosed`, `AvailabilityChanged`, `RatesChanged`, `RestrictionsChanged`: SPEC §8.3.
 - Arquitetura: `pos` depende de `shared`, `hotel`, `staff`, `billing`, `payments`, `fiscal`, `inventory`, `reservations`, `printing`; `distribution` depende de `shared`, `rooms`, `rates`, `reservations` (ARCHITECTURE §3.1). Tempo real com tópicos `tabs` e `production` (§10). Integrações e modo pull (§12). Jobs (§13). Impressão (§14). Implantação, nuvem × local e backup (§15.1–15.3). Observabilidade (§16). Riscos Q-05/Q-06 (§18). Regra por camadas da §3.1: qualquer módulo pode chamar os serviços de plataforma (`files`, `notifications`, `printing`, `hotel`) e depender de camadas inferiores sem aprovação (ex.: `pos` → `rates`), desde que o grafo siga acíclico e a aresta nova seja acrescentada à tabela §3.1 na mesma mudança.
-- Convenções herdadas (ler nos handoffs e nas notas de tema do brain): M0 (API, erros, `Money`, idempotência, outbox, ShedLock, Docker/compose com o serviço `backup` reservado, CI), M1 (autorização, limites, step-up, auditoria, `hotel`, `staff`), M2 (SSE, notificações), M3 (`billing`: contas, lançamentos, turnos de caixa, pontos de caixa), M4 (`rates`, `reservations`, disponibilidade), M5 (`printing`, padrão de integração da FNRH), M6 (relatórios operacionais), M7 (`payments` Pix e cartão, API de NFC-e em `fiscal`).
+- Convenções herdadas (ler nos handoffs e nas notas de tema do brain): M0 (API, erros, `Money`, idempotência, outbox, ShedLock, Docker/compose com o serviço `backup` só em comentário, CI), M1 (autorização, limites, step-up, auditoria, `hotel`, `staff`), M2 (SSE, notificações), M3 (`billing`: contas, lançamentos, turnos de caixa, pontos de caixa), M4 (`rates`, `reservations`, disponibilidade), M5 (`printing`, padrão de integração da FNRH), M6 (relatórios operacionais), M7 (`payments` Pix e cartão, API de NFC-e em `fiscal`).
 - Caminhos previstos (a criar, sob o pacote base `com.zeny.hotel`, hipótese herdada de M0): `pos/` e `distribution/` com `domain/`, `application/`, `infrastructure/`, `web/`; migrações nas pastas `pos` e `distribution` de `src/main/resources/db/migration/`; `docker/compose.yaml` e `docker/` para backup e proxy.
 - Comandos de build, teste e lint: os oficiais da tabela do `CLAUDE.md` (definidos em M0 E01).
 - Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Arquitetura e estrutura de módulos` (estrutura de módulo, `ModularityTest`, regra por camadas), `ZenyHotelManager - Schemas, migrações e views de relatório` (migrações, privilégios, *append-only*, views `report_*`), `ZenyHotelManager - Tipos do kernel` (`Money`, `Percent`, ids, cifragem), `ZenyHotelManager - Convenções de API` (controllers, erros, cursor, `ETag`, `Idempotency-Key`, contrato), `ZenyHotelManager - Segurança, autenticação e autorização` (permissões, `OWN`, limites, step-up, endpoints públicos), `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Tempo real (SSE)` (tópicos `tabs` e `production`), `ZenyHotelManager - Sincronização offline`, `ZenyHotelManager - Eventos e jobs` (outbox, listeners, ShedLock), `ZenyHotelManager - Testes de integração`, `ZenyHotelManager - Docker, observabilidade e CI` (compose, proxy, métricas e alertas), `ZenyHotelManager - Ambiente, banco, chaves e build` (papéis do banco, chaves e rotação, segredos), `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Módulo guests`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)` (inclui o `payments`), `ZenyHotelManager - Módulo rates`, `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Hospedagem e recepção` e `ZenyHotelManager - Estado por marco`. Os módulos dos marcos M5 a M7 que ainda não têm nota de tema (`printing`, `fnrh`, `housekeeping`, `reporting`, `fiscal`, o `payments` integrado) são lidos nos handoffs desses marcos e nas capturas pendentes do projeto.
 
 ## Escopo
 
-**Incluído:** pontos de venda, mesas, setores de produção e cardápio; comandas; produção com impressão e tela via SSE; fechamento com pagamento, divisão, taxa de serviço, desconto e NFC-e; consumo interno e cortesia; lançamento no quarto; café da manhã; relatórios do PDV e da taxa de serviço; distribuição com porta neutra, ARI incremental, ressincronização, recebimento de reservas e painel de saúde; adaptador real do channel manager (bloqueado até Q-05); backup e restauração; configuração de implantação nuvem ou local (bloqueada até Q-06); teste de desempenho; gate de inauguração.
+**Incluído:** pontos de venda, mesas, setores de produção e cardápio; comandas; produção com impressão e tela via SSE; fechamento com pagamento, divisão, taxa de serviço, desconto e NFC-e; consumo interno e cortesia; lançamento no quarto; café da manhã; relatórios do PDV e da taxa de serviço; distribuição com porta neutra, ARI incremental, ressincronização, recebimento de reservas e painel de saúde; adaptador real do channel manager (bloqueado até Q-05); backup e restauração; migrações fora da `api`; re-cifragem de todos os valores cifrados; expurgo dos dados sensíveis da FNRH; cadeia de dependências pronta para produção; configuração de implantação nuvem ou local (bloqueada até Q-06); teste de desempenho; gate de inauguração.
 
 **Fora de escopo:**
 
@@ -43,12 +44,14 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 ## Restrições e invariantes
 
-- **Grafo de módulos (ARCHITECTURE §3.1):** `pos` não é chamado por `billing`, `payments` nem `fiscal`; quem reage à comanda escuta `TabClosed`. A NFC-e é solicitada por um listener do próprio `pos` sobre `TabClosed`, chamando a API pública de `fiscal`; em M9 o mesmo listener chamará `inventory` para a baixa por ficha técnica. Essa decisão está registrada na ARCHITECTURE §3.1 e na SPEC §8.3 (`fiscal` e `inventory` não escutam `TabClosed`). `distribution` cria e altera reservas pela API pública de `reservations`; `reservations` não conhece `distribution`. Alertas de falha (RF-NOT-01) saem do módulo que detecta o problema (ex.: `distribution`) via `notifications`, diretamente ou pelo mecanismo genérico de falha de M5; `notifications` nunca escuta eventos de negócio, e a aresta nova entra na tabela §3.1.
+- **Grafo de módulos (ARCHITECTURE §3.1):** `pos` não é chamado por `billing`, `payments` nem `fiscal`; quem reage à comanda escuta `TabClosed`. A NFC-e é solicitada por um listener do próprio `pos` sobre `TabClosed`, chamando a API pública de `fiscal`; em M9 o mesmo listener chamará `inventory` para a baixa por ficha técnica. Essa decisão está registrada na ARCHITECTURE §3.1 e na SPEC §8.3 (`fiscal` e `inventory` não escutam `TabClosed`). `distribution` cria e altera reservas pela API pública de `reservations`; `reservations` não conhece `distribution`. Alertas de falha (RF-NOT-01) saem do módulo que detecta o problema (ex.: `distribution`), que chama `notifications` diretamente, com o tipo `notifications.integration-failure`; `notifications` nunca escuta eventos de negócio.
 - **Idempotência:** fechamento de comanda, lançamento no quarto e pagamento exigem `Idempotency-Key`; mensagens do channel manager são idempotentes pelo ID externo (RF-DIS-04).
 - **Overbooking proibido (Q-09):** reservas vindas do channel manager passam pelos mesmos contadores com `SELECT … FOR UPDATE` de M4 (ARCHITECTURE §11).
 - **Ações sensíveis (RF-ACS-08):** cancelar item enviado à produção e desconto acima do limite exigem permissão ou step-up.
 - **Taxa de serviço (RN-10):** opcional, removível com registro, separada na conta, não é receita do hotel.
-- **Segredos:** credenciais do channel manager, do backup e certificados ficam fora do repositório (variáveis de ambiente ou Docker secrets).
+- **Segredos:** credenciais do channel manager, do backup e certificados ficam fora do repositório (variáveis de ambiente ou Docker secrets). A credencial do channel manager fica cifrada, nunca na trilha, e é removível por uma ação com trilha, como a M5 E16.
+- **Padrão de integração (ARCHITECTURE §12):** resultado incerto nunca é repetido às cegas; registro de integração *append-only* sem texto livre do provedor; status e métricas, sem `HealthIndicator` novo.
+- **Contrato:** enum de resposta que cresce sai como `x-extensible-enum`; `pattern` válido em ECMA-262; sem `DELETE`. Biblioteca nova entra pelo catálogo, com os lockfiles regravados e sem High ou Critical novo no scanner.
 - **Minimização (RN-13):** tela de produção e impressões de produção não mostram dados pessoais do hóspede além do número da UH.
 - **Documentação:** a referência técnica nunca volta ao `CLAUDE.md`. Cada etapa que muda algo descrito no brain fecha com a captura `ZenyHotelManager - atualização m8-restaurante-distribuicao Eyy` (em `00 Inbox/` do vault), com o texto novo ou alterado das notas de tema afetadas; os módulos novos propõem as notas `ZenyHotelManager - Módulo pos` e `ZenyHotelManager - Módulo distribution`, e a implantação (E10, E11) altera `ZenyHotelManager - Docker, observabilidade e CI` e `ZenyHotelManager - Ambiente, banco, chaves e build`. O `README.md` continua sendo atualizado no repositório.
 
@@ -71,7 +74,7 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 - **Implantação com TLS:** o SSE (`GET /api/v1/stream`, M2 E04) passa pelo proxy público: conferir `flush_interval` sem buffer e o tempo limite de conexões longas no Caddy com TLS (e em qualquer balanceador da nuvem), com o heartbeat do M2.
 - **Log de acesso sem query string** (herdado do M3 E01, decisão do usuário em 2026-10-16): a busca de hóspedes leva nome e e-mail na query string (`GET /api/v1/guests?name=…&email=…`) e o cursor leva o nome normalizado; ao configurar o Caddy com TLS e a observabilidade de produção (E11), não ligar log de acesso com a query string, nem no proxy nem na aplicação (o número de documento já vai no corpo, `POST /api/v1/guests/search-by-document`).
-- **Re-cifragem na rotação de chaves** (herdado do M3 E01): o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede; os outros valores cifrados (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token` e os anexos sensíveis no bucket) ainda não têm job, então uma chave só sai do anel depois de re-cifrá-los (procedimento em "Chaves de cifragem" na nota de tema `ZenyHotelManager - Ambiente, banco, chaves e build`).
+- **Re-cifragem na rotação de chaves** (herdado do M3 E01; resolvido na E15): o `GuestDocumentRekeyJob` re-cifra e reindexa os documentos de hóspede; os outros valores cifrados ainda não têm job, então uma chave só sai do anel depois de re-cifrá-los (procedimento em "Chaves de cifragem" na nota de tema `ZenyHotelManager - Ambiente, banco, chaves e build`).
 - **Taxa de serviço padrão do hotel** (herdado do M3 E11, decisão do usuário em 2026-10-20): o hotel nasce com a taxa de serviço padrão em 0% (`HotelApi.taxSettings().serviceChargeRate`), e o código `AB` não tem percentual próprio, então sem configurar nada nenhum consumo de A&B leva a taxa. Na implantação, o administrador define o percentual em `PUT /api/v1/hotel/tax-settings` (`serviceChargeRate`, com `If-Match`; `hotel.settings.manage`), e o `pos` (E04) informa o do ponto de venda quando diferente; o passo entra no checklist de inauguração da E13.
 - **Segredos de implantação:** as `ZENY_FCM_*` (credencial da conta de serviço do FCM, M2 E09) entram com as demais credenciais da implantação, fora do repositório; vazias, o push fica desligado.
 
@@ -83,6 +86,10 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 - [ ] Backup contínuo com cópia externa e restauração testada dentro do RTO de 4h.
 - [ ] Ambiente de produção no modelo decidido (Q-06), com TLS, e desempenho dentro de RNF-04 e RNF-06.
 - [ ] Gate de M7 concluído e cenário ponta a ponta das Fases 0–2 executado com sucesso.
+- [ ] Homologação real da FNRH (M5 E09) concluída.
+- [ ] Dados sensíveis da FNRH expurgados no prazo; a `api` sem as credenciais do dono dos schemas; toda chave retirável do anel depois da re-cifragem; `opentelemetry-api` fora da versão vulnerável; alertas de backup e de fechamento entregues a uma pessoa.
+- [ ] O relatório de pendências do fechamento (RF-FEC-04) inclui notas rejeitadas e ARI não sincronizado.
+- [ ] Toda venda do PDV entra no turno de caixa e no snapshot diário de A&B.
 - [ ] Build, testes, verificação de módulos e do contrato passam; `api/openapi.yaml` sem *breaking change*.
 
 ## Protocolo de execução
@@ -95,8 +102,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -129,12 +136,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -148,9 +155,9 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m8-restaurante-distribuicao com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
@@ -176,14 +183,24 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E08 | Recebimento de reservas e painel de saúde | #pendente | E07 | Pull e webhook idempotentes, reservas criadas/alteradas/canceladas, canal e comissão, painel de saúde |
 | E09 | Adaptador real do channel manager | #bloqueada | E08 | Adaptador do fornecedor escolhido homologado |
 
-**Implantação e inauguração**
+**Prontidão para operação real**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E10 | Backup contínuo e restauração testada | #pendente | — | Serviço `backup` no compose, WAL contínuo com cópia externa, espelhamento do bucket, restauração documentada |
-| E11 | Ambiente de produção: nuvem ou hotel | #bloqueada | E10 | Configuração e procedimento de implantação no modelo decidido, com TLS e modo das integrações |
+| E14 | Migrações fora da `api` | #pendente | — | Migração em container de uso único e `api` sem as credenciais do dono dos schemas |
+| E15 | Re-cifragem de todos os valores cifrados | #pendente | — | Job para cada valor cifrado, com toda chave antiga retirável do anel |
+| E16 | Expurgo dos dados sensíveis da FNRH | #pendente | — | Job de expurgo no prazo da Q-07, com simulação, auditoria e guarda de submissão pendente |
+| E17 | Cadeia de dependências pronta para produção | #pendente | — | `opentelemetry-api` corrigido, decisões de checksums e de scanner no CI aplicadas |
+| E18 | Coleta e entrega de alertas | #pendente | E10 | Prometheus e Alertmanager no compose, com alerta entregue a uma pessoa |
+
+**Implantação e inauguração**
+
+| ID | Etapa | Estado | Dependências | Entrega principal |
+|---|---|---|---|---|
+| E11 | Ambiente de produção: nuvem ou hotel | #bloqueada | E10, E14, E15, E18 | Configuração e procedimento de implantação no modelo decidido, com TLS e modo das integrações |
 | E12 | Teste de desempenho e tempo real | #pendente | E06, E08 | Medição de p95 < 300 ms com ~30 usuários e eventos em até 2 s |
-| E13 | Gate de inauguração (Fases 0–2) | #pendente | E09, E11, E12 | Definição global de pronto e cenário ponta a ponta das Fases 0–2 |
+| E13 | Gate de inauguração (Fases 0–2) | #pendente | E09, E11, E12, E16, E17 | Definição global de pronto, homologação da FNRH e cenário ponta a ponta das Fases 0–2 |
 
 ---
 
@@ -370,7 +387,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Escopo:**
 
-- Fechamento com um ou mais pagamentos via `payments` (Pix e cartão de M7; registro manual de M3), `Idempotency-Key`, troco em dinheiro; comanda só fecha com saldo zero.
+- **Conta por comanda** (decisão do usuário, ARCHITECTURE D18): a comanda paga no ponto de venda abre uma conta com dono `WALK_IN` no `billing`, com os itens em lançamentos e os recebimentos pelos pagamentos existentes; o `pos` não cria livro financeiro próprio.
+- Fechamento com um ou mais pagamentos pelo fluxo do `billing` (Pix e cartão de M7; registro manual de M3), `Idempotency-Key`, troco em dinheiro; comanda só fecha com saldo zero.
 - Turno de caixa de `billing` aberto para o usuário e o ponto de caixa do ponto de venda (RF-CTA-10).
 - Divisão do pagamento entre pessoas por valor ou por itens.
 - Taxa de serviço conforme a configuração do ponto de venda e de `hotel` (H6), separada do total, removível a pedido com registro de quem removeu.
@@ -386,6 +404,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Fechamento sem turno de caixa aberto do usuário no ponto de caixa do ponto de venda → erro com `code` estável.
 - [ ] Comanda com saldo diferente de zero não fecha → erro com `code` estável.
 - [ ] Divisão entre pessoas por valor e por itens soma exatamente o total.
+- [ ] A comanda paga gera conta `WALK_IN` encerrada com saldo zero, e o fechamento do turno de caixa confere os pagamentos do PDV com o restante (teste).
 - [ ] Taxa de serviço aparece separada, não entra como receita do hotel e, ao ser removida, registra quem removeu e quando.
 - [ ] Desconto acima do limite do usuário sem aprovação → `403 APPROVAL_REQUIRED`; com aprovação, auditado.
 - [ ] `TabClosed` publicado no fechamento; o listener do `pos` solicita a NFC-e e guarda a referência; reprocessar o evento não gera segunda NFC-e (teste).
@@ -501,6 +520,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - [ ] Relatório de vendas por produto, categoria, garçom e período e ticket médio batem com os totais esperados de um conjunto de dados de teste.
 - [ ] Cortesias e consumo interno aparecem separados e não somam como venda.
+- [ ] O `foodBeverageRevenue` do snapshot diário (M6 E13) soma a comanda paga e a lançada no quarto, sem contar duas vezes (teste).
 - [ ] Taxa de serviço removida não é contada como arrecadada; o relatório mostra arrecadado, retenção configurada e valor a ratear por colaborador.
 - [ ] Vendas são agrupadas pela data operacional, inclusive as feitas após a meia-noite antes do fechamento do dia (teste).
 - [ ] `reporting` (ou o endpoint) só consulta as views `pos.report_*`.
@@ -561,7 +581,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Várias alterações do mesmo tipo e data antes do envio resultam num único envio com o valor mais recente.
 - [ ] Com o provedor falhando, as atualizações ficam pendentes e são reenviadas com backoff, sem perda e sem um valor antigo sobrescrever um novo (teste).
 - [ ] Ressincronização completa envia todo o horizonte configurado.
-- [ ] Tipo de UH ou plano sem mapeamento não é enviado e gera notificação de falha de integração via `notifications` (RF-NOT-01), diretamente ou pelo mecanismo genérico de falha.
+- [ ] Tipo de UH ou plano sem mapeamento não é enviado e gera notificação de falha de integração via `notifications` (RF-NOT-01).
 - [ ] Credenciais cifradas; log de integração redigido.
 - [ ] `ApplicationModules.verify()` passa; `reservations` e `rates` não dependem de `distribution`.
 - [ ] Build, testes e verificação do contrato oficiais passam.
@@ -578,7 +598,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Confirme o pré-requisito (gate do M7 ou a exceção do cabeçalho). Leia SPEC §5.21 e §8.2.17, ARCHITECTURE §12 e o handoff do M5 sobre o padrão de integração (FNRH: outbox, retry, log redigido, painel de saúde). A porta precisa servir a HotelRunner e a Omnibees (D1 em aberto): confira como as APIs públicas dos dois modelam ARI.
 - Os três eventos não levam valores: `AvailabilityChanged` só traz tipo e período (o consumidor relê os contadores pela `ReservationsApi.inventory`), `RatesChanged` traz os planos derivados afetados (os derivados são calculados na leitura e não têm linhas próprias; preços efetivos pela `RatesApi.rateCalendar`) e `RestrictionsChanged` os campos mudados (notas `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)` e `ZenyHotelManager - Módulo rates`). Até aqui não têm consumidor de produção, então o outbox só passa a gravar as publicações quando os listeners desta etapa existirem.
 - Semântica das restrições para o channel manager, decidida pelo usuário em 2026-10-20 (nota `ZenyHotelManager - Módulo rates`, "Restrições de venda"): `closed` fecha qualquer noite da estadia; CTA e CTD só na data exata (o CTD é o da data de saída); estadia mínima e máxima "on arrival" (um channel manager que use "through" recebe a da chegada); a restrição do tipo de UH substitui a geral campo a campo; as restrições são de cada plano (o derivado não herda as do base).
-- Credenciais com o `FieldCipher`/`EncryptedStringConverter` (nota `ZenyHotelManager - Tipos do kernel`); listeners idempotentes e job com `@SchedulerLock` e uma constante de adiamento no `@IntegrationTest` (notas `ZenyHotelManager - Eventos e jobs` e `ZenyHotelManager - Testes de integração`); o alerta usa o tipo `notifications.integration-failure`, sem dado de hóspede (nota `ZenyHotelManager - Módulo notifications`). A aresta `distribution` → `notifications` entra na tabela da ARCHITECTURE §3.1 se for usada.
+- Credenciais com o `FieldCipher`/`EncryptedStringConverter` (nota `ZenyHotelManager - Tipos do kernel`); listeners idempotentes e job com `@SchedulerLock` e uma constante de adiamento no `@IntegrationTest` (notas `ZenyHotelManager - Eventos e jobs` e `ZenyHotelManager - Testes de integração`); o alerta usa o tipo `notifications.integration-failure`, sem dado de hóspede (nota `ZenyHotelManager - Módulo notifications`). A aresta `distribution` → `notifications` já está na tabela da ARCHITECTURE §3.1.
 - Pontos de atenção da revisão: ARI fora de ordem sobrescrevendo valor mais novo, envio perdido quando o provedor falha, `reservations` ou `rates` passando a depender de `distribution`, credencial em claro.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
@@ -624,6 +644,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Webhook sem autenticação → `401` ou `403`, sem efeito.
 - [ ] Cartão virtual da OTA registrado só como token/referência, sem número de cartão.
 - [ ] Painel de saúde mostra última sincronização, pendências e erros; reprocessamento manual de mensagem com falha funciona e é auditado.
+- [ ] ARI não sincronizado aparece no relatório de pendências do fechamento, por `distribution.report_*` (RF-FEC-04).
 - [ ] Build, testes e verificação do contrato oficiais passam.
 
 **Validação obrigatória:**
@@ -637,8 +658,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - Confirme a H4 antes de planejar: a reserva agrupadora já guarda a origem (`OTA` vende no canal `OTA`) e o número externo (`externalId`), mas comissão e quem cobra não aparecem nas notas de tema; se faltarem, acrescente-os à API pública de `reservations` (dependência permitida).
 - A `ReservationsApi` tem os caminhos sem permissão feitos para o channel manager: `createBooking` (sem step-up do desconto; o channel manager grava a diária da OTA como diária editada), `cancelReservation` e `confirmReservation(id, method)` (garantia `CARD` só informada, sem dado do cartão até o M7). A alteração da reserva **não** está na API pública (só `PUT /api/v1/reservations/{id}` com `If-Match`): a alteração vinda da OTA precisa de um caminho novo na `ReservationsApi`. A tomada do inventário recusa com `409 ROOM_TYPE_UNAVAILABLE` sem gravar nada (notas `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)` e `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`).
-- O titular e os hóspedes precisam existir no `guests` antes da reserva (`createBooking` recebe ids): a criação do perfil a partir da mensagem da OTA e a busca de duplicado são parte do plano (nota `ZenyHotelManager - Módulo guests`).
-- O webhook é chamado pelo provedor, sem access token de usuário: um endpoint público exige mudar `SecurityConfiguration.PUBLIC_API_ENDPOINTS` e o `ApiSecurityTest`, e o `@Idempotent` (por usuário) não serve: a idempotência é pelo ID externo (nota `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Convenções de API`). O painel de saúde e o reprocessamento seguem o padrão de integração do M5 (handoff); o actuator não expõe indicadores novos (nota `ZenyHotelManager - Docker, observabilidade e CI`).
+- O titular e os hóspedes precisam existir no `guests` antes da reserva (`createBooking` recebe ids): a criação do perfil a partir da mensagem da OTA e a busca de duplicado são parte do plano (nota `ZenyHotelManager - Módulo guests`). A aresta `distribution` → `guests` segue a regra por camadas e entra na tabela §3.1 nesta etapa.
+- O padrão do webhook vem da M7 E02 (handoff). O webhook é chamado pelo provedor, sem access token de usuário: um endpoint público exige mudar `SecurityConfiguration.PUBLIC_API_ENDPOINTS` e o `ApiSecurityTest`, e o `@Idempotent` (por usuário) não serve: a idempotência é pelo ID externo (nota `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Convenções de API`). O painel de saúde e o reprocessamento seguem o padrão de integração do M5 (handoff); o actuator não expõe indicadores novos (nota `ZenyHotelManager - Docker, observabilidade e CI`).
 - Pontos de atenção da revisão: reserva duplicada por mensagem repetida ou por pull e webhook ao mesmo tempo, overbooking por reserva de OTA, mensagem com erro descartada sem alerta, dado de cartão da OTA gravado.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
@@ -722,7 +743,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Escopo:**
 
-- Serviço `backup` em `docker/compose.yaml` (reservado em M0 E06) com pgBackRest ou WAL-G (H7), configurado por variáveis de ambiente.
+- Serviço `backup` em `docker/compose.yaml` (a criar: hoje só há um comentário no arquivo) com pgBackRest ou WAL-G (H7), configurado por variáveis de ambiente.
 - Arquivamento contínuo de WAL e base completa diária para storage externo compatível com S3; em desenvolvimento, um segundo MinIO simula o destino externo.
 - Espelhamento do bucket do `storage` para o destino externo.
 - Documento `docs/operacao/backup-e-restauracao.md` (a criar) com o procedimento de restauração (ponto no tempo), verificação e periodicidade do teste.
@@ -738,7 +759,9 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] O bucket de arquivos é espelhado no destino externo.
 - [ ] O script de restauração recupera, num ambiente separado e sem o volume original, os dados até um ponto no tempo escolhido; readiness `UP` e contagens conferidas; tempo medido abaixo de 4h.
 - [ ] `docs/operacao/backup-e-restauracao.md` descreve backup, restauração, verificação e periodicidade do teste.
-- [ ] Métrica de idade do último backup exposta e alerta configurado.
+- [ ] No ambiente restaurado, um valor cifrado é lido, e um anexo comum e um sensível são baixados a partir do espelho do bucket (teste do script).
+- [ ] O documento diz onde ficam as chaves `ZENY_ENCRYPTION_KEYS` e JWT fora do servidor, sem as quais a restauração não serve, e que o expurgo da E16 é reaplicado depois de restaurar.
+- [ ] Métrica de idade do último backup exposta e regra de alerta configurada; a entrega é da E18.
 - [ ] Nenhum segredo no repositório; build e testes oficiais passam.
 
 **Validação obrigatória:**
@@ -747,7 +770,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Comandos oficiais de build e teste → sucesso.
 - `docker compose -f docker/compose.yaml down` ao final.
 
-**Revisão humana:** não
+**Revisão humana:** sim
 
 **Notas para o plano:**
 
@@ -773,23 +796,270 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
+## E14 — Migrações fora da `api` — #pendente
+
+**Objetivo:** rodar as migrações Flyway num container de uso único, com o dono dos schemas, e tirar da `api` as credenciais `ZENY_DB_MIGRATION_*`.
+
+**Por que agora:** é dívida de segurança do M1 E04 (decisão do usuário, 2026-10-14) e estava presa à E11, bloqueada pela Q-06, sem depender de nuvem ou hotel. Até aqui, um processo exposto à rede guarda as credenciais de quem pode alterar qualquer schema.
+
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
+
+**Escopo:** `docker/compose.yaml`, imagem, profiles e documentação do ambiente; o dono dos schemas deixa de ser o superusuário do container onde o modelo de implantação permitir; testes e gates anteriores continuam funcionando com o caminho novo.
+
+**Fora de escopo:** o procedimento de implantação em produção (E11), que usa este caminho.
+
+**Critérios de aceite:**
+
+- [ ] `docker compose -f docker/compose.yaml up -d --build` aplica as migrações antes de a `api` subir, e a `api` não sobe com migração pendente.
+- [ ] O ambiente do container `api` não tem `ZENY_DB_MIGRATION_*` (`docker inspect`).
+- [ ] A `api` no profile `prod` não executa Flyway e conecta só com o papel restrito; o `DatabaseRoleGuard` continua passando.
+- [ ] No compose de produção, o dono dos schemas não é o superusuário do container, ou o handoff registra por que o modelo não permite.
+- [ ] A versão anterior da `api` sobe com uma migração aditiva mais nova aplicada: a conferência não impede o rollback de versão (teste).
+- [ ] Migração com falha impede a `api` de subir e deixa o erro no log do container de migração.
+- [ ] `./gradlew bootRun` no profile `local` e os testes de integração seguem funcionando, com o caminho documentado.
+- [ ] Nenhum segredo no repositório; build e testes oficiais passam; `README.md` e captura de atualização do brain atualizados.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `docker compose -p` isolado `-f docker/compose.yaml up -d --build` → readiness `UP`; `down -v` em seguida.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** ARCHITECTURE §11 e §15.1; nota `ZenyHotelManager - Ambiente, banco, chaves e build` (dois papéis do banco e a dívida). A ARCHITECTURE §15.1 deixa de listar a pendência na mesma mudança.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Banco já criado com o dono antigo: documentar o caminho no `README.md`; antes da inauguração não há dado real a preservar.
+
+**Rollback / migração:** muda só o processo de implantação; voltar é restaurar a variável e o Flyway no boot, sem efeito nos dados.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E15 — Re-cifragem de todos os valores cifrados — #pendente
+
+**Objetivo:** garantir que qualquer chave do anel `ZENY_ENCRYPTION_KEYS` possa sair de uso, com um job de re-cifragem para cada valor cifrado que ainda não tem um.
+
+**Por que agora:** hoje só os documentos de hóspede têm job (`GuestDocumentRekeyJob`). Sem os demais, uma chave comprometida em produção não pode ser retirada sem perder dado; e a ARCHITECTURE §8.3 deixa isso como pendência do M8.
+
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
+
+**Escopo:** todo valor cifrado em nível de campo ou de conteúdo. Conhecidos em 2026-11-06: `guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token`, os anexos sensíveis no bucket, `guests.guest.dietary_restrictions`, `guests.guest.gender_description` (M5 E15), `fnrh.settings` e `fnrh.requester`; o conteúdo de impressão da M5 E10 e as credenciais de M7 e M8 entram pela lista obtida na etapa.
+
+**Fora de escopo:** a rotação das chaves JWT, que já tem caminho próprio; a troca do algoritmo de cifragem.
+
+**Critérios de aceite:**
+
+- [ ] Um teste percorre todos os usos de `FieldCipher`, `EncryptedStringConverter`, `ContentCipher` e `TokenSealer` e falha se um deles não tem job de re-cifragem nem exceção registrada (como um valor de vida curta).
+- [ ] Depois dos jobs, nenhum valor fica com a chave antiga, e retirar essa chave do anel não quebra nenhuma leitura (teste).
+- [ ] Índices cegos continuam achando os registros depois da re-cifragem.
+- [ ] Os jobs são idempotentes, retomáveis e com ShedLock; falha num registro não perde o valor original.
+- [ ] Cada execução vai à trilha com contagens, sem dado pessoal, e o progresso aparece em métrica.
+- [ ] O procedimento de rotação fica em `docs/operacao/` (a criar) e a ARCHITECTURE §8.3 deixa de listar a pendência.
+- [ ] Build e testes oficiais passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** modelo no `GuestDocumentRekeyJob`; nota `ZenyHotelManager - Ambiente, banco, chaves e build`, "Chaves de cifragem". Antes da E10, os backups não entram na conta; depois, um backup antigo só restaura com a chave antiga: o procedimento diz por quanto tempo guardá-la.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Erro de re-cifragem é perda de dado: gravar só depois de decifrar e conferir o valor novo, registro a registro; rodar com backup recente.
+
+**Rollback / migração:** a chave antiga só sai do anel depois da conferência; até lá, tudo continua legível.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E16 — Expurgo dos dados sensíveis da FNRH — #pendente
+
+**Objetivo:** expurgar raça/cor e deficiência no prazo da Q-07 (padrão: 30 dias após o check-out, configurável), por um job semanal, antes de o hotel receber o primeiro hóspede real (RN-19).
+
+**Por que agora:** a inauguração é neste marco e o dado passa a ser coletado nela; a automação completa de retenção só vem no M10. Decisão do usuário em 2026-11-06 (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, R4).
+
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
+
+**Escopo:** `guests`, que guarda o dado (`sensitive_data`), com o job, o prazo em configuração e a porta que informa a data do último check-out, implementada por `reservations`; uma segunda porta, implementada por `fnrh`, informa se há submissão pendente do hóspede.
+
+**Fora de escopo:** anonimização de perfis por prazo e retenção da trilha (M10 E13).
+
+**Critérios de aceite:**
+
+- [ ] Depois do prazo, os dados sensíveis são apagados; antes do prazo, não (teste com `MutableClock`).
+- [ ] Hóspede hospedado, ou com submissão a enviar ou em nova tentativa, não é expurgado; entra na execução seguinte em que a condição acabar (teste).
+- [ ] Submissão `FAILED` ou `INVALID` segura o expurgo só até um teto configurável; passado o teto, o dado é expurgado mesmo assim e o caso fica na lista de pendências da FNRH (teste).
+- [ ] O expurgo retido aparece em métrica e gera alerta.
+- [ ] Reexecutar o job não muda nada; ele não roda em paralelo (ShedLock).
+- [ ] Modo simulação lista as contagens sem escrever, sob permissão própria.
+- [ ] Cada execução vai à trilha com contagens, sem dado pessoal.
+- [ ] Hóspede expurgado que volta tem os dados pedidos de novo: a validação local da FNRH acusa `REQUIRED`, sem erro de decifragem (teste).
+- [ ] `guests` não depende de `reservations` nem de `fnrh` (`ModularityTest`); a ARCHITECTURE §13 e a SPEC §9 refletem a decisão.
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- RN-19, RN-20 e Q-07. A revisão humana cobre o prazo: a Q-07 segue no padrão da SPEC até o usuário confirmar.
+- Nota `ZenyHotelManager - Módulo guests`: a anonimização manual já apaga esses dados e a porta `GuestActiveStayCheck` é o modelo de inversão. O `fnrh` não guarda esses dados, por critério da M5 E08.
+- Decida com registro: hóspede com reserva futura, e se a descrição de gênero (M5 E15) segue o mesmo prazo.
+- O dado expurgado continua nos backups até a retenção deles vencer: o prazo fica em `docs/operacao/backup-e-restauracao.md` (E10) e no checklist de inauguração, e a restauração reaplica o expurgo.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Expurgo é irreversível: modo simulação e revisão humana; a primeira execução real só depois da simulação revisada pelo usuário.
+
+**Rollback / migração:** irreversível por desenho; o único caminho de volta é restaurar um backup.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E17 — Cadeia de dependências pronta para produção — #pendente
+
+**Objetivo:** fechar antes da operação real os riscos de dependência que os lotes do M5 deixaram com prazo.
+
+**Por que agora:** a decisão M5 E14 (a) aceitou o `opentelemetry-api` 1.62.0 (GHSA-ccrj-gw8r-854m, alcançável sem autenticação) só até a operação real, e as decisões M5 E13 (c) e (d) indicaram o M8 para reavaliar scanner no CI e checksums. Nenhuma tinha etapa dona.
+
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
+
+**Escopo:** versões no catálogo e lockfiles; `gradle/verification-metadata.xml` e o passo de CI, conforme a decisão registrada na etapa.
+
+**Fora de escopo:** subir versões sem relação com um risco apontado.
+
+**Critérios de aceite:**
+
+- [ ] `opentelemetry-api` ≥ 1.67.0 no `productionRuntimeClasspath`, pelo Boot ou por restrição, com a ponte do Micrometer testada; o scanner não aponta mais a GHSA.
+- [ ] 0 Critical e 0 High no scanner na data da etapa, salvo risco aceito pelo usuário e registrado com prazo.
+- [ ] A verificação de checksums (`gradle/verification-metadata.xml`) e o `osv-scanner` no CI estão ligados, ou o handoff registra a decisão de não ligar, com prós e contras.
+- [ ] `./gradlew build` e `docker build -f docker/Dockerfile .` passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `osv-scanner scan source -r .` → saída anexada ao handoff.
+
+**Revisão humana:** não
+
+**Notas para o plano:** decisões E13 (c) e (d) e E14 (a) no M5 e a nota `ZenyHotelManager - Ambiente, banco, chaves e build` (lockfiles, antes de mexer em dependências). Se o Boot já trouxer a versão corrigida, a primeira frente é só conferir. Sem `osv-scanner` na máquina, a instalação é do usuário.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Subida de minor à frente do BOM do Boot: teste da ponte do Micrometer no critério; preferir a versão do BOM quando houver.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E18 — Coleta e entrega de alertas — #pendente
+
+**Objetivo:** fazer os alertas chegarem a uma pessoa, com Prometheus e Alertmanager no compose e o destino de entrega configurável (ARCHITECTURE D19).
+
+**Por que agora:** as regras de `docker/prometheus/alerts.yaml` não têm quem as avalie: o compose não sobe coletor, e o proxy recusa `/actuator/prometheus`. Sem isto, backup parado ou fechamento que não rodou passam em silêncio.
+
+**Dependências:** E10. Exige a M6 E10, coberta pelo gate do M6.
+
+**Escopo:** serviços `prometheus` e `alertmanager` em `docker/compose.yaml`, raspando a `api` e o `backup` pela rede interna, sem porta pública; destino por variável de ambiente, fora do repositório.
+
+**Fora de escopo:** o destino real de produção (E11); painéis; monitor externo do host, que é item do checklist de inauguração.
+
+**Critérios de aceite:**
+
+- [ ] Num compose isolado, parar o `backup` faz o alerta chegar a um receptor de teste dentro do prazo da regra.
+- [ ] Impedir um fechamento faz o alerta do fechamento chegar ao mesmo receptor (relógio ou regra de teste, registrado no handoff).
+- [ ] `/actuator/prometheus` continua respondendo 404 pelo proxy, e nem o Prometheus nem o Alertmanager têm porta pública.
+- [ ] Sem destino configurado, o compose não sobe no profile de produção (`${VAR:?…}`), para não haver alerta perdido em silêncio.
+- [ ] Nenhum alerta leva dado pessoal; nenhum segredo no repositório; build e testes oficiais passam.
+
+**Validação obrigatória:**
+
+- `docker compose -p` isolado `-f docker/compose.yaml up -d --build` → alertas entregues ao receptor de teste; `down -v` em seguida.
+
+**Revisão humana:** não
+
+**Notas para o plano:** ARCHITECTURE D19 e §16; `docker/prometheus/alerts.yaml` e a nota `ZenyHotelManager - Docker, observabilidade e CI`. O alerta de falha da E16 e os das integrações entram no mesmo caminho.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- O servidor inteiro cair leva junto o alerta: o checklist de inauguração pede um monitor externo simples, a cargo do usuário.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
 ## E11 — Ambiente de produção: nuvem ou hotel — #bloqueada
 
 **Objetivo:** preparar o ambiente de produção no modelo decidido (SPEC Q-06): TLS, modo das integrações (webhook ou pull/polling), destino real do backup, segredos e procedimento de implantação e atualização documentado, conforme a tabela da ARCHITECTURE §15.2.
 
 **Por que agora:** é o último passo de infraestrutura antes da inauguração; depende do backup (E10).
 
-**Dependências:** E10. Independente de E09 e E12; conflito possível em `docker/compose.yaml`.
+**Dependências:** E10, E14, E15, E18. Independente de E12; da E09 e dos adaptadores do M7 ela só configura os que já estiverem homologados, e o gate E13 confere os demais. Conflito possível em `docker/compose.yaml`.
 
 **Escopo:**
 
 - Arquivo de override de produção do compose (a criar em `docker/`) com o profile `prod`.
 - Nuvem: Caddy com Let's Encrypt, webhooks habilitados. Hotel: rede local, túnel opcional para acesso externo, integrações em pull/polling, nobreak e cópia externa obrigatória (ARCHITECTURE §15.2).
 - Segredos via Docker secrets ou variáveis do host (chave de cifragem, chave JWT, credenciais do banco, dos provedores e do backup).
-- Dívida do M1 E04 (decidida pelo usuário em 2026-10-14): as migrações saem do boot da `api` para um job ou container de uso único que conecta com o dono dos schemas (`ZENY_DB_MIGRATION_*`). A `api` deixa de receber essas credenciais e conecta só com o papel restrito; o dono deixa de ser o superusuário do container (`POSTGRES_USER`) onde o modelo de implantação permitir.
 - Pendência do M1 E04: decidir se o login com usuário inexistente vai para a trilha de auditoria ou para uma métrica (hoje não deixa registro, porque não escreve nada).
 - Destino real do backup e do espelhamento (E10) com credenciais do usuário.
-- `docs/operacao/implantacao.md` (a criar): instalação, atualização com o job de migração (Flyway) antes da `api`, rotação de chaves, verificação pós-implantação, rollback de versão.
+- `docs/operacao/implantacao.md` (a criar): instalação, atualização com o container de migração da E14 antes da `api`, rotação de chaves (procedimento da E15), verificação pós-implantação, rollback de versão.
 - Smoke test no ambiente final: readiness `UP` via TLS, login, um evento SSE.
 
 **Fora de escopo:** provisionamento do servidor ou contratação da VPS (ação do usuário).
@@ -797,8 +1067,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Critérios de aceite:**
 
 - [ ] Smoke test no ambiente final: `/actuator/health/readiness` `UP` via TLS, login de um usuário de teste e recebimento de um evento SSE.
-- [ ] Cada integração (FNRH, PSP, adquirente, middleware fiscal, channel manager, push) está configurada no modo compatível com o modelo decidido; no hotel, nenhuma depende de porta de entrada aberta (RNF-02).
+- [ ] Cada integração já homologada (FNRH, PSP, adquirente, middleware fiscal, channel manager, push) está configurada no modo compatível com o modelo decidido, e o handoff lista as que faltam; no hotel, nenhuma depende de porta de entrada aberta (RNF-02).
 - [ ] Swagger UI e endpoints sensíveis do actuator não respondem em produção.
+- [ ] O log de acesso do proxy e o da aplicação não trazem a query string (teste com uma busca de hóspede), e o `idle_in_transaction_session_timeout` está definido.
+- [ ] Um alerta de teste chega ao destino real.
 - [ ] Backup e espelhamento gravam no destino real; uma restauração a partir dele foi executada em ambiente separado.
 - [ ] `docs/operacao/implantacao.md` cobre instalação, atualização, rotação de chaves, verificação e rollback.
 - [ ] Nenhum segredo no repositório; build e testes oficiais passam.
@@ -815,8 +1087,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - Só planeje com a D2 registrada e o ambiente-alvo disponível; a implantação vai só ao ambiente-alvo autorizado pelo usuário (efeito fora da branch: parada do superpowers). Leia o handoff de E10 e, para o modo de cada integração (webhook × polling), os handoffs de M5, M7 e deste marco.
 - Aplique as notas herdadas do cabeçalho: SSE pelo proxy com TLS (`flush_interval` sem buffer e tempo limite das conexões longas), log de acesso **sem query string** no proxy e na aplicação, segredos `ZENY_FCM_*` com os demais e a taxa de serviço padrão em 0% (para o checklist da E13).
-- Pendências atribuídas a esta etapa nas notas de tema e ainda fora do Escopo (decidir com o usuário se entram): a re-cifragem dos valores que ainda usam uma chave antiga, que não tem job (`guests.guest.sensitive_data`, `files.stored_file.original_name`, `notifications.push_device.token`, os anexos sensíveis no bucket; nota `ZenyHotelManager - Ambiente, banco, chaves e build`, "Chaves de cifragem"), e o `idle_in_transaction_session_timeout` e o restante da configuração do PostgreSQL de produção (nota `ZenyHotelManager - Sincronização offline`, "Cursor sem perda").
-- Swagger UI e `/v3/api-docs` já ficam desligados no `prod`, e o actuator só expõe liveness, readiness e prometheus (o proxy responde 404 ao prometheus); o critério confere isso no ambiente final (notas `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Docker, observabilidade e CI`). A dívida das migrações (`ZENY_DB_MIGRATION_*`) está na nota `ZenyHotelManager - Ambiente, banco, chaves e build`.
+- Entra nesta etapa o `idle_in_transaction_session_timeout` e o restante da configuração do PostgreSQL de produção (nota `ZenyHotelManager - Sincronização offline`, "Cursor sem perda"). A re-cifragem é da E15, e a dívida das migrações, da E14.
+- Swagger UI e `/v3/api-docs` já ficam desligados no `prod`, e o actuator só expõe liveness, readiness e prometheus (o proxy responde 404 ao prometheus); o critério confere isso no ambiente final (notas `ZenyHotelManager - Segurança, autenticação e autorização` e `ZenyHotelManager - Docker, observabilidade e CI`).
 - Pontos de atenção da revisão: segredo no repositório ou no override, porta aberta desnecessária no servidor do hotel, integração ainda em webhook sem rota de entrada, Swagger ou actuator sensível expostos.
 
 **Bloqueios:**
@@ -903,21 +1175,26 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** é o critério da SPEC §9 ("Para a inauguração, o mínimo são as Fases 0, 1 e 2") e a entrada do marco M9.
 
-**Dependências:** E09, E11, E12 (que cobrem transitivamente todas as demais). Não paralelizável.
+**Dependências:** E09, E11, E12, E16, E17 (que cobrem transitivamente todas as demais). Não paralelizável.
 
 **Escopo:**
 
-- Conferir que os gates de M0 a M7 estão `#concluida` nos respectivos roadmaps.
+- Conferir que os gates de M0 a M7 e a homologação da FNRH (M5 E09, que o gate do M5 não exigiu) estão `#concluida` nos respectivos roadmaps.
 - Rodar build, testes, verificação de módulos e do contrato numa cópia limpa.
 - Cenário ponta a ponta: reserva vinda da OTA, check-in com FNRH e caução, tarefa de governança concluída offline, consumo no restaurante com NFC-e e outro lançado no quarto, fechamento do dia, check-out com NFS-e e captura, conciliação, backup e restauração.
-- Checklist de inauguração em `docs/operacao/checklist-inauguracao.md` (a criar): credenciais de produção, Cadastur e FNRH (Q-12), cadastros iniciais (UHs, tarifas, cardápio, perfis fiscais, usuários e roles), a configuração do hotel (inclusive a taxa de serviço padrão, que nasce em 0%: `PUT /api/v1/hotel/tax-settings`, nota herdada do M3 E11), impressoras e agente, monitoramento e alertas, contatos de suporte dos fornecedores.
+- Checklist de inauguração em `docs/operacao/checklist-inauguracao.md` (a criar): credenciais de produção, Cadastur e FNRH (Q-12), cadastros iniciais (UHs, tarifas, cardápio, perfis fiscais, usuários e roles), a configuração do hotel (inclusive a taxa de serviço padrão, que nasce em 0%: `PUT /api/v1/hotel/tax-settings`, nota herdada do M3 E11), impressoras e agente, monitoramento e alertas (com um monitor externo simples do host, a cargo do usuário), o prazo de retenção dos backups diante do expurgo da E16, contatos de suporte dos fornecedores.
 - Atualizar `docs/roadmaps/README.md` registrando a conclusão do M8 no histórico de revisões.
 
 **Fora de escopo:** funcionalidade nova. Problemas voltam para a etapa de origem (reabrir com `#em-andamento` e registrar no handoff dela), salvo ajustes triviais de documentação.
 
 **Critérios de aceite:**
 
-- [ ] Os gates de M0 a M7 estão `#concluida` nos respectivos roadmaps.
+- [ ] Os gates de M0 a M7 e a M5 E09 estão `#concluida` nos respectivos roadmaps.
+- [ ] As decisões tomadas pela opção recomendada nos marcos anteriores foram revistas pelo usuário, e as revisões humanas pendentes, concluídas.
+- [ ] O no-show foi executado na homologação da FNRH, ou está registrado como risco aceito pelo usuário.
+- [ ] Todas as integrações estão configuradas no ambiente final, no modo decidido.
+- [ ] O cenário de carga da E12 foi repetido no ambiente final, com os resultados dentro de RNF-04 e RNF-06.
+- [ ] `osv-scanner scan source -r .` na data do gate: 0 Critical e 0 High, salvo risco aceito pelo usuário.
 - [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência.
 - [ ] O cenário ponta a ponta das Fases 0–2 foi executado com os fornecedores reais, sem erro e sem divergência na conciliação.
 - [ ] `docs/operacao/checklist-inauguracao.md` cobre credenciais, Cadastur e FNRH, cadastros iniciais, impressoras, monitoramento, LGPD e contatos de suporte, e foi revisado com o usuário.
@@ -964,3 +1241,5 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m8-restaurante-distribuicao`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. Novo bloco de prontidão: E14 (migrações fora da `api`, retirada da E11, bloqueada pela Q-06, da qual não depende), E15 (re-cifragem, antes só uma nota da E11), E16 (expurgo dos sensíveis da FNRH, decisão do usuário, trazido do M10) e E17 (cadeia de dependências, com o prazo do `opentelemetry-api`). O gate E13 passou a exigir essas etapas, a homologação da FNRH e a revisão das decisões pendentes. E10 passou a ter revisão humana. Texto do "mecanismo genérico de falha", que não existe, corrigido; serviço `backup` marcado como a criar. O marco ficou com 18 etapas, acima da referência da skill: divisão em dois arquivos oferecida ao usuário, não aplicada. Nenhuma etapa renumerada; tags existentes inalteradas.
+- 2026-11-06 — achados do `revisor-arquitetura` sobre a revisão, corrigidos. Decisões do usuário: conta `WALK_IN` por comanda (E04, D18) e Prometheus com Alertmanager (nova E18, D19). A E11 passou a depender de E15 e E18 e só configura as integrações já homologadas; o gate confere as demais. Novos critérios: restauração utilizável (E10), rollback de versão (E14), teto para a retenção do expurgo (E16), ARI nas pendências do fechamento (E08), A&B no snapshot (E06) e, no gate, no-show homologado, integrações, carga no ambiente final e scanner.

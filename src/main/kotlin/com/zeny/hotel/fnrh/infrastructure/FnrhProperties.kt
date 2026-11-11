@@ -16,7 +16,21 @@ data class FnrhProperties(
     val productionUrl: URI = URI.create("https://fnrh.turismo.serpro.gov.br/FNRH_API/rest/v2"),
     val connectTimeout: Duration = DEFAULT_CONNECT_TIMEOUT,
     val readTimeout: Duration = DEFAULT_READ_TIMEOUT,
+    val submissions: Submissions = Submissions(),
 ) {
+    /**
+     * O job de envio e a política de retry (`zeny.fnrh.submissions`, D-E08-4). Os campos são `var` para o bean de teste
+     * `@Primary` de [FnrhProperties], ligado como JavaBean, poder trocar um valor por propriedade (`initial-delay`).
+     */
+    data class Submissions(
+        var interval: Duration = Duration.ofMinutes(1),
+        var initialDelay: Duration = Duration.ofMinutes(1),
+        var batchSize: Int = 50,
+        var maxAttempts: Int = 8,
+        var initialBackoff: Duration = Duration.ofMinutes(1),
+        var maxBackoff: Duration = Duration.ofHours(1),
+    )
+
     companion object {
         private val DEFAULT_CONNECT_TIMEOUT: Duration = Duration.ofSeconds(5)
         private val DEFAULT_READ_TIMEOUT: Duration = Duration.ofSeconds(20)
@@ -25,7 +39,7 @@ data class FnrhProperties(
     // Sem segredo hoje; sobrescrito para nunca passar a ter se um campo for acrescentado sem pensar.
     override fun toString(): String =
         "FnrhProperties(homologationUrl=$homologationUrl, productionUrl=$productionUrl, " +
-            "connectTimeout=$connectTimeout, readTimeout=$readTimeout)"
+            "connectTimeout=$connectTimeout, readTimeout=$readTimeout, submissions=$submissions)"
 }
 
 @Configuration(proxyBeanMethods = false)

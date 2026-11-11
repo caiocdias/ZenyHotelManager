@@ -1,6 +1,6 @@
 # Roadmap — M5 Recepção, FNRH e impressão
 
-> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · branch de execução: `roadmap/m5-recepcao-fnrh` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · branch de execução: `roadmap/m5-recepcao-fnrh` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 5 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M4 — Tarifas, disponibilidade e reservas](roadmap-m4-tarifas-reservas.md) · próximo marco: [M6 — Operação diária e fechamento](roadmap-m6-operacao-fechamento.md)
 >
@@ -8,7 +8,7 @@
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m5-recepcao-fnrh`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m5-recepcao-fnrh`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Sincronizado com o código em 2026-10-22**, depois do gate do M4 (commit `ffae917`): caminhos, comandos, convenções, APIs públicas e pendências vêm do `CLAUDE.md`, do código e dos handoffs de `docs/roadmaps/roadmap-m4-tarifas-reservas.md` (principalmente as "Notas para o marco M5" da E13 e as notas para o M5 das etapas E07 a E12, inclusive o "Ajuste D" da E10). Nenhuma etapa nova, removida ou renumerada; E01 a E08 e E10 a E12 seguem `#pendente` e a E09 segue `#bloqueada` (a Q-12 continua sem credencial). Mudanças de escopo: a cotação de early/late saiu da E01 para a E02 (o preço é a política do `hotel`, e quem cobra é o `frontdesk`); a E08 passou a depender também da E02 (o critério do check-in com o Serpro fora do ar usa o endpoint dela); a E10 passou a ter revisão humana (cria o segundo mecanismo de autenticação do sistema). H1 a H4 foram confirmadas no código, a H9 caiu (o M1 não tem credencial de serviço) e há hipóteses novas (H10 a H24). As decisões que cabiam ao usuário (P1 a P12 da sincronização) foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-10-22**: todas pela opção (a); a P7 (H14) com uma ressalva, aplicada à E04 (o check-out lança o que o fechamento nunca lançará); e a revisão humana da E10 foi mantida.
 
@@ -18,12 +18,13 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 
 ## Contexto confirmado
 
-- Requisitos: SPEC §5.8 (REC: RF-REC-01 a 08; RF-REC-09, itens de empréstimo, é do M9), §5.9 (FNRH: RF-FNRH-01 a 07), §5.22 RF-NOT-03 e RF-NOT-04 (impressão e PDFs), RF-CTA-12 (extrato; os dados já existem desde o M3 E10) e RF-RES-12 (confirmação da reserva, pendência do M4). Regras: RN-04, RN-05 (UH pronta), RN-06 (check-out com saldo zero), RN-09 (Vago + Sujo no check-out), RN-11 (early/late só com preço informado antes; textos de política nas confirmações), RN-12 (ações sensíveis), RN-13, RN-19 (dados sensíveis da FNRH), RN-24 (menores). Questões: Q-07 (expurgo dos sensíveis, M10) e Q-12 (Cadastur e credencial da FNRH, ainda em aberto).
+- Requisitos: SPEC §5.8 (REC: RF-REC-01 a 08; RF-REC-09, itens de empréstimo, é do M9), §5.9 (FNRH: RF-FNRH-01 a 07), §5.22 RF-NOT-03 e RF-NOT-04 (impressão e PDFs), RF-CTA-12 (extrato; os dados já existem desde o M3 E10) e RF-RES-12 (confirmação da reserva, pendência do M4). Regras: RN-04, RN-05 (UH pronta), RN-06 (check-out com saldo zero), RN-09 (Vago + Sujo no check-out), RN-11 (early/late só com preço informado antes; textos de política nas confirmações), RN-12 (ações sensíveis), RN-13, RN-19 (dados sensíveis da FNRH), RN-24 (menores). Questões: Q-07 (expurgo dos sensíveis, M8 E16) e Q-12 (Cadastur e credencial da FNRH, ainda em aberto).
 - Modelo de domínio: SPEC §8.2.6 (`Reservation` com `checkIn()`, `checkOut()`, `moveRoom(room, reason)`, `changeStay(arrival, departure)` e `markNoShow()`; `StayGuest` com `primary`, `travelReason`, `transportMode`, `checkedInAt`, `checkedOutAt`; `MinorAuthorization` com `proofType`, `relationship`, `validUntil` e o responsável; `RoomAssignment`; `Trace` com `department`, `dueOn`, `text`, `resolvedAt`), §8.2.17 (`FnrhSubmission` com `operation`, `status`, `attempts`, `lastError`, `remoteId`, `sentAt`; porta `FnrhGateway` com `registerStay`, `checkIn`, `checkOut`, `noShow`, `cancel`), §8.2.18 (`PrintAgent` com `name`, `lastSeenAt`, `tokenHash`; `Printer` com `name`, `kind`, `address`; `PrintJob` com `documentType`, `status`, `attempts`, `createdAt`). Máquina de estados da reserva em §8.4 (`Confirmed → InHouse` no check-in, `InHouse → Confirmed` ao desfazer, sensível e no mesmo dia, `InHouse → CheckedOut`). Eventos em §8.3 (`GuestCheckedIn`/`GuestCheckedOut` consumidos por FNRH e Governança; `RoomMoved` pela Governança; `ReservationCreated`/`Changed`/`Cancelled` pela FNRH).
 - Módulos e dependências (ARCHITECTURE §3.1 e §3.2, conferidos em 2026-10-22): `frontdesk` (camada Hospedagem) → `shared`, `reservations`, `rooms`, `guests`, `billing`, `payments`, `fiscal`, `printing` na tabela; pela **regra por camadas** ele também pode usar a Plataforma (`hotel` para a data operacional e a política de early/late, `staff` para os setores dos recados, `files` para conferir o anexo da autorização do menor), acrescentando cada aresta à tabela e ao `ModularityTest` na etapa que a usar (o `fiscal` e o `payments` não são usados no M5). `fnrh` (camada "Integração governamental", acima da Hospedagem) → `shared`, `hotel`, `reservations`, `guests`, `notifications`, já na tabela; `frontdesk` **não** pode chamar `fnrh` (camada acima): o `fnrh` reage aos eventos de `reservations`. `printing` (Plataforma) → `shared`, `hotel`, já na tabela (a aresta `printing` → `hotel` não precisa ser acrescentada); `billing` → `printing` e `reservations` → `printing` já estão na tabela, `frontdesk` → `printing` também. `printing` e `notifications` nunca escutam eventos de negócio. Nenhum dos três importa `iam` (o `ModularityTest` barra: só `staff` e `notifications` usam a `IamApi`). Fluxo do check-in em §6.1, step-up em §6.3, integrações em §12 (porta + adaptador, outbox, retry com backoff, idempotência, log redigido, WireMock, painel de saúde), impressão em §14 (agente com credencial de serviço, SSE, ESC/POS ou PDF, confirmação e reenvio) e D13, credenciais de serviço em §8.1 ("o agente de impressão e integrações de entrada usam credenciais de serviço próprias, com permissões mínimas"), cifragem em §8.3, escopo offline em §9 ("Recepção, contas e PDV exigem conexão").
-- Documentação oficial da API FNRH v2.4 (Serpro/MTur): link em SPEC §11 (PDF no gov.br); nada dela está no repositório.
+- Documentação oficial da API FNRH v2.4 (Serpro/MTur): link em SPEC §11 (PDF no gov.br); o levantamento feito na E07 está em `docs/fnrh/api-fnrh-v2.4.md`.
+- Revisão de arquitetura dos roadmaps: `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`.
 - Base técnica herdada de M0 a M4 (fonte: notas de tema do Second Brain, código e handoffs; conferida no código em 2026-10-22):
-  - **Módulos existentes** em `src/main/kotlin/com/zeny/hotel/`: `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates` e `reservations`. `frontdesk`, `fnrh` e `printing` **não existem** (a criar, com um `…Module.kt` na raiz com `@PackageInfo` e `@ApplicationModule(allowedDependencies = …)`, como `reservations/ReservationsModule.kt`, hoje com `["shared", "hotel", "rooms", "rates", "guests", "billing", "notifications"]`). O `ModularityTest` (`src/test/kotlin/com/zeny/hotel/ModularityTest.kt`) tem um teste por módulo com as dependências diretas exatas e só pela API pública: cada módulo novo ganha o seu, e cada aresta nova atualiza o teste do módulo. Regras de camadas em `src/test/kotlin/com/zeny/hotel/architecture/LayerRules.kt` (`writeUseCasesAreAudited`, `offlineCommandHandlersAreAudited`).
+  - **Módulos existentes** em `src/main/kotlin/com/zeny/hotel/`: `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates` e `reservations`. Na sincronização de 2026-10-22, `frontdesk`, `fnrh` e `printing` **não existiam**; hoje só `printing` falta (a criar, com um `…Module.kt` na raiz com `@PackageInfo` e `@ApplicationModule(allowedDependencies = …)`, como `reservations/ReservationsModule.kt`, hoje com `["shared", "hotel", "rooms", "rates", "guests", "billing", "notifications"]`). O `ModularityTest` (`src/test/kotlin/com/zeny/hotel/ModularityTest.kt`) tem um teste por módulo com as dependências diretas exatas e só pela API pública: cada módulo novo ganha o seu, e cada aresta nova atualiza o teste do módulo. Regras de camadas em `src/test/kotlin/com/zeny/hotel/architecture/LayerRules.kt` (`writeUseCasesAreAudited`, `offlineCommandHandlersAreAudited`).
   - **Comandos oficiais** na tabela do `CLAUDE.md`: `./gradlew build` (compilação, testes, `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), `./gradlew test` (um só: `--tests '…'`), `./gradlew lint`, `./gradlew ktlintFormat`, `./gradlew checkOpenApi`, `./gradlew updateOpenApi`, `docker compose -f docker/compose.yaml up -d --build` e `.github/scripts/check-api-breaking.sh`. Versões só em `gradle/libs.versions.toml` (WireMock `3.13.2` já está lá, como `testImplementation(libs.wiremock.standalone)`; nenhuma biblioteca de PDF, HTML ou ESC/POS ainda).
   - **Migrações:** uma pasta por módulo em `src/main/resources/db/migration/` (hoje `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates`, `reservations`), versão por data e hora em UTC, uma migração de `GRANT` ao `"${app_role}"` por pasta (modelo `reservations/V2026_10_20_2316__grant_reservations_to_app_role.sql`). A última versão aplicada é **`V2026_10_22_0427`** (`reservations`, índice dos no-shows previstos): toda migração nova precisa de timestamp posterior (`outOfOrder` desligado). `MigrationConventionTest` barra objeto, FK, trigger, `INSERT` ou `GRANT` fora do schema do módulo. *Append-only*: só `SELECT, INSERT`, bean `AppendOnlyTables` do módulo e trigger contra `UPDATE`/`DELETE` até do dono (modelo `reservations.reservation_history_immutable`); exclusão física proibida por trigger (`reservations.refuse_delete`).
   - **Views `report_*`** (nota `ZenyHotelManager - Schemas, migrações e views de relatório` do brain; modelos `billing/V2026_10_20_0347__create_billing_report_views.sql` e `reservations/V2026_10_22_0351__create_reservation_report_views.sql`): uma linha por fato, ids opacos, sem texto livre nem dado de hóspede, contrato no comentário da migração, `GRANT SELECT` e `REVOKE` por view, provadas com um papel que só as lê.
@@ -53,7 +54,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
   - `FilesApi` lendo e gravando conteúdo pelo servidor → decisões H17 e H18 (decididas em 2026-10-22: o `printing` guarda o conteúdo dos jobs no próprio schema; a `FilesApi` ganha só a leitura, para o logotipo, na **E11**);
   - lançamento dos pacotes `ON_ARRIVAL` no check-in → decisão H14 (decidida em 2026-10-22: tudo pelo fechamento do M6, salvo o que o check-out da E04 lança porque o fechamento nunca lançaria);
   - listas operacionais com leitura em lote dos hóspedes ou `ReservationsApi` com as listas → só se a E02 precisar.
-- **Pendências herdadas que não são do M5:** no-show (solta a UH, devolve a unidade ao bloqueio do pick-up, multa) e o envio dele à FNRH (H15), diárias e pacotes no fechamento, `releaseUnused`/`blocksDueForRelease`, pacotes da tarifa de grupo (M6, M10); garantia integrada e caução integrada (M7); channel manager (M8); recifragem dos demais valores e configuração do PostgreSQL de produção (M8); contas a receber e `CITY_LEDGER` (M10); expurgo dos sensíveis da FNRH (M10).
+- **Pendências herdadas que não são do M5:** no-show (solta a UH, devolve a unidade ao bloqueio do pick-up, multa) e o envio dele à FNRH (H15), diárias e pacotes no fechamento, `releaseUnused`/`blocksDueForRelease`, pacotes da tarifa de grupo (M6, M10); garantia integrada e caução integrada (M7); channel manager (M8); recifragem dos demais valores e configuração do PostgreSQL de produção (M8); contas a receber e `CITY_LEDGER` (M10); expurgo dos sensíveis da FNRH (M8 E16).
 
 ## Escopo
 
@@ -73,7 +74,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - Itens de empréstimo (RF-REC-09): M9.
 - Tarefas de limpeza geradas por check-out ou troca de UH: M6 (`housekeeping` escuta `GuestCheckedOut` e `RoomMoved`).
 - No-show e o envio dele à FNRH (H15), lançamento de diárias e de pacotes (H14): M6.
-- Expurgo dos dados sensíveis da FNRH após o checkout (RN-19, Q-07): M10.
+- Expurgo dos dados sensíveis da FNRH após o checkout (RN-19, Q-07): M8 E16.
 - Sincronização offline e tópico SSE de recepção (H19).
 - O aplicativo do agente de impressão: outro repositório.
 
@@ -140,7 +141,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E05 (c) Redução da saída:** a redução de quem já está hospedado não passa pelas restrições de venda.
 - **E05 (d) Origem da troca de UH:** registrada como `CHECK_OUT` no histórico da UH.
 - **E05 (e) Early check-in:** também no walk-in.
-- **E05 (f) `ReservationSearchApiTest` intermitente:** aceitar `reservation_arrival_idx` ou `reservation_stay_period_idx` no filtro "period". Ainda não aplicado: é uma pendência para a próxima sessão de manutenção ou para o gate E12.
+- **E05 (f) `ReservationSearchApiTest` intermitente:** aceitar `reservation_arrival_idx` ou `reservation_stay_period_idx` no filtro "period". Aplicado na E08 (`8e6b677`), porque era o único vermelho no gate dela.
 - **E06 (a) Responsável:** um usuário vinculado a um colaborador.
 - **E06 (b) Resolver o recado:** permissão própria, para Gerente, Recepcionista, Governanta, Manutenção, Comercial/Eventos, Caixa A&B e Cozinha/Bar.
 - **E06 (c) Vínculo do recado:** fixo depois de criado.
@@ -190,6 +191,42 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 
   Motivo: deixar a `main` pronta para push com o build verde e o contrato válido para os geradores de SDK. Alternativa descartada: integrar com um teste vermelho como resíduo.
 
+**Decisões da revisão de arquitetura** (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, 2026-11-06). Decididas pelo usuário em entrevista:
+
+- **E07 (e) Descrição de gênero:** etapa própria antes do envio (E15). Descartadas: embutir na E08 e aceitar a limitação.
+- **E07 (i) Limpar a credencial:** antes da credencial real (E16), como pré-requisito da E09. Descartada: deixar para a prontidão do M8.
+
+**Decisões do lote E15** (entrevista do fim do lote). Em 2026-11-10, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras, salvo decisão de arquitetura. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-06 e 2026-11-10**. O detalhe está no plano da E15 (D-E15-1 a 6) e no handoff dela.
+
+- **E15 (a) Cifra (D-E15-1):** a descrição fica cifrada (`EncryptedStringConverter`), como as restrições alimentares. Autodeclaração de identidade de gênero é dado pessoal e pode revelar dado sensível. Custo: mais um valor para a re-cifragem da M8 E15.
+- **E15 (b) Tamanho (D-E15-2):** até 100 caracteres, sem `pattern`. A API v2.4 não documenta limite; a E09 confirma. Reduzir depois é mudança restritiva de contrato.
+- **E15 (c) Erro (D-E15-3):** descrição com gênero diferente de `OTHER` → `400 GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`, sem repetir o valor.
+- **E15 (d) Leitura (D-E15-4):** a descrição volta em toda resposta de perfil (`GuestResponse`), com `guests.profiles.read` (Gerente, Recepcionista e **Financeiro**), e fica fora do `GuestSummary`. Precedente: `dietaryRestrictions`. Contra: o Financeiro lê um dado de que não precisa. Reduzir depois é incompatível para clientes gerados, mas nenhum cliente consome o campo ainda.
+- **E15 (e) Mesclagem (D-E15-5):** a descrição anda com o gênero.
+- **E15 (f) Eco curto (D-E15-6):** descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada no log. Exceção literal ao critério "não aparece em log", em caso raro e hipotético; a E09 confere se o Serpro ecoa o campo.
+- **E15 (g) Saneador:** passou a normalizar o caractere de controle também nos valores enviados (`8d6203a`), para todos os campos. O plano dizia "o saneador não muda"; a mudança só aumenta o mascaramento.
+- **E15 (h) Leitura nas respostas das escritas (I-1 da revisão final):** `restrict`, `lift-restriction` e `merge` do `guests` devolvem o perfil inteiro, com a descrição e as restrições alimentares, conferindo só a permissão da escrita. Com os modelos de role padrão não há exposição (só o Gerente tem essas permissões, e ele lê). Uma role customizada com `guests.restrictions.manage` sem `guests.profiles.read` leria. A lacuna é do M3; a E15 só corrigiu o texto do contrato, do KDoc e do README para não prometer o contrário. **Decidido pelo usuário em 2026-11-11** (entrevista do fim do lote): numa etapa de manutenção do `guests`, o corpo completo dessas respostas passa a exigir `guests.profiles.read`; sem ela, um corpo mínimo. A etapa ainda não existe no roadmap: cabe ao `arquiteto` criá-la.
+
+**Decisões do lote E08** (entrevista do fim do lote). Em 2026-11-10, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras, salvo decisão de arquitetura. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-10 e 2026-11-11**. O detalhe, com as alternativas descartadas, está no plano da E08 (D-E08-1 a 17) e no handoff dela. A E08 tem "Revisão humana: sim": o padrão de envio assíncrono que ela fixa é repetido por M7 e M8.
+
+- **E08 (a) Eventos (D-E08-1):** `ReservationCreated` registra; `Changed`, `Confirmed` e `Reactivated` atualizam (`PUT` idempotente); `Cancelled` cancela; os três eventos de hospedagem fazem check-in, desfazer e check-out. A pré-reserva e a reserva sem documentos também são registradas (o registro não leva dado pessoal) e a expiração vira cancelamento no MTur. Descartadas: registrar só a partir de `CONFIRMED` (o link de pré-check-in chegaria tarde) e ignorar `Confirmed`/`Reactivated` (fere o critério). `RoomMoved` não gera envio.
+- **E08 (b) Granularidade (D-E08-2):** uma submissão por evento, com o progresso por hóspede em `fnrh.remote_guest`. Descartada: uma por hóspede, que quebraria "uma por evento" e criaria dependência entre submissões para a ordem responsável → menor. A SPEC §8.2.17 foi atualizada.
+- **E08 (c) Ordem (D-E08-3):** ordem causal por reserva (`version` do evento e posto da operação); `FAILED` e `INVALID` seguram as seguintes até `retry` ou `dismiss`. Descartada: ordem de inserção, que o reenvio do outbox embaralha.
+- **E08 (d) Retry (D-E08-4):** 8 tentativas, de 1 min a 1 h (cerca de 2 h), também em `UNAVAILABLE`; falha permanente vira `FAILED` na hora. Descartadas: a curva do outbox até 24 h, `retry` em lote e credencial recusada sem gastar tentativa. Os números são propriedade.
+- **E08 (e) Sem configuração (D-E08-5):** nada sai e nenhuma tentativa é gasta; ao ligar, o acumulado sai inteiro (corte decidido na E09 ou na M8 E13).
+- **E08 (f) Pessoa e conciliação (D-E08-6, 7 e 15):** marca de escrita em curso antes de cada criação; conciliação antes de repetir; consulta por documento sempre antes de criar a pessoa; hóspede recorrente reaproveitado pelo `person_id` do ambiente.
+- **E08 (g) Desfazer check-in e reativação (D-E08-8 e 9):** a API não tem as operações; com hóspede já no Serpro, `FAILED` (`NO_REMOTE_OPERATION` ou `REMOTE_CANCELLED`) com alerta, correção no portal e `dismiss`.
+- **E08 (h) Encerramento manual (D-E08-16) e permissão (D-E08-12):** `POST …/dismiss` leva a `DISMISSED`, que não segura a fila; `fnrh.submissions.manage` só para o Gerente.
+- **E08 (i) Link de pré-check-in (D-E08-13):** guardado cifrado em `fnrh.remote_reservation`, sem exposição na API.
+- **E08 (j) Alerta em transação própria (ruling da Task 9):** o resultado é gravado mesmo que o alerta falhe; o alerta pode se perder, a submissão não.
+- **E08 (k) Trava do job (ruling da Task 10):** `lockAtMostFor = PT1H`.
+- **E08 (l) Erro neutro (I-3 da revisão final):** raça/cor e deficiência viram `person.sensitiveData`/`INVALID_VALUE`, um por hóspede. Contra: o operador não sabe qual dos campos falta.
+- **E08 (m) Revalidação:** cada tentativa do `CHECK_IN` revalida todos os hóspedes, inclusive os já enviados. Contra: um perfil editado depois pode deixar a submissão `INVALID` e a revalidação decifra RN-19 sem necessidade. Recomendação: validar só os hóspedes ainda não enviados, numa manutenção do `fnrh`.
+- **E08 (n) Menor com responsável menor listado depois (ruling da Task 7):** `FAILED` com alerta, nunca `responsavel_id` errado.
+- **E05 (f) aplicada:** o `ReservationSearchApiTest` aceita os dois índices no filtro "period" (`8e6b677`), porque era o único vermelho no gate da E08.
+
+**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07, E15 (salvo a (h), decidida em 2026-11-11) e E08 (o padrão foi aprovado na revisão humana; as decisões (a) a (n) seguem revisáveis), tomadas pela opção recomendada, e a revisão humana da E13 e da E07.
+
 ## Definição global de pronto
 
 - [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
@@ -203,6 +240,7 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - [ ] A homologação real da FNRH (E09) está concluída ou registrada como pendência obrigatória antes da operação real.
 - [ ] `gradle.lockfile` versionado e atualizado; `osv-scanner scan source -r .` lista os pacotes do projeto.
 - [ ] Nenhuma vulnerabilidade High ou Critical conhecida no `productionRuntimeClasspath` nem no classpath dos plugins na data do gate, salvo as registradas como risco aceito pelo usuário (E14).
+- [ ] Hóspede de gênero `OUTRO` com descrição é enviado à FNRH (E15), e a credencial do Serpro pode ser apagada por uma ação com trilha (E16).
 
 ## Protocolo de execução
 
@@ -214,8 +252,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -248,12 +286,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -267,9 +305,9 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m5-recepcao-fnrh com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
@@ -299,8 +337,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E07 | Configuração, domínios e adaptador Serpro da FNRH | #concluida | — | Módulo `fnrh`, credenciais cifradas, CPF solicitante, domínios, validação local, `FnrhGateway` com WireMock |
-| E08 | Envio assíncrono e pendências da FNRH | #pendente | E01, E02, E07 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
-| E09 | Homologação da FNRH com o Serpro | #bloqueada | E08 | Envios reais no ambiente de homologação |
+| E15 | Descrição de gênero no perfil do hóspede | #concluida | E07 | Campo no perfil e nos dados da FNRH: o hóspede de gênero `OUTRO` passa a poder ser enviado |
+| E08 | Envio assíncrono e pendências da FNRH | #concluida | E01, E02, E07, E15 | `FnrhSubmission` por evento, job de envio com retry e ordem, IDs remotos, pendências, alerta, métrica e view |
+| E16 | Limpar a credencial do Serpro | #pendente | E07 | Ação explícita, com trilha, que apaga a credencial e desliga a integração |
+| E09 | Homologação da FNRH com o Serpro | #bloqueada | E08, E16 | Envios reais no ambiente de homologação |
 
 **Impressão e documentos**
 
@@ -313,7 +353,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E14 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
+| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E14, E16 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
 
 ---
 
@@ -1320,36 +1360,25 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E08 — Envio assíncrono e pendências da FNRH — #pendente
+## E15 — Descrição de gênero no perfil do hóspede — #concluida
 
-**Objetivo:** ligar o `fnrh` aos eventos de `reservations` (`ReservationCreated`, `ReservationChanged`, `ReservationCancelled`, `ReservationReactivated`, `ReservationConfirmed` do M4 e `GuestCheckedIn`, `GuestCheckInUndone`, `GuestCheckedOut` da E01; o no-show fica para o M6, H15) para criar `FnrhSubmission`, enviá-las por um job com retry e backoff, guardar os IDs remotos (RF-FNRH-04), vincular menores ao responsável (RF-FNRH-05), enviar o número da reserva na OTA (RF-FNRH-07), expor a fila de pendências (RF-FNRH-03) e alertar a falha.
+**Objetivo:** guardar no perfil do hóspede a descrição de gênero que a API da FNRH exige quando o gênero é `OUTRO` e levá-la aos dados da FNRH, para que esse hóspede possa ser enviado sem falsear o dado.
 
-**Por que agora:** a FNRH é obrigatória (SPEC §5.9); com os eventos da E01, o check-in da E02 e o adaptador da E07, o envio pode ser ligado.
+**Por que agora:** a E07 deixou a validação local acusando `person.genderDescription`/`REQUIRED` em todo hóspede `OTHER`. Sem o campo, esse hóspede nunca sai da fila quando a E08 ligar o envio, e o registro é obrigação legal. A mudança é pequena e aditiva: melhor antes dos primeiros dados reais do que com um perfil já em uso.
 
-**Dependências:** E01, E02, E07.
+**Dependências:** E07.
 
-**Escopo:** `fnrh` (`allowedDependencies` ganha `reservations` e `notifications`, já na ARCHITECTURE §3.1):
+**Escopo:** `guests` (perfil, `FnrhGuestData` e contrato da API de hóspedes) e o mapeador do `fnrh`. A descrição é opcional no cadastro; o `guests` a recusa quando o gênero não é `OTHER`.
 
-- **Listeners** `@ApplicationModuleListener` dos eventos acima (os **primeiros consumidores de produção** dos eventos de reserva do M4: o outbox passa a gravar essas publicações); cada um só grava a `FnrhSubmission` idempotente por (reserva, hóspede quando houver, operação, evento) e nada envia.
-- **Envio** por um job (`@Scheduled` + `@SchedulerLock`, nome único como `fnrh-submissions-send`, adiado nos testes por uma constante como `FNRH_SEND_DEFERRED` no `@IntegrationTest`), num caso de uso `@Audited` (ator sistema; a trilha registra a submissão enviada, nunca os dados, como pede a nota do M3 E01): lê a reserva pela `ReservationsApi` e os hóspedes pela `GuestsApi.fnrhData` (dados sensíveis só em memória), valida localmente (H21: dado inválido fica `INVALID` com os erros por campo, sem o valor), escolhe o CPF solicitante (H5, pelo `performedBy` dos eventos da E01 ou o padrão), envia pelo adaptador da E07, grava o ID remoto; falha temporária reagenda com backoff exponencial e limite de tentativas; falha permanente fica `FAILED`; **ordem por reserva** (o check-out não sai antes do check-in, nem o check-in antes do registro da reserva).
-- **Endpoints:** `GET /api/v1/fnrh/submissions?status=…` (cursor; `fnrh.submissions.read`, sem dado de hóspede além de ids e o código da reserva) e `POST /api/v1/fnrh/submissions/{id}/retry` (`fnrh.submissions.manage`).
-- **View** `fnrh.report_submissions` (uma linha por submissão: operação, situação, tentativas, datas, ids opacos; sem `lastError` em texto livre se trouxer valor do hóspede) pela convenção das views `report_*`, para as pendências do fechamento (M6), e a métrica de pendentes no `MeterBinder` da E07.
-- **Alerta de falha** (RF-FNRH-03, RF-NOT-01): quando uma submissão vira `FAILED` ou `INVALID`, o próprio caso de uso chama `NotificationsApi.notify` com o tipo `notifications.integration-failure` (obrigatório no painel) para `NotificationRecipients.withPermission(fnrh.submissions.manage)`, com o código da reserva e a operação, **sem** nome nem documento do hóspede.
-
-**Fora de escopo:** chamadas reais (E09); no-show (M6, H15); expurgo de dados sensíveis (M10).
+**Fora de escopo:** tornar o campo obrigatório no cadastro (quem acusa a falta é a validação local da FNRH); outras lacunas do perfil; o caso do menor só com RG, que continua sendo decisão operacional (E07 f).
 
 **Critérios de aceite:**
 
-- [ ] Cada evento listado gera exatamente uma `FnrhSubmission`; o mesmo evento reentregue não duplica (teste chamando o listener de novo).
-- [ ] Envio com sucesso grava o ID remoto da reserva e da pessoa (WireMock).
-- [ ] Falha temporária reagenda com backoff crescente (`MutableClock`); após o limite, a submissão fica `FAILED` e aparece em `GET /api/v1/fnrh/submissions?status=FAILED`; `POST …/retry` a reenfileira.
-- [ ] Dado inválido pela validação local fica `INVALID` com os erros por campo, sem chamada ao Serpro.
-- [ ] Check-out de uma reserva não é enviado antes do check-in dela (teste).
-- [ ] Com o WireMock devolvendo `503`, um check-in pelo endpoint da E02 conclui com `200`.
-- [ ] Menor é enviado vinculado ao responsável; reserva de OTA envia o número externo (`BookingSummary.externalId`).
-- [ ] Nenhuma tabela, view, log, trilha ou notificação do `fnrh` guarda raça/cor, deficiência ou número de documento.
-- [ ] A view `fnrh.report_submissions` existe só com `SELECT` para o papel da aplicação e a métrica de pendentes aparece em `/actuator/prometheus`.
-- [ ] Submissão que vira `FAILED` gera uma notificação `notifications.integration-failure` para os usuários com `fnrh.submissions.manage`, sem nome nem documento do hóspede (teste).
+- [ ] O perfil aceita a descrição com gênero `OTHER` e a recusa com outro gênero, com `code` estável; o contrato traz o campo com tamanho máximo e `pattern` válido em ECMA-262, se houver `pattern`.
+- [ ] Hóspede `OTHER` com descrição passa na validação local da FNRH; sem descrição, continua acusando `person.genderDescription`/`REQUIRED`.
+- [ ] A chamada ao Serpro no WireMock leva a descrição no campo da API v2.4 (`docs/fnrh/api-fnrh-v2.4.md`).
+- [ ] A descrição não aparece em log, retrato da trilha, `toString`, notificação nem view de relatório (teste).
+- [ ] A descrição entra na exportação dos dados do titular e sai na anonimização do perfil (teste).
 - [ ] `./gradlew build` verde e oasdiff sem `ERR`.
 
 **Validação obrigatória:**
@@ -1361,7 +1390,108 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Notas para o plano:**
 
-- Hipóteses H4, H5, H15, H16, H21 e H22; leia os handoffs de E01, E02, E03 e E07. Das notas deles: os dados de check-in vêm da `ReservationsApi.reservation` (`guests[].travelReason`, `transportMode`, `minorAuthorization`); o check-in nunca chama o `fnrh`, e a regra mínima do check-in não substitui a validação local da FNRH (H21); o walk-in publica `ReservationCreated` (e, num plano com cartão, `ReservationConfirmed`) e `GuestCheckedIn` na mesma transação, em ordem, e é tratado como reserva criada e já hospedada.
+- Decisão do usuário em 2026-11-06, que resolve a E07 (e): `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, R5.
+- Texto livre sobre gênero é dado pessoal mesmo fora da RN-19: siga o tratamento da nota `ZenyHotelManager - Módulo guests` (H10 do M3, retrato sem dado pessoal). Decida no plano, com registro, se o valor fica cifrado.
+- O mesmo saneador da E07 cobre o eco desse valor nas mensagens do Serpro, por ser um valor enviado: confira.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Migração em tabela com dado de hóspede: coluna nova e anulável, sem reescrever linhas.
+
+**Evidências e handoff:**
+
+- **Plano:** `docs/superpowers/plans/2026-11-06-m5-recepcao-fnrh-e15.md`, com 6 tarefas e as decisões D-E15-1 a 6, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`).
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 2 rodadas. A inicial bloqueou com 5 Importantes; a rodada 1, com 2 novos (o `CHECK` com gênero nulo e um 4º arquivo de produção numa tarefa).
+  - A linha D-E15-6 do plano ganhou uma "Atualização da execução (Task 5)" depois da aprovação, sem re-revisão: registra a exceção do saneador (M-2 da revisão final).
+  - A execução foi interrompida a pedido do usuário em 2026-11-06, com as Tasks 1 a 5 concluídas, e retomada em 2026-11-10 pelo ledger.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `ca9f9e2`):
+  - `340846c`: a revisão de arquitetura de 2026-11-06, trazida da árvore da `main`, onde segue sem commit (só documentos).
+  - `fea187c`, `fcb70c2`, `724cf9e` e `0518d13`: início da etapa, plano e as correções da revisão de arquitetura.
+  - Task 1 (coluna cifrada, regra no agregado, `CHECK` e mesclagem): `cd722ea` e `d8d0abb`.
+  - Task 2 (escrita pela API): `6927a9b`, `423059d` e `7165250`.
+  - Task 3 (leitura pela API): `43d18ac` e `a354f09`.
+  - Task 4 (exportação do titular e anonimização): `b8dd5fd` e `cd8ffad`.
+  - Task 5 (dados da FNRH e envio ao Serpro): `b8de5e0`, `3964ec3` e `8d6203a` (correção do saneador).
+  - Documentos: `fb5eb58`, `e718190` (ponto de retomada) e o commit de fechamento (este handoff).
+  - `5b11231`: tira do Git um relatório do testador commitado por engano em `cd8ffad` (sem segredo nem dado real; fica no histórico).
+  - Onda da revisão final: `54d51cd`, `1fe2c77` e `2059a16`.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `340846c..5b11231`, com resultado "With fixes" e nenhum Crítico.
+  - **I-1:** o contrato, o KDoc e o README prometiam a descrição "só a quem tem `guests.profiles.read`", mas `restrict`, `lift-restriction` e `merge` devolvem o perfil inteiro com a permissão da escrita. Corrigido o texto (`54d51cd` e o README no fechamento), sem mudar comportamento; a lacuna, que é do M3, vai às "Decisões para o usuário" (E15 h).
+  - **M-1:** o teste de controle aceitava `201` ou `400`; fixado em `201` (`1fe2c77`). O teste de contrato do testador fixava a promessa falsa da I-1 e foi ajustado à nota verdadeira (`2059a16`).
+  - **Re-revisão restrita da onda** (`revisor-seguranca`, sonnet): "all findings addressed", sem quebra nova.
+  - As minors do ledger foram triadas: nenhuma bloqueia.
+- **Integridade dos testes:** `check_test_integrity.py --base ca9f9e2` → "OK: nenhum apontamento", na revisão final e depois da onda.
+- **Critérios verificados:**
+  - [x] O perfil aceita a descrição com `OTHER` e a recusa com outro gênero (`400 GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`, sem o valor); o contrato traz `maxLength: 100`, sem `pattern` (`GuestGenderDescriptionApiTest`).
+  - [x] Hóspede `OTHER` com descrição passa na validação local; sem ela, `person.genderDescription`/`REQUIRED` (testes do mapeador e do validador).
+  - [x] O WireMock confere `pessoa.GeneroDescricao` no `POST /pessoas` (`SerproFnrhGatewayGenderDescriptionTest`).
+  - [x] A descrição não aparece em log, retrato da trilha, `toString`, evento, notificação nem view (`GuestGenderDescriptionPrivacyTest`, `FnrhGenderDescriptionLogTest`). **Exceção literal:** a D-E15-6 (eco de 1 ou 2 caracteres não mascarado no log).
+  - [x] A descrição entra na exportação do titular e sai na anonimização, também dos perfis absorvidos da cadeia.
+  - [x] `./gradlew build` em `5b11231`: BUILD SUCCESSFUL in 15m 19s, 1809 testes, 0 falhas; depois da onda, em `2059a16`: BUILD SUCCESSFUL in 7m 17s, 1809 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1`.
+  - Scanner (`osv-scanner scan source -r --no-ignore .`, porque o worktree fica sob `.claude/worktrees/`, ignorado pelo `.gitignore` do checkout principal): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14.
+- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E15"):
+  - D-E15-4: a descrição volta em toda resposta de perfil, com `guests.profiles.read`, inclusive para o Financeiro.
+  - D-E15-6: descrição de 1 ou 2 caracteres ecoada pelo Serpro não é mascarada no log.
+  - Exceção ao plano: o saneador passou a normalizar o controle nos valores enviados (`8d6203a`), para todos os campos.
+  - E15 (h): as respostas de `restrict`, `lift-restriction` e `merge` do `guests` trazem o perfil inteiro com a permissão da escrita (lacuna do M3).
+- **Notas para a próxima etapa:**
+  - E08: teste o alerta de falha com um hóspede que tenha descrição, para provar que ela não chega à notificação.
+  - E09: confirme o limite real de `GeneroDescricao` (reduzir os 100 caracteres é mudança restritiva de contrato) e se o Serpro ecoa esse campo.
+  - E10 e E11: o texto livre do perfil aceita caracteres de controle e de formatação Unicode (bidi, largura zero); a renderização da ficha e dos PDFs precisa tratá-los (M-3 da revisão final).
+  - Ondas paralelas: com a sessão num worktree, o harness recusou git de subagente em outro worktree; as tarefas rodaram em sequência.
+  - Trailer: `Soul:` e `Co-Authored-By` no mesmo último parágrafo, senão o Git não reconhece o trailer.
+
+---
+
+## E08 — Envio assíncrono e pendências da FNRH — #concluida
+
+**Objetivo:** ligar o `fnrh` aos eventos de `reservations` (`ReservationCreated`, `ReservationChanged`, `ReservationCancelled`, `ReservationReactivated`, `ReservationConfirmed` do M4 e `GuestCheckedIn`, `GuestCheckInUndone`, `GuestCheckedOut` da E01; o no-show fica para o M6, H15) para criar `FnrhSubmission`, enviá-las por um job com retry e backoff, guardar os IDs remotos (RF-FNRH-04), vincular menores ao responsável (RF-FNRH-05), enviar o número da reserva na OTA (RF-FNRH-07), expor a fila de pendências (RF-FNRH-03) e alertar a falha.
+
+**Por que agora:** a FNRH é obrigatória (SPEC §5.9); com os eventos da E01, o check-in da E02 e o adaptador da E07, o envio pode ser ligado.
+
+**Dependências:** E01, E02, E07, E15.
+
+**Escopo:** `fnrh` (`allowedDependencies` ganha `reservations` e `notifications`, já na ARCHITECTURE §3.1):
+
+- **Listeners** `@ApplicationModuleListener` dos eventos acima (os **primeiros consumidores de produção** dos eventos de reserva do M4: o outbox passa a gravar essas publicações); cada um só grava a `FnrhSubmission` idempotente por (reserva, hóspede quando houver, operação, evento) e nada envia.
+- **Envio** por um job (`@Scheduled` + `@SchedulerLock`, nome único como `fnrh-submissions-send`, adiado nos testes por uma constante como `FNRH_SEND_DEFERRED` no `@IntegrationTest`), num caso de uso `@Audited` (ator sistema; a trilha registra a submissão enviada, nunca os dados, como pede a nota do M3 E01): lê a reserva pela `ReservationsApi` e os hóspedes pela `GuestsApi.fnrhData` (dados sensíveis só em memória), valida localmente (H21: dado inválido fica `INVALID` com os erros por campo, sem o valor), escolhe o CPF solicitante (H5, pelo `performedBy` dos eventos da E01 ou o padrão), envia pelo adaptador da E07, grava o ID remoto; falha temporária reagenda com backoff exponencial e limite de tentativas; falha permanente fica `FAILED`; **ordem por reserva** (o check-out não sai antes do check-in, nem o check-in antes do registro da reserva).
+- **Endpoints:** `GET /api/v1/fnrh/submissions?status=…` (cursor; `fnrh.submissions.read`, sem dado de hóspede além de ids e o código da reserva) e `POST /api/v1/fnrh/submissions/{id}/retry` (`fnrh.submissions.manage`).
+- **View** `fnrh.report_submissions` (uma linha por submissão: operação, situação, tentativas, datas, ids opacos; sem `lastError` em texto livre se trouxer valor do hóspede) pela convenção das views `report_*`, para as pendências do fechamento (M6), e a métrica de pendentes no `MeterBinder` da E07.
+- **Alerta de falha** (RF-FNRH-03, RF-NOT-01): quando uma submissão vira `FAILED` ou `INVALID`, o próprio caso de uso chama `NotificationsApi.notify` com o tipo `notifications.integration-failure` (obrigatório no painel) para `NotificationRecipients.withPermission(fnrh.submissions.manage)`, com o código da reserva e a operação, **sem** nome nem documento do hóspede.
+- **Resultado incerto:** um `UNKNOWN_OUTCOME` da E07 nunca é repetido às cegas; a submissão concilia antes de reenviar.
+- **Documentação:** a SPEC §8.2.17 passa a descrever a porta real da E07, no lugar de `registerStay`, `checkIn`, `checkOut`, `noShow` e `cancel`.
+
+**Fora de escopo:** chamadas reais (E09); no-show (M6 E14, H15); expurgo de dados sensíveis (M8 E16).
+
+**Critérios de aceite:**
+
+- [x] Cada evento listado gera exatamente uma `FnrhSubmission`; o mesmo evento reentregue não duplica (teste chamando o listener de novo).
+- [x] Envio com sucesso grava o ID remoto da reserva e da pessoa (WireMock).
+- [x] Falha temporária reagenda com backoff crescente (`MutableClock`); após o limite, a submissão fica `FAILED` e aparece em `GET /api/v1/fnrh/submissions?status=FAILED`; `POST …/retry` a reenfileira.
+- [x] Dado inválido pela validação local fica `INVALID` com os erros por campo, sem chamada ao Serpro.
+- [x] Check-out de uma reserva não é enviado antes do check-in dela (teste).
+- [x] Com o WireMock devolvendo `503`, um check-in pelo endpoint da E02 conclui com `200`.
+- [x] Menor é enviado vinculado ao responsável; reserva de OTA envia o número externo (`BookingSummary.externalId`).
+- [x] Nenhuma tabela, view, log, trilha ou notificação do `fnrh` guarda raça/cor, deficiência ou número de documento.
+- [x] A view `fnrh.report_submissions` existe só com `SELECT` para o papel da aplicação e a métrica de pendentes aparece em `/actuator/prometheus`.
+- [x] Submissão que vira `FAILED` gera uma notificação `notifications.integration-failure` para os usuários com `fnrh.submissions.manage`, sem nome nem documento do hóspede (teste).
+- [x] Timeout de leitura numa escrita (WireMock) concilia pelo Serpro antes de repetir e não cria reserva nem hóspede duplicado; a escolha para o `registerPerson` fica registrada no handoff.
+- [x] A SPEC §8.2.17 descreve a porta `FnrhGateway` real.
+- [x] `./gradlew build` verde e oasdiff sem `ERR`.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** sim
+
+**Notas para o plano:**
+
+- A revisão humana vem do padrão: esta etapa fixa o envio assíncrono (pedido idempotente, job, ordem, resultado incerto, alerta) que M7 e M8 repetem.
+- Hipóteses H4, H5, H15, H16, H21 e H22; leia os handoffs de E01, E02, E03 e E07, inclusive as "Notas para a E08" dele: limite de tentativas também em `UNAVAILABLE`, responsável antes do menor, e a falta de operação para desfazer o check-in na porta. Das notas deles: os dados de check-in vêm da `ReservationsApi.reservation` (`guests[].travelReason`, `transportMode`, `minorAuthorization`); o check-in nunca chama o `fnrh`, e a regra mínima do check-in não substitui a validação local da FNRH (H21); o walk-in publica `ReservationCreated` (e, num plano com cartão, `ReservationConfirmed`) e `GuestCheckedIn` na mesma transação, em ordem, e é tratado como reserva criada e já hospedada.
 - Modelo de envio idempotente com registro *append-only*: o `PushDispatchListener` do `notifications`. O listener só grava a submissão; o envio nunca acontece na transação do evento.
 - Decisões abertas desta etapa (em "Decisões abertas para a entrevista de cada etapa"): quais eventos geram envio (reserva criada sem documentos completos, alteração, reativação, desfazer check-in) e o limite de tentativas.
 - O texto novo vai à nota de tema `ZenyHotelManager - Módulo fnrh` (proposta na E07) e à `ZenyHotelManager - Eventos e jobs` (os listeners novos de produção e o job) pela captura de atualização do brain.
@@ -1372,6 +1502,119 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 - Os listeners novos rodam em todo contexto de teste e seguram o cursor da sincronização offline enquanto a transação deles está aberta: estender o `InventoryListenersQuiescence` (ou equivalente) para esperá-los antes de baixar `/api/v1/sync/changes`, como na M4 E05.
 - O evento de no-show só existirá no M6 (H15): registrar no handoff o que a etapa do no-show precisa acrescentar ao `fnrh`.
+
+**Evidências e handoff:**
+
+- **Plano:** `docs/superpowers/plans/2026-11-10-m5-recepcao-fnrh-e08.md`, com 13 tarefas e as decisões D-E08-1 a 17, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`), em sequência no worktree da etapa (sem ondas paralelas, como na E15).
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 2 rodadas. A inicial bloqueou com 1 Crítico (ordem de chegada dos eventos) e 7 Importantes; a rodada 1, com 1 Importante novo (o `CHECK_IN` que sobrevive ao desfazer). Notas Menores M-a e M-b aplicadas na execução.
+  - A fonte da API foi conferida de novo: as respostas de `GET /reservas/{id}/hospedes` e `GET /pessoas/documento/{tipo}/{numero}` entraram em `docs/fnrh/api-fnrh-v2.4.md` (o PDF baixado tem o mesmo SHA-256 do levantamento).
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `1d72325`):
+  - Plano e revisão de arquitetura: `183e3d8`, `5d2b3ec`, `d8f8c59` e `976e757`.
+  - Task 1 (domínio e política de retry): `976e757..e26662b`.
+  - Task 2 (migração, portas e persistência): `e26662b..4dfb2e4`.
+  - Task 3 (listeners): `4dfb2e4..a4683a7`.
+  - Task 4 (conciliação na porta e no adaptador): `a4683a7..a6c3d25`.
+  - Task 5 (propriedades e montagem): `a6c3d25..c7922fc`.
+  - Task 6 (núcleo do envio e operações da reserva): `c7922fc..d60334e`.
+  - Task 7 (check-in): `d60334e..bd79e03`.
+  - Task 8 (check-out e desfazer check-in): `bd79e03..efb69dd`.
+  - Task 9 (alerta e permissão de gestão): `efb69dd..2b1411d`.
+  - Task 10 (job e métrica): `2b1411d..25806d4`.
+  - Task 11 (endpoints de pendências, reenvio e encerramento): `25806d4..7770158`.
+  - Task 12 (view `fnrh.report_submissions`): `7770158..243f9f4`.
+  - Task 13 (SPEC §8.2.17, ARCHITECTURE §12 e §13, README): `68b86cd`.
+  - Testador de etapa: `e717e00` e `ffb5318`.
+  - Correções do gate: `3ca3602` (enums espelhados em `application`, contrato idêntico), `3c6715b` (`AuthorizationTest` e fixture da varredura) e `8e6b677` (decisão E05 (f) aplicada).
+  - Onda da revisão final: `1df90ff`, `4d018cd`, `26e7f42`, `8f04342`, `cf9d8e8` (desenvolvedor) e `e6ac8eb` (testador).
+  - Fechamento: o commit deste handoff.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `1d72325..8e6b677`, com resultado "With fixes": 0 Críticos, 3 Importantes e 6 Menores. A seção de arquitetura do plano confere com o ledger.
+  - **I-1:** um `CHECK_IN` que sobrevivia ao desfazer perdia o hóspede recorrente, que não tinha linha em `remote_guest`, e o desfazer não o enxergava. Corrigido em `1df90ff`: a linha é gravada antes do `POST` do hóspede.
+  - **I-2:** o cancelamento sem id remoto não conciliava quando havia escrita em curso na reserva e podia deixar ativa no MTur uma reserva criada por um `POST` com timeout. Corrigido em `4d018cd`.
+  - **I-3:** os erros de validação gravados e expostos em `GET /api/v1/fnrh/submissions` diziam `person.race` e `person.disabilityOption`/`disabilityType` (RN-19). Corrigido em `cf9d8e8`: os três viram `person.sensitiveData`/`INVALID_VALUE`, um por hóspede. Duas asserções do testador fixavam o comportamento antigo e foram ajustadas por ele em `e6ac8eb`, com uma checagem negativa a mais (ruling).
+  - **M-1** (KDocs), **M-2** (erros repetidos, `distinct`) e **M-5** (`dismiss` sem o instante sem uso) corrigidos em `26e7f42` e `8f04342`. M-3, M-4 e M-6 diferidos (notas abaixo).
+  - **Re-revisão restrita da onda** (`revisor-seguranca`, sonnet) sobre `8e6b677..e6ac8eb`: "all findings addressed", sem Crítico nem Importante novo. Duas Menores vão às notas abaixo.
+  - As minors do ledger foram triadas: nenhuma bloqueia; as que pedem dono estão nas notas abaixo.
+- **Integridade dos testes:** `check_test_integrity.py --base 1d72325` → "OK: nenhum apontamento" (exit 0) na revisão final e depois da onda.
+- **Critérios verificados:**
+  - [x] Cada um dos 8 eventos gera exatamente uma `FnrhSubmission` (chave `(reservation_id, operation, event_key)`); o mesmo evento reentregue não duplica, inclusive com a submissão já `SENT` (`FnrhSubmissionListenersTest`, `FnrhSubmissionListenersAttackTest`).
+  - [x] Envio com sucesso grava o id remoto da reserva, da pessoa e do hóspede (`FnrhReservationSendTest`, `FnrhCheckInSendTest`, WireMock).
+  - [x] Falha temporária reagenda com `1 min × 2^(n−1)` até `1 h` (`MutableClock`); na 8ª falha, `FAILED`, listada em `GET /api/v1/fnrh/submissions?status=FAILED`, e `POST …/retry` a reenfileira (`FnrhRetryPolicyTest`, `FnrhReservationSendTest`, `FnrhSubmissionsApiTest` e o ponta a ponta `FnrhStageFailureFlowTest`).
+  - [x] Dado inválido pela validação local fica `INVALID` com os erros por hóspede, campo e código, sem valor e sem chamada ao Serpro (`FnrhCheckInSendTest`, `FnrhCheckInAttackTest`).
+  - [x] Check-out não sai antes do check-in, nem o check-in antes do registro, com eventos fora de ordem (ordem causal, D-E08-3; `FnrhCheckOutSendTest`, `FnrhReservationSendAttackTest`).
+  - [x] Com o WireMock devolvendo `503`, o check-in pelo endpoint da E02 conclui com `200` (`FnrhStageEndToEndTest`).
+  - [x] Menor enviado com o `responsavel_id` do responsável, que sai antes; reserva de OTA envia `BookingSummary.externalId` (`FnrhCheckInSendTest`, `FnrhReservationSendTest`).
+  - [x] Nenhuma tabela, view, log, trilha ou notificação do `fnrh` guarda raça/cor, deficiência ou número de documento: varreduras em `FnrhCheckInAttackTest`, `FnrhStageFailureFlowTest` (audit e notifications) e `FnrhReportViewsAttackTest`; os nomes dos campos sensíveis também saíram dos erros (I-3).
+  - [x] A view `fnrh.report_submissions` existe só com `SELECT` para o papel da aplicação (`FnrhReportViewsTest`), e o gauge `zeny_fnrh_submissions{status}` aparece em `/actuator/prometheus` (`FnrhSubmissionMetricsTest`).
+  - [x] Submissão que vira `FAILED` ou `INVALID` gera `notifications.integration-failure` para quem tem `fnrh.submissions.manage`, só com o código da reserva e rótulos fixos; testado com hóspede com descrição de gênero (nota da E15) (`FnrhFailureAlertTest`, `FnrhFailureAlertAttackTest`).
+  - [x] Timeout de leitura numa escrita concilia pelo Serpro antes de repetir e não duplica reserva, pessoa nem hóspede (`FnrhReservationSendRecoveryTest`, `FnrhCheckInSendTest`, `FnrhCheckOutSendTest`). **Escolha do `registerPerson`** (D-E08-6): sem `person_id` conhecido no ambiente, **sempre** `GET /pessoas/documento/{tipo}/{numero}` antes de criar; `dados.id` presente → reaproveita; ausente ou `404` → `POST /pessoas`; corpo ambíguo ou incompleto → `UNKNOWN_OUTCOME` (falha fechado).
+  - [x] A SPEC §8.2.17 descreve a porta `FnrhGateway` real, a `FnrhSubmission` e os ids remotos (`68b86cd`).
+  - [x] `./gradlew build` em `8e6b677`: BUILD SUCCESSFUL in 9m 57s, 2192 testes, 0 falhas; depois da onda, em `e6ac8eb`: BUILD SUCCESSFUL in 12m 18s, 2202 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1`.
+  - Scanner (`osv-scanner scan source -r --no-ignore .`): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14; nenhuma dependência mudou na etapa.
+- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E08"):
+  - E08 (a) Eventos: a pré-reserva (`PROVISIONAL`) e a reserva sem documentos também são registradas no MTur; a expiração vira cancelamento.
+  - E08 (b) Retry: 8 tentativas, de 1 min a 1 h (cerca de 2 h), também em `UNAVAILABLE`; depois, `FAILED` com alerta e `retry` manual, um por submissão.
+  - E08 (c) Desfazer check-in e reativação: sem operação na API; com hóspede já no Serpro, `FAILED` com `NO_REMOTE_OPERATION` (ou `REMOTE_CANCELLED` na reativação) e correção manual no portal, seguida de `dismiss`.
+  - E08 (d) Revalidação: cada tentativa do `CHECK_IN` revalida todos os hóspedes, inclusive os já enviados; um perfil editado depois pode deixar a submissão `INVALID`.
+  - E08 (e) Erro neutro dos dados sensíveis (I-3): o operador vê `person.sensitiveData` e precisa abrir o perfil para saber qual campo falta.
+  - E08 (f) Alerta em transação própria: se o `notifications` falhar, o alerta se perde, mas a submissão segue na fila e na métrica.
+  - E08 (g) Trava do job `lockAtMostFor = PT1H`: uma instância que morre com a trava atrasa o envio até 1 h.
+  - E08 (h) Menor cujo responsável é outro menor listado depois: `FAILED` (`INTERNAL_ERROR`) com alerta, nunca `responsavel_id` errado.
+  - Divergência da SPEC (D-E08-2): uma submissão por evento, não por hóspede; a SPEC §8.2.17 foi atualizada.
+  - Fora do escopo, aplicada para o gate: a decisão E05 (f) (`8e6b677`).
+- **Revisão humana desta etapa:** feita pelo usuário em 2026-11-11, na entrevista do fim do lote: **padrão de envio assíncrono aprovado** como padrão para M7 e M8 (uma submissão por evento, ordem causal por reserva, escrita em curso e conciliação antes de repetir, 8 tentativas, `FAILED`/`INVALID` segurando a fila até `retry` ou `dismiss`). As decisões (a) a (n) seguem revisáveis uma a uma.
+- **Notas para a próxima etapa:**
+  - E09 (homologação): confirmar o nome `dados.id` da consulta por documento; o `PUT` numa reserva `EM_ANDAMENTO`; o `POST /pessoas` com documento repetido; se o `GET /reservas` devolve o link de pré-check-in (nulo numa reserva conciliada); se o `PATCH` de check-out repetido é aceito (M-6); se um `404` por rota errada é distinguível de pessoa ausente; os timeouts de 100 ms dos testes do adaptador.
+  - E09 e M8 E13: sem configuração, as submissões ficam `PENDING` sem gastar tentativa; ao ligar, todo o acumulado sai no ambiente escolhido, inclusive estadias antigas. Decidir corte ou limpeza antes de ligar em homologação (D-E08-5).
+  - E16 ou M8 E13 (M-3): trocar o ambiente com submissões em execução pode gravar id no ambiente errado; ao trocar, drenar ou pausar o job.
+  - M-4: as propriedades `zeny.fnrh.submissions.*` não têm validação de limites (zero ou negativo).
+  - M6 E14 (no-show): acrescentar a operação na porta, `markNoShow` publicando o evento e o listener gravando `NO_SHOW` com posto próprio na ordem causal; hoje o registro e a atualização de reserva no-show sem id remoto ficam `SENT` sem chamada.
+  - M6 (fechamento): as pendências vêm de `fnrh.report_submissions`; `DISMISSED` não segura a fila.
+  - `RoomMoved` não gera envio: a API v2.4 não tem UH.
+  - A marca de escrita em curso de uma submissão `DISMISSED` fica ligada para sempre: custa um `GET` a mais por registro da reserva.
+  - Da re-revisão: a gravação da linha do hóspede recorrente (I-1) limpa a marca de escrita em curso antes do `POST` do hóspede, a mesma janela estreita que o `registerPerson` já tinha; e a lista `SENSITIVE_FIELDS` do `FnrhCheckInStep` repete a do validador: um campo sensível novo no validador precisa entrar nela (constante compartilhada ou teste).
+  - Os testes ainda chamam `dismiss(now)` por extensões só de teste (`FnrhSubmissionDismissCompat.kt`); migrar e apagar numa limpeza.
+  - O gauge roda um `GROUP BY` por tag a cada raspagem; `FnrhSubmissionJobAttackTest` usa `sleep` fixo (risco de intermitência em CI lenta).
+  - Trailer: `Soul:` e `Co-Authored-By` no mesmo último parágrafo.
+
+---
+
+## E16 — Limpar a credencial do Serpro — #pendente
+
+**Objetivo:** permitir ao administrador apagar a credencial do Serpro por uma ação explícita, com trilha, deixando a integração desligada.
+
+**Por que agora:** hoje, ao desligar a integração, a credencial continua cifrada no banco, sem caminho de remoção (decisão E07 i). A correção precisa existir antes de a E09 gravar a primeira credencial real e fixa a regra que os provedores de M7 e M8 seguem.
+
+**Dependências:** E07.
+
+**Escopo:** `fnrh`: ação na API de configuração, nas convenções do projeto (sem `DELETE`, com `If-Match`), sob `fnrh.settings.manage`. Apaga usuário, senha e CPF padrão; o CPF por usuário tem caminho próprio desde a E07.
+
+**Fora de escopo:** os provedores de M7 e M8, que nascem com a mesma ação; rotação de chaves (M8 E15).
+
+**Critérios de aceite:**
+
+- [ ] Depois da ação, as colunas cifradas ficam vazias (teste lê as colunas), a integração fica desligada e o `GET /api/v1/fnrh/status` diz não configurada.
+- [ ] Sem a permissão → `403`; sem `If-Match` → `428`; com ETag velho → `412`.
+- [ ] A trilha registra a ação e quem a fez, sem usuário, senha nem CPF.
+- [ ] Depois da ação, nenhuma chamada sai ao Serpro, e religar sem nova credencial dá `422 FNRH_SETTINGS_INCOMPLETE`.
+- [ ] `ApiSecurityTest` atualizado; `./gradlew build` verde e oasdiff sem `ERR`.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Decisão do usuário em 2026-11-06, que resolve a E07 (i): `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, R6.
+- Submissões pendentes da E08 ficam na fila com a integração desligada (`NOT_CONFIGURED`), sem perda: confira se a E08 já estiver concluída.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Limpeza acidental em produção: a ação pede `If-Match` e fica na trilha; a recuperação é informar a credencial de novo.
 
 **Evidências e handoff:**
 
@@ -1390,7 +1633,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** os stubs da E07 vêm da documentação; só a homologação confirma o contrato real antes da operação do hotel.
 
-**Dependências:** E08.
+**Dependências:** E08, E16.
 
 **Escopo:** configuração das credenciais de homologação pela API de configuração da E07 (ou variável de ambiente, conforme a E07 decidir; nunca no repositório); roteiro de homologação em `docs/` (a criar) com os casos executados e os IDs remotos obtidos; ajustes no adaptador e nos stubs WireMock para refletir o comportamento real.
 
@@ -1416,7 +1659,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 - **Causa:** não há credencial de homologação da FNRH nem confirmação de Cadastur ativo.
 - **Evidência:** SPEC §10 Q-12 deixa a credencial como "responsabilidade do hotel antes da Fase 1"; nenhuma credencial foi fornecida até a sincronização de 2026-10-22 (a tabela "Questões em aberto que travam marcos" de `docs/roadmaps/README.md` ainda pede a decisão até o início do M5).
-- **Impacto:** impede validar o contrato real com o Serpro; o restante do marco segue com WireMock, e o gate do M5 não espera esta etapa (exceção registrada em `docs/roadmaps/README.md`).
+- **Impacto:** impede validar o contrato real com o Serpro; o restante do marco segue com WireMock, e o gate do M5 não espera esta etapa (exceção registrada em `docs/roadmaps/README.md`). O gate de inauguração (M8 E13) a exige concluída.
 - **Ação de desbloqueio:** o hotel ativa o Cadastur, gera a credencial de homologação no Módulo Meio de Hospedagem e o usuário a disponibiliza fora do repositório (pela API de configuração da E07 ou por variável de ambiente); registrar a decisão em D1 e trocar a tag desta etapa para `#pendente` (índice e título).
 
 **Riscos e mitigação:**
@@ -1564,7 +1807,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Por que agora:** é o critério de entrada do marco M6.
 
-**Dependências:** E03, E04, E05, E06, E08, E11, E14 (as etapas-folha, que cobrem transitivamente E01, E02, E07, E10 e E13). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`).
+**Dependências:** E03, E04, E05, E06, E08, E11, E14, E16 (as etapas-folha, que cobrem transitivamente E01, E02, E07, E10, E13 e E15). Não depende de E09: a homologação real depende de terceiro (D1) e fica registrada como pendência obrigatória antes da operação real, sem travar o M6 (exceção em `docs/roadmaps/README.md`); quem a cobra é o gate de inauguração (M8 E13).
 
 **Escopo:**
 
@@ -1629,3 +1872,6 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
 - 2026-11-04 — E14 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: Spring Boot 4.1.2, plataforma do Jackson 2 na 2.22.4, restrição do freemarker 2.3.35 no classpath dos plugins, lockfiles regravados e o passo "Lockfiles em dia com o catálogo" na CI. O scanner passou de 5 Critical e 15 High a 0 e 0, e os resíduos Medium/Low ficaram em "Decisões do lote E14". O risco do item "Restrição de versão esquecida" foi corrigido: o passo de CI não acusa a sobra. Handoff preenchido. As demais tags não mudaram.
 - 2026-11-05 — E07 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: módulo `fnrh` com configuração cifrada, CPF solicitante por usuário, porta `FnrhGateway` com o adaptador Serpro v2.4 (levantamento em `docs/fnrh/api-fnrh-v2.4.md`), registro de integração sem dado pessoal, status e métricas, domínios com cache e validação local com a lista do IBGE. Handoff preenchido, decisões em "Decisões do lote E07" e ARCHITECTURE §12 corrigida (o `cpf_solicitante` vale só nas operações de pessoa e de hospedagem completa). O lote parou na revisão humana da E07. As demais tags não mudaram.
+- 2026-11-06 — revisão de arquitetura (`claude --agent arquiteto`; `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05: merge local na `main` no fim do lote, ondas paralelas, testador por risco, decisões pela opção recomendada, salvo as de arquitetura. Novas E15 (descrição de gênero, antes da E08) e E16 (limpar a credencial, antes da E09), que resolvem as decisões E07 (e) e (i). A E08 passou a depender da E15, com critérios de resultado incerto e da SPEC §8.2.17 e revisão humana, por fixar o padrão de M7 e M8; a E09 passou a depender da E16; a E12 passou a depender da E16. Contexto defasado corrigido. Nenhuma etapa renumerada; etapas concluídas, evidências e tags existentes inalteradas.
+- 2026-11-10 — E15 retomada pelo ledger e `#concluida` na branch `roadmap/m5-recepcao-fnrh`: descrição de gênero cifrada no perfil, na API, na exportação, na anonimização e no envio ao Serpro (`GeneroDescricao`). Revisão final "With fixes" (I-1, texto do contrato) corrigida numa onda; "Decisões do lote E15" acrescentadas, com a lacuna de leitura nas respostas das escritas do `guests` (E15 h) para o usuário.
+- 2026-11-11 — E08 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: `FnrhSubmission` por evento com ordem causal por reserva, job `fnrh-submissions-send` com retry de 8 tentativas, escrita em curso e conciliação antes de repetir, consulta da pessoa por documento antes de criar, ids remotos e link de pré-check-in cifrado por ambiente, pendências (`GET`, `retry`, `dismiss`), alerta de falha, gauge e view `fnrh.report_submissions`. Revisão final "With fixes" (I-1 a I-3) corrigida numa onda; "Decisões do lote E08" acrescentadas e a E05 (f) aplicada. O lote parou na revisão humana da E08, feita pelo usuário no mesmo dia (padrão aprovado; E15 (h) decidida).

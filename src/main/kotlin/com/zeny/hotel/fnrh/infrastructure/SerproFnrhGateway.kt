@@ -7,7 +7,9 @@ import com.zeny.hotel.fnrh.application.FnrhFailure
 import com.zeny.hotel.fnrh.application.FnrhGateway
 import com.zeny.hotel.fnrh.application.FnrhGatewayException
 import com.zeny.hotel.fnrh.application.FnrhIntegrationLog
+import com.zeny.hotel.fnrh.application.FnrhRemoteGuestRef
 import com.zeny.hotel.fnrh.application.FnrhReservationRegistered
+import com.zeny.hotel.fnrh.domain.FnrhDocument
 import com.zeny.hotel.fnrh.domain.FnrhDomain
 import com.zeny.hotel.fnrh.domain.FnrhDomainValue
 import com.zeny.hotel.fnrh.domain.FnrhGuest
@@ -112,6 +114,39 @@ class SerproFnrhGateway(
             .firstOrNull()
             ?.let(::FnrhRemoteId)
 
+    override fun listReservationGuests(
+        reservationId: FnrhRemoteId,
+        correlationRef: String,
+    ): List<FnrhRemoteGuestRef> =
+        call(
+            operation = "listReservationGuests",
+            correlationRef = correlationRef,
+            method = HttpMethod.GET,
+            segments = listOf("reservas", reservationId.value, "hospedes"),
+            knownRemoteId = reservationId.value,
+            echoServerMessage = false, // a `mensagem` pode ecoar dado pessoal que não enviamos
+        ) { tree -> tree?.let(::guestRefsOf) }
+
+    override fun findPersonByDocument(
+        document: FnrhDocument,
+        requesterCpf: Cpf,
+        correlationRef: String,
+    ): FnrhRemoteId? =
+        try {
+            call(
+                operation = "findPersonByDocument",
+                correlationRef = correlationRef,
+                method = HttpMethod.GET,
+                segments = listOf("pessoas", "documento", documentTypeId(document.type), document.number),
+                headers = mapOf(REQUESTER_HEADER to requesterCpf.digits),
+                echoServerMessage = false, // a `mensagem` pode ecoar o nome, que não enviamos
+                remoteIdOf = { it.firstOrNull() },
+            ) { tree -> tree?.let(::personIdsOf) }.firstOrNull()?.let(::FnrhRemoteId)
+        } catch (e: FnrhGatewayException) {
+            // 404: a pessoa não existe no MTur, o mesmo que "sem id". A exceção não leva causa nem a URL.
+            if (e.failure == FnrhFailure.NOT_FOUND) null else throw e
+        }
+
     override fun registerPerson(
         person: FnrhPersonData,
         requesterCpf: Cpf,
@@ -193,20 +228,21 @@ class SerproFnrhGateway(
         headers: Map<String, String> = emptyMap(),
         sentValues: Collection<String> = emptyList(),
         knownRemoteId: String? = null,
+        echoServerMessage: Boolean = true,
         remoteIdOf: (T) -> String? = { null },
         parse: (JsonNode?) -> T?,
     ): T {
         val connection =
             connectionSource.current() ?: throw FnrhGatewayException(FnrhFailure.NOT_CONFIGURED, null, null)
         val write = method != HttpMethod.GET
-        val started = System.nanoTime()
+        val recorder = CallRecorder(log, integrationLog, connection, operation, correlationRef)
 
         fun fail(
             failure: FnrhFailure,
             status: Int?,
             message: String?,
         ): Nothing {
-            record(connection, operation, failure.name, status, started, correlationRef, knownRemoteId, message)
+            recorder.record(failure.name, status, knownRemoteId, message)
             throw FnrhGatewayException(failure, status, message)
         }
 
@@ -216,13 +252,17 @@ class SerproFnrhGateway(
         val uri =
             uriOrNull(log, operation, connection.baseUrl, segments, query) ?: fail(FnrhFailure.UNAVAILABLE, null, null)
         val reply =
-            when (val sent = trySend(log, operation) { send(connection, method, uri, body, headers) }) {
+            when (val sent = trySend(log, operation) { http.sendRequest(connection, method, uri, body, headers) }) {
                 is Sent.Done -> sent.reply
                 is Sent.Failed -> fail(sendFailure(sent.error, write), null, null)
             }
         val tree = readTree(reply.body)
         if (reply.status !in HTTP_OK_RANGE) {
-            fail(failureOf(reply.status), reply.status, errorMessage(tree, sentValues))
+            fail(
+                failureOf(reply.status),
+                reply.status,
+                if (echoServerMessage) errorMessage(tree, sentValues) else null,
+            )
         }
         val result =
             try {
@@ -230,69 +270,14 @@ class SerproFnrhGateway(
             } catch (_: AmbiguousMatchException) {
                 fail(FnrhFailure.UNKNOWN_OUTCOME, reply.status, null)
             } ?: fail(if (write) FnrhFailure.UNKNOWN_OUTCOME else FnrhFailure.SERVER_ERROR, reply.status, null)
-        record(
-            connection,
-            operation,
-            SUCCESS,
-            reply.status,
-            started,
-            correlationRef,
-            remoteIdOf(result) ?: knownRemoteId,
-            null,
-        )
+        recorder.record(SUCCESS, reply.status, remoteIdOf(result) ?: knownRemoteId, null)
         return result
-    }
-
-    private fun send(
-        connection: FnrhConnection,
-        method: HttpMethod,
-        uri: URI,
-        body: Payload?,
-        headers: Map<String, String>,
-    ): Reply =
-        http
-            .method(method)
-            .uri(uri)
-            .headers { h ->
-                h.setBasicAuth(connection.username, connection.password, Charsets.UTF_8)
-                h.set("Content-Type", body?.contentType ?: MediaType.APPLICATION_JSON_VALUE)
-                headers.forEach { (name, value) -> h.set(name, value) }
-            }.apply { body?.let { body(it.bytes) } }
-            .exchange { _, response ->
-                Reply(response.statusCode.value(), response.body.readNBytes(MAX_BODY_BYTES))
-            }
-
-    @Suppress("LongParameterList") // os campos da FnrhCall, um por argumento
-    private fun record(
-        connection: FnrhConnection,
-        operation: String,
-        outcome: String,
-        status: Int?,
-        startedNanos: Long,
-        correlationRef: String?,
-        remoteId: String?,
-        message: String?,
-    ) {
-        val call =
-            FnrhCall(
-                operation = operation,
-                environment = connection.environment,
-                outcome = outcome,
-                httpStatus = status,
-                durationMs = (System.nanoTime() - startedNanos) / NANOS_PER_MILLI,
-                correlationRef = correlationRef,
-                remoteId = remoteId,
-            )
-        logCall(log, call, message)
-        recordSafely(log, integrationLog, operation, call)
     }
 
     private companion object {
         val log: Logger = LoggerFactory.getLogger(SerproFnrhGateway::class.java)
         const val SUCCESS = "SUCCESS"
         const val REQUESTER_HEADER = "cpf_solicitante"
-        const val MAX_BODY_BYTES = 1 shl 20
-        const val NANOS_PER_MILLI = 1_000_000L
         val HTTP_OK_RANGE = 200..299
     }
 }

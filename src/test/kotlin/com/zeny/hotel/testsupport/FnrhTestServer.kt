@@ -120,6 +120,54 @@ object FnrhTestServer {
         )
     }
 
+    /**
+     * `GET /reservas/{id}/hospedes`: `200` com [body] (por padrão, um hóspede por par `hospede_id` e `pessoa_id`,
+     * com dado pessoal ao lado, como o Serpro faz). Sem `cpf_solicitante`.
+     */
+    @Suppress("ktlint:standard:function-naming")
+    fun stubListReservationGuests_v2_4(
+        reservationId: String,
+        vararg guests: Pair<String, String>,
+        body: String? = null,
+    ) {
+        val items =
+            guests.joinToString(",") { (guestId, personId) ->
+                """{"pessoa":{"pessoa_id":"$personId","nome":"Maria Souza","email":"maria@example.com",""" +
+                    """"numero":"52998224725","tipo_documento_id":"CPF"},""" +
+                    """"hospede":{"hospede_id":"$guestId","reserva_id":"$reservationId","pessoa_id":"$personId",""" +
+                    """"situacao_hospede_id":"CHECKIN_REALIZADO"}}"""
+            }
+        server.stubFor(
+            get(urlEqualTo("$BASE_PATH/reservas/$reservationId/hospedes"))
+                .strictV24(JSON)
+                .willReturn(json(body ?: """{"dados":[$items]}""")),
+        )
+    }
+
+    /**
+     * `GET /pessoas/documento/{tipo}/{numero}`: exige o `cpf_solicitante` dado. Com [personId], a pessoa já está
+     * cadastrada neste meio de hospedagem (`dados.id`); sem ele, `dados` vem sem `id`. [body] sobrepõe a resposta.
+     */
+    @Suppress("ktlint:standard:function-naming")
+    fun stubFindPersonByDocument_v2_4(
+        type: String,
+        number: String,
+        requesterCpf: String,
+        personId: String? = null,
+        body: String? = null,
+    ) {
+        val id = personId?.let { """"id":"$it",""" }.orEmpty()
+        val data =
+            """{"dados":{$id"documento":{"numero_documento":"$number","tipo_documento_id":"$type"},""" +
+                """"dado_pessoal":{"nome":"Maria Souza","data_nascimento":"1990-01-02"},""" +
+                """"contato":{"Email":"maria@example.com","Telefone":"+5511988887777"}}}"""
+        server.stubFor(
+            get(urlEqualTo("$BASE_PATH/pessoas/documento/$type/${URLEncoder.encode(number, Charsets.UTF_8)}"))
+                .strictV24(JSON, requesterCpf)
+                .willReturn(json(body ?: data)),
+        )
+    }
+
     /** `POST /pessoas`: exige o `cpf_solicitante` dado (só dígitos) e devolve `pessoa_id`. */
     @Suppress("ktlint:standard:function-naming")
     fun stubRegisterPerson_v2_4(

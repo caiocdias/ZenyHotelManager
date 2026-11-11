@@ -48,6 +48,7 @@ object FnrhMessageSanitizer {
     ): String {
         val needles =
             sentValues
+                .map { it.replace(CONTROL, " ") }
                 .flatMap { value ->
                     listOf(value) +
                         value.split(WORD_SEPARATOR).filter { it.count(Char::isLetter) >= MIN_WORD_LETTERS } +

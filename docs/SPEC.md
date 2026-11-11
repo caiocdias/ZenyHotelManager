@@ -319,7 +319,7 @@ Convenção: **RF-<módulo>-NN**. A fase de entrega de cada módulo está indica
 - **RF-HOS-01** — Perfil de hóspede (pessoa física) com os campos exigidos pela FNRH:
   - nome e nome social;
   - nacionalidade (ISO);
-  - data de nascimento e gênero;
+  - data de nascimento e gênero, com a descrição quando o gênero é "outro";
   - documento: CPF ou passaporte para a FNRH, com outros aceitos para conferência;
   - e-mail e telefone;
   - país de residência;
@@ -1260,6 +1260,7 @@ classDiagram
     String socialName
     LocalDate birthDate
     String gender
+    String genderDescription
     String nationality
     String email
     String phone
@@ -1772,8 +1773,6 @@ classDiagram
 
   class BusinessDay {
     LocalDate date
-    String status
-    Instant closedAt
   }
   class EndOfDayRun {
     String trigger
@@ -2658,19 +2657,41 @@ classDiagram
   }
   class FnrhSubmission {
     String operation
+    String eventKey
+    long causalVersion
     String status
     int attempts
-    String lastError
-    String remoteId
+    Instant nextAttemptAt
+    String lastFailure
+    boolean inFlight
     Instant sentAt
+    retry()
+    dismiss()
+  }
+  class FnrhRemoteReservation {
+    String environment
+    String remoteId
+    String precheckinLink
+    boolean cancelled
+  }
+  class FnrhRemoteGuest {
+    String environment
+    String personId
+    String guestRemoteId
+    boolean checkedOut
   }
   class FnrhGateway {
     <<interface>>
-    registerStay(reservation)
-    checkIn(guest)
-    checkOut(guest)
-    noShow(reservation)
-    cancel(reservation)
+    registerReservation(reservation)
+    updateReservation(id, reservation)
+    cancelReservation(id)
+    findReservationByCode(code)
+    listReservationGuests(id)
+    findPersonByDocument(document)
+    registerPerson(person)
+    addGuestToReservation(id, person, guest)
+    checkOut(guest, at)
+    fetchDomain(domain)
   }
   class RoomType {
     <<UHs>>
@@ -2698,9 +2719,12 @@ classDiagram
   InboundBookingMessage ..> Booking : cria/altera/cancela
   Booking "*" --> "1" Channel
   FnrhSubmission "*" --> "1" Reservation
-  FnrhSubmission "*" --> "0..1" StayGuest
+  FnrhRemoteReservation "*" --> "1" Reservation
+  FnrhRemoteGuest "*" --> "1" StayGuest
   FnrhSubmission ..> FnrhGateway : enviada via
 ```
+
+A porta `FnrhGateway` é a da API v2.4 do Serpro (M5 E07; levantamento em `docs/fnrh/api-fnrh-v2.4.md`), não um espelho dos eventos; o no-show entra no M6. Cada evento de reserva ou de hospedagem gera **uma** `FnrhSubmission` (M5 E08), idempotente por reserva, operação e evento: `REGISTER_RESERVATION` (`ReservationCreated`), `UPDATE_RESERVATION` (`ReservationChanged`, `ReservationConfirmed`, `ReservationReactivated`), `CANCEL_RESERVATION`, `CHECK_IN`, `UNDO_CHECK_IN` (a API não desfaz check-in: sem hóspede no Serpro, nada a enviar; com hóspede, correção manual) e `CHECK_OUT`. Um job envia, por reserva, a submissão não resolvida de menor ordem causal (a `version` da reserva no evento e o posto da operação), e cada passo age sobre o estado atual da reserva. Situações: `PENDING`, `SENT`, `FAILED`, `INVALID` (validação local com erros por campo, sem o valor), `CANCELLED` e `DISMISSED` (encerrada à mão, não segura a fila). O progresso remoto (ids da reserva, das pessoas e dos hóspedes e o link de pré-check-in, cifrado) fica por ambiente em `FnrhRemoteReservation` e `FnrhRemoteGuest`, não na submissão.
 
 #### 8.2.18 Notificações e impressão
 
@@ -2883,9 +2907,9 @@ Não há data definida. As fases seguem a ordem de dependência. **Para a inaugu
 |---|---|---|
 | **0 — Fundação** | Infraestrutura (repositório, CI, Docker compose, contrato OpenAPI); núcleo compartilhado; ACS (usuários, roles, escopo, aprovação, auditoria); CFG; PES (escala); UHs, áreas e status; motor de checklists (sem ações de estoque e enxoval); notificações internas; tempo real; base da sincronização offline | Base sobre a qual todos os módulos são construídos |
 | **1 — Hospedagem** | Hóspedes; tarifas (planos, restrições, pacotes, políticas); reservas, grupos e bloqueios; recepção; FNRH; contas e caixa com pagamento manual; fechamento do dia; governança completa; manutenção corretiva e OOO/OOS; painel e relatórios operacionais; agente de impressão | O hotel opera a hospedagem. Notas emitidas manualmente no portal da prefeitura até a Fase 2. |
-| **2 — Receita e fiscal** | Channel manager; Pix integrado; cartão integrado e caução; fiscal (NFS-e, NFC-e, IBS/CBS); PDV do restaurante e bar (comandas, produção, café da manhã, lançamento no quarto, taxa de serviço) | **Pronto para inaugurar** |
+| **2 — Receita e fiscal** | Channel manager; Pix integrado; cartão integrado e caução; fiscal (NFS-e, NFC-e, IBS/CBS); PDV do restaurante e bar (comandas, produção, café da manhã, lançamento no quarto, taxa de serviço); expurgo automático dos dados sensíveis da FNRH (RN-19) | **Pronto para inaugurar** |
 | **3 — Suprimentos** | Estoque e compras; NF-e XML; fichas técnicas com baixa automática; ações de checklist (baixa de insumos, troca de enxoval); rouparia e lavanderia terceirizada; lavanderia do hóspede; itens de empréstimo | Custos e insumos sob controle |
-| **4 — Comercial e gestão** | Eventos completos e locação de espaços; contas a receber; manutenção preventiva e ativos; KPIs e relatórios gerenciais; exportação contábil; automação de retenção LGPD | Gestão completa |
+| **4 — Comercial e gestão** | Eventos completos e locação de espaços; contas a receber; manutenção preventiva e ativos; KPIs e relatórios gerenciais; exportação contábil; anonimização automática de perfis por prazo (RN-20) | Gestão completa |
 | **Futuro** | Interface do hóspede (pré-check-in pela FNRH, notificações, portal); financeiro administrativo (se confirmado); fechaduras; PABX; RMS; ponto eletrônico; multi-idioma | — |
 
 ---

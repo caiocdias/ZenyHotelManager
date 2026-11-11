@@ -2,6 +2,8 @@ package com.zeny.hotel.fnrh.infrastructure
 
 import com.zeny.hotel.fnrh.application.FnrhStatus
 import com.zeny.hotel.fnrh.application.FnrhStatusReader
+import com.zeny.hotel.fnrh.application.FnrhSubmissionStore
+import com.zeny.hotel.fnrh.domain.FnrhSubmissionStatus
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.binder.MeterBinder
@@ -60,5 +62,42 @@ class FnrhMetrics(
         const val LAST_FAILURE = "zeny.fnrh.last.failure"
         const val CONFIGURED = "zeny.fnrh.configured"
         private val log = LoggerFactory.getLogger(FnrhMetrics::class.java)
+    }
+}
+
+/**
+ * O gauge `zeny.fnrh.submissions` com a tag `status` (`pending`, `failed`, `invalid`): quantas submissões estão em cada
+ * situação que pede atenção, lido do banco a cada raspagem. Uma leitura que falha dá `NaN`, nunca derruba a raspagem.
+ * Fica à parte do [FnrhMetrics] porque lê da fila, não do status.
+ */
+@Component
+class FnrhSubmissionMetrics(
+    private val store: ObjectProvider<FnrhSubmissionStore>,
+) : MeterBinder {
+    override fun bindTo(registry: MeterRegistry) {
+        WATCHED.forEach { status ->
+            Gauge
+                .builder(SUBMISSIONS) { count(status) }
+                .tag("status", status.name.lowercase())
+                .description("Submissões à FNRH na situação.")
+                .register(registry)
+        }
+    }
+
+    private fun count(status: FnrhSubmissionStatus): Double =
+        try {
+            (store.getObject().countByStatus()[status] ?: 0L).toDouble()
+        } catch (
+            @Suppress("TooGenericExceptionCaught") e: Exception,
+        ) {
+            log.warn("FNRH: a contagem das submissões falhou ({})", e.javaClass.simpleName)
+            Double.NaN
+        }
+
+    companion object {
+        const val SUBMISSIONS = "zeny.fnrh.submissions"
+        private val WATCHED =
+            listOf(FnrhSubmissionStatus.PENDING, FnrhSubmissionStatus.FAILED, FnrhSubmissionStatus.INVALID)
+        private val log = LoggerFactory.getLogger(FnrhSubmissionMetrics::class.java)
     }
 }

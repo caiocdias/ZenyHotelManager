@@ -15,5 +15,5 @@ import org.springframework.modulith.PackageInfo
  * erro ([FnrhErrorCodes] e [FnrhFieldCodes]).
  */
 @PackageInfo
-@ApplicationModule(displayName = "FNRH", allowedDependencies = ["shared", "guests"])
+@ApplicationModule(displayName = "FNRH", allowedDependencies = ["shared", "guests", "reservations", "notifications"])
 class FnrhModule

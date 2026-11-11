@@ -70,6 +70,7 @@ internal fun Guest.view() =
         nationality = nationality,
         birthDate = birthDate,
         gender = gender,
+        genderDescription = genderDescription,
         email = email,
         phone = phone,
         residenceCountry = residenceCountry,

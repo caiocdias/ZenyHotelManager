@@ -14,7 +14,8 @@ import com.zeny.hotel.shared.TemplateGrant
  * [SETTINGS_MANAGE] cuida da configuração, dos CPFs por usuário e da atualização dos domínios; é exclusiva do
  * Administrador, que recebe todas as permissões, e por isso não tem modelo de role. [DOMAINS_READ] deixa o cliente
  * oferecer os códigos oficiais no check-in e [SUBMISSIONS_READ] mostra o status da integração (Gerente e
- * Recepcionista).
+ * Recepcionista). [SUBMISSIONS_MANAGE] (só o Gerente) reenvia e encerra submissões e recebe o alerta de falha no envio
+ * (D-E08-11 e 12).
  */
 object FnrhPermissions : ModulePermissions {
     override val module = "fnrh"
@@ -27,6 +28,9 @@ object FnrhPermissions : ModulePermissions {
 
     /** Consultar o status da integração. */
     val SUBMISSIONS_READ = PermissionCode("fnrh.submissions.read")
+
+    /** Reenviar e encerrar submissões e receber o alerta de falha no envio (só o Gerente). */
+    val SUBMISSIONS_MANAGE = PermissionCode("fnrh.submissions.manage")
 
     private val frontOffice =
         listOf(RoleTemplate.MANAGER, RoleTemplate.RECEPTIONIST).associateWith { TemplateGrant(ALL) }
@@ -49,6 +53,12 @@ object FnrhPermissions : ModulePermissions {
                 "Consultar o status da integração com a FNRH",
                 setOf(ALL),
                 templates = frontOffice,
+            ),
+            PermissionDefinition(
+                SUBMISSIONS_MANAGE,
+                "Reenviar e encerrar submissões da FNRH e receber o alerta de falha no envio",
+                setOf(ALL),
+                templates = mapOf(RoleTemplate.MANAGER to TemplateGrant(ALL)),
             ),
         )
 }

@@ -169,6 +169,7 @@ class GuestDataSubjectService(
                 "socialName",
                 "birthDate",
                 "gender",
+                "genderDescription",
                 "email",
                 "phone",
                 "address",

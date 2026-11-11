@@ -151,6 +151,14 @@ data class GuestProfileRequest(
     val nationality: String? = null,
     val birthDate: LocalDate? = null,
     val gender: Gender? = null,
+    @field:Schema(
+        description =
+            "Descrição do gênero, exigida pela FNRH quando o gênero é `OTHER`: dado pessoal, gravado cifrado e " +
+                "recusado com outro gênero (400 `GENDER_DESCRIPTION_REQUIRES_OTHER_GENDER`). Mudar o gênero para " +
+                "outro valor sem reenviá-la a apaga.",
+    )
+    @field:Size(max = 100)
+    val genderDescription: String? = null,
     @field:Size(max = 254)
     val email: String? = null,
     @field:Size(max = 30)
@@ -184,6 +192,7 @@ data class GuestProfileRequest(
             nationality = nationality,
             birthDate = birthDate,
             gender = gender,
+            genderDescription = genderDescription,
             email = email,
             phone = phone,
             residenceCountry = residenceCountry,
@@ -275,6 +284,13 @@ data class GuestResponse(
     val nationality: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
+    @field:Schema(
+        description =
+            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil, " +
+                "inclusive nas das escritas (criação, alteração, restrição e mesclagem). Nula com qualquer " +
+                "outro gênero.",
+    )
+    val genderDescription: String?,
     val email: String?,
     val phone: String?,
     val residenceCountry: String?,
@@ -320,6 +336,7 @@ data class GuestResponse(
                 nationality = view.nationality,
                 birthDate = view.birthDate,
                 gender = view.gender,
+                genderDescription = view.genderDescription,
                 email = view.email,
                 phone = view.phone,
                 residenceCountry = view.residenceCountry,
@@ -359,7 +376,11 @@ data class MergeGuestRequest(
     @field:Schema(description = "O perfil absorvido: fica como mesclado (`MERGED`), nunca é apagado.")
     @field:NotNull
     val mergedGuestId: UUID?,
-    @field:Schema(description = "Os dados do perfil que vêm do absorvido (por padrão, nenhum: vale o do sobrevivente).")
+    @field:Schema(
+        description =
+            "Os dados do perfil que vêm do absorvido (por padrão, nenhum: vale o do sobrevivente). A descrição " +
+                "do gênero acompanha o gênero (`GENDER`): só existe com `OTHER`.",
+    )
     val takeFromMerged: Set<GuestMergeField> = emptySet(),
 )
 

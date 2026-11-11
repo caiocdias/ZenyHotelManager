@@ -30,6 +30,7 @@ import org.springframework.test.context.ContextConfiguration
         GUESTS_REKEY_DEFERRED,
         INVENTORY_HORIZON_DEFERRED,
         PROVISIONAL_EXPIRY_DEFERRED,
+        FNRH_SEND_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
@@ -80,3 +81,9 @@ const val INVENTORY_HORIZON_DEFERRED = "zeny.reservations.inventory-horizon.init
  * compartilhado, e um contexto com o relógio adiantado ([MutableClock]) cancelaria as de outros testes.
  */
 const val PROVISIONAL_EXPIRY_DEFERRED = "zeny.reservations.provisional-expiry.initial-delay=PT24H"
+
+/**
+ * O job do envio à FNRH só roda quando o teste o chama: um job agendado enviaria, no banco compartilhado, as submissões
+ * de outros testes e gastaria as respostas do WireMock global.
+ */
+const val FNRH_SEND_DEFERRED = "zeny.fnrh.submissions.initial-delay=PT24H"

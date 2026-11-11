@@ -321,21 +321,23 @@ class ModularityTest {
     }
 
     @Test
-    fun `fnrh depends only on shared and guests`() {
+    fun `fnrh depends only on shared, guests, reservations and notifications`() {
         val fnrh = modules.getModuleByName("fnrh").orElseThrow()
 
         // M5 E07: a integração com a FNRH do Serpro fica na camada acima de Hospedagem (ARCHITECTURE §3.1). Nunca
         // iam, frontdesk nem tabela de outro schema; guests só pela API pública (os dados do hóspede para a ficha).
+        // M5 E08: reservations (os eventos de reserva e de hospedagem e a ReservationsApi, que dá o código da reserva)
+        // e notifications (o alerta de falha no envio, pela NotificationsApi; Task 9).
         fnrh
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
             .toList() shouldContainExactlyInAnyOrder
-            listOf("shared", "guests")
+            listOf("shared", "guests", "reservations", "notifications")
         FnrhModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
-            .toSet() shouldBe setOf("shared", "guests")
+            .toSet() shouldBe setOf("shared", "guests", "reservations", "notifications")
     }
 
     @Test

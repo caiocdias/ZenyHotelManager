@@ -1,5 +1,6 @@
 package com.zeny.hotel.fnrh.application
 
+import com.zeny.hotel.fnrh.domain.FnrhDocument
 import com.zeny.hotel.fnrh.domain.FnrhDomain
 import com.zeny.hotel.fnrh.domain.FnrhDomainValue
 import com.zeny.hotel.fnrh.domain.FnrhGuest
@@ -9,10 +10,21 @@ import com.zeny.hotel.fnrh.domain.FnrhReservationData
 import com.zeny.hotel.shared.Cpf
 import java.time.Instant
 
-/** O resultado de `POST /reservas`: o id remoto e o link de pré-check-in (RF-FNRH-04), quando o Serpro o dá. */
+/**
+ * O resultado de `POST /reservas`: o id remoto e o link de pré-check-in (RF-FNRH-04), quando o Serpro o dá. O
+ * [toString] não mostra o link (URL de acesso ao preenchimento de dados pessoais).
+ */
 data class FnrhReservationRegistered(
     val reservationId: FnrhRemoteId,
     val precheckinLink: String?,
+) {
+    override fun toString(): String = "FnrhReservationRegistered(reservationId=$reservationId)"
+}
+
+/** Um hóspede da reserva no Serpro: os ids dele e da pessoa. Só ids; nenhum dado pessoal da resposta é guardado. */
+data class FnrhRemoteGuestRef(
+    val guestId: FnrhRemoteId,
+    val personId: FnrhRemoteId,
 )
 
 /** Por que uma chamada ao Serpro falhou. [temporary] diz se vale tentar de novo. */
@@ -82,6 +94,29 @@ interface FnrhGateway {
     /** `GET /reservas?codigo_reserva=…`: para conciliar um [FnrhFailure.UNKNOWN_OUTCOME]; `null` se não existe. */
     fun findReservationByCode(
         reservationCode: String,
+        correlationRef: String,
+    ): FnrhRemoteId?
+
+    /**
+     * `GET /reservas/{id}/hospedes`, sem `cpf_solicitante`: para conciliar um [FnrhFailure.UNKNOWN_OUTCOME] do
+     * `POST /reservas/{id}/hospedes`. Lê só `dados[].hospede.hospede_id` e `dados[].hospede.pessoa_id`; um `200` sem
+     * `dados`, ou um item sem os dois ids, é [FnrhFailure.UNKNOWN_OUTCOME] (falha fechado).
+     */
+    fun listReservationGuests(
+        reservationId: FnrhRemoteId,
+        correlationRef: String,
+    ): List<FnrhRemoteGuestRef>
+
+    /**
+     * `GET /pessoas/documento/{tipo}/{numero}`, com `cpf_solicitante`: antes de criar a pessoa. O id da pessoa
+     * (`dados.id`) vem só quando ela já está cadastrada neste meio de hospedagem; sem `id`, ou com `404`, devolve
+     * `null` (criar com [registerPerson]). Premissa: o nome `dados.id` vem da observação do PDF (o exemplo não o
+     * mostra); a E09 (homologação) o confirma. Um `200` sem `dados` é [FnrhFailure.UNKNOWN_OUTCOME]. A resposta traz
+     * dado pessoal e o número do documento vai na URL: nada disso é lido, guardado nem registrado.
+     */
+    fun findPersonByDocument(
+        document: FnrhDocument,
+        requesterCpf: Cpf,
         correlationRef: String,
     ): FnrhRemoteId?
 

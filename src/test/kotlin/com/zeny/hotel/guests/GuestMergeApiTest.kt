@@ -19,6 +19,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.string.shouldStartWith
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -435,6 +436,26 @@ class GuestMergeApiTest(
     }
 
     @Test
+    fun `the gender description follows the gender in a merge`(): Unit =
+        with(iam) {
+            val description = "Descrição reservada ${guests.suffix(6)}"
+            val other = mapOf("gender" to "OTHER", "genderDescription" to description)
+            val male = mapOf("gender" to "MALE")
+
+            // Sem GENDER em takeFromMerged: o sobrevivente fica MALE e sem descrição.
+            val keptSurvivor = createWithGender(male)
+            mergeCall(keptSurvivor, createWithGender(other)).ok()
+            genderDescription(keptSurvivor).shouldBeNull()
+
+            // Com GENDER: o sobrevivente vira OTHER e leva a descrição cifrada.
+            val takenSurvivor = createWithGender(male)
+            mergeCall(takenSurvivor, createWithGender(other), listOf("GENDER")).ok()
+            val stored = genderDescription(takenSurvivor).shouldNotBeNull()
+            stored shouldStartWith "v1:"
+            stored shouldNotContain description
+        }
+
+    @Test
     fun `only the manager template gets the merge permission`() {
         GuestsPermissions.permissions
             .single { it.code == GuestsPermissions.PROFILES_MERGE }
@@ -447,6 +468,13 @@ class GuestMergeApiTest(
     private fun createWithFloor(floor: String): UUID {
         val preferences = mapOf("floor" to floor, "bed" to "Casal", "pillow" to null)
         val profile = guests.profileBody(email = guests.uniqueEmail(), extra = mapOf("preferences" to preferences))
+        return UUID.fromString(
+            guests.createGuest(guests.createBody(profile = profile, documents = emptyList()))["id"].asString(),
+        )
+    }
+
+    private fun createWithGender(extra: Map<String, Any?>): UUID {
+        val profile = guests.profileBody(email = guests.uniqueEmail(), extra = extra)
         return UUID.fromString(
             guests.createGuest(guests.createBody(profile = profile, documents = emptyList()))["id"].asString(),
         )
@@ -517,6 +545,14 @@ class GuestMergeApiTest(
                 it["type"].asString() to UUID.fromString(it["id"].asString())
             }
         }
+
+    private fun genderDescription(guest: UUID): String? =
+        jdbc
+            .sql("SELECT gender_description FROM guests.guest WHERE id = :id")
+            .param("id", guest)
+            .query(String::class.java)
+            .optional()
+            .orElse(null)
 
     private fun name(guest: UUID): String =
         with(iam) { call(GET, "/api/v1/guests/$guest", asAdmin()).ok()["fullName"].asString() }

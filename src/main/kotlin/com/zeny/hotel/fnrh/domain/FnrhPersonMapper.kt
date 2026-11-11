@@ -22,6 +22,7 @@ object FnrhPersonMapper {
             socialName = guest.socialName,
             nationality = guest.nationality,
             gender = guest.gender?.let(::genderId),
+            genderDescription = guest.genderDescription.takeIf { guest.gender == Gender.OTHER },
             birthDate = guest.birthDate,
             race = guest.raceColor?.let(::raceId),
             disabilityOption = if (withType) "SIM" else disability,

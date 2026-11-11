@@ -2,6 +2,7 @@ package com.zeny.hotel.fnrh.application
 
 import com.zeny.hotel.fnrh.domain.FnrhRequester
 import com.zeny.hotel.fnrh.domain.FnrhSettings
+import com.zeny.hotel.fnrh.domain.FnrhSubmission
 
 internal object FnrhAudit {
     const val SETTINGS = "fnrh.settings"
@@ -12,7 +13,26 @@ internal object FnrhAudit {
     const val DOMAIN_VALUES = "fnrh.domains"
     const val DOMAIN_VALUES_ID = "all"
     const val REFRESH_DOMAINS = "fnrh.domains.refresh"
+    const val SUBMISSION = "fnrh.submission"
+    const val SEND_SUBMISSION = "fnrh.submission.send"
+    const val RETRY_SUBMISSION = "fnrh.submission.retry"
+    const val DISMISS_SUBMISSION = "fnrh.submission.dismiss"
 }
+
+/**
+ * O retrato de uma submissão à FNRH para a trilha: a operação, a situação, as tentativas e a última falha. Nunca o
+ * código da reserva nem dado de hóspede (os erros da validação local ficam fora).
+ */
+internal data class FnrhSubmissionAuditState(
+    val id: String,
+    val operation: String,
+    val status: String,
+    val attempts: Int,
+    val lastFailure: String?,
+)
+
+internal fun FnrhSubmission.auditState() =
+    FnrhSubmissionAuditState(id.toString(), operation.name, status.name, attempts, lastFailure?.name)
 
 /**
  * O retrato do CPF solicitante de um usuário para a trilha: só o CPF mascarado (nenhum, se inativo). A [version] sobe

@@ -1,6 +1,6 @@
 # Roadmap — M9 Suprimentos: estoque, compras, rouparia e fichas técnicas
 
-> Arquivo: `docs/roadmaps/roadmap-m9-suprimentos.md` · branch de execução: `roadmap/m9-suprimentos` · criado em 2026-10-13 · última revisão 2026-10-22
+> Arquivo: `docs/roadmaps/roadmap-m9-suprimentos.md` · branch de execução: `roadmap/m9-suprimentos` · criado em 2026-10-13 · última revisão 2026-11-06
 >
 > Marco 9 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M8 — Restaurante, distribuição e inauguração](roadmap-m8-restaurante-distribuicao.md) · próximo marco: [M10 — Comercial e gestão](roadmap-m10-comercial-gestao.md)
 >
@@ -8,7 +8,7 @@
 
 ## Como usar
 
-Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m9-suprimentos`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote você decide como integrar a branch (merge, PR, manter ou descartar). Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
+Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m9-suprimentos`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Este roadmap foi escrito antes do código existir.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, nomes de módulos, APIs públicas e convenções registrados nos handoffs de M0 a M8 e nas notas de tema do brain, e ajuste as etapas pendentes.
 
@@ -42,6 +42,8 @@ Colocar custos e insumos sob controle (SPEC §9, Fase 3). Ao fim do marco, o hot
 ## Restrições e invariantes
 
 - Respeitar a regra por camadas da ARCHITECTURE §3.1: um módulo só chama a API pública de módulos de camada inferior da §3.2 ou da Plataforma, sem ciclo; o resto vai por evento ou porta. Aresta nova que siga a regra não exige aprovação, mas deve ser acrescentada à tabela §3.1 na mesma etapa e citada no handoff. Dependência para a mesma camada (fora da Plataforma) ou para cima exige parar e perguntar.
+- **Sistema em produção:** este marco roda depois da inauguração. Migração só aditiva ou em duas fases, compatível com a versão anterior da `api`; cada versão sai pelo procedimento de `docs/operacao/implantacao.md`, com backup recente; contrato sem *breaking change* para os clientes em uso. Decisão em `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`, R12.
+- Enum de resposta que cresce sai como `x-extensible-enum`; `pattern` válido em ECMA-262; sem `DELETE`. Biblioteca nova entra pelo catálogo, com os lockfiles regravados e sem High ou Critical novo no scanner.
 - RN-17: saídas automáticas (checklist, PDV, OS) **nunca** falham por saldo insuficiente; o saldo fica negativo e gera alerta.
 - RN-18: o custo médio ponderado móvel é recalculado em toda entrada; saídas usam o custo médio vigente.
 - Quantidades em `BigDecimal` (nunca ponto flutuante); valores em `Money` (M0 E03).
@@ -86,8 +88,8 @@ Vale para toda execução deste roadmap. O planejamento e a execução de cada e
 |---|---|---|
 | Orquestrador | `orquestrador` (a sessão principal, iniciada com `claude --agent orquestrador`) | este protocolo; atualiza tags e handoffs; roda a verificação mecânica dos testes |
 | Planejador | `orquestrador` | `superpowers:writing-plans` |
-| Implementador | `desenvolvedor`, subagente por tarefa | `superpowers:subagent-driven-development`, prompt implementer |
-| Testador | `testador`, subagente por tarefa, depois do implementador | testes da tarefa, sem tocar em código de produção |
+| Implementador | `desenvolvedor`, subagente por tarefa; tarefas independentes em ondas paralelas | `superpowers:subagent-driven-development`, prompt implementer |
+| Testador | `testador`, subagente nas tarefas `Risco: alto`, nas lacunas da revisão e uma vez por etapa | testes, sem tocar em código de produção |
 | Revisor de plano | `revisor-arquitetura`, subagente novo por etapa, modelo mais capaz | revisão do plano antes da execução |
 | Revisor de tarefa | `revisor-seguranca`, subagente novo por tarefa | revisão da `subagent-driven-development` |
 | Revisor final | `revisor-seguranca`, subagente novo, modelo mais capaz | revisão final da `subagent-driven-development` |
@@ -120,12 +122,12 @@ Vale se o `CLAUDE.md` tiver a seção "Conhecimento do projeto no Second Brain";
 
 **Paradas**
 
-O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de etapa `#bloqueada` ou divergência do plano, nas paradas do próprio superpowers (operação destrutiva, ação sensível de segurança, efeito fora da branch, plano sem caminho viável) e ao atingir o limite de etapas do prompt.
+Qualquer outra necessidade de intervenção é decidida pelo orquestrador pela opção recomendada, depois de avaliar prós e contras, com a ruling registrada; só decisão de arquitetura ou system design espera o usuário (regras em "Decisões" do `orquestrador`). O lote para ao concluir uma etapa com **Revisão humana: sim**, diante de decisão de arquitetura sem a qual nada mais anda, nas paradas que ficam com o usuário (push, deploy, publicação, instalação na máquina, apagar trabalho fora da etapa, segredo exposto), quando não resta etapa elegível e ao atingir o limite de etapas do prompt. Etapa que fica `#bloqueada` não para o lote: o orquestrador segue para a próxima elegível que não depende dela.
 
 **Fim do lote**
 
-1. Use `superpowers:finishing-a-development-branch`: o usuário decide merge, PR, manter ou descartar a branch. Nunca faça push, merge ou deploy sem essa decisão.
-2. Apresente as "Decisões para o usuário" acumuladas como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
+1. Use `superpowers:finishing-a-development-branch` com a integração já decidida: merge local na `main`, conforme o passo de fechamento do `orquestrador` (branch atualizada e com gate verde, `merge --no-ff`, repositório limpo e pronto para o próximo orquestrador). Push e deploy ficam com o usuário: o relatório termina com o comando `git push origin main` pronto.
+2. Liste as "Decisões para o usuário" acumuladas, que já foram tomadas pela opção recomendada, com prós e contras, para revisão. As de arquitetura que esperam o usuário vão como entrevista: perguntas de múltipla escolha, cada uma com uma opção recomendada e justificada (no Claude Code, `AskUserQuestion` com a recomendada em primeiro lugar e o rótulo "(Recomendado)"). Registre as respostas no handoff das etapas e em "Hipóteses e decisões em aberto".
 
 ## Prompt de execução
 
@@ -139,9 +141,9 @@ Limite desta execução: no máximo 3 etapas concluídas.
 3. Crie ou retome o worktree/branch roadmap/m9-suprimentos com superpowers:using-git-worktrees. Não trabalhe na branch principal.
 4. Repita, uma etapa por vez: escolha a próxima etapa elegível, marque #em-andamento, planeje com superpowers:writing-plans (spec = seção da etapa + documentos citados), execute com superpowers:subagent-driven-development, feche a etapa (com a captura de atualização do brain) e preencha o handoff conforme o protocolo.
 5. Pare nas paradas do protocolo ou ao atingir o limite.
-6. No fim, rode superpowers:finishing-a-development-branch e deixe a decisão de integração comigo. Depois, apresente as decisões para o usuário como entrevista com opção recomendada.
+6. No fim, rode superpowers:finishing-a-development-branch com merge local na main, conforme o fechamento do orquestrador: tudo commitado, pronto para git push origin main e o repositório pronto para o próximo orquestrador. Depois, liste as decisões tomadas e apresente como entrevista com opção recomendada só as de arquitetura que esperam por mim.
 
-Nunca faça push, merge ou deploy sem minha decisão. Não altere tags de etapas que não executou.
+Qualquer necessidade de intervenção: escolha a opção recomendada depois de uma avaliação crítica dos prós e contras e registre a ruling; intervenção humana só para decisão de arquitetura ou system design. Nunca faça push ou deploy. Não altere tags de etapas que não executou.
 
 Ao parar, responda com: etapas concluídas e o resultado da revisão final de cada uma, a etapa atual e seu estado, o motivo da parada, as etapas #bloqueada com a ação de desbloqueio, a branch e os commits do lote, as capturas do brain publicadas e o próximo passo sugerido.
 ```
@@ -531,6 +533,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Reentregar o mesmo evento não cria segundo movimento.
 - [ ] Executor sem carrinho vinculado: baixa no local padrão configurado e alerta registrado.
 - [ ] Adicionar peça à OS gera saída com origem na OS; remover gera movimento inverso; o custo da OS inclui as peças pelo custo médio.
+- [ ] O custo de peças informado nas OS anteriores a esta etapa é preservado e somado, sem contar em dobro; terceiro em texto livre e `Supplier` convivem, com a decisão no handoff (teste com OS anterior).
 - [ ] `checklists` não depende de `inventory` (`ModularityTest`).
 - [ ] Build, testes e verificação do contrato passam.
 
@@ -581,7 +584,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Critérios de aceite:**
 
 - [ ] `ChecklistCompleted` com `LinenExchange` move as retiradas de em uso → suja e as colocadas de disponível → em uso; reentrega não duplica (teste de módulo).
-- [ ] A soma das quantidades de um tipo em todos os status só muda com baixa (para descartada) ou reposição (teste).
+- [ ] Há carga inicial do enxoval já em uso no hotel, com registro de quem a fez; depois dela, a soma das quantidades de um tipo em todos os status só muda com baixa (para descartada) ou reposição (teste).
 - [ ] Baixa exige motivo e permissão.
 - [ ] Reposição gera saída do item correspondente em `inventory` e entrada como disponível em `linen`.
 - [ ] Enxoval-padrão configurável por tipo de UH.
@@ -789,6 +792,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Critérios de aceite:**
 
 - [ ] Fechar comanda com produto com ficha técnica gera saídas proporcionais ao rendimento no local de estoque do ponto de venda, uma única vez mesmo com reentrega do evento.
+- [ ] Os pontos de venda ganham o local de estoque por migração aditiva; ponto de venda sem local dá baixa num local padrão, com alerta, e o evento nunca falha (RN-17, teste).
 - [ ] Itens cancelados não geram baixa; itens transferidos baixam apenas na comanda que fecha.
 - [ ] Consumo interno e cortesia geram baixa e nenhum lançamento financeiro.
 - [ ] A API pública de baixa por ficha a partir de quantidades existe e é coberta por teste.
@@ -895,6 +899,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] O teste ponta a ponta de suprimentos passa usando só endpoints e APIs públicas dos módulos.
 - [ ] Todos os itens da "Definição global de pronto" estão marcados, cada um com evidência numa cópia limpa.
 - [ ] oasdiff não aponta *breaking change* em `/api/v1` em relação ao fim do M8.
+- [ ] Teste de atualização: partindo do esquema do gate do M8 com dados, as migrações do marco se aplicam, a `api` nova funciona e a do M8 ainda sobe (R12).
 - [ ] Toda dependência de módulo acrescentada neste marco segue a regra por camadas e está registrada na tabela da ARCHITECTURE §3.1.
 - [ ] A captura de atualização do brain `ZenyHotelManager - atualização m9-suprimentos E14` foi publicada, e as capturas do marco documentam `inventory`, `linen`, a API de baixa e as regras RN-17/RN-18; `docs/roadmaps/README.md` registra a conclusão do M9.
 
@@ -932,3 +937,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-22 — migrado para o formato da skill development-roadmap com superpowers (branch `roadmap/m9-suprimentos`, protocolo e prompt de execução únicos, etapas sem prompt e estratégia) e para o Second Brain (notas de tema no lugar das seções do CLAUDE.md, captura de atualização por etapa); decisão do usuário.
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
+- 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. Novas restrições: sistema em produção e convenções de contrato e de dependências. Depois da revisão do `revisor-arquitetura`: critérios para o estado real do dia da implantação (E07, E08, E12) e teste de atualização no gate. Nenhuma etapa nova; tags inalteradas.
