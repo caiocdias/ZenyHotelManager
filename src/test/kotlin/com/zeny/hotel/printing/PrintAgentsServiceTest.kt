@@ -137,7 +137,7 @@ class PrintAgentsServiceTest(
             val error = errorOf { service.agent(UUID.randomUUID()) }
 
             error.kind shouldBe ErrorKind.NOT_FOUND
-            error.code shouldBe ErrorCodes.NOT_FOUND
+            error.code shouldBe PrintingErrorCodes.PRINT_AGENT_NOT_FOUND
         }
 
     @Test

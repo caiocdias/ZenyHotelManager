@@ -23,6 +23,7 @@ import java.util.UUID
  *
  * **Nunca** ponha o [content] em `toString`, log ou trilha.
  */
+@Suppress("LongParameterList") // construtor da entidade JPA: uma coluna imutável por parâmetro
 @Entity
 @Table(name = "print_job", schema = "printing")
 class PrintJob private constructor(

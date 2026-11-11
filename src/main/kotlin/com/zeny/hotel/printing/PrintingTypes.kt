@@ -29,6 +29,12 @@ object PrintingErrorCodes {
     /** 400: a impressora referida não existe. */
     val UNKNOWN_PRINTER = ErrorCode("UNKNOWN_PRINTER")
 
+    /** 404: o agente não existe (consulta por id). */
+    val PRINT_AGENT_NOT_FOUND = ErrorCode("PRINT_AGENT_NOT_FOUND")
+
+    /** 404: a impressora não existe (consulta por id). */
+    val PRINTER_NOT_FOUND = ErrorCode("PRINTER_NOT_FOUND")
+
     /** 404: o job não existe ou não é do agente que pede. */
     val PRINT_JOB_NOT_FOUND = ErrorCode("PRINT_JOB_NOT_FOUND")
 

@@ -232,13 +232,13 @@ class PrintAgentsService(
 
     private fun agentOrNotFound(id: UUID): PrintAgent =
         agents.byId(id) ?: throw NotFoundException(
-            ErrorCodes.NOT_FOUND,
+            PrintingErrorCodes.PRINT_AGENT_NOT_FOUND,
             "O agente de impressão não existe.",
         )
 
     private fun printerOrNotFound(id: UUID): Printer =
         printers.byId(id) ?: throw NotFoundException(
-            ErrorCodes.NOT_FOUND,
+            PrintingErrorCodes.PRINTER_NOT_FOUND,
             "A impressora não existe.",
         )
 
