@@ -2657,19 +2657,41 @@ classDiagram
   }
   class FnrhSubmission {
     String operation
+    String eventKey
+    long causalVersion
     String status
     int attempts
-    String lastError
-    String remoteId
+    Instant nextAttemptAt
+    String lastFailure
+    boolean inFlight
     Instant sentAt
+    retry()
+    dismiss()
+  }
+  class FnrhRemoteReservation {
+    String environment
+    String remoteId
+    String precheckinLink
+    boolean cancelled
+  }
+  class FnrhRemoteGuest {
+    String environment
+    String personId
+    String guestRemoteId
+    boolean checkedOut
   }
   class FnrhGateway {
     <<interface>>
-    registerStay(reservation)
-    checkIn(guest)
-    checkOut(guest)
-    noShow(reservation)
-    cancel(reservation)
+    registerReservation(reservation)
+    updateReservation(id, reservation)
+    cancelReservation(id)
+    findReservationByCode(code)
+    listReservationGuests(id)
+    findPersonByDocument(document)
+    registerPerson(person)
+    addGuestToReservation(id, person, guest)
+    checkOut(guest, at)
+    fetchDomain(domain)
   }
   class RoomType {
     <<UHs>>
@@ -2697,9 +2719,12 @@ classDiagram
   InboundBookingMessage ..> Booking : cria/altera/cancela
   Booking "*" --> "1" Channel
   FnrhSubmission "*" --> "1" Reservation
-  FnrhSubmission "*" --> "0..1" StayGuest
+  FnrhRemoteReservation "*" --> "1" Reservation
+  FnrhRemoteGuest "*" --> "1" StayGuest
   FnrhSubmission ..> FnrhGateway : enviada via
 ```
+
+A porta `FnrhGateway` é a da API v2.4 do Serpro (M5 E07; levantamento em `docs/fnrh/api-fnrh-v2.4.md`), não um espelho dos eventos; o no-show entra no M6. Cada evento de reserva ou de hospedagem gera **uma** `FnrhSubmission` (M5 E08), idempotente por reserva, operação e evento: `REGISTER_RESERVATION` (`ReservationCreated`), `UPDATE_RESERVATION` (`ReservationChanged`, `ReservationConfirmed`, `ReservationReactivated`), `CANCEL_RESERVATION`, `CHECK_IN`, `UNDO_CHECK_IN` (a API não desfaz check-in: sem hóspede no Serpro, nada a enviar; com hóspede, correção manual) e `CHECK_OUT`. Um job envia, por reserva, a submissão não resolvida de menor ordem causal (a `version` da reserva no evento e o posto da operação), e cada passo age sobre o estado atual da reserva. Situações: `PENDING`, `SENT`, `FAILED`, `INVALID` (validação local com erros por campo, sem o valor), `CANCELLED` e `DISMISSED` (encerrada à mão, não segura a fila). O progresso remoto (ids da reserva, das pessoas e dos hóspedes e o link de pré-check-in, cifrado) fica por ambiente em `FnrhRemoteReservation` e `FnrhRemoteGuest`, não na submissão.
 
 #### 8.2.18 Notificações e impressão
 

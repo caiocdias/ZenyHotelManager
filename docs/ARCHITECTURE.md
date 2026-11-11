@@ -486,9 +486,10 @@ Cada integração segue o mesmo padrão:
 - **log de integração** com payload redigido de dados sensíveis;
 - **painel de saúde**, alimentado por um endpoint de status e por métricas.
 
-Regras que a FNRH (M5 E07) provou e que valem para toda integração:
+Regras que a FNRH (M5 E07 e E08) provou e que valem para toda integração:
 
-- **Resultado incerto:** timeout de leitura numa escrita não diz se o provedor gravou. Nunca se repete às cegas: reenvio só com a mesma referência idempotente do provedor ou depois de conciliar pela consulta. A conciliação ambígua falha fechado.
+- **Resultado incerto:** timeout de leitura numa escrita não diz se o provedor gravou. Nunca se repete às cegas: reenvio só com a mesma referência idempotente do provedor ou depois de conciliar pela consulta. A conciliação ambígua (mais de um casamento, ou resposta sem o campo esperado) falha fechado. Antes de cada escrita que cria recurso, a marca de **escrita em curso** é gravada em transação própria e só some quando o id remoto é gravado: uma queda entre a resposta e a gravação leva à conciliação, nunca a um segundo envio. A marca vale para o recurso, não só para o pedido que a ligou (qualquer pedido do mesmo recurso concilia antes de criar).
+- **Envio assíncrono por pedido:** o evento só grava o pedido (idempotente por recurso, operação e evento); um job com ShedLock envia fora de transação, em ordem causal por recurso (a versão do agregado no evento), com retry de backoff limitado, e cada passo age sobre o estado atual, não sobre a ordem de chegada. Falha que o retry não resolve fica parada e visível, com reenvio e **encerramento manual** (o encerrado não segura a fila); o resultado é gravado mesmo se o alerta falhar.
 - **Registro de integração** em tabela *append-only* sem texto livre do provedor, porque ela não admite expurgo; a mensagem saneada vai só para o log e para a exceção, sem causa encadeada.
 - **Credencial** cifrada, nunca na trilha (nem o usuário), nunca devolvida na API e removível por uma ação com trilha. O administrador escolhe o ambiente, as URLs ficam em propriedade, e trocar de ambiente pede a credencial de novo.
 - **Falha** alerta por chamada direta a `notifications`, com o tipo `notifications.integration-failure` e sem dado pessoal. A readiness nunca depende de provedor externo.
@@ -524,6 +525,7 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 | Expurgo das publicações concluídas do outbox (há mais de 7 dias) | 1 h |
 | Horizonte do inventário por tipo e data (cria as datas até 730 dias e refaz o total e o OOO) | Diário |
 | Expiração de pré-reservas | 5 min |
+| Envio das submissões à FNRH (`fnrh-submissions-send`, M5 E08): a cabeça da fila de cada reserva, com backoff de 1 min a 1 h e `FAILED` na 8ª tentativa | 1 min |
 | Renovação de pré-autorizações perto do vencimento | No fechamento |
 | Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |
 | Alertas de estoque mínimo | Por evento, com consolidação diária |
