@@ -3,9 +3,10 @@
 -- nunca as tabelas internas. Uma coluna publicada não muda de nome nem de sentido; uma mudança incompatível cria outra
 -- view (report_submissions_v2).
 --
--- Conteúdo: uma linha por submissão (um evento da reserva enviado ao Serpro), com ids opacos (submissão, reserva),
+-- Conteúdo: uma linha por submissão (um evento da reserva enviado ao Serpro), com ids opacos (submission_id, a
+-- submissão; reservation_id, a reserva),
 -- rótulos fixos (operation, status, last_failure), a contagem de tentativas e instantes (timestamptz, UTC). Fica FORA:
--- o código da reserva (quem precisa dele junta com reservations.report_reservations pelo reservation_id), os erros por
+-- o código da reserva (reservation_code; quem precisa dele junta com reservations.report_reservations pelo reservation_id), os erros por
 -- campo da validação local (submission_error), os ids e o link de pré-check-in do Serpro (remote_reservation,
 -- remote_guest), o cursor da API, a escrita em curso, o autor, a versão e todo dado de hóspede.
 --
