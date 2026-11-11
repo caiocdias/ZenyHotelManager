@@ -195,8 +195,10 @@ class PrintAgentsApiAttackTest(
                 POST to "$path/$id/deactivate",
             ).forEach { (method, uri) ->
                 val response = iam.call(method, uri, iam.asAdmin())
+                // `me` (minúsculo) é do realm do agente (cadeia de serviço, Task 4): JWT de usuário ali é 401.
+                val allowed = if (id == "me" || id == "ME") setOf(400, 401, 404, 405) else setOf(400, 404, 405)
                 withClue("$method $uri -> ${response.status} ${response.contentAsString}") {
-                    (response.status in setOf(400, 404, 405)) shouldBe true
+                    (response.status in allowed) shouldBe true
                     response.contentAsString shouldNotContain "\"token\""
                 }
             }
