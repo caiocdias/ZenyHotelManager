@@ -156,11 +156,12 @@ class PrintJob private constructor(
         finish(PrintJobStatus.FAILED, code, now)
     }
 
-    /** Apaga o conteúdo de um job terminado, depois da retenção. */
+    /** Apaga o conteúdo de um job terminado, depois da retenção. Repetido, não faz nada: o 1º instante fica. */
     fun purgeContent(now: Instant) {
         check(status == PrintJobStatus.PRINTED || status == PrintJobStatus.FAILED) {
             "Só o conteúdo de um job PRINTED ou FAILED pode ser apagado (estado: $status)."
         }
+        if (contentPurgedAt != null) return
         content = null
         contentPurgedAt = now
     }
