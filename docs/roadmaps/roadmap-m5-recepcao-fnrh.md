@@ -1695,32 +1695,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- **Plano:** `docs/superpowers/plans/2026-11-11-m5-recepcao-fnrh-e16.md`, com 3 tarefas (todas `Risco: alto`, em série) e as decisões D-E16-1 a 7, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`). Sem testador de etapa: nenhuma tarefa `Risco: normal`.
-  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado em 2 rodadas. A inicial bloqueou com 2 Importantes (o risco da Task 1 e a forma da ação fora da ARCHITECTURE §12, que M7 e M8 citam) e 5 Menores; a rodada 1, com 1 Importante novo (o atraso do teste concorrente acima do `read-timeout` curto). Tudo aplicado no plano.
-- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `7eac7d0`):
-  - Plano e revisão de arquitetura: `3bc4d34`, `11341e2`, `70af24d` e `f366e48`.
-  - Task 1 (`FnrhSettings.clearCredentials()`): `f366e48..3ff7bbd` (desenvolvedor `07ab7b0`, testador `3ff7bbd`).
-  - Task 2 (ação, trilha, contrato, README e ARCHITECTURE §12): `3ff7bbd..3e9106c` (desenvolvedor `96dbb12` e `6f4e60b`, testador `0412e6e` e `3e9106c`) e a quebra de linha de KDoc `c7281b3`.
-  - Task 3 (envio depois da limpeza): `3e9106c..67c721a` (desenvolvedor `f078ce4`, testador `67c721a`).
-  - Fechamento: o commit deste handoff.
-- **Revisão final:** `revisor-seguranca` (opus) sobre `7eac7d0..67c721a`: "aprovado com ressalvas", 0 Críticos, sem defeito de código; os 2 Importantes eram documentais (fechar o roadmap e registrar a correção da E07 no handoff e na captura), resolvidos neste fechamento. As minors do ledger foram triadas: nenhuma bloqueia (ficam nas notas abaixo). A seção de arquitetura do plano confere com o ledger.
-- **Integridade dos testes:** `check_test_integrity.py --base 7eac7d0` → "OK: nenhum apontamento" (exit 0), e o mesmo em cada tarefa.
-- **Critérios verificados:**
-  - [x] Colunas cifradas vazias (lidas em SQL), integração desligada e `GET /api/v1/fnrh/status` com `configured = false` (`FnrhSettingsClearApiTest`).
-  - [x] Gerente e Recepcionista reais → `403`, anônimo → `401`, sem `If-Match` → `428`, `ETag` velho → `412`, sem mudança (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com 11 formas de `If-Match` malformado).
-  - [x] Trilha `fnrh.settings.clear-credentials` com o `user_id` do administrador, sem usuário, senha nem CPF; repetir não grava entrada nova (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com segredos unicode na resposta, na trilha e no log).
-  - [x] Nenhuma chamada ao Serpro depois da ação: o envio devolve `FnrhSendRun(0, 0, 0, 0)` e a submissão fica `PENDING` com `attempts = 0`; o refresh dos domínios dá `422 FNRH_NOT_CONFIGURED`; a limpeza no meio de uma rodada para antes da chamada seguinte, inclusive entre duas chamadas do mesmo `CHECK_IN` com 2 hóspedes, e ao religar concilia sem duplicar pessoa nem hóspede (`FnrhSettingsClearSendTest`, `FnrhSettingsClearSendAttackTest`, sincronizados por latch no WireMock). Religar sem credencial nova → `422 FNRH_SETTINGS_INCOMPLETE`.
-  - [x] `ApiSecurityTest` cobre a rota sem edição (enumera todos os mapeamentos de `/api/**`; D-E16-6). `./gradlew build` em `67c721a`: BUILD SUCCESSFUL in 16m 31s, 2246 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1` (só a operação `clearFnrhCredentials`).
-  - Scanner (`osv-scanner scan source -r --no-ignore .`): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14; nenhuma dependência mudou.
-- **Correção fora do escopo, aplicada (ruling):** `GET /api/v1/fnrh/status` respondia `500` em qualquer ambiente sem chamada bem-sucedida registrada (instalação nova ou a primeira troca para `PRODUCTION`), e a métrica `zeny_fnrh_last_success_seconds` passava pelo mesmo caminho: `JdbcFnrhCallHistory.lastSuccessAt` fazia `.single()` sobre um `max()` nulo. Corrigido em `6f4e60b` (a consulta tem a forma da do `lastFailure`), com o teste de regressão `FnrhCallHistoryEmptyTest`. Defeito da E07.
-- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E16"): a forma da ação, que vira regra de toda integração na ARCHITECTURE §12 (D-E16-1 e 7); o que a ação mantém (D-E16-2); a repetição sem erro e sem entrada na trilha (D-E16-3); a correção da E07 no status.
-- **Notas para a próxima etapa:**
-  - E09: a E16 deixa de travá-la; segue `#bloqueada` só pela Q-12 (credencial e Cadastur).
-  - A nota M-3 da E08 (troca de ambiente com envio em curso) continua com a M8 E13: a limpeza mantém o ambiente, mas "limpar e depois `PUT` em outro ambiente" com um envio em curso é o mesmo cenário que o `PUT` já permite.
-  - Divergência anterior à etapa: a ARCHITECTURE §12 diz que a credencial nunca volta na API, e o `FnrhSettingsResponse` (E07) devolve o `username` (nulo depois da limpeza).
-  - M7 e M8: a ação de cada provedor segue a linha "Credencial" da ARCHITECTURE §12.
-  - Limpezas de teste: o `FnrhSettingsClearSendTest` registra um ouvinte do WireMock por execução, sem removê-lo (o `FnrhSettingsClearSendAttackTest` usa um por JVM com `@AfterEach`; unificar); o teste do contrato no `FnrhSettingsClearApiAttackTest` lê o YAML por caminho relativo e nas 30 primeiras linhas; o `FnrhCallHistoryEmptyTest` usa `session_replication_role` (superusuário do Testcontainers); a classe de ataque do envio leva cerca de 75 s.
-  - A ação ignora um corpo enviado (200); o contrato não declara `requestBody`. O `If-Match` aparece como `required: false` no contrato, como no `PUT` (o `428` vem do código).
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
 
 ---
 
@@ -1776,32 +1756,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- **Plano:** `docs/superpowers/plans/2026-11-11-m5-recepcao-fnrh-e16.md`, com 3 tarefas (todas `Risco: alto`, em série) e as decisões D-E16-1 a 7, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`). Sem testador de etapa: nenhuma tarefa `Risco: normal`.
-  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado em 2 rodadas. A inicial bloqueou com 2 Importantes (o risco da Task 1 e a forma da ação fora da ARCHITECTURE §12, que M7 e M8 citam) e 5 Menores; a rodada 1, com 1 Importante novo (o atraso do teste concorrente acima do `read-timeout` curto). Tudo aplicado no plano.
-- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `7eac7d0`):
-  - Plano e revisão de arquitetura: `3bc4d34`, `11341e2`, `70af24d` e `f366e48`.
-  - Task 1 (`FnrhSettings.clearCredentials()`): `f366e48..3ff7bbd` (desenvolvedor `07ab7b0`, testador `3ff7bbd`).
-  - Task 2 (ação, trilha, contrato, README e ARCHITECTURE §12): `3ff7bbd..3e9106c` (desenvolvedor `96dbb12` e `6f4e60b`, testador `0412e6e` e `3e9106c`) e a quebra de linha de KDoc `c7281b3`.
-  - Task 3 (envio depois da limpeza): `3e9106c..67c721a` (desenvolvedor `f078ce4`, testador `67c721a`).
-  - Fechamento: o commit deste handoff.
-- **Revisão final:** `revisor-seguranca` (opus) sobre `7eac7d0..67c721a`: "aprovado com ressalvas", 0 Críticos, sem defeito de código; os 2 Importantes eram documentais (fechar o roadmap e registrar a correção da E07 no handoff e na captura), resolvidos neste fechamento. As minors do ledger foram triadas: nenhuma bloqueia (ficam nas notas abaixo). A seção de arquitetura do plano confere com o ledger.
-- **Integridade dos testes:** `check_test_integrity.py --base 7eac7d0` → "OK: nenhum apontamento" (exit 0), e o mesmo em cada tarefa.
-- **Critérios verificados:**
-  - [x] Colunas cifradas vazias (lidas em SQL), integração desligada e `GET /api/v1/fnrh/status` com `configured = false` (`FnrhSettingsClearApiTest`).
-  - [x] Gerente e Recepcionista reais → `403`, anônimo → `401`, sem `If-Match` → `428`, `ETag` velho → `412`, sem mudança (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com 11 formas de `If-Match` malformado).
-  - [x] Trilha `fnrh.settings.clear-credentials` com o `user_id` do administrador, sem usuário, senha nem CPF; repetir não grava entrada nova (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com segredos unicode na resposta, na trilha e no log).
-  - [x] Nenhuma chamada ao Serpro depois da ação: o envio devolve `FnrhSendRun(0, 0, 0, 0)` e a submissão fica `PENDING` com `attempts = 0`; o refresh dos domínios dá `422 FNRH_NOT_CONFIGURED`; a limpeza no meio de uma rodada para antes da chamada seguinte, inclusive entre duas chamadas do mesmo `CHECK_IN` com 2 hóspedes, e ao religar concilia sem duplicar pessoa nem hóspede (`FnrhSettingsClearSendTest`, `FnrhSettingsClearSendAttackTest`, sincronizados por latch no WireMock). Religar sem credencial nova → `422 FNRH_SETTINGS_INCOMPLETE`.
-  - [x] `ApiSecurityTest` cobre a rota sem edição (enumera todos os mapeamentos de `/api/**`; D-E16-6). `./gradlew build` em `67c721a`: BUILD SUCCESSFUL in 16m 31s, 2246 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1` (só a operação `clearFnrhCredentials`).
-  - Scanner (`osv-scanner scan source -r --no-ignore .`): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14; nenhuma dependência mudou.
-- **Correção fora do escopo, aplicada (ruling):** `GET /api/v1/fnrh/status` respondia `500` em qualquer ambiente sem chamada bem-sucedida registrada (instalação nova ou a primeira troca para `PRODUCTION`), e a métrica `zeny_fnrh_last_success_seconds` passava pelo mesmo caminho: `JdbcFnrhCallHistory.lastSuccessAt` fazia `.single()` sobre um `max()` nulo. Corrigido em `6f4e60b` (a consulta tem a forma da do `lastFailure`), com o teste de regressão `FnrhCallHistoryEmptyTest`. Defeito da E07.
-- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E16"): a forma da ação, que vira regra de toda integração na ARCHITECTURE §12 (D-E16-1 e 7); o que a ação mantém (D-E16-2); a repetição sem erro e sem entrada na trilha (D-E16-3); a correção da E07 no status.
-- **Notas para a próxima etapa:**
-  - E09: a E16 deixa de travá-la; segue `#bloqueada` só pela Q-12 (credencial e Cadastur).
-  - A nota M-3 da E08 (troca de ambiente com envio em curso) continua com a M8 E13: a limpeza mantém o ambiente, mas "limpar e depois `PUT` em outro ambiente" com um envio em curso é o mesmo cenário que o `PUT` já permite.
-  - Divergência anterior à etapa: a ARCHITECTURE §12 diz que a credencial nunca volta na API, e o `FnrhSettingsResponse` (E07) devolve o `username` (nulo depois da limpeza).
-  - M7 e M8: a ação de cada provedor segue a linha "Credencial" da ARCHITECTURE §12.
-  - Limpezas de teste: o `FnrhSettingsClearSendTest` registra um ouvinte do WireMock por execução, sem removê-lo (o `FnrhSettingsClearSendAttackTest` usa um por JVM com `@AfterEach`; unificar); o teste do contrato no `FnrhSettingsClearApiAttackTest` lê o YAML por caminho relativo e nas 30 primeiras linhas; o `FnrhCallHistoryEmptyTest` usa `session_replication_role` (superusuário do Testcontainers); a classe de ataque do envio leva cerca de 75 s.
-  - A ação ignora um corpo enviado (200); o contrato não declara `requestBody`. O `If-Match` aparece como `required: false` no contrato, como no `PUT` (o `428` vem do código).
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
 
 ---
 
@@ -1859,32 +1819,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- **Plano:** `docs/superpowers/plans/2026-11-11-m5-recepcao-fnrh-e16.md`, com 3 tarefas (todas `Risco: alto`, em série) e as decisões D-E16-1 a 7, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`). Sem testador de etapa: nenhuma tarefa `Risco: normal`.
-  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado em 2 rodadas. A inicial bloqueou com 2 Importantes (o risco da Task 1 e a forma da ação fora da ARCHITECTURE §12, que M7 e M8 citam) e 5 Menores; a rodada 1, com 1 Importante novo (o atraso do teste concorrente acima do `read-timeout` curto). Tudo aplicado no plano.
-- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `7eac7d0`):
-  - Plano e revisão de arquitetura: `3bc4d34`, `11341e2`, `70af24d` e `f366e48`.
-  - Task 1 (`FnrhSettings.clearCredentials()`): `f366e48..3ff7bbd` (desenvolvedor `07ab7b0`, testador `3ff7bbd`).
-  - Task 2 (ação, trilha, contrato, README e ARCHITECTURE §12): `3ff7bbd..3e9106c` (desenvolvedor `96dbb12` e `6f4e60b`, testador `0412e6e` e `3e9106c`) e a quebra de linha de KDoc `c7281b3`.
-  - Task 3 (envio depois da limpeza): `3e9106c..67c721a` (desenvolvedor `f078ce4`, testador `67c721a`).
-  - Fechamento: o commit deste handoff.
-- **Revisão final:** `revisor-seguranca` (opus) sobre `7eac7d0..67c721a`: "aprovado com ressalvas", 0 Críticos, sem defeito de código; os 2 Importantes eram documentais (fechar o roadmap e registrar a correção da E07 no handoff e na captura), resolvidos neste fechamento. As minors do ledger foram triadas: nenhuma bloqueia (ficam nas notas abaixo). A seção de arquitetura do plano confere com o ledger.
-- **Integridade dos testes:** `check_test_integrity.py --base 7eac7d0` → "OK: nenhum apontamento" (exit 0), e o mesmo em cada tarefa.
-- **Critérios verificados:**
-  - [x] Colunas cifradas vazias (lidas em SQL), integração desligada e `GET /api/v1/fnrh/status` com `configured = false` (`FnrhSettingsClearApiTest`).
-  - [x] Gerente e Recepcionista reais → `403`, anônimo → `401`, sem `If-Match` → `428`, `ETag` velho → `412`, sem mudança (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com 11 formas de `If-Match` malformado).
-  - [x] Trilha `fnrh.settings.clear-credentials` com o `user_id` do administrador, sem usuário, senha nem CPF; repetir não grava entrada nova (`FnrhSettingsClearApiTest`, `FnrhSettingsClearApiAttackTest`, com segredos unicode na resposta, na trilha e no log).
-  - [x] Nenhuma chamada ao Serpro depois da ação: o envio devolve `FnrhSendRun(0, 0, 0, 0)` e a submissão fica `PENDING` com `attempts = 0`; o refresh dos domínios dá `422 FNRH_NOT_CONFIGURED`; a limpeza no meio de uma rodada para antes da chamada seguinte, inclusive entre duas chamadas do mesmo `CHECK_IN` com 2 hóspedes, e ao religar concilia sem duplicar pessoa nem hóspede (`FnrhSettingsClearSendTest`, `FnrhSettingsClearSendAttackTest`, sincronizados por latch no WireMock). Religar sem credencial nova → `422 FNRH_SETTINGS_INCOMPLETE`.
-  - [x] `ApiSecurityTest` cobre a rota sem edição (enumera todos os mapeamentos de `/api/**`; D-E16-6). `./gradlew build` em `67c721a`: BUILD SUCCESSFUL in 16m 31s, 2246 testes, 0 falhas. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1` (só a operação `clearFnrhCredentials`).
-  - Scanner (`osv-scanner scan source -r --no-ignore .`): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14; nenhuma dependência mudou.
-- **Correção fora do escopo, aplicada (ruling):** `GET /api/v1/fnrh/status` respondia `500` em qualquer ambiente sem chamada bem-sucedida registrada (instalação nova ou a primeira troca para `PRODUCTION`), e a métrica `zeny_fnrh_last_success_seconds` passava pelo mesmo caminho: `JdbcFnrhCallHistory.lastSuccessAt` fazia `.single()` sobre um `max()` nulo. Corrigido em `6f4e60b` (a consulta tem a forma da do `lastFailure`), com o teste de regressão `FnrhCallHistoryEmptyTest`. Defeito da E07.
-- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E16"): a forma da ação, que vira regra de toda integração na ARCHITECTURE §12 (D-E16-1 e 7); o que a ação mantém (D-E16-2); a repetição sem erro e sem entrada na trilha (D-E16-3); a correção da E07 no status.
-- **Notas para a próxima etapa:**
-  - E09: a E16 deixa de travá-la; segue `#bloqueada` só pela Q-12 (credencial e Cadastur).
-  - A nota M-3 da E08 (troca de ambiente com envio em curso) continua com a M8 E13: a limpeza mantém o ambiente, mas "limpar e depois `PUT` em outro ambiente" com um envio em curso é o mesmo cenário que o `PUT` já permite.
-  - Divergência anterior à etapa: a ARCHITECTURE §12 diz que a credencial nunca volta na API, e o `FnrhSettingsResponse` (E07) devolve o `username` (nulo depois da limpeza).
-  - M7 e M8: a ação de cada provedor segue a linha "Credencial" da ARCHITECTURE §12.
-  - Limpezas de teste: o `FnrhSettingsClearSendTest` registra um ouvinte do WireMock por execução, sem removê-lo (o `FnrhSettingsClearSendAttackTest` usa um por JVM com `@AfterEach`; unificar); o teste do contrato no `FnrhSettingsClearApiAttackTest` lê o YAML por caminho relativo e nas 30 primeiras linhas; o `FnrhCallHistoryEmptyTest` usa `session_replication_role` (superusuário do Testcontainers); a classe de ataque do envio leva cerca de 75 s.
-  - A ação ignora um corpo enviado (200); o contrato não declara `requestBody`. O `If-Match` aparece como `required: false` no contrato, como no `PUT` (o `428` vem do código).
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
 
 ---
 
