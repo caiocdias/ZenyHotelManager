@@ -290,7 +290,10 @@ class FnrhCheckInAttackTest(
 
         val submission = checkInRow(id)
         submission.status shouldBe FnrhSubmissionStatus.INVALID
-        errorsOf(submission.id).map { it.second } shouldContainExactly listOf("person.race")
+        // RN-19: o erro de raça/cor é gravado como um erro neutro, que não revela o campo sensível.
+        errorsOf(submission.id).map { it.second } shouldContainExactly listOf("person.sensitiveData")
+        val stored = tableText("SELECT t::text FROM fnrh.submission_error t WHERE submission_id = '${submission.id}'")
+        listOf("race", "disability").forEach { stored.contains(it, ignoreCase = true) shouldBe false }
         leaksIn(secrets, output.all.substring(already), "log")
         leaksIn(
             secrets,
@@ -625,7 +628,7 @@ class FnrhCheckInAttackTest(
         errorsOf(submission.id) shouldContainExactlyInAnyOrder
             listOf(
                 Triple(first, "person.gender", "REQUIRED"),
-                Triple(first, "person.race", "REQUIRED"),
+                Triple(first, "person.sensitiveData", "INVALID_VALUE"),
                 Triple(second, "person.gender", "REQUIRED"),
             )
         for (guest in listOf(first, second)) fixProfile(guest, gender = "FEMALE")
