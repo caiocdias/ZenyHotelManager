@@ -25,6 +25,8 @@ tags:
 - description: "Códigos de lançamento, contas, lançamentos imutáveis, roteamento,\
     \ transferência e divisão."
   name: billing
+- description: "Agentes de impressão, impressoras e fila de impressão."
+  name: Printing
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
@@ -6663,6 +6665,286 @@ paths:
       summary: Listar o catálogo de permissões
       tags:
       - iam
+  /api/v1/print-agents:
+    get:
+      description: Exige `printing.agents.manage`. Nunca traz o token nem o hash.
+      operationId: listPrintAgents
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os agentes de impressão
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.agents.manage`. O `token` aparece só nesta resposta\
+        \ (`Cache-Control: no-store`) e não se recupera: guarde-o agora. Nome invá\
+        lido: 400 `VALIDATION_FAILED` (campo `name`). Sem `Idempotency-Key`: repetir\
+        \ o `POST` cria outro agente, que se desativa."
+      operationId: createPrintAgent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintAgentRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentTokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}:
+    get:
+      description: "Exige `printing.agents.manage`. Inexistente: 404 `PRINT_AGENT_NOT_FOUND`."
+      operationId: getPrintAgent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}/deactivate:
+    post:
+      description: Exige `printing.agents.manage`. Revoga o token na hora e mantém
+        o cadastro. Repetir é `200` e não muda nada.
+      operationId: deactivatePrintAgent
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um agente de impressão
+      tags:
+      - Printing
+  /api/v1/print-agents/{id}/rotate-token:
+    post:
+      description: "Exige `printing.agents.manage`. O token anterior deixa de valer\
+        \ na hora. O `token` aparece só nesta resposta (`Cache-Control: no-store`)\
+        \ e não se recupera: guarde-o agora. Agente desativado: 422 `PRINT_AGENT_INACTIVE`.\
+        \ Sem `Idempotency-Key`, para não guardar o token."
+      operationId: rotatePrintAgentToken
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintAgentTokenResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Trocar o token de um agente
+      tags:
+      - Printing
+  /api/v1/printers:
+    get:
+      description: Exige `printing.jobs.read`.
+      operationId: listPrinters
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as impressoras
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.agents.manage`. Nome ou endereço inválido: 400\
+        \ `VALIDATION_FAILED` no campo. Agente inexistente: 400 `UNKNOWN_PRINT_AGENT`;\
+        \ desativado: 422 `PRINT_AGENT_INACTIVE`."
+      operationId: createPrinter
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrinterRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar uma impressora
+      tags:
+      - Printing
+  /api/v1/printers/{id}:
+    get:
+      description: "Exige `printing.jobs.read`. O `ETag` vai no `If-Match` da alteraç\
+        ão. Inexistente: 404 `PRINTER_NOT_FOUND`."
+      operationId: getPrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma impressora
+      tags:
+      - Printing
+    put:
+      description: "Exige `printing.agents.manage` e o `If-Match` (ausente: 428; outra\
+        \ versão: 412). Troca nome, endereço e agente; o `kind` não muda (um `kind`\
+        \ no corpo é ignorado). Impressora desativada: 422 `PRINTER_INACTIVE`. Agente\
+        \ inexistente: 400 `UNKNOWN_PRINT_AGENT`; desativado: 422 `PRINT_AGENT_INACTIVE`."
+      operationId: updatePrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrinterChangeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Alterar uma impressora
+      tags:
+      - Printing
+  /api/v1/printers/{id}/deactivate:
+    post:
+      description: Exige `printing.agents.manage`. Mantém o cadastro. Repetir é `200`
+        e não muda nada.
+      operationId: deactivatePrinter
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrinterResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma impressora
+      tags:
+      - Printing
   /api/v1/push-devices:
     get:
       description: "Do mais novo para o mais antigo, sem o token. Exige só autenticaç\
@@ -20272,6 +20554,143 @@ components:
       required:
       - children
       - oneAdult
+    PrintAgentRequest:
+      type: object
+      description: O agente de impressão a cadastrar.
+      properties:
+        name:
+          type: string
+          description: "Nome de 1 a 100 caracteres, sem controle."
+          example: Agente da recepção
+      required:
+      - name
+    PrintAgentResponse:
+      type: object
+      description: Um agente de impressão. Nunca traz o token nem o hash.
+      properties:
+        active:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        lastSeenAt:
+          type: string
+          format: date-time
+          description: "Última vez que o agente se apresentou, se alguma."
+          nullable: true
+        name:
+          type: string
+        version:
+          type: integer
+          format: int64
+          description: Versão do cadastro.
+      required:
+      - active
+      - id
+      - name
+      - version
+    PrintAgentTokenResponse:
+      type: object
+      description: Um agente de impressão com o token recém-emitido.
+      properties:
+        active:
+          type: boolean
+        id:
+          type: string
+          format: uuid
+        lastSeenAt:
+          type: string
+          format: date-time
+          nullable: true
+        name:
+          type: string
+        token:
+          type: string
+          description: "O token do agente (`Authorization: Bearer`). Exibido uma ú\
+            nica vez; não se recupera."
+        version:
+          type: integer
+          format: int64
+      required:
+      - active
+      - id
+      - name
+      - token
+      - version
+    PrinterChangeRequest:
+      type: object
+      description: O que muda numa impressora. O tipo não muda.
+      properties:
+        address:
+          type: string
+        agentId:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - address
+      - agentId
+      - name
+    PrinterRequest:
+      type: object
+      description: A impressora a cadastrar.
+      properties:
+        address:
+          type: string
+          description: "Endereço da impressora no agente: 1 a 255 caracteres, sem\
+            \ controle nem espaço."
+          example: tcp://10.0.0.5:9100
+        agentId:
+          type: string
+          format: uuid
+          description: O agente que atende a impressora (deve estar ativo).
+        kind:
+          type: string
+          description: "O tipo, fixo depois da criação: decide o tipo de mídia do\
+            \ conteúdo."
+          enum:
+          - THERMAL_ESCPOS
+          - A4_PDF
+        name:
+          type: string
+          description: "Nome de 1 a 100 caracteres, sem controle."
+          example: Balcão da recepção
+      required:
+      - address
+      - agentId
+      - kind
+      - name
+    PrinterResponse:
+      type: object
+      description: Uma impressora.
+      properties:
+        active:
+          type: boolean
+        address:
+          type: string
+        agentId:
+          type: string
+          format: uuid
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: "O tipo da impressora. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - THERMAL_ESCPOS
+          - A4_PDF
+        name:
+          type: string
+      required:
+      - active
+      - address
+      - agentId
+      - id
+      - kind
+      - name
     Problem:
       type: object
       description: Problema RFC 9457 (application/problem+json).
