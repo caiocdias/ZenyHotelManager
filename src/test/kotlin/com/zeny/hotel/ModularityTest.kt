@@ -7,6 +7,7 @@ import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
+import com.zeny.hotel.printing.PrintingModule
 import com.zeny.hotel.rates.RatesModule
 import com.zeny.hotel.reservations.ReservationsModule
 import io.kotest.matchers.collections.shouldContain
@@ -338,6 +339,24 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe setOf("shared", "guests", "reservations", "notifications")
+    }
+
+    @Test
+    fun `printing depends only on shared`() {
+        val printing = modules.getModuleByName("printing").orElseThrow()
+
+        // M5 E10: agentes, impressoras e fila de impressão (ARCHITECTURE §3.1 e §14). Só o kernel; nunca iam,
+        // notifications nem tabela de outro schema.
+        printing
+            .getDirectDependencies(modules)
+            .uniqueModules()
+            .map { it.identifier.toString() }
+            .toList()
+            .filter { it != "shared" } shouldBe emptyList()
+        PrintingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe setOf("shared")
     }
 
     @Test
