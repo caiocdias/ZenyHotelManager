@@ -232,7 +232,16 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E16 (c) Repetição (D-E16-3):** `200`, mesma versão e nenhuma entrada nova na trilha, como o `PUT` sem mudança. Contra: a tentativa sem efeito não aparece na trilha.
 - **E16 (d) Status sem sucesso registrado (ruling da Task 2):** a correção do `500` do `GET /api/v1/fnrh/status` (defeito da E07) entrou na E16, porque um critério dela dependia disso.
 
-**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07, E15 (salvo a (h), decidida em 2026-11-11), E08 e E16 (o padrão foi aprovado na revisão humana; as decisões (a) a (n) seguem revisáveis), tomadas pela opção recomendada, e a revisão humana da E13 e da E07.
+**Decisões do lote E10** (entrevista do fim do lote). Em 2026-11-11, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras, salvo decisão de arquitetura. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-11**. O detalhe e as alternativas estão no plano da E10 (D-E10-1 a 11) e no handoff dela. A E10 tem "Revisão humana: sim".
+
+- **E10 (a) Credencial de serviço no `shared` (D-E10-1):** porta `ServiceCredentialRealm` no kernel e uma segunda `SecurityFilterChain`, antes da de usuário, só nos prefixos dos realms; o `printing` registra o realm do agente. Descartada: a cadeia dentro do `printing`.
+- **E10 (b) Contrato com o agente (D-E10-2, 6 e 9):** token `zpa_` + 32 bytes (só o SHA-256 guardado, exibido uma vez); evento SSE `job` com `id` = posição; ack `{result, failureCode}`; esquema `printAgentToken`; `200 []` no long-poll vazio e no despejo; o agente deduplica pelo id.
+- **E10 (c) Entrega:** consulta ao banco a cada 1 s (sem sinal em memória); um stream por agente (o novo despeja o anterior); até 2 long-polls; o stream reivindica um job por vez e devolve o que não conseguiu escrever. Resíduo aceito: conexão meio aberta pode levar um job a `FAILED` em ~6 min.
+- **E10 (d) Prazos e tetos (D-E10-4 e 5):** ack em 2 min, 3 entregas, `PENDING` vale 24 h, conteúdo apagado 24 h depois do fim; teto de 5 MiB pela `PrintingApi` e 700 KiB pela rota manual (o `@Idempotent` limita o corpo a 1 MB); base64 com preenchimento.
+- **E10 (e) Ack:** `409` para job das próprias impressoras que não está `SENT` para o agente; `404` só para impressora de outro agente ou job inexistente; `result` só como texto.
+- **E10 (f) Sem alerta de falha (D-E10-10)** e **contato do agente sem trilha (D-E10-11)**; impressora ativa de agente desativado tem os jobs encerrados pela manutenção.
+
+**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07, E15 (salvo a (h), decidida em 2026-11-11), E08 (o padrão foi aprovado na revisão humana; as decisões (a) a (n) seguem revisáveis), E16 e E10, tomadas pela opção recomendada, e a revisão humana da E13, da E07 e da E10.
 
 ## Definição global de pronto
 
@@ -353,7 +362,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E10 | Agentes, impressoras e fila de impressão | #em-andamento | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
+| E10 | Agentes, impressoras e fila de impressão | #concluida | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
 | E11 | Documentos: ficha, extrato e confirmação | #pendente | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
 
 **Gate**
@@ -1704,7 +1713,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E10 — Agentes, impressoras e fila de impressão — #em-andamento
+## E10 — Agentes, impressoras e fila de impressão — #concluida
 
 **Objetivo:** criar o módulo `printing` com cadastro de agentes de impressão e impressoras, autenticação do agente por token próprio (H23), fila de `PrintJob` com o conteúdo guardado cifrado (H17), entregue por SSE com fallback de long-poll, confirmação pelo agente e reenvio de jobs não confirmados (ARCHITECTURE §14, D13).
 
@@ -1724,13 +1733,13 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Agente autenticado recebe por SSE e por long-poll só os jobs das próprias impressoras; outro agente não os vê (teste).
-- [ ] Requisição sem token ou com token revogado → `401`; token de agente fora de `/api/v1/print-agents/me/**` e JWT de usuário dentro dele → recusados (teste).
-- [ ] `POST /api/v1/print-agents/me/jobs/{id}/ack` muda a situação para impresso ou falho.
-- [ ] Job sem ack é reenviado após o timeout e marcado como falho após o limite de tentativas (`MutableClock`).
-- [ ] Reconexão com `Last-Event-ID` entrega os jobs pendentes depois daquela posição.
-- [ ] O token é guardado só como hash e exibido só na criação/rotação; o conteúdo do job fica cifrado na coluna (teste lê a coluna).
-- [ ] `printing` depende só de `shared` (`ModularityTest`); `ApiSecurityTest` atualizado sem endpoint público novo; `./gradlew build` verde e oasdiff sem `ERR`.
+- [x] Agente autenticado recebe por SSE e por long-poll só os jobs das próprias impressoras; outro agente não os vê (teste).
+- [x] Requisição sem token ou com token revogado → `401`; token de agente fora de `/api/v1/print-agents/me/**` e JWT de usuário dentro dele → recusados (teste).
+- [x] `POST /api/v1/print-agents/me/jobs/{id}/ack` muda a situação para impresso ou falho.
+- [x] Job sem ack é reenviado após o timeout e marcado como falho após o limite de tentativas (`MutableClock`).
+- [x] Reconexão com `Last-Event-ID` entrega os jobs pendentes depois daquela posição.
+- [x] O token é guardado só como hash e exibido só na criação/rotação; o conteúdo do job fica cifrado na coluna (teste lê a coluna).
+- [x] `printing` depende só de `shared` (`ModularityTest`); `ApiSecurityTest` atualizado sem endpoint público novo; `./gradlew build` verde e oasdiff sem `ERR`.
 
 **Validação obrigatória:**
 
@@ -1756,12 +1765,35 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-11-m5-recepcao-fnrh-e10.md`, com 13 tarefas em série (12 `Risco: alto`; a Task 13, de documentação, `normal`) e as decisões D-E10-1 a 11, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`), mais o testador de etapa.
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 1 rodada. A inicial bloqueou com 7 Importantes (o `Last-Event-ID` filtrando `PENDING`; o limite de 1 MB do `@Idempotent`; um `410` sem `ErrorKind`; `PENDING` sem prazo; laços sem limite nem desligamento; uma onda com arquivo comum; quem imprime sem ler as impressoras) e 16 Menores, todos aplicados; a rodada 1 aprovou com 4 notas Menores, aplicadas. A revisão apontou também que o fechamento da E16 tinha copiado o handoff dela em E09, E10 e E11; corrigido em `33c15bc`.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `3d25de0`):
+  - Plano e revisão de arquitetura: `13f8079`, `33c15bc`, `6ff12ec` e `1eb1a26`.
+  - Task 1 (módulo e migração): `1eb1a26..f516667`. Task 2 (tipos e domínio de agente e impressora): `f516667..c1af1c2`. Task 3 (domínio do job e propriedades): `c1af1c2..cbb44d7`.
+  - Task 4 (credencial de serviço no `shared`): `cbb44d7..4d620dc`. Task 5 (administração, permissões e persistência): `4d620dc..f4ebb22`. Task 6 (endpoints de administração): `f4ebb22..dd1d2fd`. Task 7 (realm do agente): `dd1d2fd..657c0dc`.
+  - Task 8 (fila e `PrintingApi`): `657c0dc..cf761ff`. Task 9 (endpoints da fila): `cf761ff..9c84f99`. Task 10 (long-poll, conteúdo, ack e conexões): `9c84f99..ac0e7dc`. Task 11 (stream SSE): `ac0e7dc..11d9984`. Task 12 (manutenção e métrica): `11d9984..d16fedf` e `3b1cabd`. Task 13 (documentação): `495338b` e `c7c10d9`.
+  - Testador de etapa: `e182dbb`. Onda da revisão final: `0a31187` e `538d408`.
+  - Fechamento: o commit deste handoff.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `3d25de0..e182dbb`: "aprovado com ressalvas", 0 Críticos, 1 Importante (I1: o conteúdo cifrado era carregado na listagem e nas consultas de candidatos da manutenção) e Menores. A onda única (`0a31187`, `538d408`) corrigiu I1 (projeção sem o conteúdo), M1 (o long-poll devolve a reivindicação quando a resposta não é entregue), M2, M3, M4 (`wait` com `minimum`/`maximum`/`default`) e M6; a re-revisão restrita (sonnet) respondeu "all findings addressed". A seção de arquitetura do plano confere com o ledger. As rulings do ledger foram aceitas pela revisora.
+- **Integridade dos testes:** `check_test_integrity.py --base 3d25de0` → "OK: nenhum apontamento" (exit 0), também depois da onda. Os apontamentos por tarefa (as asserções `hasSize(10)` trocadas por `12` pelos códigos 404 próprios; um import retirado do teste da métrica) foram julgados justificados.
+- **Critérios verificados** (tabela critério → teste no relatório do testador de etapa; ponta a ponta em `PrintingStageEndToEndTest`):
+  - [x] SSE e long-poll só com os jobs das próprias impressoras; outro agente não os vê (`PrintAgentStreamTest`, `PrintAgentJobsApiTest`, E2E).
+  - [x] Sem token, com token revogado ou rotacionado → `401`; token de agente fora de `/api/v1/print-agents/me/**` e JWT de usuário dentro → `401` (`ServiceCredentialChainTest` e o ataque, `PrintAgentRealmTest` e o ataque, `ApiSecurityTest`).
+  - [x] O ack muda para `PRINTED` ou `FAILED` (`PrintAgentJobsApiTest`, E2E).
+  - [x] Job sem ack volta à fila depois de 2 min e vira `FAILED`/`ACK_TIMEOUT` na 3ª entrega (`PrintJobsMaintenanceTest` e o ataque, com o `MutableClock`).
+  - [x] Reconexão com `Last-Event-ID` reenvia os `SENT` sem ack depois da posição e ainda entrega `PENDING` mais antigos (`PrintAgentStreamTest`).
+  - [x] Token só como hash, exibido só na criação e na rotação (`no-store`, sem `Idempotency-Key`); conteúdo cifrado na coluna, lido pelo teste (`PrintAgentsApiTest`, `PrintJobEntityAttackTest`, E2E).
+  - [x] `printing` depende só de `shared` (`ModularityTest`, exato); `ApiSecurityTest` cobre cada combinação token × caminho, sem endpoint público novo. `./gradlew build` em `e182dbb`: BUILD SUCCESSFUL in 15m 13s, 2860 testes, 0 falhas; depois da onda, em `538d408`: BUILD SUCCESSFUL in 13m 28s. `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1`.
+  - Scanner (`osv-scanner scan source -r --no-ignore .`): 415 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low, os riscos aceitos na E14; nenhuma dependência mudou.
+- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E10"; as de arquitetura vão à entrevista da revisão humana): D-E10-1 (porta de credencial de serviço no `shared`); o contrato com o repositório do agente (token `zpa_`, evento SSE, corpo do ack, esquema `printAgentToken`, `200 []` do despejo); um stream por agente; valores de reenvio, validade, teto e guarda; sem alerta de falha; o contato do agente sem trilha.
+- **Revisão humana desta etapa:** pendente (entrevista do fim do lote).
+- **Notas para a próxima etapa:**
+  - E11: a `PrintingApi.enqueue(NewPrintJob(printerId, documentType, content))` aceita até 5 MiB, sem conferir permissão (quem chama confere a própria); `documentType` no padrão `<módulo>.<documento>`; o cliente escolhe a impressora por `GET /api/v1/printers` (`printing.jobs.read`). O `printing` ainda só depende de `shared`: a E11 acrescenta `hotel` (e `files`, H18).
+  - E11 (desempenho): `claimPending` e `unackedSent` ainda carregam a entidade com o conteúdo cifrado; com PDFs reais, considere separar o conteúdo numa tabela própria lida só pela entrega do conteúdo e pelo expurgo.
+  - O resíduo da conexão meio aberta: com o agente fora do ar sem FIN, um job pode virar `FAILED`/`ACK_TIMEOUT` em cerca de 6 min; a contrapressão por ack ficou para depois (sem alerta, a falha só aparece na fila e na métrica).
+  - O registro de conexões (um stream por agente, limite de long-polls) vale por instância.
+  - Limpezas: `PrintingProperties` em `infrastructure` usado pela `application`; `PrintAgent.touch` e `tokenGeneration` no retrato da trilha redundantes; a coerção global do Jackson (número para enum ou texto) é anterior à etapa e merece um item próprio; testes de ataque grandes, alguns com asserções frouxas (lista no ledger da etapa, encerrado).
+  - O agente (outro repositório) deduplica pelo id do job e confirma de novo sem imprimir; trata `200 []` sem repetir em laço apertado.
 
 ---
 

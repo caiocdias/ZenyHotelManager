@@ -73,11 +73,11 @@
 **Interfaces:**
 - Produces: `printing.print_agent (id uuid pk, name text not null, token_hash char(64) unique null, token_generation int not null default 0, active boolean not null, last_seen_at timestamptz null, created_at timestamptz not null, version bigint not null)`; `printing.printer (id uuid pk, name text not null, kind varchar(20) not null CHECK in ('THERMAL_ESCPOS','A4_PDF'), address text not null, agent_id uuid not null FK print_agent, active boolean not null, version bigint not null)`; `printing.print_job (id uuid pk, printer_id uuid not null FK printer, document_type text not null, status varchar(20) not null CHECK in ('PENDING','SENT','PRINTED','FAILED'), position bigint not null unique, attempts int not null CHECK >= 0, content bytea null, content_purged_at timestamptz null, media_type varchar(50) not null, created_at timestamptz not null, sent_at timestamptz null, delivered_to uuid null, finished_at timestamptz null, failure_code varchar(50) null, version bigint not null)`; sequence `printing.print_job_position_seq`; índices `(printer_id, status, position)`, `(status, sent_at)`, `(status, created_at)` e `(status, finished_at) WHERE content IS NOT NULL`. CHECKs: `active OR token_hash IS NULL`; `content` e `content_purged_at` nunca os dois preenchidos; `finished_at` presente se e só se `status IN ('PRINTED','FAILED')`; `delivered_to` e `sent_at` presentes em `SENT`. Comentário no topo da migração no padrão das demais.
 
-- [ ] **Step 1:** teste do `printing` no `ModularityTest` (modelo: o do `fnrh`) e `PrintingSchemaTest` (`@IntegrationTest`): o papel da aplicação tem `SELECT, INSERT, UPDATE, DELETE` nas três tabelas e `USAGE` na sequence; `token_hash` repetido viola o único; `active = false` com `token_hash` viola o CHECK; job `PENDING` com `finished_at` viola o CHECK; `SENT` sem `delivered_to` viola o CHECK.
-- [ ] **Step 2:** ver falhar: `./gradlew test --tests 'com.zeny.hotel.ModularityTest' --tests 'com.zeny.hotel.printing.*'`.
-- [ ] **Step 3:** `PrintingModule.kt` (modelo `fnrh/FnrhModule.kt`, `allowedDependencies = ["shared"]`, KDoc citando ARCHITECTURE §14 e D13) e as duas migrações.
-- [ ] **Step 4:** ver passar (o mesmo comando, mais o `MigrationConventionTest`).
-- [ ] **Step 5:** commit "Cria o módulo printing e as tabelas de agentes, impressoras e jobs (M5 E10, Task 1)".
+- [x] **Step 1:** teste do `printing` no `ModularityTest` (modelo: o do `fnrh`) e `PrintingSchemaTest` (`@IntegrationTest`): o papel da aplicação tem `SELECT, INSERT, UPDATE, DELETE` nas três tabelas e `USAGE` na sequence; `token_hash` repetido viola o único; `active = false` com `token_hash` viola o CHECK; job `PENDING` com `finished_at` viola o CHECK; `SENT` sem `delivered_to` viola o CHECK.
+- [x] **Step 2:** ver falhar: `./gradlew test --tests 'com.zeny.hotel.ModularityTest' --tests 'com.zeny.hotel.printing.*'`.
+- [x] **Step 3:** `PrintingModule.kt` (modelo `fnrh/FnrhModule.kt`, `allowedDependencies = ["shared"]`, KDoc citando ARCHITECTURE §14 e D13) e as duas migrações.
+- [x] **Step 4:** ver passar (o mesmo comando, mais o `MigrationConventionTest`).
+- [x] **Step 5:** commit "Cria o módulo printing e as tabelas de agentes, impressoras e jobs (M5 E10, Task 1)".
 
 ---
 
@@ -96,9 +96,9 @@
   - `PrintAgent.create(name: String, now: Instant): Pair<PrintAgent, String>` (o token em claro, uma vez); `rotateToken(now): String` (inativo → `BusinessRuleException(PRINT_AGENT_INACTIVE)`, `422`); `deactivate()` (apaga o hash); `rename(name)`; `touch(now: Instant): Boolean` (só muda se o último contato tiver mais de 1 min); `val credentialStamp: String` (o `tokenGeneration` como texto; `create` e `rotateToken` o incrementam); `companion fun hashOf(token: String): String` (SHA-256 em hex, 64 caracteres) e `const val TOKEN_PREFIX = "zpa_"`.
   - `Printer.create(name, kind: PrinterKind, address, agentId: UUID)`, `update(name, address, agentId)` (o `kind` não muda), `deactivate()`.
 
-- [ ] **Step 1:** testes unitários: o token tem o prefixo, 47 caracteres e só base64url; dois tokens diferem; `hashOf` tem 64 caracteres hex; a rotação troca o hash e o `credentialStamp`, e o anterior deixa de casar; desativar apaga o hash; rotacionar inativo falha com `PRINT_AGENT_INACTIVE`; `touch` não muda dentro de 1 min; nome (1 a 100) e endereço (1 a 255, sem espaço) com caractere de controle recusados.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.domain.*' --tests 'com.zeny.hotel.architecture.*'`.
-- [ ] **Step 5:** commit "Acrescenta os tipos públicos e o domínio de agentes e impressoras (M5 E10, Task 2)".
+- [x] **Step 1:** testes unitários: o token tem o prefixo, 47 caracteres e só base64url; dois tokens diferem; `hashOf` tem 64 caracteres hex; a rotação troca o hash e o `credentialStamp`, e o anterior deixa de casar; desativar apaga o hash; rotacionar inativo falha com `PRINT_AGENT_INACTIVE`; `touch` não muda dentro de 1 min; nome (1 a 100) e endereço (1 a 255, sem espaço) com caractere de controle recusados.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.domain.*' --tests 'com.zeny.hotel.architecture.*'`.
+- [x] **Step 5:** commit "Acrescenta os tipos públicos e o domínio de agentes e impressoras (M5 E10, Task 2)".
 
 ---
 
@@ -115,9 +115,9 @@
 **Interfaces:**
 - Produces: `PrintJob.create(id: UUID, printerId, kind: PrinterKind, documentType, sealedContent: ByteArray, position: Long, now: Instant)`; `claim(agentId: UUID, now)` (`PENDING → SENT`); `acknowledge(agentId, printed: Boolean, failureCode: String?, now)` (`SENT` do mesmo agente → `PRINTED`/`FAILED`; outro estado → `PRINT_JOB_NOT_ACKNOWLEDGEABLE`; `failureCode` fora de `[A-Z][A-Z0-9_]{0,49}` → `INVALID_FAILURE_CODE`); `expireAck(now, maxAttempts: Int, newPosition: Long)` (`SENT` → `PENDING` com a posição nova, ou `FAILED`/`ACK_TIMEOUT` com `attempts >= maxAttempts`); `fail(code: String, now)` (de `PENDING` ou `SENT`, para `EXPIRED` e `PRINTER_INACTIVE`); `purgeContent(now)` (só em `PRINTED`/`FAILED`); `isDeliveredTo(agentId)`; `toString` sem conteúdo. `PrintingProperties` como acima.
 
-- [ ] **Step 1:** testes: cada operação em cada estado (válida e inválida); `acknowledge` de outro agente falha; `expireAck` na 3ª tentativa vira `FAILED/ACK_TIMEOUT`; `fail` em `PRINTED` falha; `purgeContent` em `PENDING` falha; propriedade zero ou negativa, e `maxManualContentBytes > maxContentBytes`, recusam a partida (`ApplicationContextRunner`).
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*'`.
-- [ ] **Step 5:** commit "Acrescenta o domínio do job de impressão e as propriedades da fila (M5 E10, Task 3)".
+- [x] **Step 1:** testes: cada operação em cada estado (válida e inválida); `acknowledge` de outro agente falha; `expireAck` na 3ª tentativa vira `FAILED/ACK_TIMEOUT`; `fail` em `PRINTED` falha; `purgeContent` em `PENDING` falha; propriedade zero ou negativa, e `maxManualContentBytes > maxContentBytes`, recusam a partida (`ApplicationContextRunner`).
+- [x] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*'`.
+- [x] **Step 5:** commit "Acrescenta o domínio do job de impressão e as propriedades da fila (M5 E10, Task 3)".
 
 ---
 
@@ -134,11 +134,11 @@
 **Interfaces:**
 - Produces: as assinaturas de D-E10-1. `pathPrefix` começa por `/api/v1/` e termina em `/`; a partida falha se dois realms se sobrepõem. O `Authentication` da cadeia tem o `ServicePrincipal` como `principal`, sem autoridades.
 
-- [ ] **Step 1:** testes: token aceito no caminho do realm → `200` com o principal certo; o caminho do prefixo sem a barra final (`/api/v1/test-service/me`) também é da cadeia de serviço; sem token → `401` problema com `WWW-Authenticate: Bearer`; token recusado → `401`; JWT de usuário válido no caminho do realm → `401`; token do realm num endpoint de usuário autenticado (por exemplo `GET /api/v1/fnrh/status`) → `401`; token com espaço, quebra de linha, `Bearer` repetido ou esquema `Basic` → `401`, nunca `500`; o token não aparece no log (`OutputCaptureExtension`).
-- [ ] **Step 2:** ver falhar: `./gradlew test --tests 'com.zeny.hotel.shared.web.*'`.
-- [ ] **Step 3:** implementar a porta, a cadeia (bean só com realms presentes, ordenada antes da de usuário, matcher e filtro de D-E10-1) e o esquema no OpenAPI; atualizar o KDoc da `SecurityConfiguration` (duas cadeias).
-- [ ] **Step 4:** ver passar, mais `com.zeny.hotel.ModularityTest` e `com.zeny.hotel.architecture.*`; `./gradlew checkOpenApi` (sem realm de produção, o contrato não muda).
-- [ ] **Step 5:** commit "Acrescenta a credencial de serviço ao shared, numa cadeia de segurança própria (M5 E10, Task 4)".
+- [x] **Step 1:** testes: token aceito no caminho do realm → `200` com o principal certo; o caminho do prefixo sem a barra final (`/api/v1/test-service/me`) também é da cadeia de serviço; sem token → `401` problema com `WWW-Authenticate: Bearer`; token recusado → `401`; JWT de usuário válido no caminho do realm → `401`; token do realm num endpoint de usuário autenticado (por exemplo `GET /api/v1/fnrh/status`) → `401`; token com espaço, quebra de linha, `Bearer` repetido ou esquema `Basic` → `401`, nunca `500`; o token não aparece no log (`OutputCaptureExtension`).
+- [x] **Step 2:** ver falhar: `./gradlew test --tests 'com.zeny.hotel.shared.web.*'`.
+- [x] **Step 3:** implementar a porta, a cadeia (bean só com realms presentes, ordenada antes da de usuário, matcher e filtro de D-E10-1) e o esquema no OpenAPI; atualizar o KDoc da `SecurityConfiguration` (duas cadeias).
+- [x] **Step 4:** ver passar, mais `com.zeny.hotel.ModularityTest` e `com.zeny.hotel.architecture.*`; `./gradlew checkOpenApi` (sem realm de produção, o contrato não muda).
+- [x] **Step 5:** commit "Acrescenta a credencial de serviço ao shared, numa cadeia de segurança própria (M5 E10, Task 4)".
 
 ---
 
@@ -155,9 +155,9 @@
 **Interfaces:**
 - Produces: `PrintAgentsService.createAgent(name): CreatedAgent(view, token)`, `agents(): List<PrintAgentView>`, `agent(id)`, `rotateToken(id): CreatedAgent`, `deactivateAgent(id): PrintAgentView`, `identity(agentId: UUID): PrintAgentIdentity(id, name)` (sem permissão: serve ao próprio agente autenticado), `createPrinter(NewPrinter)`, `printers(): List<PrinterView>` e `printer(id)` (com `printing.jobs.read`), `updatePrinter(id, expectedVersion, PrinterChange)`, `deactivatePrinter(id)`. Escritas `@Audited` (`printing.agent.create`, `printing.agent.rotate-token`, `printing.agent.deactivate`, `printing.printer.create`, `printing.printer.update`, `printing.printer.deactivate`; retratos sem o hash) e conferindo `printing.agents.manage`. `PrintAgentView(id, name, active, lastSeenAt, version)`, `PrinterView(id, name, kind, address, agentId, active, version)`, `NewPrinter(name, kind, address, agentId)`, `PrinterChange(name, address, agentId)`. Portas: `PrintAgentStore.byTokenHash(hash): PrintAgent?`, `byId(id)`, `save(agent)`; `PrinterStore.byId(id)`, `all()`, `save(printer)`.
 
-- [ ] **Step 1:** testes de integração do serviço: criar devolve o token uma vez e a coluna tem só o hash; a rotação invalida o anterior; desativar apaga o hash; impressora com agente inexistente → `UNKNOWN_PRINT_AGENT`, com agente inativo → `PRINT_AGENT_INACTIVE`; `updatePrinter` com versão velha → `412`; o Gerente e a Recepcionista leem as impressoras e não as alteram (`403`); a trilha das seis ações não contém o token nem o hash.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.architecture.*' --tests 'com.zeny.hotel.ModularityTest'`.
-- [ ] **Step 5:** commit "Acrescenta a administração de agentes e impressoras ao printing (M5 E10, Task 5)".
+- [x] **Step 1:** testes de integração do serviço: criar devolve o token uma vez e a coluna tem só o hash; a rotação invalida o anterior; desativar apaga o hash; impressora com agente inexistente → `UNKNOWN_PRINT_AGENT`, com agente inativo → `PRINT_AGENT_INACTIVE`; `updatePrinter` com versão velha → `412`; o Gerente e a Recepcionista leem as impressoras e não as alteram (`403`); a trilha das seis ações não contém o token nem o hash.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.architecture.*' --tests 'com.zeny.hotel.ModularityTest'`.
+- [x] **Step 5:** commit "Acrescenta a administração de agentes e impressoras ao printing (M5 E10, Task 5)".
 
 ---
 
@@ -174,9 +174,9 @@
 **Interfaces:**
 - Consumes: `PrintAgentsService` (Task 5). Produces: as rotas de agentes e impressoras de D-E10-8; `PrintAgentResponse` (sem token), `PrintAgentTokenResponse` (com `token`, descrito como exibido uma única vez); `ETag` no `PrinterResponse`; `kind` como `enum` fechado na criação e `x-extensible-enum` na resposta.
 
-- [ ] **Step 1:** testes de API: criação `201` com `token` e `Cache-Control: no-store`; `GET` sem token nem hash; rotação devolve token novo; desativação; o Gerente e a Recepcionista reais recebem `403` nas rotas de agentes e em `POST`/`PUT` de impressoras e `200` no `GET` de impressoras; nome inválido `400` no campo; `PUT` de impressora sem `If-Match` `428`, velho `412`; `PUT` com `kind` no corpo não muda o `kind` (ignorado ou `400`; a escolha fica no relatório).
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.shared.web.ApiSecurityTest'`; `./gradlew updateOpenApi`.
-- [ ] **Step 5:** commit "Acrescenta os endpoints de agentes e impressoras (M5 E10, Task 6)".
+- [x] **Step 1:** testes de API: criação `201` com `token` e `Cache-Control: no-store`; `GET` sem token nem hash; rotação devolve token novo; desativação; o Gerente e a Recepcionista reais recebem `403` nas rotas de agentes e em `POST`/`PUT` de impressoras e `200` no `GET` de impressoras; nome inválido `400` no campo; `PUT` de impressora sem `If-Match` `428`, velho `412`; `PUT` com `kind` no corpo não muda o `kind` (ignorado ou `400`; a escolha fica no relatório).
+- [x] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.shared.web.ApiSecurityTest'`; `./gradlew updateOpenApi`.
+- [x] **Step 5:** commit "Acrescenta os endpoints de agentes e impressoras (M5 E10, Task 6)".
 
 ---
 
@@ -191,9 +191,9 @@
 - Modify: `api/openapi.yaml` (gerado: esquema `printAgentToken`)
 - Test: `src/test/kotlin/com/zeny/hotel/printing/PrintAgentRealmTest.kt`
 
-- [ ] **Step 1:** testes: token de agente em `/print-agents/me/identity` `200`; em `/print-agents` (administração) `401`; em `POST /print-agents/me/rotate-token` nunca `200` (Review Focus 5); JWT de usuário em `/print-agents/me/identity` `401`; token revogado e token anterior à rotação `401`; `last_seen_at` gravado no primeiro uso e não regravado dentro de 1 min (`MutableClock`); o contrato tem `printAgentToken` em `components.securitySchemes`, só nas operações de `/api/v1/print-agents/me/**`, e nenhuma operação com `security: []`; os únicos mapeamentos sob `/api/v1/print-agents/me/` são de controllers do agente (enumeração dos mapeamentos).
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
-- [ ] **Step 5:** commit "Autentica o agente de impressão pelo token próprio (M5 E10, Task 7)".
+- [x] **Step 1:** testes: token de agente em `/print-agents/me/identity` `200`; em `/print-agents` (administração) `401`; em `POST /print-agents/me/rotate-token` nunca `200` (Review Focus 5); JWT de usuário em `/print-agents/me/identity` `401`; token revogado e token anterior à rotação `401`; `last_seen_at` gravado no primeiro uso e não regravado dentro de 1 min (`MutableClock`); o contrato tem `printAgentToken` em `components.securitySchemes`, só nas operações de `/api/v1/print-agents/me/**`, e nenhuma operação com `security: []`; os únicos mapeamentos sob `/api/v1/print-agents/me/` são de controllers do agente (enumeração dos mapeamentos).
+- [x] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
+- [x] **Step 5:** commit "Autentica o agente de impressão pelo token próprio (M5 E10, Task 7)".
 
 ---
 
@@ -210,9 +210,9 @@
 **Interfaces:**
 - Produces: `PrintingApi.enqueue`; `PrintJobView(id, printerId, documentType, status: PrintJobStatus, attempts, createdAt, sentAt, finishedAt, failureCode)` (sem conteúdo); `PrintJobStore` com `nextPosition(): Long`, `save(job)`, `lockById(id): PrintJob?` (`FOR UPDATE`), `page(status, printerId, page): CursorPage<PrintJob>`, `claimPending(agentId, limit): List<PrintJob>` (`FOR UPDATE SKIP LOCKED`, só impressoras ativas do agente, ordem de posição, sem filtro de posição), `unackedSent(agentId, afterPosition): List<PrintJob>`, `expiredSent(before, limit)`, `stalePending(before, limit)`, `ofInactivePrinters(limit)`, `purgeable(before, limit)`, `countByStatus(): Map<PrintJobStatus, Long>`.
 
-- [ ] **Step 1:** testes: `enqueue` grava a coluna `content` diferente do conteúdo e decifrável com o `ContentCipher` e o id; posições crescentes; acima de 5 MiB pela `PrintingApi` → `PRINT_CONTENT_TOO_LARGE`, e acima de 700 KiB pela `create` → o mesmo código; vazio → `PRINT_CONTENT_EMPTY`; não-PDF para `A4_PDF` → `PRINT_CONTENT_NOT_PDF`; impressora inexistente → `UNKNOWN_PRINTER`, inativa → `PRINTER_INACTIVE`; `jobs` exige `printing.jobs.read`, `create` exige `printing.jobs.manage` e `enqueue` não exige nada; `claimPending` concorrente em duas threads nunca devolve o mesmo job; `claimPending` devolve um `PENDING` de posição menor que a de um `SENT` já entregue; a trilha da criação não tem o conteúdo.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.architecture.*'`.
-- [ ] **Step 5:** commit "Acrescenta a fila de jobs de impressão e a PrintingApi (M5 E10, Task 8)".
+- [x] **Step 1:** testes: `enqueue` grava a coluna `content` diferente do conteúdo e decifrável com o `ContentCipher` e o id; posições crescentes; acima de 5 MiB pela `PrintingApi` → `PRINT_CONTENT_TOO_LARGE`, e acima de 700 KiB pela `create` → o mesmo código; vazio → `PRINT_CONTENT_EMPTY`; não-PDF para `A4_PDF` → `PRINT_CONTENT_NOT_PDF`; impressora inexistente → `UNKNOWN_PRINTER`, inativa → `PRINTER_INACTIVE`; `jobs` exige `printing.jobs.read`, `create` exige `printing.jobs.manage` e `enqueue` não exige nada; `claimPending` concorrente em duas threads nunca devolve o mesmo job; `claimPending` devolve um `PENDING` de posição menor que a de um `SENT` já entregue; a trilha da criação não tem o conteúdo.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar: `./gradlew test --tests 'com.zeny.hotel.printing.*' --tests 'com.zeny.hotel.architecture.*'`.
+- [x] **Step 5:** commit "Acrescenta a fila de jobs de impressão e a PrintingApi (M5 E10, Task 8)".
 
 ---
 
@@ -225,9 +225,9 @@
 - Modify: `api/openapi.yaml` (gerado)
 - Test: `src/test/kotlin/com/zeny/hotel/printing/PrintJobsApiTest.kt`
 
-- [ ] **Step 1:** testes: `POST` com `Idempotency-Key` → `201`; a repetição com a mesma chave devolve o mesmo job e não cria outro; sem a chave → o erro do `@Idempotent`; base64 inválido → `400` no campo; conteúdo de 716800 bytes → `201`, de 716801 → `422 PRINT_CONTENT_TOO_LARGE`, e corpo acima de 1 MB → `413`; a Recepcionista lê (`GET` sem conteúdo) e não cria (`403`); `status` na resposta é `x-extensible-enum` no contrato.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
-- [ ] **Step 5:** commit "Acrescenta os endpoints da fila de impressão (M5 E10, Task 9)".
+- [x] **Step 1:** testes: `POST` com `Idempotency-Key` → `201`; a repetição com a mesma chave devolve o mesmo job e não cria outro; sem a chave → o erro do `@Idempotent`; base64 inválido → `400` no campo; conteúdo de 716800 bytes → `201`, de 716801 → `422 PRINT_CONTENT_TOO_LARGE`, e corpo acima de 1 MB → `413`; a Recepcionista lê (`GET` sem conteúdo) e não cria (`403`); `status` na resposta é `x-extensible-enum` no contrato.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
+- [x] **Step 5:** commit "Acrescenta os endpoints da fila de impressão (M5 E10, Task 9)".
 
 ---
 
@@ -242,9 +242,9 @@
 - Modify: `api/openapi.yaml` (gerado)
 - Test: `src/test/kotlin/com/zeny/hotel/printing/PrintAgentJobsApiTest.kt`
 
-- [ ] **Step 1:** testes: o agente A recebe só os jobs das impressoras dele; o B não os recebe, não lê o conteúdo nem confirma (`404`); `wait=0` sem job → `200 []`; long-poll que espera recebe o job criado durante a espera (espera com prazo, sem `sleep` fixo); duas reivindicações simultâneas do mesmo agente nunca levam o mesmo job (Review Focus 2); ack `PRINTED` e `FAILED` mudam o status (critério); ack de job terminado → `409`; impressora movida de A para B com um `PENDING` e um `SENT`: B recebe o `PENDING` pelo long-poll, e o ack de A no `SENT` → `404` (Review Focus 3); conteúdo de `SENT` próprio com o tipo de mídia certo e igual ao enviado, e de `PENDING` ou `PRINTED` → `404`; `wait` fora de 0..30 → `400`; um terceiro long-poll do mesmo agente faz o mais antigo responder `200 []` na hora; a trilha do claim e do ack não tem conteúdo nem token.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
-- [ ] **Step 5:** commit "Acrescenta a entrega dos jobs ao agente por long-poll, conteúdo e ack (M5 E10, Task 10)".
+- [x] **Step 1:** testes: o agente A recebe só os jobs das impressoras dele; o B não os recebe, não lê o conteúdo nem confirma (`404`); `wait=0` sem job → `200 []`; long-poll que espera recebe o job criado durante a espera (espera com prazo, sem `sleep` fixo); duas reivindicações simultâneas do mesmo agente nunca levam o mesmo job (Review Focus 2); ack `PRINTED` e `FAILED` mudam o status (critério); ack de job terminado → `409`; impressora movida de A para B com um `PENDING` e um `SENT`: B recebe o `PENDING` pelo long-poll, e o ack de A no `SENT` → `404` (Review Focus 3); conteúdo de `SENT` próprio com o tipo de mídia certo e igual ao enviado, e de `PENDING` ou `PRINTED` → `404`; `wait` fora de 0..30 → `400`; um terceiro long-poll do mesmo agente faz o mais antigo responder `200 []` na hora; a trilha do claim e do ack não tem conteúdo nem token.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
+- [x] **Step 5:** commit "Acrescenta a entrega dos jobs ao agente por long-poll, conteúdo e ack (M5 E10, Task 10)".
 
 ---
 
@@ -258,9 +258,9 @@
 - Modify: `api/openapi.yaml` (gerado)
 - Test: `src/test/kotlin/com/zeny/hotel/printing/PrintAgentStreamTest.kt` (no modelo do `RealtimeStreamTest`: `RANDOM_PORT` e `SseTestClient`; intervalos encurtados por propriedade)
 
-- [ ] **Step 1:** testes: conectar recebe os pendentes do agente em ordem de posição, `id` = posição; job criado depois chega; reconectar com `Last-Event-ID` = N reenvia só os `SENT` sem ack de posição maior que N e ainda entrega um `PENDING` de posição menor que N (critério e I1); impressora transferida com pendentes entrega ao agente novo pelo stream (Review Focus 3); outro agente não recebe; agente desativado ou com token rotacionado com stream aberto: nada mais é entregue e a conexão encerra (Review Focus 1); heartbeat aparece; um terceiro stream do mesmo agente encerra o mais antigo.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
-- [ ] **Step 5:** commit "Acrescenta o stream SSE do agente de impressão (M5 E10, Task 11)".
+- [x] **Step 1:** testes: conectar recebe os pendentes do agente em ordem de posição, `id` = posição; job criado depois chega; reconectar com `Last-Event-ID` = N reenvia só os `SENT` sem ack de posição maior que N e ainda entrega um `PENDING` de posição menor que N (critério e I1); impressora transferida com pendentes entrega ao agente novo pelo stream (Review Focus 3); outro agente não recebe; agente desativado ou com token rotacionado com stream aberto: nada mais é entregue e a conexão encerra (Review Focus 1); heartbeat aparece; um terceiro stream do mesmo agente encerra o mais antigo.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar; `./gradlew updateOpenApi`.
+- [x] **Step 5:** commit "Acrescenta o stream SSE do agente de impressão (M5 E10, Task 11)".
 
 ---
 
@@ -275,9 +275,9 @@
 - Modify: `src/test/kotlin/com/zeny/hotel/testsupport/IntegrationTest.kt` (`PRINTING_MAINTENANCE_DEFERRED = "zeny.printing.maintenance-initial-delay=PT24H"` na lista)
 - Test: `src/test/kotlin/com/zeny/hotel/printing/PrintJobsMaintenanceTest.kt`, `PrintingMetricsTest.kt`
 
-- [ ] **Step 1:** testes com o `MutableClock` (relógio devolvido no fim): `SENT` sem ack depois de `PT2M` volta a `PENDING` com posição maior e é entregue de novo; na 3ª reivindicação sem ack vira `FAILED/ACK_TIMEOUT` (critério); o ack atrasado de um job que voltou a `PENDING` é `409`, e depois de reivindicado de novo o ack é aceito uma vez e o seguinte é `409` (Review Focus 4); `PENDING` mais velho que `PT24H` vira `FAILED/EXPIRED`; impressora desativada leva os `PENDING` e `SENT` dela a `FAILED/PRINTER_INACTIVE`; conteúdo de `PRINTED` e de `FAILED` apagado depois de `PT24H` (coluna nula e `content_purged_at`), e `PENDING`/`SENT` nunca são apagados; o gauge aparece em `/actuator/prometheus` e muda com a fila, e um `FAILED` mais velho que a guarda sai da contagem.
-- [ ] **Step 2–4:** ver falhar, implementar, ver passar.
-- [ ] **Step 5:** commit "Acrescenta a manutenção da fila de impressão e a métrica (M5 E10, Task 12)".
+- [x] **Step 1:** testes com o `MutableClock` (relógio devolvido no fim): `SENT` sem ack depois de `PT2M` volta a `PENDING` com posição maior e é entregue de novo; na 3ª reivindicação sem ack vira `FAILED/ACK_TIMEOUT` (critério); o ack atrasado de um job que voltou a `PENDING` é `409`, e depois de reivindicado de novo o ack é aceito uma vez e o seguinte é `409` (Review Focus 4); `PENDING` mais velho que `PT24H` vira `FAILED/EXPIRED`; impressora desativada leva os `PENDING` e `SENT` dela a `FAILED/PRINTER_INACTIVE`; conteúdo de `PRINTED` e de `FAILED` apagado depois de `PT24H` (coluna nula e `content_purged_at`), e `PENDING`/`SENT` nunca são apagados; o gauge aparece em `/actuator/prometheus` e muda com a fila, e um `FAILED` mais velho que a guarda sai da contagem.
+- [x] **Step 2–4:** ver falhar, implementar, ver passar.
+- [x] **Step 5:** commit "Acrescenta a manutenção da fila de impressão e a métrica (M5 E10, Task 12)".
 
 ---
 
@@ -290,9 +290,9 @@
 - Modify: `docs/SPEC.md` (§8.2.18: `PrintAgent.active`; `Printer.kind` com os dois valores; `PrintJob` com `position`, `deliveredTo`, `finishedAt`, `failureCode`)
 - Modify: `README.md` (seção "API": parágrafo "Impressão (M5 E10, módulo `printing`)" com rotas, permissões, o token exibido uma vez, o esquema `printAgentToken`, o formato do evento SSE, os códigos de erro, a métrica e as propriedades `zeny.printing.*`)
 
-- [ ] **Step 1:** escrever os trechos.
-- [ ] **Step 2:** `./gradlew build` → BUILD SUCCESSFUL; `.github/scripts/check-api-breaking.sh main` → sem `ERR`.
-- [ ] **Step 3:** commit "Documenta o módulo printing (M5 E10, Task 13)".
+- [x] **Step 1:** escrever os trechos.
+- [x] **Step 2:** `./gradlew build` → BUILD SUCCESSFUL; `.github/scripts/check-api-breaking.sh main` → sem `ERR`.
+- [x] **Step 3:** commit "Documenta o módulo printing (M5 E10, Task 13)".
 
 ## Ondas
 
