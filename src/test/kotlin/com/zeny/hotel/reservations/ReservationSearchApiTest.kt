@@ -461,7 +461,9 @@ class ReservationSearchApiTest(
                 plan shouldNotContain "Seq Scan on booking"
             }
         }
-        explain(queries.getValue("period")) shouldContain "reservation_stay_period_idx"
+        // O filtro "period": o índice do período ou o da chegada (o planejador escolhe pelas estatísticas do banco
+        // compartilhado; decisão E05 (f) do roadmap), sempre um índice, nunca a tabela.
+        explain(queries.getValue("period")).shouldUseOneOf("reservation_stay_period_idx", "reservation_arrival_idx")
         explain(queries.getValue("code")) shouldContain "reservation_code_uk"
         explain(queries.getValue("externalId")) shouldContain "booking_external_idx"
         explain(queries.getValue("${OperationalList.DEPARTURES} ${today.plusDays(1)}")) shouldContain
