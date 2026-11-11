@@ -82,7 +82,7 @@ private const val MAX_ADDRESS_LENGTH = 255
 /** Endereço de 1 a 255 caracteres, sem controle nem espaço (D-E10-8). */
 private fun requireValidAddress(address: String): String {
     require(address.length in 1..MAX_ADDRESS_LENGTH) { "O endereço deve ter de 1 a $MAX_ADDRESS_LENGTH caracteres." }
-    require(address.none { it.isISOControl() || it.isWhitespace() }) {
+    require(!address.hasHiddenCharacter() && address.none { it.isWhitespace() }) {
         "O endereço não pode ter espaço nem caracteres de controle."
     }
     return address

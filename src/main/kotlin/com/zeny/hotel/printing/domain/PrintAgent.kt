@@ -134,10 +134,22 @@ class PrintAgent private constructor(
 private const val MAX_NAME_LENGTH = 100
 private const val TOKEN_HASH_LENGTH = 64
 
-/** Nome de 1 a 100 caracteres, sem controle (D-E10-8); devolve o nome aparado. */
+/** Nome de 1 a 100 caracteres visíveis, sem controle nem formatação (D-E10-8); devolve o nome aparado. */
 internal fun requireValidName(name: String): String {
+    require(!name.hasHiddenCharacter()) { "O nome não pode ter caracteres de controle, de formatação ou separadores." }
     val trimmed = name.trim()
     require(trimmed.length in 1..MAX_NAME_LENGTH) { "O nome deve ter de 1 a $MAX_NAME_LENGTH caracteres." }
-    require(trimmed.none { it.isISOControl() }) { "O nome não pode ter caracteres de controle." }
     return trimmed
 }
+
+/**
+ * Se o texto tem um caractere Unicode de controle, de formatação (invisíveis, como U+200B e U+202E) ou separador de
+ * linha ou de parágrafo (U+2028, U+2029). Regra comum ao nome e ao endereço; nada é normalizado em silêncio.
+ */
+internal fun String.hasHiddenCharacter(): Boolean =
+    any {
+        when (Character.getType(it).toByte()) {
+            Character.CONTROL, Character.FORMAT, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR -> true
+            else -> false
+        }
+    }
