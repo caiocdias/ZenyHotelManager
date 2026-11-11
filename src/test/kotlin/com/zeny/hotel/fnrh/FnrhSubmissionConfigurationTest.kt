@@ -13,7 +13,11 @@ import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.context.properties.bind.Binder
+import org.springframework.boot.context.properties.source.ConfigurationPropertySources
+import org.springframework.boot.env.YamlPropertySourceLoader
 import org.springframework.context.ApplicationContext
+import org.springframework.core.io.ClassPathResource
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -27,10 +31,23 @@ class FnrhSubmissionConfigurationTest(
     @Autowired private val validator: FnrhLocalValidator,
 ) {
     @Test
-    fun `as propriedades do envio trazem os valores padrao`() {
-        val submissions = properties.submissions
+    fun `o application yaml traz os valores de producao do envio`() {
+        val sources = YamlPropertySourceLoader().load("application", ClassPathResource("application.yaml"))
+        val binder = Binder(ConfigurationPropertySources.from(sources))
+        val submissions = binder.bind("zeny.fnrh.submissions", FnrhProperties.Submissions::class.java).get()
         submissions.interval shouldBe Duration.ofMinutes(1)
         submissions.initialDelay shouldBe Duration.ofMinutes(1)
+        submissions.batchSize shouldBe 50
+        submissions.maxAttempts shouldBe 8
+        submissions.initialBackoff shouldBe Duration.ofMinutes(1)
+        submissions.maxBackoff shouldBe Duration.ofHours(1)
+    }
+
+    @Test
+    fun `o contexto de teste adia o envio e mantem os demais valores`() {
+        val submissions = properties.submissions
+        submissions.initialDelay shouldBe Duration.ofHours(24)
+        submissions.interval shouldBe Duration.ofMinutes(1)
         submissions.batchSize shouldBe 50
         submissions.maxAttempts shouldBe 8
         submissions.initialBackoff shouldBe Duration.ofMinutes(1)
