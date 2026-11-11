@@ -18,14 +18,17 @@ data class FnrhProperties(
     val readTimeout: Duration = DEFAULT_READ_TIMEOUT,
     val submissions: Submissions = Submissions(),
 ) {
-    /** O job de envio e a política de retry (`zeny.fnrh.submissions`, D-E08-4). */
+    /**
+     * O job de envio e a política de retry (`zeny.fnrh.submissions`, D-E08-4). Os campos são `var` para o bean de teste
+     * `@Primary` de [FnrhProperties], ligado como JavaBean, poder trocar um valor por propriedade (`initial-delay`).
+     */
     data class Submissions(
-        val interval: Duration = Duration.ofMinutes(1),
-        val initialDelay: Duration = Duration.ofMinutes(1),
-        val batchSize: Int = 50,
-        val maxAttempts: Int = 8,
-        val initialBackoff: Duration = Duration.ofMinutes(1),
-        val maxBackoff: Duration = Duration.ofHours(1),
+        var interval: Duration = Duration.ofMinutes(1),
+        var initialDelay: Duration = Duration.ofMinutes(1),
+        var batchSize: Int = 50,
+        var maxAttempts: Int = 8,
+        var initialBackoff: Duration = Duration.ofMinutes(1),
+        var maxBackoff: Duration = Duration.ofHours(1),
     )
 
     companion object {
