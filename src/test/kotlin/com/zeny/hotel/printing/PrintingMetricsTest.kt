@@ -12,7 +12,6 @@ import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import io.kotest.matchers.doubles.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.doubles.shouldBeLessThan
-import io.kotest.matchers.doubles.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.micrometer.core.instrument.MeterRegistry
@@ -34,6 +33,7 @@ import java.util.UUID
 class PrintingMetricsTest(
     @Autowired private val registry: MeterRegistry,
     @Autowired private val mockMvc: MockMvc,
+    @Autowired private val jdbc: org.springframework.jdbc.core.simple.JdbcClient,
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jsonMapper: JsonMapper,
     @Autowired private val jobs: PrintJobsService,
@@ -82,33 +82,54 @@ class PrintingMetricsTest(
         return Triple(UUID.fromString(printer["id"].asString()), agentId, agent["token"].asString())
     }
 
+    /** A contagem de referência, no mesmo instante e pela mesma regra do gauge (independe do que o banco já tem). */
+    private fun expected(status: String): Double {
+        val since = clock.instant().minus(Duration.ofHours(24))
+        val query =
+            if (status == "FAILED") {
+                jdbc
+                    .sql("SELECT count(*) FROM printing.print_job WHERE status = 'FAILED' AND finished_at >= :since")
+                    .param("since", java.sql.Timestamp.from(since))
+            } else {
+                jdbc.sql("SELECT count(*) FROM printing.print_job WHERE status = '$status'")
+            }
+        return query.query(Long::class.java).single().toDouble()
+    }
+
+    private fun statusOf(id: UUID): String =
+        jdbc
+            .sql("SELECT status FROM printing.print_job WHERE id = :id")
+            .param("id", id)
+            .query(String::class.java)
+            .single()
+
+    private fun gaugesMatchTheRule() = listOf("PENDING", "SENT", "FAILED").forEach { gauge(it) shouldBe expected(it) }
+
     @Test
     fun `the gauge follows the queue and a FAILED job older than the retention leaves the count`() {
         val (printer, _, token) = printerWithToken()
         val pending = gauge("PENDING")
         val sent = gauge("SENT")
 
-        jobs.enqueue(NewPrintJob(printer, "frontdesk.registration-card", "%PDF-1.7 x".toByteArray()))
-        gauge("PENDING") shouldBe pending + 1
+        val job = jobs.enqueue(NewPrintJob(printer, "frontdesk.registration-card", "%PDF-1.7 x".toByteArray()))
+        gauge("PENDING") shouldBe pending + 1 // nada mais mexe no banco entre as duas leituras
         delivery.claim(realm.authenticate(token)!!, 1)
         gauge("PENDING") shouldBe pending
         gauge("SENT") shouldBe sent + 1
+        gaugesMatchTheRule()
 
         advanced = Duration.ofMinutes(3)
         clock.advance(advanced)
-        maintenance.run()
-        // Os SENT órfãos de outros testes também voltam à fila: por desigualdade.
-        gauge("SENT") shouldBeLessThanOrEqual sent
-        gauge("PENDING") shouldBeGreaterThanOrEqual pending + 1
+        maintenance.run() // também mexe nos órfãos de outros testes: daqui em diante, só a regra de referência
+        statusOf(job) shouldBe "PENDING"
+        gaugesMatchTheRule()
 
         advanced = advanced.plus(Duration.ofHours(25))
         clock.advance(Duration.ofHours(25))
-        val queued = gauge("PENDING")
-        maintenance.run() // o PENDING expira (FAILED recente); os órfãos de outros testes também
-        val recentlyFailed = gauge("FAILED")
-        // O relógio andou 25 h: as falhas de antes (`failed`) já saíram da janela; a deste teste acaba de terminar.
-        recentlyFailed shouldBeGreaterThanOrEqual 1.0
-        gauge("PENDING") shouldBeLessThan queued
+        maintenance.run()
+        statusOf(job) shouldBe "FAILED"
+        gaugesMatchTheRule()
+        gauge("FAILED") shouldBeGreaterThanOrEqual 1.0 // o job deste teste acaba de falhar, dentro da guarda
 
         val body =
             mockMvc
@@ -120,8 +141,10 @@ class PrintingMetricsTest(
                 "zeny_printing_jobs{application=\"zeny-hotel-manager\",status=\"$it\"}"
         }
 
+        val recentlyFailed = gauge("FAILED")
         advanced = advanced.plus(Duration.ofHours(25))
         clock.advance(Duration.ofHours(25))
+        gaugesMatchTheRule()
         gauge("FAILED") shouldBeLessThan recentlyFailed
     }
 }
