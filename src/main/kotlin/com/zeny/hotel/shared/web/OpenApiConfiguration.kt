@@ -10,6 +10,7 @@ import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
+import com.zeny.hotel.shared.ServiceCredentialRealm
 import io.swagger.v3.oas.models.Components
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.headers.Header
@@ -30,6 +31,7 @@ import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.customizers.OperationCustomizer
 import org.springdoc.core.customizers.PropertyCustomizer
 import org.springdoc.core.utils.SpringDocUtils
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpStatus
@@ -117,6 +119,42 @@ class OpenApiConfiguration {
                 operation.responses.addApiResponse("default", problemResponse)
             }
         }
+
+    /**
+     * Credenciais de serviço (D-E10-9): para cada [ServiceCredentialRealm], o esquema HTTP bearer opaco dele e,
+     * nas operações dos caminhos do prefixo, esse esquema no lugar do `bearerAuth`; a descrição da API cita os
+     * dois. Sem realm, o contrato não muda.
+     */
+    @Bean
+    fun serviceCredentialSecurityCustomizer(realmsProvider: ObjectProvider<ServiceCredentialRealm>): OpenApiCustomizer =
+        OpenApiCustomizer { openApi ->
+            val realms = realmsProvider.orderedStream().toList()
+            realms.forEach { realm ->
+                openApi.components.addSecuritySchemes(realm.openApiScheme, serviceScheme(realm))
+                openApi.paths.orEmpty().filterKeys { (it + "/").startsWith(realm.pathPrefix) }.values.forEach { item ->
+                    item.readOperations().forEach { operation ->
+                        operation.security = listOf(SecurityRequirement().addList(realm.openApiScheme))
+                    }
+                }
+            }
+            if (realms.isNotEmpty()) {
+                val schemes = realms.joinToString(", ") { "`${it.openApiScheme}`" }
+                openApi.info.description +=
+                    " Esquemas de segurança: `$BEARER_AUTH` (access token JWT de usuário, em quase toda a API) e " +
+                    "$schemes (token opaco de serviço, só nos caminhos do respectivo prefixo; um JWT de " +
+                    "usuário ali, ou um token de serviço fora dele, é recusado com 401)."
+            }
+        }
+
+    private fun serviceScheme(realm: ServiceCredentialRealm): SecurityScheme =
+        SecurityScheme()
+            .type(SecurityScheme.Type.HTTP)
+            .scheme("bearer")
+            .bearerFormat("opaque")
+            .description(
+                "Token opaco de serviço do realm `${realm.name}`, enviado como `Authorization: Bearer …`, válido só " +
+                    "nos caminhos `${realm.pathPrefix}**`. Recusado com 401 `UNAUTHENTICATED`.",
+            )
 
     /**
      * Operações marcadas com [Idempotent]: o cabeçalho `Idempotency-Key` obrigatório, o

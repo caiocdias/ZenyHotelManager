@@ -3,11 +3,14 @@ package com.zeny.hotel.shared.web
 import com.zeny.hotel.shared.API_V1
 import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.PASSWORD_CHANGE_PENDING_AUTHORITY
+import com.zeny.hotel.shared.ServiceCredentialRealm
 import jakarta.servlet.DispatcherType
 import jakarta.servlet.http.HttpServletRequest
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
@@ -24,12 +27,23 @@ import org.springframework.security.oauth2.server.resource.web.DefaultBearerToke
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.access.AccessDeniedHandler
+import org.springframework.security.web.access.intercept.AuthorizationFilter
 import org.springframework.security.web.access.intercept.RequestAuthorizationContext
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher
+import org.springframework.security.web.util.matcher.RequestMatcher
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Segurança da aplicação (ARCHITECTURE §8.1), num único `SecurityFilterChain`:
+ * Segurança da aplicação (ARCHITECTURE §8.1), em duas `SecurityFilterChain`.
+ *
+ * A [serviceSecurityFilterChain] (ordem 1) atende só os prefixos dos [ServiceCredentialRealm]
+ * presentes (o agente de impressão, por exemplo): token opaco do realm no cabeçalho
+ * `Authorization: Bearer`, [com.zeny.hotel.shared.ServicePrincipal] sem autoridades, `401
+ * UNAUTHENTICATED` em qualquer falha, sem sessão, CSRF, Basic nem formulário. Sem realm, não casa com
+ * nenhuma requisição. Um JWT de usuário num caminho de realm é recusado, e um token de realm fora do
+ * prefixo cai na cadeia de usuário e é recusado.
+ *
+ * A `apiSecurityFilterChain` (a de usuário, abaixo) atende todo o resto:
  *
  * - toda requisição a `/api/...` exige um access token JWT válido no cabeçalho
  *   `Authorization: Bearer …` (Resource Server do Spring Security, com o `JwtDecoder` e o
@@ -123,6 +137,40 @@ class SecurityConfiguration {
         return http.build()
     }
 
+    /**
+     * Cadeia das credenciais de serviço (D-E10-1): casa com `pathPrefix + "**"` de cada realm (o prefixo sem
+     * a barra final também) e nada mais; sem realm, não casa com nada. O filtro escolhe o realm pelo mesmo
+     * casamento.
+     */
+    @Bean
+    @Order(SERVICE_CHAIN_ORDER)
+    fun serviceSecurityFilterChain(
+        http: HttpSecurity,
+        jsonMapper: JsonMapper,
+        realmsProvider: ObjectProvider<ServiceCredentialRealm>,
+    ): SecurityFilterChain {
+        val realms = realmsProvider.orderedStream().toList()
+        ServiceCredentialRealms.validate(realms)
+        val matchers = realms.map { ServiceCredentialRealms.matcher(it) }
+        val entryPoint = unauthenticatedEntryPoint(ProblemWriter(jsonMapper))
+        http
+            .securityMatcher(RequestMatcher { request -> matchers.any { it.matches(request) } })
+            .csrf { it.disable() }
+            .httpBasic { it.disable() }
+            .formLogin { it.disable() }
+            .logout { it.disable() }
+            .requestCache { it.disable() }
+            .anonymous { it.disable() }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .addFilterBefore(ServiceCredentialAuthenticationFilter(realms, entryPoint), AuthorizationFilter::class.java)
+            .authorizeHttpRequests { requests ->
+                requests.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                requests.dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
+                requests.anyRequest().authenticated()
+            }.exceptionHandling { it.authenticationEntryPoint(entryPoint) }
+        return http.build()
+    }
+
     private fun unauthenticatedEntryPoint(writer: ProblemWriter) =
         AuthenticationEntryPoint { request, response, _ ->
             // RFC 6750 §3: sem detalhes do motivo, que só ajudariam um atacante.
@@ -159,6 +207,8 @@ class SecurityConfiguration {
     }
 
     companion object {
+        private const val SERVICE_CHAIN_ORDER = 1
+
         /** Os únicos endpoints de `/api/...` abertos sem token. */
         val PUBLIC_API_ENDPOINTS: List<Pair<HttpMethod, String>> =
             listOf(
