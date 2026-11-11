@@ -29,6 +29,7 @@ import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 
+private const val BASE64_GROUP = 4
 private const val UNKNOWN = "A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido sem falhar."
 
 /**
@@ -79,9 +80,10 @@ class PrintJobsController(
         @Valid page: PageParams,
     ): CursorPage<PrintJobResponse> = service.jobs(status, printerId, page).map(PrintJobResponse::of)
 
-    /** Base64 inválido vira `400` no campo `content`, sem eco do valor. */
+    /** Base64 padrão com preenchimento (RFC 4648 §4); inválido vira `400` no campo `content`, sem eco do valor. */
     private fun decode(content: String): ByteArray =
         try {
+            require(content.length % BASE64_GROUP == 0)
             Base64.getDecoder().decode(content)
         } catch (_: IllegalArgumentException) {
             throw InvalidInputException(
