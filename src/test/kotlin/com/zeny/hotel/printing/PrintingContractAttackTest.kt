@@ -38,6 +38,9 @@ class PrintingContractAttackTest {
             "getPrinter",
             "updatePrinter",
             "deactivatePrinter",
+            "pollPrintAgentJobs",
+            "getPrintJobContent",
+            "acknowledgePrintJob",
         )
     }
 
