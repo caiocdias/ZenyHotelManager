@@ -206,7 +206,7 @@ class PrintAgentAttackTest {
 
     @Test
     fun `nome so de espacos de varios tipos e recusado`() {
-        listOf(" ", " ", " ", "　", "  \t ").forEach(::rejectsAgentName)
+        listOf(" ", "\u00A0", "\u2003", "\u3000", "  \t ").forEach(::rejectsAgentName)
     }
 
     @Test
@@ -225,29 +225,29 @@ class PrintAgentAttackTest {
 
     @Test
     fun `nome com separador de linha ou paragrafo U+2028 e U+2029 e recusado`() {
-        rejectsAgentName("a b")
-        rejectsAgentName("a b")
+        rejectsAgentName("a\u2028b")
+        rejectsAgentName("a\u2029b")
     }
 
     @Test
     fun `nome com caractere de formatacao invisivel e recusado`() {
         // Zero-width space, joiner, LRM, RLO (inverte o texto), BOM e soft hyphen.
-        listOf("​", "‍", "‎", "‮", "", "­").forEach {
+        listOf("\u200B", "\u200D", "\u200E", "\u202E", "\uFEFF", "\u00AD").forEach {
             rejectsAgentName("Balc${it}ao")
         }
     }
 
     @Test
     fun `nome so de caracter invisivel nao vira nome valido`() {
-        rejectsAgentName("​")
-        rejectsAgentName("﻿​")
+        rejectsAgentName("\u200B")
+        rejectsAgentName("\uFEFF\u200B")
     }
 
     @Test
     fun `rename recusado nao altera o nome`() {
         val (agent, _) = PrintAgent.create("Balcao", now)
 
-        listOf("", "  ", "a".repeat(101), "a b").forEach {
+        listOf("", "  ", "a".repeat(101), "a\u2028b").forEach {
             runCatching { agent.rename(it) }
         }
 
@@ -275,13 +275,13 @@ class PrintAgentAttackTest {
 
     @Test
     fun `endereco vazio, so espaco ou com espaco no meio e recusado`() {
-        listOf("", " ", "  ", "a b", " a", "a ", "a\tb", "a　b", "a b").forEach(::rejectsAddress)
+        listOf("", " ", "  ", "a b", " a", "a ", "a\tb", "a\u3000b", "a\u2003b").forEach(::rejectsAddress)
     }
 
     @Test
     fun `endereco com espaco nao separavel e recusado`() {
-        rejectsAddress("a b")
-        rejectsAddress("a b")
+        rejectsAddress("a\u00A0b")
+        rejectsAddress("a\u202Fb")
     }
 
     @Test
@@ -293,17 +293,17 @@ class PrintAgentAttackTest {
 
     @Test
     fun `endereco com controle e separadores U+2028 e U+2029 e recusado`() {
-        listOf("\u0000", "\n", "\r", "\u007F", "\u0085", " ", " ").forEach { rejectsAddress("a${it}b") }
+        listOf("\u0000", "\n", "\r", "\u007F", "\u0085", "\u2028", "\u2029").forEach { rejectsAddress("a${it}b") }
     }
 
     @Test
     fun `endereco com caractere de formatacao invisivel e recusado`() {
-        listOf("​", "‎", "‮", "﻿").forEach { rejectsAddress("USB${it}001") }
+        listOf("\u200B", "\u200E", "\u202E", "\uFEFF").forEach { rejectsAddress("USB${it}001") }
     }
 
     @Test
     fun `nome da impressora segue as mesmas regras do agente`() {
-        listOf("", "  ", "a".repeat(101), "a\nb", "a b", "a​b").forEach {
+        listOf("", "  ", "a".repeat(101), "a\nb", "a\u2028b", "a\u200Bb").forEach {
             assertThatThrownBy { Printer.create(it, PrinterKind.A4_PDF, "x", agentId) }
                 .describedAs("nome %s", it.map { c -> codePoint(c) })
                 .isInstanceOf(IllegalArgumentException::class.java)

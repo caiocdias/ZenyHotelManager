@@ -37,3 +37,7 @@ exigir ao menos um caractere visível depois do aparar).
 - Nome é aparado, então `"a\n"` vira `"a"` (aceito, por desenho); o teste de controle vale só no meio do nome.
 - `touch` com o relógio muito atrás do último contato nunca grava até o relógio alcançar; aceitável, só documentado.
 - Testes do desenvolvedor não foram alterados.
+
+## Correção posterior
+O U+FEFF literal se perdera na escrita (a lista tinha uma string vazia, e "Balc" + "" + "ao" é válido). Troquei todos os
+invisíveis literais de PrintAgentAttackTest.kt por escapes \uXXXX. Produção corrigida pelo desenvolvedor em 8e62417.
