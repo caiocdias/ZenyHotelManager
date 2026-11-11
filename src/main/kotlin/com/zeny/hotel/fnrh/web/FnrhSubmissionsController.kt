@@ -1,10 +1,10 @@
 package com.zeny.hotel.fnrh.web
 
+import com.zeny.hotel.fnrh.application.FnrhSubmissionFailureView
+import com.zeny.hotel.fnrh.application.FnrhSubmissionOperationView
+import com.zeny.hotel.fnrh.application.FnrhSubmissionStatusView
 import com.zeny.hotel.fnrh.application.FnrhSubmissionView
 import com.zeny.hotel.fnrh.application.FnrhSubmissionsService
-import com.zeny.hotel.fnrh.domain.FnrhOperation
-import com.zeny.hotel.fnrh.domain.FnrhSubmissionFailure
-import com.zeny.hotel.fnrh.domain.FnrhSubmissionStatus
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ExtensibleEnum
@@ -39,7 +39,7 @@ class FnrhSubmissionsController(
     )
     fun list(
         @Parameter(description = "Só as submissões nesta situação.")
-        @RequestParam(required = false) status: FnrhSubmissionStatus?,
+        @RequestParam(required = false) status: FnrhSubmissionStatusView?,
         @Valid page: PageParams,
     ): CursorPage<FnrhSubmissionResponse> = submissions.list(status, page).map(FnrhSubmissionResponse::of)
 
@@ -83,15 +83,15 @@ data class FnrhSubmissionResponse(
     val reservationCode: String,
     @field:ExtensibleEnum
     @field:Schema(description = "A operação. A lista pode crescer (`x-extensible-enum`).")
-    val operation: FnrhOperation,
+    val operation: FnrhSubmissionOperationView,
     @field:ExtensibleEnum
     @field:Schema(description = "A situação. A lista pode crescer (`x-extensible-enum`).")
-    val status: FnrhSubmissionStatus,
+    val status: FnrhSubmissionStatusView,
     val attempts: Int,
     val nextAttemptAt: Instant,
     @field:ExtensibleEnum
     @field:Schema(description = "Por que falhou. A lista pode crescer (`x-extensible-enum`).", nullable = true)
-    val lastFailure: FnrhSubmissionFailure?,
+    val lastFailure: FnrhSubmissionFailureView?,
     val errors: List<FnrhSubmissionErrorResponse>,
     val createdAt: Instant,
     @field:Schema(nullable = true)
