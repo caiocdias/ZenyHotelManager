@@ -4,7 +4,9 @@ import com.sun.management.HotSpotDiagnosticMXBean
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.printing.application.PrintAgentConnections
+import com.zeny.hotel.printing.application.PrintAgentJobsService
 import com.zeny.hotel.printing.application.PrintJobsService
+import com.zeny.hotel.printing.infrastructure.PrintAgentRealm
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.FNRH_SEND_DEFERRED
@@ -73,6 +75,10 @@ abstract class PrintAgentStreamAttackSupport {
 
     @Autowired protected lateinit var connections: PrintAgentConnections
 
+    @Autowired protected lateinit var delivery: PrintAgentJobsService
+
+    @Autowired protected lateinit var realm: PrintAgentRealm
+
     @LocalServerPort protected var port: Int = 0
 
     protected val baseUrl get() = "http://localhost:$port"
@@ -132,6 +138,29 @@ abstract class PrintAgentStreamAttackSupport {
             .param("id", job)
             .query(String::class.java)
             .single()
+
+    protected fun column(
+        name: String,
+        job: UUID,
+    ): String =
+        jdbc
+            .sql("SELECT CAST($name AS text) FROM printing.print_job WHERE id = :id")
+            .param("id", job)
+            .query(String::class.java)
+            .single()
+
+    protected fun trail(
+        job: UUID,
+        action: String,
+    ): List<String> =
+        jdbc
+            .sql(
+                "SELECT user_id IS NULL AS system, CAST(before_state AS text) AS b, CAST(after_state AS text) AS a " +
+                    "FROM audit.audit_entry WHERE action = :action AND entity_id = :id ORDER BY occurred_at, id",
+            ).param("action", action)
+            .param("id", job.toString())
+            .query { rs, _ -> "${rs.getBoolean("system")}|${rs.getString("b")}|${rs.getString("a")}" }
+            .list()
 
     protected fun open(
         token: String?,
@@ -371,72 +400,165 @@ class PrintAgentStreamAttackTest : PrintAgentStreamAttackSupport() {
         jobIds(open(rotated), 1) shouldContainExactly listOf(job.toString())
     }
 
+    /** Um long-poll HTTP real (`wait=1`) em laço até [stop]; o que recebe vai para [into]. */
+    private fun poller(
+        agent: Agent,
+        stop: AtomicBoolean,
+        into: MutableList<String>,
+    ): CompletableFuture<Unit> =
+        CompletableFuture.supplyAsync {
+            while (!stop.get()) {
+                val body =
+                    http
+                        .send(
+                            HttpRequest
+                                .newBuilder(URI.create("$baseUrl$JOBS_PATH?wait=1"))
+                                .header("Authorization", "Bearer ${agent.token}")
+                                .GET()
+                                .build(),
+                            HttpResponse.BodyHandlers.ofString(),
+                        ).body()
+                jsonMapper.readTree(body).values().forEach { into += it["id"].asString() }
+            }
+            Unit
+        }
+
     @Test
-    fun `two streams and a long poll of the same agent never receive the same pending job`() {
+    fun `one stream and two long polls of the same agent never receive the same pending job`() {
         val printer = newPrinter()
-        val first = open(printer.agent.token)
-        val second = open(printer.agent.token)
-        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(printer.agent.id) == 2 }
+        val stream = open(printer.agent.token)
         val polled = CopyOnWriteArrayList<String>()
         val stop = AtomicBoolean(false)
-        val poller =
-            CompletableFuture.runAsync {
-                while (!stop.get()) {
-                    val body =
-                        http
-                            .send(
-                                HttpRequest
-                                    .newBuilder(URI.create("$baseUrl$JOBS_PATH?wait=1"))
-                                    .header("Authorization", "Bearer ${printer.agent.token}")
-                                    .GET()
-                                    .build(),
-                                HttpResponse.BodyHandlers.ofString(),
-                            ).body()
-                    jsonMapper.readTree(body).values().forEach { polled += it["id"].asString() }
-                }
-            }
-        // Os jobs nascem com os três consumidores já ativos: só o PENDING é disputado (um SENT sem ack reenviado
-        // a um stream que abre depois é a reconexão, não a disputa).
+        val pollers = listOf(poller(printer.agent, stop, polled), poller(printer.agent, stop, polled))
+        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(printer.agent.id) >= 2 }
+        // Os jobs nascem com os três consumidores ativos: só o PENDING é disputado.
         val all = (1..15).map { enqueue(printer) }.map { it.toString() }
-        val fromFirst = mutableListOf<SseFrame>()
-        val fromSecond = mutableListOf<SseFrame>()
+        val streamed = mutableListOf<SseFrame>()
         await().atMost(Duration.ofSeconds(20)).until {
-            fromFirst += first.eventsWithin(Duration.ofMillis(100))
-            fromSecond += second.eventsWithin(Duration.ofMillis(100))
-            fromFirst.size + fromSecond.size + polled.size >= all.size
+            streamed += stream.eventsWithin(Duration.ofMillis(100))
+            streamed.size + polled.size >= all.size
         }
-        fromFirst += first.eventsWithin(Duration.ofMillis(500))
-        fromSecond += second.eventsWithin(Duration.ofMillis(500))
+        streamed += stream.eventsWithin(Duration.ofMillis(500))
         stop.set(true)
-        poller.get(10, TimeUnit.SECONDS)
+        pollers.forEach { it.get(10, TimeUnit.SECONDS) }
 
-        val received =
-            fromFirst.map { json(it)["id"].asString() } + fromSecond.map { json(it)["id"].asString() } + polled
-        received shouldContainExactlyInAnyOrder all
-        (fromFirst + fromSecond).forEach { json(it)["attempts"].asInt() shouldBe 1 }
+        (streamed.map { json(it)["id"].asString() } + polled) shouldContainExactlyInAnyOrder all
+        streamed.forEach { json(it)["attempts"].asInt() shouldBe 1 }
     }
 
     @Test
-    fun `one more stream than the limit ends the oldest and the others share what comes next`() {
+    fun `a stream that succeeds another of the same agent never receives a job the first one got`() {
+        val printer = newPrinter()
+        val first = open(printer.agent.token)
+        val all = (1..10).map { enqueue(printer) }.map { it.toString() }
+        val fromFirst = jobIds(first, 3)
+        val second = open(printer.agent.token, positionOf(UUID.fromString(fromFirst.last())).toString())
+        first.awaitEnd(Duration.ofSeconds(5)) shouldBe true
+        val received = fromFirst + first.eventsWithin(Duration.ofMillis(100)).map { json(it)["id"].asString() }
+
+        val rest = mutableListOf<String>()
+        await().atMost(Duration.ofSeconds(10)).until {
+            rest += second.eventsWithin(Duration.ofMillis(100)).map { json(it)["id"].asString() }
+            (received + rest).toSet().size == all.size
+        }
+
+        (received + rest).toSet() shouldContainExactlyInAnyOrder all
+        all.forEach { statusOf(UUID.fromString(it)) shouldBe "SENT" }
+    }
+
+    @Test
+    fun `a new stream of the same agent ends the previous one and the new one receives what comes next`() {
         val printer = newPrinter()
         val agent = printer.agent
         val oldest = open(agent.token)
-        val others = (1..3).map { open(agent.token) }
+        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) == 1 }
+
+        val newest = open(agent.token)
+
         oldest.awaitEnd(Duration.ofSeconds(5)) shouldBe true
-        others.forEach { it.isEnded shouldBe false }
-        connections.openCount(agent.id) shouldBe 3
-
+        newest.isEnded shouldBe false
+        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) == 1 }
         val job = enqueue(printer)
-
-        await().atMost(Duration.ofSeconds(5)).until { statusOf(job) == "SENT" }
+        jobIds(newest, 1) shouldContainExactly listOf(job.toString())
         oldest.eventsWithin(Duration.ofMillis(200)).shouldBeEmpty()
-        others
-            .flatMap {
-                it.eventsWithin(
-                    Duration.ofMillis(400),
-                )
-            }.map { json(it)["id"].asString() } shouldContainExactly
-            listOf(job.toString())
+    }
+
+    @Test
+    fun `one more long poll than the limit still evicts the oldest long poll and leaves the stream alone`() {
+        val agent = newAgent()
+        val stream = open(agent.token)
+        val polls =
+            (1..4).map {
+                val future =
+                    http.sendAsync(
+                        HttpRequest
+                            .newBuilder(URI.create("$baseUrl$JOBS_PATH?wait=8"))
+                            .header("Authorization", "Bearer ${agent.token}")
+                            .GET()
+                            .build(),
+                        HttpResponse.BodyHandlers.ofString(),
+                    )
+                // Um por vez, para a ordem de abertura ser a de criação.
+                await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) >= minOf(it, 3) + 1 }
+                future
+            }
+
+        polls.first().get(5, TimeUnit.SECONDS).body() shouldBe "[]"
+        polls.drop(1).forEach { it.isDone shouldBe false }
+        stream.isEnded shouldBe false
+        polls.drop(1).forEach { it.get(15, TimeUnit.SECONDS) }
+    }
+
+    @Test
+    fun `a stream evicted by a new one leaves no SENT job lost`() {
+        val printer = newPrinter()
+        val first = open(printer.agent.token)
+        val all = (1..12).map { enqueue(printer) }.map { it.toString() }
+        val seen = jobIds(first, 2)
+        val lastSeen = positionOf(UUID.fromString(seen.last()))
+
+        val second = open(printer.agent.token, lastSeen.toString())
+        first.awaitEnd(Duration.ofSeconds(5)) shouldBe true
+        val received =
+            (
+                seen +
+                    first
+                        .eventsWithin(
+                            Duration.ofMillis(100),
+                        ).map { json(it)["id"].asString() }
+            ).toMutableList()
+        await().atMost(Duration.ofSeconds(10)).until {
+            received += second.eventsWithin(Duration.ofMillis(100)).map { json(it)["id"].asString() }
+            received.toSet().size == all.size
+        }
+
+        received.toSet() shouldContainExactlyInAnyOrder all
+        all.forEach { statusOf(UUID.fromString(it)) shouldBe "SENT" }
+        all.forEach { column("attempts", UUID.fromString(it)) shouldBe "1" }
+    }
+
+    @Test
+    fun `releasing a claimed job returns it to pending without spending the attempt and audits it without content`() {
+        val printer = newPrinter()
+        val principal = realm.authenticate(printer.agent.token)!!
+        val job = enqueue(printer)
+        delivery.claim(principal, 1).single().id shouldBe job
+        column("attempts", job) shouldBe "1"
+
+        delivery.release(principal, job)
+
+        statusOf(job) shouldBe "PENDING"
+        column("attempts", job) shouldBe "0"
+        val entries = trail(job, "printing.job.release")
+        entries.size shouldBe 1
+        entries.single().startsWith("true|") shouldBe true
+        listOf("SEGREDO", printer.agent.token, "zpa_", "\"content\"", "token").forEach {
+            entries.single() shouldNotContain it
+        }
+        // Já PENDING (ou entregue a outro): não age e não grava entrada.
+        delivery.release(principal, job)
+        trail(job, "printing.job.release").size shouldBe 1
+        statusOf(job) shouldBe "PENDING"
     }
 
     @Test
@@ -490,13 +612,16 @@ class PrintAgentStreamAttackTest : PrintAgentStreamAttackSupport() {
     }
 
     @Test
-    fun `closing every stream leaves no loop thread and a later job is not claimed`() {
+    fun `successive streams of one agent leave a single loop thread and none after the last one closes`() {
         val printer = newPrinter()
         val clients = (1..3).map { open(printer.agent.token) }
-        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(printer.agent.id) == 3 }
-        loopThreads() shouldBeGreaterThan 0
+        await().atMost(Duration.ofSeconds(10)).until {
+            loopThreads() == 1 &&
+                connections.openCount(printer.agent.id) == 1
+        }
+        clients.dropLast(1).forEach { it.awaitEnd(Duration.ofSeconds(5)) shouldBe true }
 
-        clients.forEach { it.close() }
+        clients.last().close()
         await().atMost(Duration.ofSeconds(10)).until { connections.openCount(printer.agent.id) == 0 }
         val after = enqueue(printer)
 
