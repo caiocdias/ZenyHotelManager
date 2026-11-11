@@ -2,11 +2,12 @@ package com.zeny.hotel.printing
 
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.printing.domain.PrintAgent
+import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
-import com.zeny.hotel.testsupport.TestAdmin
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -297,9 +298,10 @@ class PrintAgentRealmAttackTest(
     fun `a user jwt, admin included, on the agent path is 401`() {
         val user = iam.createUser()
         val userJwt = iam.loginOk(user)["accessToken"].asString()
-        val adminLogin = iam.login(TestAdmin.LOGIN, TestAdmin.password)
-        adminLogin.status shouldBe 200
-        val adminJwt = jsonMapper.readTree(adminLogin.contentAsString)["accessToken"].asString()
+        // Administrador próprio: o admin semente tem a senha trocada pelo InitialAdminTest no banco compartilhado.
+        val agentsManage = PrintingPermissions.permissions.single { it.code == PrintingPermissions.AGENTS_MANAGE }
+        val adminUser = iam.createUserWith(TestGrant(agentsManage, PermissionScope.ALL))
+        val adminJwt = iam.loginOk(adminUser)["accessToken"].asString()
         adminJwt shouldNotBe null
 
         listOf(userJwt, adminJwt).forEach { jwt ->
