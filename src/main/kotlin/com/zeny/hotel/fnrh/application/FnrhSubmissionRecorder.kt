@@ -33,8 +33,9 @@ import java.util.UUID
  * enviava), não grava nada, não alerta e só registra no log (D-E08-17). Cada método devolve a situação da submissão
  * depois dele.
  *
- * Quando a submissão passa a `FAILED` ou `INVALID`, notifica na mesma transação quem tem `fnrh.submissions.manage`
- * (D-E08-11): o texto leva só o código da reserva e rótulos fixos, nunca dado de hóspede.
+ * Quando a submissão passa a `FAILED` ou `INVALID`, notifica quem tem `fnrh.submissions.manage` (D-E08-11) **depois
+ * do commit**, em transação própria: uma falha do alerta não desfaz o resultado gravado. O texto leva só o código da
+ * reserva e rótulos fixos, nunca dado de hóspede.
  */
 @Component
 class FnrhSubmissionRecorder(

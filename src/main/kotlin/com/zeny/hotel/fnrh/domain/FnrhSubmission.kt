@@ -79,8 +79,8 @@ data class FnrhSubmissionError(
  * `(causalVersion, operation.rank, sequence)` entre as não resolvidas, é enviada (D-E08-3).
  *
  * Fim de linha: `SENT`, `CANCELLED` e `DISMISSED` ([isTerminal]) não mudam mais; transição neles é erro de programação
- * (`IllegalStateException`), salvo `retry` e `dismiss`, que respondem `409`. [inFlight] marca a escrita em curso
- * (D-E08-15) e só `clearInFlight` e `markSent` a desligam.
+ * (`IllegalStateException`), salvo `retry` e `dismiss`, que respondem `409`. [inFlight] reflete a escrita em curso
+ * (D-E08-15) lida do banco; quem a grava e a limpa é o store (ver [markInFlight] e [clearInFlight]).
  *
  * Nada de dado de hóspede: o [reservationCode] e os [errors] ficam fora do `toString`.
  */
@@ -166,13 +166,19 @@ class FnrhSubmission private constructor(
                 status == FnrhSubmissionStatus.CANCELLED ||
                 status == FnrhSubmissionStatus.DISMISSED
 
-    /** Grava, em transação própria e antes da chamada, que uma escrita que cria recurso está em curso. */
+    /**
+     * Marca a escrita em curso **só no objeto em memória**: a coluna `in_flight` não é gravada pela entidade. A marca
+     * persiste pelo `FnrhSubmissionStore.markInFlight`, em transação própria e antes da chamada (D-E08-15).
+     */
     fun markInFlight() {
         requireOpen("marcar a escrita em curso")
         inFlight = true
     }
 
-    /** O id remoto já foi gravado: a escrita em curso terminou. */
+    /**
+     * Limpa a marca **só no objeto em memória**. No banco, quem a limpa são os `FnrhRemoteIds.saveReservation` e
+     * `saveGuest` (junto com o id remoto) e o `FnrhSubmissionStore.save` ao marcar `SENT`.
+     */
     fun clearInFlight() {
         requireOpen("limpar a escrita em curso")
         inFlight = false
@@ -250,8 +256,7 @@ class FnrhSubmission private constructor(
     }
 
     /** Encerra à mão `FAILED` ou `INVALID`: `DISMISSED` não segura a fila (D-E08-16). */
-    @Suppress("UNUSED_PARAMETER") // mantém a assinatura simétrica das demais transições
-    fun dismiss(now: Instant) {
+    fun dismiss() {
         if (status != FnrhSubmissionStatus.FAILED && status != FnrhSubmissionStatus.INVALID) {
             throw ConflictException(
                 FnrhErrorCodes.SUBMISSION_NOT_DISMISSABLE,

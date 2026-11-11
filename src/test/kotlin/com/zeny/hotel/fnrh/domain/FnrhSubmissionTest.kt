@@ -197,7 +197,7 @@ class FnrhSubmissionTest {
         val pending = submission()
         val sent = submission().also { it.markSent(now) }
         val cancelled = submission().also { it.cancel(now) }
-        val dismissed = failed().also { it.dismiss(now) }
+        val dismissed = failed().also { it.dismiss() }
 
         for (s in listOf(pending, sent, cancelled, dismissed)) {
             val ex = assertThrows<ConflictException> { s.retry(now) }
@@ -207,19 +207,19 @@ class FnrhSubmissionTest {
 
     @Test
     fun `dismiss so vale para FAILED e INVALID e termina`() {
-        val f = failed().also { it.dismiss(now) }
+        val f = failed().also { it.dismiss() }
         assertEquals(FnrhSubmissionStatus.DISMISSED, f.status)
         assertTrue(f.isTerminal)
 
-        val i = submission().also { invalid(it) }.also { it.dismiss(now) }
+        val i = submission().also { invalid(it) }.also { it.dismiss() }
         assertEquals(FnrhSubmissionStatus.DISMISSED, i.status)
 
         val pending = submission()
         val sent = submission().also { it.markSent(now) }
         val cancelled = submission().also { it.cancel(now) }
-        val dismissed = failed().also { it.dismiss(now) }
+        val dismissed = failed().also { it.dismiss() }
         for (s in listOf(pending, sent, cancelled, dismissed)) {
-            val ex = assertThrows<ConflictException> { s.dismiss(now) }
+            val ex = assertThrows<ConflictException> { s.dismiss() }
             assertEquals(FnrhErrorCodes.SUBMISSION_NOT_DISMISSABLE, ex.code)
         }
     }
@@ -238,7 +238,7 @@ class FnrhSubmissionTest {
             listOf(
                 { submission().also { it.markSent(now) } },
                 { submission().also { it.cancel(now) } },
-                { failed().also { it.dismiss(now) } },
+                { failed().also { it.dismiss() } },
             )
         for (make in terminals) {
             val actions: List<(FnrhSubmission) -> Unit> =

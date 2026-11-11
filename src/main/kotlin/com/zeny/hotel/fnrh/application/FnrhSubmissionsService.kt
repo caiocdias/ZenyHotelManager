@@ -105,7 +105,7 @@ class FnrhSubmissionsService(
     /** Encerra à mão `FAILED` ou `INVALID`: deixa de segurar a fila (D-E08-16). */
     @Audited(FnrhAudit.DISMISS_SUBMISSION)
     @Transactional
-    fun dismiss(id: UUID): FnrhSubmissionView = change(id) { dismiss(clock.instant()) }
+    fun dismiss(id: UUID): FnrhSubmissionView = change(id) { dismiss() }
 
     private fun change(
         id: UUID,

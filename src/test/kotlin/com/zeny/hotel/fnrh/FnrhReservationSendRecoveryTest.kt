@@ -211,7 +211,7 @@ class FnrhReservationSendRecoveryTest(
         tx.executeWithoutResult {
             val failed = checkNotNull(store.find(register.id))
             failed.recordFailure(FnrhSubmissionFailure.VALIDATION, clock.instant(), FnrhRetryPolicy())
-            failed.dismiss(clock.instant())
+            failed.dismiss()
             store.save(failed)
         }
         cancel(id)
@@ -268,7 +268,7 @@ class FnrhReservationSendRecoveryTest(
         tx.executeWithoutResult {
             val failed = checkNotNull(store.find(register.id))
             failed.recordFailure(FnrhSubmissionFailure.VALIDATION, clock.instant(), FnrhRetryPolicy())
-            failed.dismiss(clock.instant())
+            failed.dismiss()
             store.save(failed)
         }
         row(register.id).also {

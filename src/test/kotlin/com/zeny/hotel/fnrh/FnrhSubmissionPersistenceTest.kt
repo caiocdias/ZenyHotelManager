@@ -172,7 +172,7 @@ class FnrhSubmissionPersistenceTest(
         update(checkIn) { it.recordFailure(FnrhSubmissionFailure.VALIDATION, now, FnrhRetryPolicy()) }
         heads(reservation).shouldBeEmpty()
 
-        update(checkIn) { it.dismiss(now) }
+        update(checkIn) { it.dismiss() }
         heads(reservation) shouldContainExactly listOf(checkOut)
     }
 
