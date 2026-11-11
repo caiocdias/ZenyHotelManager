@@ -16,9 +16,10 @@
 |---|---|---|---|
 | D-E16-1 | **Rota:** `POST /api/v1/fnrh/settings/clear-credentials`, sem corpo, com `If-Match` obrigatório (`428` sem ele, `412` com versão velha, pelo `ETags.expectedVersion` e `requireCurrentVersion` já usados no `PUT`), `operationId = clearFnrhCredentials`, `200` com o `FnrhSettingsResponse` e o `ETag` novo. Descartadas: `DELETE /fnrh/settings/credentials` (a convenção "a API não apaga nada" é a mesma que trocou o `DELETE` do CPF por usuário pela desativação na E07) e um campo no `PUT` (mistura edição e remoção e deixa a ação implícita). | Convenção do projeto (ação como `POST …/<verbo>`, como `deactivate`) e o escopo da etapa ("sem `DELETE`, com `If-Match`"). | Rota publicada não muda; uma rota nova seria aditiva. |
 | D-E16-2 | **O que a ação apaga:** `username`, `password` e `default_cpf` ficam `NULL`; `enabled` fica `false`. **Mantém** o `environment` (sem troca de ambiente, a nota M-3 da E08 não é tocada e o status continua lendo o histórico do ambiente atual), o cadastro de CPF por usuário (`fnrh.requester`, caminho próprio desde a E07), os ids remotos, o link de pré-check-in cifrado e o `fnrh.integration_call`, que não são credencial. | Escopo da etapa ("o CPF por usuário tem caminho próprio"). | Apagar o resto depois é aditivo. |
-| D-E16-3 | **Repetição:** limpar uma configuração já vazia e desligada é `200` e não muda a versão (o mesmo comportamento do `PUT` com os mesmos valores, que mantém o `ETag`). A trilha segue o comportamento já existente do `@Audited` para estado sem mudança. | Clique duplo ou repetição depois de timeout não pode virar erro. | Nenhum. |
+| D-E16-3 | **Repetição:** limpar uma configuração já vazia e desligada é `200` e não muda a versão (o mesmo comportamento do `PUT` com os mesmos valores, que mantém o `ETag`). **Não grava entrada na trilha:** o `AuditScopes` (`shared/infrastructure/audit/AuditScopes.kt`) descarta a mudança acompanhada com antes igual ao depois, como no `PUT` sem mudança. Descartada: gravar a tentativa sem efeito (destoa do `PUT`). | Clique duplo ou repetição depois de timeout não pode virar erro. | Nenhum. |
 | D-E16-4 | **Trilha:** ação `fnrh.settings.clear-credentials`, entidade `fnrh.settings`, retrato `FnrhSettingsAuditState` (só `usernameSet`, `passwordSet`, o CPF mascarado, `enabled`, `environment` e `version`); o autor fica em `audit.audit_entry.user_id`, como em toda ação `@Audited`. | Critério "a trilha registra a ação e quem a fez, sem usuário, senha nem CPF"; o retrato da E07 já cumpre. | Nenhum. |
 | D-E16-5 | **Sem `@Idempotent`:** a ação não tem efeito financeiro nem externo; o `If-Match` já serializa. | Restrição do roadmap (o `@Idempotent` é para POST com efeito financeiro ou externo). | Nenhum. |
+| D-E16-7 | **A forma da ação vira regra de toda integração** na ARCHITECTURE §12 (linha "Credencial"), porque M7 e M8 citam "como a M5 E16": `POST …/clear-credentials` com `If-Match`, sem `Idempotency-Key`; apaga a credencial e desliga a integração, mantendo o ambiente e o que não é credencial; repetir é `200` e mantém o `ETag`; religar exige credencial nova; trilha sem segredo nem usuário. | I-2 da revisão de arquitetura; precedente da Task 13 da E08. | Mudar a regra depois muda as etapas de M7 e M8 que a citam. |
 | D-E16-6 | **`ApiSecurityTest` não precisa de edição:** o teste `every other api endpoint rejects anonymous requests with a 401 problem` enumera todos os mapeamentos de `/api/**` do `RequestMappingHandlerMapping` e já cobre a rota nova; nenhum endpoint vira público. A Task 2 roda o teste e a revisão confere a rota na saída. | O critério "`ApiSecurityTest` atualizado" pede a cobertura, que é automática. | Se a revisão discordar, um teste explícito é aditivo. |
 
 ## Global Constraints
@@ -33,7 +34,7 @@
 
 ## Review Focus
 
-1. **Limpeza no meio de um envio:** o job já leu a conexão e está entre duas submissões; nenhuma chamada sai depois da limpeza e a submissão seguinte fica `PENDING` com `attempts = 0` (teste na Task 2, `a clear in the middle of a send run stops the run before the next call`).
+1. **Limpeza no meio de um envio:** o job já leu a conexão e está entre duas submissões; nenhuma chamada sai depois da limpeza e a submissão seguinte fica `PENDING` com `attempts = 0` (teste na Task 3, `a clear in the middle of a send run stops the run before the next call`).
 2. **Repetição da ação** (clique duplo): a segunda limpeza com o `ETag` atual é `200` e mantém o `ETag`; com o `ETag` de antes da primeira é `412` (teste na Task 2).
 3. **Integração já desligada com credencial gravada** (o caso que motivou a etapa): a ação apaga mesmo assim (teste na Task 2).
 4. **Nenhum segredo em log nem em problema** durante a limpeza aceita ou recusada (`CapturedOutput`, teste na Task 2).
@@ -43,14 +44,14 @@
 
 ### Task 1: `FnrhSettings.clearCredentials()` no domínio
 
-**Estimativa:** 15 min. **Depende de:** nenhuma. **Risco:** normal (método de domínio puro, sem Spring).
+**Estimativa:** 15 min. **Depende de:** nenhuma. **Risco:** alto (grava as colunas cifradas da credencial, o núcleo da etapa).
 
 **Files:**
 - Modify: `src/main/kotlin/com/zeny/hotel/fnrh/domain/FnrhSettings.kt`
 - Test: `src/test/kotlin/com/zeny/hotel/fnrh/domain/FnrhSettingsClearTest.kt` (criar)
 
 **Interfaces:**
-- Produces: `fun FnrhSettings.clearCredentials()` — `username`, `password` e o CPF padrão (`encodedDefaultCpf`) passam a `null`, `enabled` a `false`; `environment` não muda. KDoc em pt-BR citando a M5 E16 e o D-E16-2.
+- Produces: `fun FnrhSettings.clearCredentials()` — `username`, `password` e o CPF padrão (`encodedDefaultCpf`) passam a `null`, `enabled` a `false`; `environment` não muda. KDoc em pt-BR citando a M5 E16 e o D-E16-2, e o KDoc da classe passa a citar a limpeza ao lado do `update`.
 
 - [ ] **Step 1: Escrever os testes que falham** (`FnrhSettingsClearTest`, partindo de `FnrhSettings.initial()` e de um `update(PRODUCTION, "hotel-user", "s3cr3t", Cpf.of("52998224725"), enabled = true)`):
   - `clearCredentials empties username, password and CPF and turns the integration off` — depois: `username shouldBe null`, `password shouldBe null`, `defaultCpf shouldBe null`, `enabled shouldBe false`.
@@ -75,7 +76,7 @@ Expected: PASS (os testes de domínio da E07 continuam verdes).
 
 ---
 
-### Task 2: Ação `POST /api/v1/fnrh/settings/clear-credentials`, trilha, contrato e README
+### Task 2: Ação `POST /api/v1/fnrh/settings/clear-credentials`, trilha, contrato e documentação
 
 **Estimativa:** 40 min. **Depende de:** Task 1. **Risco:** alto (segurança da credencial, contrato público).
 
@@ -85,8 +86,8 @@ Expected: PASS (os testes de domínio da E07 continuam verdes).
 - Modify: `src/main/kotlin/com/zeny/hotel/fnrh/web/FnrhSettingsController.kt`
 - Modify: `api/openapi.yaml` (só por `./gradlew updateOpenApi`)
 - Modify: `README.md` (seção "API", parágrafo "Configuração da FNRH")
+- Modify: `docs/ARCHITECTURE.md` (§12, linha "Credencial", hoje na linha ~494)
 - Test: `src/test/kotlin/com/zeny/hotel/fnrh/FnrhSettingsClearApiTest.kt` (criar; modelo `FnrhSettingsApiTest`, com `resetSeed` e um `resetRequester` que devolvem o banco ao estado inicial)
-- Test: `src/test/kotlin/com/zeny/hotel/fnrh/FnrhSettingsClearSendTest.kt` (criar; estende `FnrhReservationSendTestBase`, como `FnrhSubmissionJobTest`)
 
 **Interfaces:**
 - Consumes: `FnrhSettings.clearCredentials()` (Task 1).
@@ -97,38 +98,68 @@ Expected: PASS (os testes de domínio da E07 continuam verdes).
   - `without permission is 403, anonymous is 401, without If-Match is 428 and a stale ETag is 412, and nothing changes` — Gerente e Recepcionista reais → `403`; sem token → `401`; sem `If-Match` → `428`; `ETag` velho → `412`; depois de cada um, as três colunas continuam não nulas e `enabled = true`.
   - `the audit trail records the clear and who did it, without username, password or CPF` — uma entrada com `action = 'fnrh.settings.clear-credentials'` e `user_id` = o do administrador que chamou; `before_state` com `"passwordSet":true` e `after_state` com `"passwordSet":false` e `"enabled":false`; nenhum dos dois contém a senha, `hotel-user`, `52998224725` nem `529.982.247-25`.
   - `re-enabling without new credentials is 422 FNRH_SETTINGS_INCOMPLETE, with new ones it works` — depois da limpeza, `PUT` `{environment, enabled: true}` sem usuário, senha e CPF → `422` com `FNRH_SETTINGS_INCOMPLETE`; `PUT` completo → `200` e `enabled = true`.
-  - `clearing twice keeps the ETag, and the ETag from before the first clear is 412` (Review Focus 2).
+  - `clearing twice keeps the ETag, and the ETag from before the first clear is 412` (Review Focus 2) — e há uma entrada `fnrh.settings.clear-credentials` só, não duas (D-E16-3).
   - `clearing a disabled configuration that still holds credentials empties it` (Review Focus 3).
   - `clearing keeps the environment and the per-user requester CPF` (Review Focus 5) — configuração em `PRODUCTION` e um `PUT /api/v1/fnrh/requesters/{userId}`; depois da limpeza, `environment = PRODUCTION` e `GET /api/v1/fnrh/requesters` ainda lista o usuário com o CPF mascarado.
   - `no clear, accepted or refused, writes the username, the password or the CPF to the logs` (Review Focus 4; `@ExtendWith(OutputCaptureExtension::class)` como no `FnrhSettingsApiAttackTest`).
 
-- [ ] **Step 2: Escrever os testes de envio que falham** (`FnrhSettingsClearSendTest`, que liga a configuração no WireMock como a base faz):
-  - `after clearing, the send run makes no call and the pending submission keeps zero attempts` — uma reserva com a submissão `REGISTER_RESERVATION` gravada (`awaitSubmission`); limpeza pela API; `sender.send(reservation)` → `FnrhSendRun(0, 0, 0, 0)`; a submissão continua `PENDING` com `attempts = 0`; o WireMock não recebeu nenhuma requisição desde a limpeza.
-  - `after clearing, refreshing the domains is 422 FNRH_NOT_CONFIGURED without calling the Serpro`.
-  - `a clear in the middle of a send run stops the run before the next call` (Review Focus 1) — duas reservas com o registro pendente; stub de `POST /reservas` com `withFixedDelay(500)`; o envio roda numa thread; quando o WireMock registra o primeiro `POST /reservas`, a limpeza é feita pela API; depois do `join`, o WireMock recebeu exatamente um `POST /reservas` e a outra submissão continua `PENDING` com `attempts = 0`.
+- [ ] **Step 2: Rodar e ver falhar**
 
-- [ ] **Step 3: Rodar e ver falhar**
-
-Run: `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhSettingsClear*'`
+Run: `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhSettingsClearApiTest'`
 Expected: FAIL (`404` ou `405` na rota, que ainda não existe).
 
-- [ ] **Step 4: Implementar** a constante em `FnrhAudit`, `FnrhSettingsService.clearCredentials` e o endpoint no `FnrhSettingsController` com as assinaturas do bloco Interfaces.
+- [ ] **Step 3: Implementar** a constante em `FnrhAudit`, `FnrhSettingsService.clearCredentials` e o endpoint no `FnrhSettingsController` com as assinaturas do bloco Interfaces.
 
-- [ ] **Step 5: Rodar e ver passar**
+- [ ] **Step 4: Rodar e ver passar**
 
 Run: `./gradlew test --tests 'com.zeny.hotel.fnrh.*' --tests 'com.zeny.hotel.shared.web.ApiSecurityTest' --tests 'com.zeny.hotel.architecture.*' --tests 'com.zeny.hotel.ModularityTest'`
 Expected: PASS. O `ApiSecurityTest` cobre a rota nova sem edição (D-E16-6).
 
-- [ ] **Step 6: Regenerar e conferir o contrato**
+- [ ] **Step 5: Regenerar e conferir o contrato**
 
 Run: `./gradlew updateOpenApi && git diff --stat api/openapi.yaml && .github/scripts/check-api-breaking.sh main`
 Expected: só a operação `clearFnrhCredentials` acrescentada; o script sem mudança `ERR`.
 
-- [ ] **Step 7: README** — no parágrafo "Configuração da FNRH" da seção "API", depois da frase da trilha do `PUT`, acrescentar uma frase: `POST /api/v1/fnrh/settings/clear-credentials` (`fnrh.settings.manage`, `If-Match`) apaga o usuário, a senha e o CPF solicitante padrão e desliga a integração, mantendo o ambiente e o CPF por usuário; as submissões ficam na fila sem gastar tentativa, religar exige nova credencial (`422 FNRH_SETTINGS_INCOMPLETE`) e a ação vai para a trilha (`fnrh.settings.clear-credentials`) sem segredo.
+- [ ] **Step 6: README e ARCHITECTURE** — no parágrafo "Configuração da FNRH" da seção "API", depois da frase da trilha do `PUT`, acrescentar uma frase: `POST /api/v1/fnrh/settings/clear-credentials` (`fnrh.settings.manage`, `If-Match`) apaga o usuário, a senha e o CPF solicitante padrão e desliga a integração, mantendo o ambiente e o CPF por usuário; as submissões ficam na fila sem gastar tentativa, religar exige nova credencial (`422 FNRH_SETTINGS_INCOMPLETE`) e a ação vai para a trilha (`fnrh.settings.clear-credentials`) sem segredo. Na ARCHITECTURE §12, completar a linha "Credencial" com a forma genérica do D-E16-7, citando a M5 E16 como a primeira a segui-la.
 
-- [ ] **Step 8: Lint e build**
+- [ ] **Step 7: Lint e build**
 
 Run: `./gradlew ktlintFormat && ./gradlew build`
 Expected: BUILD SUCCESSFUL.
 
-- [ ] **Step 9: Commit** — `git commit -m "Acrescenta a ação de limpar a credencial da FNRH (M5 E16, Task 2)"`, com o trailer `Soul: desenvolvedor`.
+- [ ] **Step 8: Commit** — `git commit -m "Acrescenta a ação de limpar a credencial da FNRH (M5 E16, Task 2)"`, com o trailer `Soul: desenvolvedor`.
+
+---
+
+### Task 3: Envio depois da limpeza (testes de integração)
+
+**Estimativa:** 30 min. **Depende de:** Task 2. **Risco:** alto (concorrência entre a limpeza e o job).
+
+**Files:**
+- Test: `src/test/kotlin/com/zeny/hotel/fnrh/FnrhSettingsClearSendTest.kt` (criar; estende `FnrhReservationSendTestBase`, como `FnrhSubmissionJobTest`, com o reset da configuração da base)
+
+**Interfaces:**
+- Consumes: `POST /api/v1/fnrh/settings/clear-credentials` (Task 2); `FnrhSubmissionSender.sendDueFor`, `awaitSubmission`, `requests` da base.
+- Produces: nada para outras tarefas. Sem código de produção: se um teste revelar defeito no envio, o relatório o descreve e o orquestrador decide (não corrija o envio sem ruling).
+
+- [ ] **Step 1: Escrever os testes de envio** (`FnrhSettingsClearSendTest`, que liga a configuração no WireMock como a base faz):
+  - `after clearing, the send run makes no call and the pending submission keeps zero attempts` — uma reserva com a submissão `REGISTER_RESERVATION` gravada (`awaitSubmission`); limpeza pela API; `sender.send(reservation)` → `FnrhSendRun(0, 0, 0, 0)`; a submissão continua `PENDING` com `attempts = 0`; o WireMock não recebeu nenhuma requisição desde a limpeza.
+  - `after clearing, refreshing the domains is 422 FNRH_NOT_CONFIGURED without calling the Serpro`.
+  - `a clear in the middle of a send run stops the run before the next call` (Review Focus 1) — duas reservas com o registro pendente; o primeiro `POST /reservas` fica preso até a limpeza terminar, por sincronização determinística (um `CountDownLatch` num ouvinte de requisição do WireMock, se a instância da base aceitar extensão; senão `withFixedDelay(5000)` e a limpeza feita assim que `findAll(postRequestedFor(urlEqualTo("/reservas")))` tiver um item, com espera de até 2 s); o envio roda numa thread; depois do `join`, o WireMock recebeu exatamente um `POST /reservas` e a outra submissão continua `PENDING` com `attempts = 0`. Nunca `sleep` fixo para ordenar os passos.
+
+- [ ] **Step 2: Rodar**
+
+Run: `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhSettingsClearSendTest'`
+Expected: PASS (o comportamento vem do D-E08-5 e do adaptador da E07). Rode o teste concorrente 5 vezes seguidas (`--rerun`) e cole as 5 saídas.
+
+- [ ] **Step 3: Lint** — `./gradlew ktlintFormat lint` → BUILD SUCCESSFUL.
+
+- [ ] **Step 4: Commit** — `git commit -m "Testa o envio à FNRH depois da limpeza da credencial (M5 E16, Task 3)"`, com o trailer `Soul: desenvolvedor`.
+
+---
+
+## Notas para o handoff
+
+- A nota M-3 da E08 (troca de ambiente com envio em curso) continua com a M8 E13: a limpeza mantém o ambiente, mas "limpar e depois `PUT` em outro ambiente" com um envio em curso é o mesmo cenário que o `PUT` já permite.
+- Divergência anterior à etapa: a ARCHITECTURE §12 diz "nunca devolvida na API", e o `FnrhSettingsResponse` (E07) devolve o `username`; a E16 não muda isso.
+- Não testado: a limpeza entre duas chamadas do mesmo passo `CHECK_IN` com vários hóspedes (pela leitura, `STOP` sem gravar e conciliação pela escrita em curso, como ao desligar pelo `PUT`).
