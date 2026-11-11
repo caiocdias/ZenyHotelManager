@@ -169,7 +169,9 @@ class FnrhCheckInStep(
 
         /**
          * Pula o hóspede que já tem id remoto, ou cuja pessoa já está na reserva com id (uma mesclagem); senão
-         * reaproveita ou cria a pessoa e põe o hóspede na reserva.
+         * reaproveita ou cria a pessoa e põe o hóspede na reserva. A pessoa reaproveitada (conhecida ou achada pelo
+         * documento) ganha a linha local antes do `POST` do hóspede: sem ela, um check-in desfeito com a escrita em
+         * curso não acharia o que conciliar (D-E08-8).
          */
         fun register(guest: PreparedGuest) {
             val row = rowOf(guest.guestId)
@@ -179,6 +181,7 @@ class FnrhCheckInStep(
                 added[guest.guestId] = existing
                 return
             }
+            if (row == null && personId != null) save(guest.guestId, personId, null)
             val person = personId ?: registerPerson(guest)
             added[guest.guestId] = reconciled(guest, person) ?: addGuest(guest, person)
         }

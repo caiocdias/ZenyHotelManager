@@ -5,10 +5,12 @@ import com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
+import com.zeny.hotel.fnrh.application.FnrhRemoteGuest
 import com.zeny.hotel.fnrh.application.FnrhRemoteIds
 import com.zeny.hotel.fnrh.application.FnrhSubmissionSender
 import com.zeny.hotel.fnrh.application.FnrhSubmissionStore
 import com.zeny.hotel.fnrh.domain.FnrhOperation
+import com.zeny.hotel.fnrh.domain.FnrhRemoteId
 import com.zeny.hotel.fnrh.domain.FnrhSubmission
 import com.zeny.hotel.fnrh.domain.FnrhSubmissionFailure
 import com.zeny.hotel.fnrh.domain.FnrhSubmissionStatus
@@ -23,6 +25,7 @@ import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsTestSupport
 import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.FnrhTestServer
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
@@ -237,6 +240,47 @@ class FnrhCheckOutSendTest(
     }
 
     @Test
+    fun `a returning guest whose guest POST timed out is reconciled after the undo, and the undo fails`() {
+        val (id, remote) = undoneWithWriteInFlight(stay = oneGuestStay(), person = PersonSource.KNOWN)
+        FnrhTestServer.stubListReservationGuests_v2_4(remote, "h-1-$remote" to "p-1-$remote")
+
+        sender.send(id)
+
+        rowOf(id, FnrhOperation.CHECK_IN).status shouldBe FnrhSubmissionStatus.SENT
+        rowOf(id, FnrhOperation.UNDO_CHECK_IN).status shouldBe FnrhSubmissionStatus.FAILED
+        rowOf(id, FnrhOperation.UNDO_CHECK_IN).lastFailure shouldBe FnrhSubmissionFailure.NO_REMOTE_OPERATION
+        requests("GET", "/reservas/$remote/hospedes").size shouldBe 1
+        guestCalls().filter { it.first == "POST" }.shouldBeEmpty()
+        remoteIds.guests(id, FnrhEnvironment.HOMOLOGATION).single().guestRemoteId shouldBe FnrhRemoteId("h-1-$remote")
+    }
+
+    @Test
+    fun `a guest found by document whose guest POST timed out is reconciled after the undo, and the undo fails`() {
+        val (id, remote) = undoneWithWriteInFlight(stay = oneGuestStay(), person = PersonSource.FOUND_BY_DOCUMENT)
+        FnrhTestServer.stubListReservationGuests_v2_4(remote, "h-1-$remote" to "p-1-$remote")
+
+        sender.send(id)
+
+        rowOf(id, FnrhOperation.CHECK_IN).status shouldBe FnrhSubmissionStatus.SENT
+        rowOf(id, FnrhOperation.UNDO_CHECK_IN).status shouldBe FnrhSubmissionStatus.FAILED
+        rowOf(id, FnrhOperation.UNDO_CHECK_IN).lastFailure shouldBe FnrhSubmissionFailure.NO_REMOTE_OPERATION
+        guestCalls().filter { it.first == "POST" }.shouldBeEmpty()
+    }
+
+    @Test
+    fun `a returning guest whose guest POST timed out and never reached Serpro lets the undo be sent`() {
+        val (id, remote) = undoneWithWriteInFlight(stay = oneGuestStay(), person = PersonSource.KNOWN)
+        FnrhTestServer.stubListReservationGuests_v2_4(remote)
+
+        sender.send(id)
+
+        rowOf(id, FnrhOperation.CHECK_IN).status shouldBe FnrhSubmissionStatus.SENT
+        rowOf(id, FnrhOperation.UNDO_CHECK_IN).status shouldBe FnrhSubmissionStatus.SENT
+        requests("GET", "/reservas/$remote/hospedes").size shouldBe 1
+        guestCalls().filter { it.first == "POST" }.shouldBeEmpty()
+    }
+
+    @Test
     fun `an undo superseded by a new check-in before the send is sent with no call`() {
         val stay = oneGuestStay()
         val id = checkedIn(stay)
@@ -334,18 +378,53 @@ class FnrhCheckOutSendTest(
         }
     }
 
+    /** De onde vem a pessoa do hóspede no envio: criada, já conhecida de outra reserva ou achada pelo documento. */
+    private enum class PersonSource { NEW, KNOWN, FOUND_BY_DOCUMENT }
+
     /**
      * O check-in com um `POST` de hóspede sem resposta (a escrita em curso) e o check-in desfeito: o `CHECK_IN` não é
-     * cancelado. Devolve a reserva e o id remoto; o Serpro já está sem os stubs do envio.
+     * cancelado. A pessoa `p-1-<remote>` vem de [person]. Devolve a reserva e o id remoto; o Serpro já está sem os
+     * stubs do envio.
      */
-    private fun undoneWithWriteInFlight(stay: Stay): Pair<UUID, String> {
+    private fun undoneWithWriteInFlight(
+        stay: Stay,
+        person: PersonSource = PersonSource.NEW,
+    ): Pair<UUID, String> {
         val id = checkedIn(stay)
         val remote = remoteId()
         remotes[id] = remote
         iam.enableFnrh()
         FnrhTestServer.stubRegisterReservation_v2_4(remote)
-        FnrhTestServer.stubFindPersonByDocument_v2_4("CPF", stay.cpfs.single(), DEFAULT_CPF)
-        stubRegisterPerson(stay.cpfs.single(), "p-1-$remote")
+        when (person) {
+            PersonSource.NEW -> {
+                FnrhTestServer.stubFindPersonByDocument_v2_4("CPF", stay.cpfs.single(), DEFAULT_CPF)
+                stubRegisterPerson(stay.cpfs.single(), "p-1-$remote")
+            }
+
+            PersonSource.KNOWN -> {
+                val earlier = UuidV7.generate()
+                remoteIds.saveGuest(
+                    FnrhRemoteGuest(
+                        earlier,
+                        stay.guests.single(),
+                        FnrhEnvironment.HOMOLOGATION,
+                        FnrhRemoteId("p-1-$remote"),
+                        FnrhRemoteId("h-old-$remote"),
+                        checkedOut = true,
+                    ),
+                    UuidV7.generate(),
+                )
+            }
+
+            PersonSource.FOUND_BY_DOCUMENT -> {
+                FnrhTestServer.stubFindPersonByDocument_v2_4(
+                    "CPF",
+                    stay.cpfs.single(),
+                    DEFAULT_CPF,
+                    personId = "p-1-$remote",
+                )
+            }
+        }
         FnrhTestServer.stub("/reservas/$remote/hospedes", 200, """{"hospede_id":"h-1-$remote"}""", TIMEOUT_DELAY_MS)
         sender.send(id).postponed shouldBe 1
         rowOf(id, FnrhOperation.CHECK_IN).inFlight shouldBe true
