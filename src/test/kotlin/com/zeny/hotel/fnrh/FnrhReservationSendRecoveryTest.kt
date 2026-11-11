@@ -149,18 +149,7 @@ class FnrhReservationSendRecoveryTest(
     @Test
     fun `a change after a dismissed registration that was in flight reconciles and never POSTs blindly`() {
         val id = reservation()
-        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
-        store.markInFlight(register.id)
-        tx.executeWithoutResult {
-            val failed = checkNotNull(store.find(register.id))
-            failed.recordFailure(FnrhSubmissionFailure.VALIDATION, clock.instant(), FnrhRetryPolicy())
-            failed.dismiss(clock.instant())
-            store.save(failed)
-        }
-        row(register.id).also {
-            it.status shouldBe FnrhSubmissionStatus.DISMISSED
-            it.inFlight shouldBe true
-        }
+        dismissedInFlight(id)
         val update = recordUpdate(id)
         iam.enableFnrh()
         val remote = remoteId()
@@ -174,6 +163,63 @@ class FnrhReservationSendRecoveryTest(
         row(update).status shouldBe FnrhSubmissionStatus.SENT
         remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldNotBeNull().remoteId shouldBe
             FnrhRemoteId(remote)
+    }
+
+    @Test
+    fun `a cancellation after a dismissed registration that was in flight reconciles and cancels in Serpro`() {
+        val id = reservation()
+        val register = dismissedInFlight(id)
+        cancel(id)
+        val cancellation = rows(id).single { it.operation == FnrhOperation.CANCEL_RESERVATION }
+        iam.enableFnrh()
+        val remote = remoteId()
+        FnrhTestServer.stubFindReservationByCode_v2_4(codeOf(id), remote)
+        FnrhTestServer.stubCancelReservation_v2_4(remote)
+
+        sender.send(id).sent shouldBe 1
+
+        requests("GET", findPath(id)) shouldHaveSize 1
+        requests("POST", "/reservas/$remote/cancelar") shouldHaveSize 1
+        requests("POST", "/reservas").shouldBeEmpty()
+        row(cancellation.id).status shouldBe FnrhSubmissionStatus.SENT
+        row(register).inFlight shouldBe true
+        remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldNotBeNull().let {
+            it.remoteId shouldBe FnrhRemoteId(remote)
+            it.cancelled shouldBe true
+        }
+    }
+
+    @Test
+    fun `a cancellation after a dismissed registration in flight that Serpro never got is sent with no write`() {
+        val id = reservation()
+        dismissedInFlight(id)
+        cancel(id)
+        iam.enableFnrh()
+        FnrhTestServer.stubFindReservationByCode_v2_4(codeOf(id))
+
+        sender.send(id).sent shouldBe 1
+
+        requests("GET", findPath(id)) shouldHaveSize 1
+        FnrhTestServer.requests().filter { it.method.value() != "GET" }.shouldBeEmpty()
+        remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldBeNull()
+    }
+
+    @Test
+    fun `a cancellation without a remote id and without a write in flight is sent with no call`() {
+        val id = reservation()
+        val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
+        tx.executeWithoutResult {
+            val failed = checkNotNull(store.find(register.id))
+            failed.recordFailure(FnrhSubmissionFailure.VALIDATION, clock.instant(), FnrhRetryPolicy())
+            failed.dismiss(clock.instant())
+            store.save(failed)
+        }
+        cancel(id)
+        iam.enableFnrh()
+
+        sender.send(id).sent shouldBe 1
+
+        FnrhTestServer.requests().shouldBeEmpty()
     }
 
     // --- Marca e transação ----------------------------------------------------------------------------------------
@@ -213,5 +259,22 @@ class FnrhReservationSendRecoveryTest(
 
         FnrhTestServer.requests().shouldBeEmpty()
         awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION).status shouldBe FnrhSubmissionStatus.PENDING
+    }
+
+    /** O registro da reserva com a escrita em curso marcada, recusado e encerrado com `dismiss`; devolve o id dele. */
+    private fun dismissedInFlight(reservation: UUID): UUID {
+        val register = awaitSubmission(reservation, FnrhOperation.REGISTER_RESERVATION)
+        store.markInFlight(register.id)
+        tx.executeWithoutResult {
+            val failed = checkNotNull(store.find(register.id))
+            failed.recordFailure(FnrhSubmissionFailure.VALIDATION, clock.instant(), FnrhRetryPolicy())
+            failed.dismiss(clock.instant())
+            store.save(failed)
+        }
+        row(register.id).also {
+            it.status shouldBe FnrhSubmissionStatus.DISMISSED
+            it.inFlight shouldBe true
+        }
+        return register.id
     }
 }

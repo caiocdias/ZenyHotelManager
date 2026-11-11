@@ -224,17 +224,33 @@ class FnrhReservationSteps(
         return FnrhStepOutcome.Sent
     }
 
-    /** Sem id remoto (ou com a remota já cancelada), nada a cancelar; senão cancela e guarda, mantendo o link. */
+    /**
+     * Sem id remoto guardado, concilia se há escrita em curso na reserva (um `REGISTER` incerto que falhou ou foi
+     * encerrado): achada no Serpro, cancela. Sem id remoto (ou com a remota já cancelada), nada a cancelar; senão
+     * cancela e guarda, mantendo o link.
+     */
     fun cancel(
         submission: FnrhSubmission,
         connection: FnrhConnection,
     ): FnrhStepOutcome {
-        val remote = remoteIds.reservation(submission.reservationId, connection.environment)
+        val remote =
+            remoteIds.reservation(submission.reservationId, connection.environment)
+                ?: reconciled(submission, connection)
         if (remote != null && !remote.cancelled) {
             gateway.cancelReservation(remote.remoteId, submission.id.toString())
             remoteIds.saveReservation(remote.copy(cancelled = true), submission.id)
         }
         return FnrhStepOutcome.Sent
+    }
+
+    /** A reserva remota achada pela conciliação (só com a escrita em curso), relida com o estado gravado. */
+    private fun reconciled(
+        submission: FnrhSubmission,
+        connection: FnrhConnection,
+    ): FnrhRemoteReservation? {
+        if (!sync.writeInFlight(submission)) return null
+        val found = sync.existing(submission, sync.reservationOf(submission), connection)
+        return found?.let { remoteIds.reservation(submission.reservationId, connection.environment) }
     }
 
     /**
