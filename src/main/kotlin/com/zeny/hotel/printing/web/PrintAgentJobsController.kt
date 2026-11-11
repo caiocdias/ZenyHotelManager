@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.slf4j.LoggerFactory
 import org.springframework.http.CacheControl
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -30,6 +31,7 @@ import java.util.UUID
 
 private const val JOB_ID = "/{id:[0-9a-fA-F-]+}"
 private val TIMEOUT_MARGIN: Duration = Duration.ofSeconds(5)
+private val log = LoggerFactory.getLogger(PrintAgentJobsController::class.java)
 
 /**
  * A entrega dos jobs ao agente (D-E10-5 e D-E10-6), autenticada pelo token do agente (`printAgentToken`). O long-poll é
@@ -51,7 +53,10 @@ class PrintAgentJobsController(
                 "passam a `SENT`) e, sem nenhum, espera até `wait` segundos (0 a 30; padrão 25) consultando a fila. " +
                 "Sem job até o fim da espera: `200` com `[]`. O agente também recebe `200` com `[]` na hora quando " +
                 "abre mais conexões que o limite (o long-poll mais antigo é despejado) e quando o servidor para: " +
-                "volte a pedir. Na reentrega de um job já impresso, confirme de novo sem imprimir. `wait` fora de " +
+                "volte a pedir. Se a resposta se perde no caminho (o servidor já a tinha fechado por tempo), os jobs " +
+                "reivindicados voltam a `PENDING` sem gastar tentativa; se ela se perde depois de enviada, eles só " +
+                "voltam pelo prazo de confirmação, gastando uma tentativa. Na reentrega de um job já " +
+                "impresso, confirme de novo sem imprimir. `wait` fora de " +
                 "0 a 30: 400 `VALIDATION_FAILED`.",
     )
     @ApiResponse(
@@ -60,7 +65,10 @@ class PrintAgentJobsController(
     )
     fun poll(
         @AuthenticationPrincipal principal: ServicePrincipal,
-        @Parameter(description = "Segundos de espera, de 0 a 30 (padrão 25).")
+        @Parameter(
+            description = "Segundos de espera, de 0 a 30 (padrão 25).",
+            schema = Schema(type = "integer", format = "int32", minimum = "0", maximum = "30", defaultValue = "25"),
+        )
         @RequestParam(required = false) wait: Int?,
     ): DeferredResult<List<DeliveredJobResponse>> {
         val duration = service.resolveWait(wait)
@@ -70,7 +78,9 @@ class PrintAgentJobsController(
         result.onCompletion { connection.close() }
         Thread.ofVirtual().name("print-long-poll").start {
             try {
-                result.setResult(service.awaitJobs(principal, duration, connection).map(DeliveredJobResponse::of))
+                val claimed = service.awaitJobs(principal, duration, connection)
+                // A resposta já fechou (o timeout ganhou a corrida): o agente não os recebe, então eles voltam.
+                if (!result.setResult(claimed.map(DeliveredJobResponse::of))) giveBack(principal, claimed)
             } catch (
                 @Suppress("TooGenericExceptionCaught") e: Exception, // qualquer falha vira a resposta de erro
             ) {
@@ -80,6 +90,22 @@ class PrintAgentJobsController(
             }
         }
         return result
+    }
+
+    /** Devolve a `PENDING`, sem gastar tentativa, os jobs reivindicados que a resposta perdida não entregou. */
+    private fun giveBack(
+        principal: ServicePrincipal,
+        claimed: List<DeliveredJob>,
+    ) {
+        claimed.forEach {
+            try {
+                service.release(principal, it.id)
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception, // o job volta pelo ack-timeout
+            ) {
+                log.warn("Long-poll: o job {} não voltou a PENDING ({})", it.id, e.javaClass.simpleName)
+            }
+        }
     }
 
     @GetMapping("$JOB_ID/content")

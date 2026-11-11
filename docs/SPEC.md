@@ -2754,9 +2754,10 @@ classDiagram
     Instant lastSeenAt
     String tokenHash
   }
+  %% Printer.kind: THERMAL_ESCPOS ou A4_PDF
   class Printer {
     String name
-    String kind  // THERMAL_ESCPOS ou A4_PDF
+    String kind
     String address
     boolean active
   }

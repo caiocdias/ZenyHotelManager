@@ -2,6 +2,7 @@ package com.zeny.hotel.printing.application
 
 import com.zeny.hotel.printing.PrintJobStatus
 import com.zeny.hotel.printing.domain.PrintJob
+import com.zeny.hotel.printing.domain.PrintJobSummary
 import com.zeny.hotel.printing.infrastructure.PrintingProperties
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
@@ -98,7 +99,7 @@ class PrintJobsMaintenance(
      * que falha é contado e os demais seguem.
      */
     private fun sweep(
-        candidates: () -> List<PrintJob>,
+        candidates: () -> List<PrintJobSummary>,
         handle: (UUID) -> PrintJobStatus?,
     ): Sweep {
         val changed = mutableListOf<PrintJobStatus>()

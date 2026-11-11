@@ -120,7 +120,13 @@ class PrintAgentStreams(
             } catch (
                 @Suppress("TooGenericExceptionCaught") e: Exception, // qualquer falha de escrita devolve o job
             ) {
-                runCatching { delivery.release(principal, job.id) }
+                try {
+                    delivery.release(principal, job.id)
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") releaseFailure: Exception, // o job volta pelo ack-timeout
+                ) {
+                    log.warn("Stream: o job {} não voltou a PENDING ({})", job.id, releaseFailure.javaClass.simpleName)
+                }
                 throw e
             }
         }

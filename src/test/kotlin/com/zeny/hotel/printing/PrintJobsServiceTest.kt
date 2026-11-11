@@ -7,7 +7,7 @@ import com.zeny.hotel.printing.application.NewPrinter
 import com.zeny.hotel.printing.application.PrintAgentsService
 import com.zeny.hotel.printing.application.PrintJobStore
 import com.zeny.hotel.printing.application.PrintJobsService
-import com.zeny.hotel.printing.domain.PrintJob
+import com.zeny.hotel.printing.domain.PrintJobSummary
 import com.zeny.hotel.shared.ContentCipher
 import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.ErrorCodes
@@ -378,7 +378,7 @@ class PrintJobsServiceTest(
         val later = clock.instant().plusSeconds(3600)
 
         // O banco é compartilhado: cada consulta é filtrada pelos jobs deste teste.
-        fun ids(rows: List<PrintJob>) = rows.map { it.id }.filter { it in mine }
+        fun ids(rows: List<PrintJobSummary>) = rows.map { it.id }.filter { it in mine }
 
         ids(inTx { store.expiredSent(later, MANY) }) shouldContainExactly listOf(sent)
         ids(inTx { store.stalePending(later, MANY) }) shouldContainExactly listOf(pending)

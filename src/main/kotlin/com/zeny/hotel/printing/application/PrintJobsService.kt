@@ -7,6 +7,7 @@ import com.zeny.hotel.printing.PrintingApi
 import com.zeny.hotel.printing.PrintingErrorCodes
 import com.zeny.hotel.printing.PrintingPermissions
 import com.zeny.hotel.printing.domain.PrintJob
+import com.zeny.hotel.printing.domain.PrintJobSummary
 import com.zeny.hotel.printing.domain.Printer
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
@@ -65,7 +66,7 @@ interface PrintJobStore {
         status: PrintJobStatus?,
         printerId: UUID?,
         page: PageParams,
-    ): CursorPage<PrintJob>
+    ): CursorPage<PrintJobSummary>
 
     /**
      * Trava (`FOR UPDATE SKIP LOCKED`) até [limit] jobs `PENDING` das impressoras **ativas** do agente [agentId] ativo,
@@ -87,25 +88,25 @@ interface PrintJobStore {
     fun expiredSent(
         before: Instant,
         limit: Int,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 
     /** Os `PENDING` criados antes de [before], os mais antigos primeiro. */
     fun stalePending(
         before: Instant,
         limit: Int,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 
     /** Os `PENDING` e `SENT` de impressoras desativadas. */
-    fun ofInactivePrinters(limit: Int): List<PrintJob>
+    fun ofInactivePrinters(limit: Int): List<PrintJobSummary>
 
     /** Os `PENDING` e `SENT` de impressoras **ativas** cujo agente foi desativado. */
-    fun ofDeactivatedAgents(limit: Int): List<PrintJob>
+    fun ofDeactivatedAgents(limit: Int): List<PrintJobSummary>
 
     /** Os `PRINTED`/`FAILED` terminados antes de [before] que ainda guardam o conteúdo. */
     fun purgeable(
         before: Instant,
         limit: Int,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 
     fun countByStatus(): Map<PrintJobStatus, Long>
 
@@ -233,6 +234,9 @@ class PrintJobsService(
         size >= PDF_MAGIC.size && PDF_MAGIC.indices.all { this[it] == PDF_MAGIC[it] }
 
     private fun PrintJob.view() =
+        PrintJobView(id, printerId, documentType, status, attempts, createdAt, sentAt, finishedAt, failureCode)
+
+    private fun PrintJobSummary.view() =
         PrintJobView(id, printerId, documentType, status, attempts, createdAt, sentAt, finishedAt, failureCode)
 
     companion object {

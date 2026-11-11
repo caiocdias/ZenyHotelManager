@@ -3,6 +3,7 @@ package com.zeny.hotel.printing.infrastructure
 import com.zeny.hotel.printing.PrintJobStatus
 import com.zeny.hotel.printing.application.PrintJobStore
 import com.zeny.hotel.printing.domain.PrintJob
+import com.zeny.hotel.printing.domain.PrintJobSummary
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
@@ -16,6 +17,10 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.UUID
+
+private const val SUMMARY =
+    "SELECT new com.zeny.hotel.printing.domain.PrintJobSummary(j.id, j.printerId, j.documentType, j.mediaType, " +
+        "j.createdAt, j.position, j.status, j.attempts, j.sentAt, j.finishedAt, j.failureCode) FROM PrintJob j "
 
 interface PrintJobJpaRepository : JpaRepository<PrintJob, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -49,47 +54,47 @@ interface PrintJobJpaRepository : JpaRepository<PrintJob, UUID> {
     ): List<PrintJob>
 
     @Query(
-        "SELECT j FROM PrintJob j WHERE j.status = com.zeny.hotel.printing.PrintJobStatus.SENT " +
+        SUMMARY + "WHERE j.status = com.zeny.hotel.printing.PrintJobStatus.SENT " +
             "AND j.sentAt < :before ORDER BY j.sentAt, j.id",
     )
     fun expiredSent(
         before: Instant,
         page: PageRequest,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 
     @Query(
-        "SELECT j FROM PrintJob j WHERE j.status = com.zeny.hotel.printing.PrintJobStatus.PENDING " +
+        SUMMARY + "WHERE j.status = com.zeny.hotel.printing.PrintJobStatus.PENDING " +
             "AND j.createdAt < :before ORDER BY j.createdAt, j.id",
     )
     fun stalePending(
         before: Instant,
         page: PageRequest,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 
     @Query(
-        "SELECT j FROM PrintJob j WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PENDING, " +
+        SUMMARY + "WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PENDING, " +
             "com.zeny.hotel.printing.PrintJobStatus.SENT) AND j.printerId IN " +
             "(SELECT p.id FROM Printer p WHERE p.active = false) ORDER BY j.position",
     )
-    fun ofInactivePrinters(page: PageRequest): List<PrintJob>
+    fun ofInactivePrinters(page: PageRequest): List<PrintJobSummary>
 
     @Query(
-        "SELECT j FROM PrintJob j WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PENDING, " +
+        SUMMARY + "WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PENDING, " +
             "com.zeny.hotel.printing.PrintJobStatus.SENT) AND j.printerId IN " +
             "(SELECT p.id FROM Printer p WHERE p.active = true AND p.agentId IN " +
             "(SELECT a.id FROM PrintAgent a WHERE a.active = false)) ORDER BY j.position",
     )
-    fun ofDeactivatedAgents(page: PageRequest): List<PrintJob>
+    fun ofDeactivatedAgents(page: PageRequest): List<PrintJobSummary>
 
     @Query(
-        "SELECT j FROM PrintJob j WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PRINTED, " +
+        SUMMARY + "WHERE j.status IN (com.zeny.hotel.printing.PrintJobStatus.PRINTED, " +
             "com.zeny.hotel.printing.PrintJobStatus.FAILED) AND j.finishedAt < :before AND j.content IS NOT NULL " +
             "ORDER BY j.finishedAt, j.id",
     )
     fun purgeable(
         before: Instant,
         page: PageRequest,
-    ): List<PrintJob>
+    ): List<PrintJobSummary>
 }
 
 /** Os jobs por JPA, na transação corrente. */
@@ -120,7 +125,7 @@ class JpaPrintJobStore(
         status: PrintJobStatus?,
         printerId: UUID?,
         page: PageParams,
-    ): CursorPage<PrintJob> {
+    ): CursorPage<PrintJobSummary> {
         val after = page.decodedCursor()?.long(0)
         val conditions =
             listOfNotNull(
@@ -131,7 +136,7 @@ class JpaPrintJobStore(
         val where = if (conditions.isEmpty()) "" else " WHERE " + conditions.joinToString(" AND ")
         val query =
             entityManager
-                .createQuery("SELECT j FROM PrintJob j$where ORDER BY j.position DESC", PrintJob::class.java)
+                .createQuery("$SUMMARY$where ORDER BY j.position DESC", PrintJobSummary::class.java)
                 .setMaxResults(page.limit + 1)
         status?.let { query.setParameter("status", it) }
         printerId?.let { query.setParameter("printerId", it) }
@@ -152,21 +157,23 @@ class JpaPrintJobStore(
     override fun expiredSent(
         before: Instant,
         limit: Int,
-    ): List<PrintJob> = jobs.expiredSent(before, PageRequest.ofSize(limit))
+    ): List<PrintJobSummary> = jobs.expiredSent(before, PageRequest.ofSize(limit))
 
     override fun stalePending(
         before: Instant,
         limit: Int,
-    ): List<PrintJob> = jobs.stalePending(before, PageRequest.ofSize(limit))
+    ): List<PrintJobSummary> = jobs.stalePending(before, PageRequest.ofSize(limit))
 
-    override fun ofInactivePrinters(limit: Int): List<PrintJob> = jobs.ofInactivePrinters(PageRequest.ofSize(limit))
+    override fun ofInactivePrinters(limit: Int): List<PrintJobSummary> =
+        jobs.ofInactivePrinters(PageRequest.ofSize(limit))
 
-    override fun ofDeactivatedAgents(limit: Int): List<PrintJob> = jobs.ofDeactivatedAgents(PageRequest.ofSize(limit))
+    override fun ofDeactivatedAgents(limit: Int): List<PrintJobSummary> =
+        jobs.ofDeactivatedAgents(PageRequest.ofSize(limit))
 
     override fun purgeable(
         before: Instant,
         limit: Int,
-    ): List<PrintJob> = jobs.purgeable(before, PageRequest.ofSize(limit))
+    ): List<PrintJobSummary> = jobs.purgeable(before, PageRequest.ofSize(limit))
 
     override fun countByStatus(): Map<PrintJobStatus, Long> =
         jdbc
