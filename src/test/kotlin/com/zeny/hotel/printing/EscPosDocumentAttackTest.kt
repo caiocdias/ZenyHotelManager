@@ -164,7 +164,7 @@ class EscPosDocumentAttackTest {
 
     @Test
     fun `acento combinante em texto decomposto sai como a letra acentuada`() {
-        val body = bodyBytes("José Açao")
+        val body = bodyBytes("Jose\u0301 Ac\u0327a\u0303o")
 
         assertThat(String(body, ibm850)).startsWith("José Ação\n")
     }
