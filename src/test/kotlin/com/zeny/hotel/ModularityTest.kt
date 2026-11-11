@@ -351,8 +351,7 @@ class ModularityTest {
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
-            .toList()
-            .filter { it != "shared" } shouldBe emptyList()
+            .toList() shouldContainExactlyInAnyOrder listOf("shared")
         PrintingModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
