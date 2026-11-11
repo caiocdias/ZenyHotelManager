@@ -1,7 +1,5 @@
 package com.zeny.hotel.fnrh
 
-import com.zeny.hotel.fnrh.application.FnrhCall
-import com.zeny.hotel.fnrh.application.FnrhIntegrationLog
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestUser
@@ -43,7 +41,6 @@ class FnrhSettingsClearApiTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val mockMvc: MockMvc,
-    @Autowired private val integrationLog: FnrhIntegrationLog,
 ) {
     private val path = "/api/v1/fnrh/settings"
     private val clearPath = "$path/clear-credentials"
@@ -86,8 +83,6 @@ class FnrhSettingsClearApiTest(
             body["environment"].asString() shouldBe "HOMOLOGATION"
             response.getHeader(HttpHeaders.ETAG).shouldNotBeNull() shouldNotBe etag
             row() shouldBe Row(null, null, null, false)
-            // O registro append-only precisa de um sucesso: sem nenhum, a leitura do status falha.
-            integrationLog.record(successCall())
             val status = call(GET, "/api/v1/fnrh/status", asAdmin()).ok()
             status["configured"].asBoolean() shouldBe false
             status["enabled"].asBoolean() shouldBe false
@@ -226,9 +221,6 @@ class FnrhSettingsClearApiTest(
             logs shouldNotContain "52998224725"
             logs shouldNotContain cpf
         }
-
-    private fun successCall() =
-        FnrhCall("registerReservation", FnrhEnvironment.HOMOLOGATION, "SUCCESS", 200, 5, "clear-test", null)
 
     private data class Row(
         val username: String?,
