@@ -8,6 +8,9 @@ spring-modulith = "2.1.1"
 archunit = "1.5.1"
 kotest = "6.2.5"
 mockk = "1.14.11"
+openhtmltopdf = "1.1.110"
+# Só nos testes (extrair texto dos PDFs); a versão que o openhtmltopdf resolve.
+pdfbox = "3.0.8"
 detekt = "2.0.0-alpha.6"
 ktlint-plugin = "14.2.0"
 ktlint-cli = "1.8.0"
@@ -72,6 +75,10 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
 kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+# Documentos do módulo printing (M5 E11): XHTML por Thymeleaf (versão do BOM do Boot) e PDF por openhtmltopdf.
+thymeleaf-spring6 = { module = "org.thymeleaf:thymeleaf-spring6" }
+openhtmltopdf-pdfbox = { module = "io.github.openhtmltopdf:openhtmltopdf-pdfbox", version.ref = "openhtmltopdf" }
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 shedlock-spring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
 shedlock-provider-jdbc-template = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
 springdoc-openapi-starter-webmvc-ui = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
