@@ -353,7 +353,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E10 | Agentes, impressoras e fila de impressão | #pendente | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
+| E10 | Agentes, impressoras e fila de impressão | #em-andamento | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
 | E11 | Documentos: ficha, extrato e confirmação | #pendente | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
 
 **Gate**
@@ -1724,7 +1724,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E10 — Agentes, impressoras e fila de impressão — #pendente
+## E10 — Agentes, impressoras e fila de impressão — #em-andamento
 
 **Objetivo:** criar o módulo `printing` com cadastro de agentes de impressão e impressoras, autenticação do agente por token próprio (H23), fila de `PrintJob` com o conteúdo guardado cifrado (H17), entregue por SSE com fallback de long-poll, confirmação pelo agente e reenvio de jobs não confirmados (ARCHITECTURE §14, D13).
 
