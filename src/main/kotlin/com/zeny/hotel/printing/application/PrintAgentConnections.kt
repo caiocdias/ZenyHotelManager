@@ -7,6 +7,7 @@ import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -20,6 +21,7 @@ class AgentConnection internal constructor(
     private val release: (AgentConnection) -> Unit,
 ) : AutoCloseable {
     private val done = CountDownLatch(1)
+    private val evictionClaimed = AtomicBoolean(false)
 
     @Volatile var evicted: Boolean = false
         private set
@@ -35,8 +37,12 @@ class AgentConnection internal constructor(
             true
         }
 
+    /**
+     * Despeja a conexão. Atômico: só a primeira chamada age (o despejo pelo limite e o `stop()` podem correr juntos) e
+     * só ela roda o `onEvict`, uma vez. Uma conexão já fechada por [close] também não é despejada.
+     */
     internal fun evict() {
-        if (done.count == 0L) return
+        if (done.count == 0L || !evictionClaimed.compareAndSet(false, true)) return
         evicted = true
         done.countDown()
         onEvict()

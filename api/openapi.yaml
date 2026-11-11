@@ -6780,6 +6780,44 @@ paths:
       summary: Receber os jobs de impressão por long-poll
       tags:
       - Printing
+  /api/v1/print-agents/me/jobs/stream:
+    get:
+      description: "Autenticado pelo token do agente. Ao conectar, reenvia os jobs\
+        \ `SENT` do agente ainda sem confirmação de posição maior que o `Last-Event-ID`\
+        \ (todos, sem ele) e entrega os `PENDING` das impressoras ativas dele (que\
+        \ passam a `SENT`), sem filtro de posição; depois entrega os novos. Evento\
+        \ `job`, com o `id` igual à posição do job e `data` JSON com `id`, `printerId`,\
+        \ `documentType`, `mediaType`, `attempts` e `createdAt` (o conteúdo se busca\
+        \ em `/content`). Comentários `: heartbeat` mantêm a conexão viva. O servidor\
+        \ encerra o stream depois do tempo máximo, quando o token deixa de valer (agente\
+        \ desativado ou token trocado), quando o agente abre mais conexões que o limite\
+        \ (a mais antiga acaba) e na parada: reconecte com o `Last-Event-ID`."
+      operationId: streamPrintAgentJobs
+      parameters:
+      - description: A posição (`id`) do último evento recebido.
+        in: header
+        name: Last-Event-ID
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            text/event-stream:
+              schema:
+                type: string
+          description: Stream SSE (`text/event-stream`).
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      security:
+      - printAgentToken: []
+      summary: Receber os jobs de impressão por SSE
+      tags:
+      - Printing
   /api/v1/print-agents/me/jobs/{id}/ack:
     post:
       description: "Autenticado pelo token do agente. `PRINTED` ou `FAILED` (com `failureCode`\
