@@ -318,6 +318,22 @@ zeny:
       max-attempts: 8
       initial-backoff: PT1M
       max-backoff: PT1H
+  # Fila de impressão (M5 E10): tetos de conteúdo, prazos do job (confirmação, validade, retenção do conteúdo), entrega
+  # (long-poll, SSE) e o job de manutenção, sob trava do ShedLock.
+  printing:
+    max-content-bytes: 5242880
+    max-manual-content-bytes: 716800
+    content-retention: PT24H
+    pending-ttl: PT24H
+    ack-timeout: PT2M
+    max-attempts: 3
+    long-poll-max-wait: PT30S
+    delivery-poll-interval: PT1S
+    stream-heartbeat: PT15S
+    stream-max-duration: PT30M
+    max-connections-per-agent: 2
+    maintenance-interval: PT1M
+    maintenance-initial-delay: PT1M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.
