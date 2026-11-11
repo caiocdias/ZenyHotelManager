@@ -10,6 +10,7 @@ import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ExtensibleEnum
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
@@ -38,6 +39,7 @@ class PrintersController(
     private val service: PrintAgentsService,
 ) {
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Impressora cadastrada.")
     @Operation(
         operationId = "createPrinter",
         summary = "Cadastrar uma impressora",

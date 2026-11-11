@@ -6,6 +6,7 @@ import com.zeny.hotel.printing.application.PrintAgentsService
 import com.zeny.hotel.shared.ApiV1Controller
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
@@ -34,6 +35,7 @@ class PrintAgentsController(
     private val agents: PrintAgentsService,
 ) {
     @PostMapping
+    @ApiResponse(responseCode = "201", description = "Agente cadastrado; traz o token, exibido uma única vez.")
     @Operation(
         operationId = "createPrintAgent",
         summary = "Cadastrar um agente de impressão",

@@ -6700,12 +6700,12 @@ paths:
               $ref: "#/components/schemas/PrintAgentRequest"
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrintAgentTokenResponse"
-          description: OK
+          description: "Agente cadastrado; traz o token, exibido uma única vez."
         default:
           content:
             application/problem+json:
@@ -6834,12 +6834,12 @@ paths:
               $ref: "#/components/schemas/PrinterRequest"
         required: true
       responses:
-        "200":
+        "201":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PrinterResponse"
-          description: OK
+          description: Impressora cadastrada.
         default:
           content:
             application/problem+json:
