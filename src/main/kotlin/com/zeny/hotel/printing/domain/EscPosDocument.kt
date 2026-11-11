@@ -59,7 +59,7 @@ class EscPosDocument(
         val lines = mutableListOf<String>()
         var current = ""
         for (word in cleaned.split(' ')) {
-            val pieces = if (word.length > columns) word.chunked(columns) else listOf(word)
+            val pieces = chunkByCodePoints(word)
             for (piece in pieces) {
                 current =
                     when {
@@ -80,6 +80,17 @@ class EscPosDocument(
         }
         lines += current
         return lines
+    }
+
+    /** Corta [word] em pedaços de até [columns] caracteres, sem partir um par substituto. */
+    private fun chunkByCodePoints(word: String): List<String> {
+        val points = word.codePoints().toArray()
+        if (points.size <= columns) return listOf(word)
+        return points.toList().chunked(columns).map { chunk ->
+            val sb = StringBuilder()
+            chunk.forEach { sb.appendCodePoint(it) }
+            sb.toString()
+        }
     }
 
     /** IBM850; o que ele não codifica é decomposto (NFD) sem as marcas, e o que sobrar vira `?`. */

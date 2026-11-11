@@ -13,11 +13,12 @@ object DocumentText {
 
     /**
      * Troca os caracteres de controle (`Cc`, inclusive `\n`, `\t`, ESC e GS) por espaço, remove os de formatação
-     * (`Cf`: marcas bidi, largura zero, `U+FEFF`), colapsa os espaços repetidos e apara as pontas.
+     * (`Cf`: marcas bidi, largura zero, `U+FEFF`), normaliza para NFC (o acento decomposto se junta à base),
+     * colapsa os espaços repetidos e apara as pontas.
      */
     fun clean(text: String): String {
         val out = StringBuilder(text.length)
-        text.codePoints().forEach { cp ->
+        Normalizer.normalize(text, Normalizer.Form.NFC).codePoints().forEach { cp ->
             when (Character.getType(cp)) {
                 Character.CONTROL.toInt() -> out.append(' ')
                 Character.FORMAT.toInt() -> Unit
@@ -27,9 +28,12 @@ object DocumentText {
         return out.toString().replace(whitespace, " ").trim()
     }
 
-    /** O que o `windows-1252` (WinAnsi das fontes base-14 do PDF) não codifica vira `?`, um por caractere. */
+    /**
+     * Normaliza para NFC; o que o `windows-1252` (WinAnsi das fontes base-14 do PDF) não codifica vira `?`, um por
+     * caractere.
+     */
     fun toWinAnsi(text: String): String =
-        mapCodePoints(text) { codePoint ->
+        mapCodePoints(Normalizer.normalize(text, Normalizer.Form.NFC)) { codePoint ->
             val s = String(Character.toChars(codePoint))
             if (winAnsi.newEncoder().canEncode(s)) s else "?"
         }
