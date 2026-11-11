@@ -50,7 +50,8 @@ class FnrhCheckInStep(
     /**
      * Valida todos os hóspedes da reserva (com erro, `Invalid` sem nenhuma chamada), garante a reserva no Serpro e
      * põe nela cada hóspede que ainda não tem id remoto: os sem autorização de menor primeiro (o principal à frente),
-     * depois os menores, cada um com o id remoto do responsável.
+     * depois os menores, cada um com o id remoto do responsável. Os erros saem sem repetição: o mesmo sobrevivente
+     * pode aparecer duas vezes na reserva depois de uma mesclagem, e a chave de `fnrh.submission_error` é o erro.
      */
     fun registerGuests(
         submission: FnrhSubmission,
@@ -59,11 +60,12 @@ class FnrhCheckInStep(
     ): FnrhStepOutcome {
         val prepared = prepare(submission, reservation)
         val errors =
-            prepared.flatMap { guest ->
-                validator
-                    .validate(guest.person, guest.guest, reservation.arrival, guest.responsibleKnown)
-                    .map { FnrhSubmissionError(guest.guestId.value, it.field, it.code) }
-            }
+            prepared
+                .flatMap { guest ->
+                    validator
+                        .validate(guest.person, guest.guest, reservation.arrival, guest.responsibleKnown)
+                        .map { FnrhSubmissionError(guest.guestId.value, it.field, it.code) }
+                }.distinct()
         if (errors.isNotEmpty()) return FnrhStepOutcome.Invalid(errors)
         val inFlight = sync.writeInFlight(submission)
         val remoteReservation = sync.ensureReservation(submission, reservation, connection)
