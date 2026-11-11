@@ -2,8 +2,11 @@ package com.zeny.hotel.printing
 
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.printing.application.AgentStreamSink
+import com.zeny.hotel.printing.application.DeliveredJob
 import com.zeny.hotel.printing.application.PrintAgentConnections
 import com.zeny.hotel.printing.application.PrintAgentJobsService
+import com.zeny.hotel.printing.application.PrintAgentStreams
 import com.zeny.hotel.printing.application.PrintJobsService
 import com.zeny.hotel.printing.infrastructure.PrintAgentRealm
 import com.zeny.hotel.shared.UuidV7
@@ -42,9 +45,13 @@ import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.ContextConfiguration
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.io.IOException
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * O stream SSE do agente de impressão (`GET /api/v1/print-agents/me/jobs/stream`, M5 E10, Task 11), com um cliente
@@ -87,6 +94,7 @@ class PrintAgentStreamTest(
     @Autowired private val jobs: PrintJobsService,
     @Autowired private val delivery: PrintAgentJobsService,
     @Autowired private val connections: PrintAgentConnections,
+    @Autowired private val streams: PrintAgentStreams,
     @Autowired private val realm: PrintAgentRealm,
     @LocalServerPort private val port: Int,
 ) {
@@ -139,6 +147,20 @@ class PrintAgentStreamTest(
             .sql("SELECT position FROM printing.print_job WHERE id = :id")
             .param("id", job)
             .query(Long::class.java)
+            .single()
+
+    private fun statusOf(job: UUID): String =
+        jdbc
+            .sql("SELECT status FROM printing.print_job WHERE id = :id")
+            .param("id", job)
+            .query(String::class.java)
+            .single()
+
+    private fun attemptsOf(job: UUID): Int =
+        jdbc
+            .sql("SELECT attempts FROM printing.print_job WHERE id = :id")
+            .param("id", job)
+            .query(Int::class.java)
             .single()
 
     private fun open(
@@ -318,25 +340,78 @@ class PrintAgentStreamTest(
         var heartbeat: SseFrame? = null
         val deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos()
         while (heartbeat == null && System.nanoTime() < deadline) {
-            heartbeat = client.next(Duration.ofSeconds(1))?.takeIf { it.isComment }
+            heartbeat = client.next(Duration.ofSeconds(1))?.takeIf { it.comment == "heartbeat" }
         }
 
         heartbeat.shouldNotBeNull().comment shouldBe "heartbeat"
     }
 
     @Test
-    fun `a third stream of the same agent ends the oldest one and keeps the other two`() {
+    fun `a new stream of the same agent ends the previous one, so an agent has at most one stream`() {
         val agent = newAgent()
         val oldest = open(agent.token)
-        val middle = open(agent.token)
-        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) == 2 }
+        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) == 1 }
 
-        val newest = open(agent.token)
+        val middle = open(agent.token)
 
         oldest.awaitEnd(Duration.ofSeconds(5)) shouldBe true
         middle.isEnded shouldBe false
+        await().atMost(Duration.ofSeconds(5)).until { connections.openCount(agent.id) == 1 }
+        val newest = open(agent.token)
+        middle.awaitEnd(Duration.ofSeconds(5)) shouldBe true
         newest.isEnded shouldBe false
-        connections.openCount(agent.id) shouldBe 2
+    }
+
+    /** Um sink que falha onde o teste manda, como a escrita num cliente que já sumiu. */
+    private class FailingSink(
+        private val failPing: Boolean,
+        private val failJob: Boolean,
+    ) : AgentStreamSink {
+        val ended = CountDownLatch(1)
+        val jobWrites = AtomicInteger()
+
+        override fun job(job: DeliveredJob) {
+            jobWrites.incrementAndGet()
+            if (failJob) throw IOException("cliente saiu")
+        }
+
+        override fun ping() {
+            if (failPing) throw IOException("cliente saiu")
+        }
+
+        override fun heartbeat() = Unit
+
+        override fun complete() = ended.countDown()
+    }
+
+    @Test
+    fun `when the ping fails nothing is claimed and the job stays PENDING`() {
+        val printer = newPrinter()
+        val job = enqueue(printer)
+        val sink = FailingSink(failPing = true, failJob = false)
+
+        streams.open(realm.authenticate(printer.agent.token)!!, null, sink)
+
+        sink.ended.await(5, TimeUnit.SECONDS) shouldBe true
+        statusOf(job) shouldBe "PENDING"
+        attemptsOf(job) shouldBe 0
+        sink.jobWrites.get() shouldBe 0
+    }
+
+    @Test
+    fun `a job claimed but not written goes back to PENDING without spending the attempt and is delivered later`() {
+        val printer = newPrinter()
+        val job = enqueue(printer)
+        val sink = FailingSink(failPing = false, failJob = true)
+
+        streams.open(realm.authenticate(printer.agent.token)!!, null, sink)
+
+        sink.ended.await(5, TimeUnit.SECONDS) shouldBe true
+        sink.jobWrites.get() shouldBe 1
+        statusOf(job) shouldBe "PENDING"
+        attemptsOf(job) shouldBe 0
+        val next = open(printer.agent.token)
+        json(next.nextEvent().shouldNotBeNull())["attempts"].asInt() shouldBe 1
     }
 
     @Test

@@ -96,6 +96,18 @@ class PrintJob private constructor(
     }
 
     /**
+     * O job reivindicado não chegou ao agente (o stream já tinha caído): `SENT` → `PENDING` na mesma posição, sem
+     * gastar a tentativa que a reivindicação contou.
+     */
+    fun release() {
+        check(status == PrintJobStatus.SENT) { "Só um job SENT pode ser devolvido (estado: $status)." }
+        status = PrintJobStatus.PENDING
+        attempts -= 1
+        sentAt = null
+        deliveredTo = null
+    }
+
+    /**
      * O agente a que o job foi entregue confirma: `SENT` → `PRINTED` ([printed]) ou `FAILED` com o [failureCode]
      * opcional. Fora de `SENT`, ou de outro agente, é `PRINT_JOB_NOT_ACKNOWLEDGEABLE`; a camada de aplicação decide
      * antes se o job é do agente (`404`) ou não.

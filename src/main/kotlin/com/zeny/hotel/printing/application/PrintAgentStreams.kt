@@ -6,12 +6,16 @@ import com.zeny.hotel.shared.UnauthenticatedException
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.io.IOException
 import java.time.Duration
 
 /** Para onde o laço do stream escreve (a web liga ao `SseEmitter`). Nenhum método recebe o conteúdo do job. */
 interface AgentStreamSink {
     /** Um job entregue: o `id` do evento é a posição. */
     fun job(job: DeliveredJob)
+
+    /** O comentário `: ping`, escrito antes de cada reivindicação: se falhar, o cliente sumiu e nada é reivindicado. */
+    fun ping()
 
     /** O comentário `: heartbeat`. */
     fun heartbeat()
@@ -24,8 +28,9 @@ interface AgentStreamSink {
  * O laço do stream SSE do agente (D-E10-6), numa *virtual thread* por conexão: ao abrir, reenvia os `SENT` sem ack de
  * posição maior que o `Last-Event-ID` e reivindica os `PENDING` (sem filtro de posição); depois reivindica a cada
  * `delivery-poll-interval` e manda `: heartbeat` a cada `stream-heartbeat`. Termina na desconexão ou no despejo da
- * conexão (limite por agente, parada do servidor), depois de `stream-max-duration` e quando o agente deixa de ser
- * válido (inativo ou token trocado: `401` do [PrintAgentJobsService]). Nenhuma transação fica aberta durante a
+ * conexão (um stream por agente, parada do servidor), depois de `stream-max-duration` e quando o agente deixa de ser
+ * válido (inativo ou token trocado: `401` do [PrintAgentJobsService]). Cada job é reivindicado e escrito
+ * um por vez, depois de um `ping`. Nenhuma transação fica aberta durante a
  * espera, e nada do conteúdo ou do token vai ao log.
  */
 @Component
@@ -46,7 +51,7 @@ class PrintAgentStreams(
         lastEventId: Long?,
         sink: AgentStreamSink,
     ): AgentConnection {
-        val connection = connections.open(principal.id)
+        val connection = connections.open(principal.id, ConnectionKind.STREAM)
         Thread.ofVirtual().name("print-agent-stream").start { run(principal, lastEventId, sink, connection) }
         return connection
     }
@@ -61,10 +66,14 @@ class PrintAgentStreams(
             loop(principal, lastEventId ?: BEFORE_ANY_POSITION, sink, connection)
         } catch (_: UnauthenticatedException) {
             // O agente foi revogado ou teve o token trocado: o stream acaba.
+        } catch (_: IOException) {
+            // inclui o AsyncRequestNotUsableException do Spring
+            log.debug("Stream do agente {} encerrado: cliente saiu", principal.id)
         } catch (
-            @Suppress("TooGenericExceptionCaught") e: Exception, // cliente que saiu, banco fora: o stream acaba
+            @Suppress("TooGenericExceptionCaught") e: Exception, // o stream acaba, seja qual for a falha
         ) {
-            log.debug("Stream do agente {} encerrado: {}", principal.id, e.javaClass.simpleName)
+            // Sem a mensagem nem a causa: o texto de uma falha de banco pode trazer dados.
+            log.warn("Stream do agente {} encerrado por falha: {}", principal.id, e.javaClass.simpleName)
         } finally {
             connection.close()
             runCatching(sink::complete)
@@ -79,9 +88,9 @@ class PrintAgentStreams(
     ) {
         val deadline = System.nanoTime() + properties.streamMaxDuration.toNanos()
         var nextHeartbeat = System.nanoTime() + properties.streamHeartbeat.toNanos()
-        delivery.unacknowledged(principal, afterPosition).forEach(sink::job)
+        if (!connection.isDone) delivery.unacknowledged(principal, afterPosition).forEach(sink::job)
         while (!connection.isDone) {
-            delivery.claim(principal, CLAIM_BATCH).forEach(sink::job)
+            claimAndSend(principal, sink, connection)
             val now = System.nanoTime()
             if (now >= deadline) return
             if (now >= nextHeartbeat) {
@@ -93,10 +102,33 @@ class PrintAgentStreams(
         }
     }
 
+    /**
+     * Reivindica e escreve um job por vez, cada um depois de um `ping`: a queda do cliente só aparece numa escrita, e
+     * reivindicar sem ela deixaria o job `SENT` a um stream morto. Se o envio do job falha, ele volta a `PENDING`.
+     */
+    private fun claimAndSend(
+        principal: ServicePrincipal,
+        sink: AgentStreamSink,
+        connection: AgentConnection,
+    ) {
+        repeat(PrintAgentJobsService.CLAIM_BATCH) {
+            if (connection.isDone) return
+            sink.ping()
+            val job = delivery.claim(principal, 1).firstOrNull() ?: return
+            try {
+                sink.job(job)
+            } catch (
+                @Suppress("TooGenericExceptionCaught") e: Exception, // qualquer falha de escrita devolve o job
+            ) {
+                runCatching { delivery.release(principal, job.id) }
+                throw e
+            }
+        }
+    }
+
     private companion object {
         val log: Logger = LoggerFactory.getLogger(PrintAgentStreams::class.java)
         val TIMEOUT_SLACK: Duration = Duration.ofSeconds(30)
-        const val CLAIM_BATCH = 20
         const val BEFORE_ANY_POSITION = -1L
     }
 }

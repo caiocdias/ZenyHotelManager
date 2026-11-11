@@ -123,6 +123,27 @@ class PrintAgentJobsService(
         return emptyList()
     }
 
+    /**
+     * Devolve a `PENDING` (sem gastar tentativa) o job que o stream reivindicou mas não conseguiu escrever. Só age se o
+     * job ainda é `SENT` a este agente; senão não faz nada. Não confere o token: o stream pode ter caído justamente
+     * porque o agente foi revogado.
+     */
+    @Audited(PrintingAudit.RELEASE_JOB)
+    @Transactional
+    fun release(
+        principal: ServicePrincipal,
+        jobId: UUID,
+    ) {
+        val job = store.lockById(jobId)
+        if (job == null || job.status != PrintJobStatus.SENT || !job.isDeliveredTo(principal.id)) {
+            audit.noChanges()
+            return
+        }
+        audit.track(PrintingAudit.JOB, job.id) { job.auditState() }
+        job.release()
+        store.flush()
+    }
+
     /** Os `SENT` do agente sem confirmação e de posição maior que [afterPosition]: o que o stream reenvia. */
     @Transactional(readOnly = true)
     fun unacknowledged(
@@ -195,8 +216,10 @@ class PrintAgentJobsService(
     private fun PrintJob.delivered() =
         DeliveredJob(id, printerId, documentType, mediaType, attempts, createdAt, position)
 
-    private companion object {
-        val DEFAULT_WAIT: Duration = Duration.ofSeconds(25)
+    companion object {
+        private val DEFAULT_WAIT: Duration = Duration.ofSeconds(25)
+
+        /** Quantos jobs uma consulta de entrega reivindica de uma vez (long-poll) ou no máximo por volta (stream). */
         const val CLAIM_BATCH = 20
     }
 }

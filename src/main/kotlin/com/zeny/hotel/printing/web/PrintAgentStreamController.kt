@@ -44,9 +44,10 @@ class PrintAgentStreamController(
                 "impressoras ativas dele (que passam a `SENT`), sem filtro de posição; depois entrega os novos. " +
                 "Evento `job`, com o `id` igual à posição do job e `data` JSON com `id`, `printerId`, " +
                 "`documentType`, `mediaType`, `attempts` e `createdAt` (o conteúdo se busca em `/content`). " +
-                "Comentários `: heartbeat` mantêm a conexão viva. O servidor encerra o stream depois do tempo " +
-                "máximo, quando o token deixa de valer (agente desativado ou token trocado), quando o agente abre " +
-                "mais conexões que o limite (a mais antiga acaba) e na parada: reconecte com o `Last-Event-ID`.",
+                "Comentários `: heartbeat` e `: ping` mantêm a conexão viva (ignore-os). O servidor encerra o stream " +
+                "depois do tempo máximo, quando o token deixa de valer (agente desativado ou token trocado), " +
+                "quando o agente abre outro stream (só há um por agente: o anterior acaba) e na parada: " +
+                "reconecte com o `Last-Event-ID`.",
     )
     @ApiResponse(
         responseCode = "200",
@@ -88,6 +89,8 @@ class PrintAgentStreamController(
                     .data(jsonMapper.writeValueAsString(DeliveredJobResponse.of(job)), MediaType.TEXT_PLAIN),
             )
         }
+
+        override fun ping() = emitter.send(SseEmitter.event().comment("ping"))
 
         override fun heartbeat() = emitter.send(SseEmitter.event().comment("heartbeat"))
 

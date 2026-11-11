@@ -16,6 +16,7 @@ internal object PrintingAudit {
     const val JOB = "printing.job"
     const val CLAIM_JOB = "printing.job.claim"
     const val ACK_JOB = "printing.job.ack"
+    const val RELEASE_JOB = "printing.job.release"
 }
 
 /**
