@@ -17,7 +17,6 @@ import org.hibernate.SessionFactory
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Import
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
@@ -38,7 +37,6 @@ class PrintJobStoreProjectionTest(
     @Autowired private val agents: PrintAgentsService,
     @Autowired private val store: PrintJobStore,
     @Autowired private val iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
     @Autowired private val entityManagerFactory: EntityManagerFactory,
     @Autowired transactionManager: PlatformTransactionManager,
 ) {
