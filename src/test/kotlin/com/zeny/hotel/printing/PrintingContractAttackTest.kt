@@ -32,6 +32,7 @@ class PrintingContractAttackTest {
             "getPrintAgent",
             "rotatePrintAgentToken",
             "deactivatePrintAgent",
+            "getPrintAgentIdentity",
             "createPrinter",
             "listPrinters",
             "getPrinter",
