@@ -6826,6 +6826,114 @@ paths:
       summary: Trocar o token de um agente
       tags:
       - Printing
+  /api/v1/print-jobs:
+    get:
+      description: "Exige `printing.jobs.read`. Paginação por cursor, dos mais novos\
+        \ aos mais antigos; `status` e `printerId` filtram. Sem o conteúdo."
+      operationId: listPrintJobs
+      parameters:
+      - description: Só os jobs nesta situação.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - SENT
+          - PRINTED
+          - FAILED
+      - description: Só os jobs desta impressora.
+        in: query
+        name: printerId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPagePrintJobResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os jobs de impressão
+      tags:
+      - Printing
+    post:
+      description: "Exige `printing.jobs.manage` e `Idempotency-Key`. O conteúdo vai\
+        \ em base64 e tem no máximo 700 KiB (716800 bytes) decodificado; acima disso,\
+        \ 422 `PRINT_CONTENT_TOO_LARGE`. Corpo acima de 1 MB: 413 `PAYLOAD_TOO_LARGE`,\
+        \ recusado pela idempotência antes de chegar aqui. Base64 inválido: 400 `VALIDATION_FAILED`\
+        \ no campo `content`. Conteúdo vazio: 422 `PRINT_CONTENT_EMPTY`; impressora\
+        \ A4_PDF com conteúdo que não começa com `%PDF-`: 422 `PRINT_CONTENT_NOT_PDF`.\
+        \ Impressora inexistente: 400 `UNKNOWN_PRINTER`; desativada: 422 `PRINTER_INACTIVE`.\
+        \ O conteúdo nunca volta na resposta."
+      operationId: createPrintJob
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintJobRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJobResponse"
+          description: Job enfileirado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Enfileirar um job de impressão manual
+      tags:
+      - Printing
   /api/v1/printers:
     get:
       description: Exige `printing.jobs.read`.
@@ -16270,6 +16378,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPagePrintJobResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrintJobResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPagePushDeviceResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -20655,6 +20777,74 @@ components:
       - name
       - token
       - version
+    PrintJobRequest:
+      type: object
+      description: O job de impressão a enfileirar.
+      properties:
+        content:
+          type: string
+          format: byte
+          description: "O conteúdo em base64, até 716800 bytes decodificado. PDF para\
+            \ A4_PDF."
+        documentType:
+          type: string
+          description: "O tipo do documento, `[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+`\
+            \ (até 100)."
+          example: frontdesk.registration-card
+        printerId:
+          type: string
+          format: uuid
+          description: A impressora de destino (ativa).
+      required:
+      - content
+      - documentType
+      - printerId
+    PrintJobResponse:
+      type: object
+      description: "Um job de impressão, sem o conteúdo."
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        documentType:
+          type: string
+        failureCode:
+          type: string
+          description: "O código de falha, quando `FAILED`."
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        printerId:
+          type: string
+          format: uuid
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          description: "A situação do job. A lista pode crescer (`x-extensible-enum`):\
+            \ trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - PENDING
+          - SENT
+          - PRINTED
+          - FAILED
+      required:
+      - attempts
+      - createdAt
+      - documentType
+      - id
+      - printerId
+      - status
     PrinterChangeRequest:
       type: object
       description: O que muda numa impressora. O tipo não muda.
