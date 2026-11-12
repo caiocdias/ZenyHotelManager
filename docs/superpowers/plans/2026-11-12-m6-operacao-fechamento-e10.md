@@ -405,3 +405,10 @@ Decisão (H10): **banco próprio no mesmo container** (`PostgresContainer.instan
 - `promtool check rules` → `SUCCESS`.
 - Critérios de aceite da E10 ↔ testes: ordem e registro (Task 5); falha na 3ª e retomada sem reexecutar (Tasks 5 e 10); dois disparos simultâneos (Tasks 4, 9 e 12); 409 com código estável (Tasks 8 e 9); `403 APPROVAL_REQUIRED` e auditoria com aprovador (Tasks 9 e 10); horário no fuso do hotel (Task 12); SSE (Task 7); notificação de pendência (Task 6); métricas e regra de alerta (Task 13); build e contrato (acima).
 - Notas para o handoff da E11: o contexto `EndOfDayTestConfiguration` tem etapas falsas nas posições 10–40 e precisa ser revisto quando entrarem as reais (posições de 100 em 100); o banco isolado acumula estado entre testes (asserções só sobre os próprios dados); pendências por saída pendente geram uma notificação por usuário com `endofday.runs.read` (considerar agrupar por execução e etapa); o contrato de etapa (KDoc de `EndOfDayStepHandler`) é obrigatório para as etapas de negócio.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado (rodada 2), pelo `revisor-arquitetura` no modelo `opus`.
+- **Rodadas:** 2 (rodada 0 bloqueado com 12 Importantes; rodada 1 bloqueado com 4 Importantes; rodada 2 aprovado sem achados abertos).
+- **Notas Menores mantidas:** M-3 (`FAILED` espera a retomada manual; alternativa de novas tentativas automáticas registrada na Task 12); M-10 e M-13 viram notas do handoff para a E11 ("Verificação da etapa").
+- **Decisões que seguem ao usuário no fim do lote:** janela de 24 h do automático (I-8); `201` com a execução no estado em que estiver (I-6, contrato público); unicidade total por data, mais estrita que o texto do roadmap (I-1); regra do horário devido e `FAILED` só manual (M-2, M-3).
