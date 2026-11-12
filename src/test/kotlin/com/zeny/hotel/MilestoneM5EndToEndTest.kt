@@ -613,6 +613,136 @@ class MilestoneM5EndToEndTest(
         }
     }
 
+    @Test
+    fun `the confirmation shows the check-in and check-out times of the policy in force, not fixed ones`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        val originalPolicy = frontdesk.policy()
+        try {
+            val stay = newStay()
+            frontdesk.putPolicy(originalPolicy + mapOf("checkInTime" to "14:17", "checkOutTime" to "11:41"))
+            val booked = book(stay)
+            val confirmation = api(GET, "/api/v1/reservations/${booked.id}/confirmation/pdf", receptionist)
+            confirmation.status shouldBe 200
+            pdfText(confirmation.contentAsByteArray).let { text ->
+                text shouldContain booked.code
+                text shouldContain "Check-in a partir das 14:17"
+                text shouldContain "Check-out até as 11:41"
+            }
+        } finally {
+            frontdesk.putPolicy(originalPolicy)
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+        }
+    }
+
+    @Test
+    @Suppress("LongMethod") // dois check-ins, a aprovação recusada na outra reserva e a repetição
+    fun `an undo approval is single use and only valid for the reservation it was granted for`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        try {
+            val first = newStay()
+            val second = newStay()
+            val a = book(first)
+            val b = book(second)
+            val bodies =
+                listOf(a to first, b to second).map { (booked, stay) ->
+                    val assign = mapOf("roomId" to stay.room)
+                    api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, assign).ok()
+                    (checkInBody(stay, EARLY_FEE, minorProof(stay.minor)) - "earlyCheckInFee").also {
+                        checkIn(booked.id, it).expect(200)
+                    }
+                }
+            val approval = approvedByManager(undoCheckIn(a.id, receptionist).problem(403, "APPROVAL_REQUIRED"))
+            val token = approval["approvalToken"].asString()
+
+            // O token da reserva A não vale para a B, e a recusa não o gasta.
+            undoCheckIn(b.id, receptionist, token).problem(403, "APPROVAL_TOKEN_MISMATCH")
+            support.status(b.id) shouldBe "IN_HOUSE"
+            undoCheckIn(a.id, receptionist, token).expect(200)["reservation"]["status"].asString() shouldBe "CONFIRMED"
+
+            // De novo hospedada, o mesmo token não desfaz outra vez.
+            checkIn(a.id, bodies[0] - "preAuthorization").expect(200)
+            undoCheckIn(a.id, receptionist, token).problem(403, "APPROVAL_TOKEN_USED")
+            support.status(a.id) shouldBe "IN_HOUSE"
+            support.auditEntries(a.id).count { it["action"] == UNDO_CHECK_IN_ACTION } shouldBe 1
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+        }
+    }
+
+    @Test
+    @Suppress("LongMethod") // a queda até FAILED, o reenvio recusado ao operador, o aceito e os recusados depois
+    fun `retrying a failed FNRH submission is for the manager, works once and never resends what was sent`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        advance(OUTAGE_REWIND.negated())
+        try {
+            iam.enableFnrh()
+            val stay = newStay()
+            stubFnrhFor(stay)
+            val booked = book(stay)
+            val outage = serproDownFor(booked.code)
+            val leaks = guestDataOf(stay)
+            api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, mapOf("roomId" to stay.room)).ok()
+            val body = checkInBody(stay, EARLY_FEE, minorProof(stay.minor)) - "earlyCheckInFee"
+            checkIn(booked.id, body).expect(200)
+            sendOwnFnrhSubmissions(booked.id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
+            repeat(MAX_ATTEMPTS - 1) {
+                advance(Duration.ofHours(1).plusMinutes(1))
+                sender.sendDueFor(booked.id)
+            }
+            val register = fnrhSubmissions(booked.id).first()
+            register.status shouldBe FnrhSubmissionStatus.FAILED
+            val retry = "/api/v1/fnrh/submissions/${register.id}/retry"
+
+            // A Recepcionista não reenvia: a submissão segue FAILED, com as oito tentativas.
+            api(POST, retry, receptionist).status shouldBe 403
+            fnrhSubmissions(booked.id).first().let {
+                it.status shouldBe FnrhSubmissionStatus.FAILED
+                it.attempts shouldBe MAX_ATTEMPTS
+            }
+
+            // O Gerente reenvia uma vez; enquanto está PENDING, um segundo reenvio é recusado.
+            outage.forEach { FnrhTestServer.server.removeStub(it) }
+            FnrhTestServer.stubFindReservationByCode_v2_4(booked.code, stay.remote)
+            api(POST, retry, manager).ok()["status"].asString() shouldBe "PENDING"
+            api(POST, retry, manager).problem(409, "FNRH_SUBMISSION_NOT_RETRYABLE")
+            advance(Duration.ofMinutes(2))
+            sender.sendDueFor(booked.id)
+            fnrhStatuses(booked.id) shouldContainExactly
+                listOf(
+                    FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
+                    FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
+                )
+            val sentCalls = fnrhCallsOf(stay, booked.code).map { it.line() }
+
+            // Depois de SENT: o reenvio é recusado e nenhum envio novo sai, nem com o relógio bem adiante.
+            api(POST, retry, manager).problem(409, "FNRH_SUBMISSION_NOT_RETRYABLE")
+            advance(Duration.ofHours(2))
+            sender.sendDueFor(booked.id)
+            fnrhCallsOf(stay, booked.code).map { it.line() } shouldContainExactly sentCalls
+            sentCalls.count { it == "POST /reservas" } shouldBe 1
+
+            // O reenvio na trilha é do Gerente, e nenhum registro tem dado de hóspede.
+            support
+                .auditEntries(register.id)
+                .filter { it["action"] == "fnrh.submission.retry" }
+                .map { it["userId"] } shouldContainExactly listOf(manager.user.id.value)
+            val params = leaks.mapIndexed { i, leak -> "v$i" to "%$leak%" }.toTypedArray()
+            val any = params.joinToString(" OR ") { (name, _) -> "t::text LIKE :$name" }
+            for (table in LEAK_TABLES) {
+                withClue(table) { rows("SELECT t::text FROM $table t WHERE $any", *params).shouldBeEmpty() }
+            }
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+            advance(advanced.negated())
+        }
+    }
+
     // --- Apoio: walk-in, desfazer e Serpro fora do ar -------------------------------------------------------------
 
     /** Anda o relógio e soma em [advanced], para o teste devolver tudo no fim. */
