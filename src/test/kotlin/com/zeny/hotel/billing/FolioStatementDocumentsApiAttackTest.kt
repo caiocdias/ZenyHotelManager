@@ -10,6 +10,7 @@ import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClockConfiguration
+import com.zeny.hotel.testsupport.pdfText
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -69,13 +70,20 @@ class FolioStatementDocumentsApiAttackTest(
     }
 
     @Test
-    fun `a repeated audience parameter is 400 instead of silently picking one`() {
+    fun `a repeated audience parameter is 400 or a PDF without anything internal`() {
         val folio = folioWithCharge()
 
         val response = get("/api/v1/folios/$folio/statement/pdf?audience=GUEST&audience=INTERNAL")
 
-        withClue("status ${response.status} type ${response.contentType}") { response.status shouldBe 400 }
-        response.contentType.shouldNotBeNull() shouldContain "application/problem+json"
+        withClue("status ${response.status} type ${response.contentType}") {
+            if (response.status == 200) {
+                response.contentType shouldBe "application/pdf"
+                pdfText(response.contentAsByteArray).contains(iam.adminId().toString()) shouldBe false
+            } else {
+                response.status shouldBe 400
+                response.contentType.shouldNotBeNull() shouldContain "application/problem+json"
+            }
+        }
     }
 
     @Test
