@@ -43,6 +43,7 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.awaitility.Awaitility.await
@@ -183,6 +184,10 @@ class MilestoneM5EndToEndTest(
             support.lifecyclePublications(GuestCheckedIn::class.java, booked.id, STAY_LISTENER) shouldHaveSize 1
 
             // --- A FNRH: as submissões da reserva enviadas, em ordem, com o titular e o menor distintos --------
+            withClue("o job está adiado: nada desta reserva chegou ao Serpro antes do envio") {
+                fnrhCallsOf(stay, booked.code).shouldBeEmpty()
+            }
+            support.historyKinds(booked.id) shouldContainExactly listOf("CHECK_IN")
             sendOwnFnrhSubmissions(booked.id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
             fnrhStatuses(booked.id) shouldContainExactly
                 listOf(
@@ -224,6 +229,49 @@ class MilestoneM5EndToEndTest(
             FnrhTestServer.reset()
             frontdesk.putPolicy(originalPolicy)
             clock.advance(REWIND)
+        }
+    }
+
+    @Test
+    fun `a stale early check-in fee is refused with nothing written and no fee means no early charge`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        val originalPolicy = frontdesk.policy()
+        try {
+            val stay = newStay()
+            val checkInTime = LocalTime.parse(originalPolicy["checkInTime"].toString())
+            val limit = "${checkInTime.minusHours(3)}"
+            frontdesk.putPolicy(
+                originalPolicy + mapOf("earlyCheckIn" to mapOf("limitTime" to limit, "fee" to EARLY_FEE)),
+            )
+            val booked = book(stay)
+            api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, mapOf("roomId" to stay.room)).ok()
+            val quoted =
+                api(GET, "/api/v1/reservations/${booked.id}/early-late-quote", receptionist)
+                    .ok()["earlyCheckIn"]["fee"]
+                    .asString()
+            quoted shouldBe EARLY_FEE
+            val proof = minorProof(stay.minor)
+
+            // O valor mudou depois da cotação: 409 com o valor vigente e nada gravado.
+            frontdesk.putPolicy(originalPolicy + mapOf("earlyCheckIn" to mapOf("limitTime" to limit, "fee" to "95.00")))
+            checkIn(booked.id, checkInBody(stay, quoted, proof))
+                .problem(409, "EARLY_LATE_FEE_CHANGED")["currentFee"]
+                .asString() shouldBe "95.00"
+            nothingWritten(booked, stay.room)
+
+            // Sem o valor no pedido o early não é cobrado, mesmo oferecido na política.
+            val body = checkInBody(stay, quoted, proof) - "earlyCheckInFee"
+            val response = checkIn(booked.id, body).expect(200)
+            response["reservation"]["status"].asString() shouldBe "IN_HOUSE"
+            response["earlyCheckIn"].isNull shouldBe true
+            support.postings(booked.folio).shouldBeEmpty()
+            frontdesk.preAuthorizations(booked.folio).map { it["status"].asString() } shouldContainExactly
+                listOf("ACTIVE")
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+            frontdesk.putPolicy(originalPolicy)
         }
     }
 
@@ -412,7 +460,22 @@ class MilestoneM5EndToEndTest(
         support.status(booked.id) shouldBe "CONFIRMED"
         frontdesk.preAuthorizations(booked.folio).shouldBeEmpty()
         support.postings(booked.folio).shouldBeEmpty()
-        roomsApi.status(RoomId(room))!!.occupancy.name shouldBe "VACANT"
+        roomsApi.status(RoomId(room))!!.let {
+            it.occupancy.name shouldBe "VACANT"
+            (it.guestCount ?: 0) shouldBe 0
+        }
+        withClue("a recusa não deixa transição, carimbo de chegada, evento nem submissão de check-in") {
+            support.historyKinds(booked.id) shouldNotContain "CHECK_IN"
+            jdbc
+                .sql(
+                    "SELECT checked_in_at IS NULL AND checked_in_by IS NULL " +
+                        "FROM reservations.reservation WHERE id = :id",
+                ).param("id", booked.id)
+                .query(Boolean::class.java)
+                .single() shouldBe true
+            support.lifecyclePublications(GuestCheckedIn::class.java, booked.id, STAY_LISTENER).shouldBeEmpty()
+            fnrhStatuses(booked.id).map { it.first } shouldNotContain FnrhOperation.CHECK_IN
+        }
     }
 
     /** Uma mudança manual do status de governança da UH pelo Gerente. */
