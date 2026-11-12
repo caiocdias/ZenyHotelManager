@@ -269,7 +269,11 @@ class RegistrationCardAttackTest(
         text shouldContain stay.code
         text shouldNotContain "null"
         text shouldNotContain "Endereço"
+        text shouldNotContain "Nacionalidade"
+        text shouldNotContain "Data de nascimento"
         val thermal = escPosText(printedJob(stay.reservation))
+        thermal shouldNotContain "Nacionalidade"
+        thermal shouldNotContain "Nascimento"
         thermal shouldContain stay.code
         thermal shouldNotContain "null"
     }
@@ -392,7 +396,7 @@ class RegistrationCardAttackTest(
 
     @Test
     fun `hostile text in name and address is literal in the PDF and issues no ESC-POS command`() {
-        val hostile = "Ana <b>X</b> \${7*7} [[\${1+1}]] ${'$'}{T(java.lang.Runtime)} th:text"
+        val hostile = "Ana <b>X</b> \${7*191} [[\${1+1}]] ${'$'}{T(java.lang.Runtime)} th:text"
         val baseline = stay(Spec(profile = mapOf("fullName" to "Ana Normal ${support.guests.suffix(6)}")))
         val baselineBytes = escPosBytes(printedJob(baseline.reservation, PrinterKind.THERMAL_ESCPOS))
 
@@ -416,7 +420,8 @@ class RegistrationCardAttackTest(
         val text = pdfText(response.contentAsByteArray)
         text shouldContain "<b>X</b>"
         text shouldContain "[[\${1+1}]]"
-        text shouldNotContain "49"
+        text shouldContain "\${7*191}"
+        text shouldNotContain "1337"
         text shouldNotContain "\u001B"
 
         val bytes = escPosBytes(printedJob(stay.reservation, PrinterKind.THERMAL_ESCPOS))

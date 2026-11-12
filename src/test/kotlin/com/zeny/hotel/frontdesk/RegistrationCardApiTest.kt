@@ -99,7 +99,15 @@ class RegistrationCardApiTest(
         text shouldContain scenario.roomNumber
         text shouldContain "Nome Social ${scenario.suffix}"
         text shouldNotContain scenario.civilName
-        text shouldContain "BR"
+        text shouldContain "Nacionalidade BR"
+        val format =
+            java.time.format.DateTimeFormatter
+                .ofPattern("dd/MM/yyyy")
+        text shouldContain "Chegada ${today.format(format)}"
+        text shouldContain "Saída ${today.plusDays(2).format(format)}"
+        text shouldContain "Entrada em ${today.format(format)}"
+        text shouldContain "Adultos 2"
+        text shouldContain "Crianças 0"
         text shouldContain "14/03/1988"
         text shouldContain "Rua das Acácias"
         text shouldContain "***${scenario.cpf.takeLast(4)}"
