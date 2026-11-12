@@ -2,7 +2,6 @@ package com.zeny.hotel.frontdesk.application
 
 import com.zeny.hotel.frontdesk.FrontdeskErrorCodes
 import com.zeny.hotel.frontdesk.FrontdeskPermissions
-import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.guests.MaskedGuestDocument
 import com.zeny.hotel.printing.DocumentFormat
@@ -136,9 +135,9 @@ class RegistrationCardService(
         )
 
     private fun guestModel(stayGuest: StayGuestSummary): Map<String, Any?> {
-        val id: GuestId = stayGuest.guestId
-        val summary = guests.guest(id)
-        val identification = guests.identification(id)
+        // Tudo do mesmo perfil corrente: a identificação resolve o mesclado para o sobrevivente (o id dela).
+        val identification = guests.identification(stayGuest.guestId)
+        val summary = guests.guest(identification?.id ?: stayGuest.guestId)
         return mapOf(
             "name" to (summary?.let { it.socialName ?: it.fullName } ?: "Hóspede não identificado"),
             "nationality" to identification?.nationality,
