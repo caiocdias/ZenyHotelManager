@@ -228,7 +228,8 @@ class ModularityTest {
         // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
         // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments (a intenção de pagamento
         // de todo recebimento e o PaymentSucceeded, H1), M3 E08;
-        // printing (o extrato em PDF e ESC/POS, só a PrintingApi e os tipos dela), M5 E11. Nunca iam, reservas nem fiscal.
+        // printing (o extrato em PDF e ESC/POS, só a PrintingApi e os tipos dela), M5 E11. Nunca iam, reservas nem
+        // fiscal.
         billing
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -239,7 +240,8 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz de hotel, guests, notifications, payments e printing (a API pública); verify() também barra os internos.
+        // Só a raiz de hotel, guests, notifications, payments e printing (a API pública); verify() também barra os
+        // internos.
         val publicApis =
             setOf(
                 "com.zeny.hotel.hotel",
