@@ -4,6 +4,7 @@ import com.zeny.hotel.billing.BillingTestSupport.Companion.definition
 import com.zeny.hotel.files.FilesTestConfiguration
 import com.zeny.hotel.files.FilesTestSupport
 import com.zeny.hotel.files.infrastructure.StorageProperties
+import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.hotel.HotelFilePurposes
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
@@ -12,6 +13,10 @@ import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
 import com.zeny.hotel.printing.PrinterKind
 import com.zeny.hotel.printing.application.NewPrinter
 import com.zeny.hotel.printing.application.PrintAgentsService
+import com.zeny.hotel.reservations.InventoryTestConfiguration
+import com.zeny.hotel.reservations.ReservationsTestSupport
+import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.UuidV7
@@ -22,6 +27,7 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldStartWith
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -32,6 +38,7 @@ import org.springframework.http.HttpMethod.GET
 import org.springframework.http.HttpMethod.POST
 import org.springframework.http.HttpMethod.PUT
 import org.springframework.http.MediaType
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.security.oauth2.jwt.Jwt
@@ -45,6 +52,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import tools.jackson.databind.json.JsonMapper
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import javax.imageio.ImageIO
 
@@ -54,7 +62,12 @@ import javax.imageio.ImageIO
  * `Accept: application/pdf` e o logotipo ausente do bucket sem derrubar o documento.
  */
 @IntegrationTest
-@Import(IamTestConfiguration::class, MutableClockConfiguration::class, FilesTestConfiguration::class)
+@Import(
+    IamTestConfiguration::class,
+    MutableClockConfiguration::class,
+    FilesTestConfiguration::class,
+    InventoryTestConfiguration::class,
+)
 @Suppress("LongParameterList", "TooManyFunctions")
 class FolioStatementDocumentsApiTest(
     @Autowired private val iam: IamTestSupport,
@@ -65,8 +78,12 @@ class FolioStatementDocumentsApiTest(
     @Autowired private val s3: S3Client,
     @Autowired private val storage: StorageProperties,
     @Autowired private val synchronizer: PermissionCatalogSynchronizer,
+    @Autowired private val hotelApi: HotelApi,
+    @Autowired private val roomsApi: RoomsApi,
+    @Autowired jdbc: JdbcClient,
 ) {
-    private val billing = BillingTestSupport(iam, mockMvc, jsonMapper)
+    private val reservations = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
+    private val billing = reservations.billing
 
     @BeforeEach
     fun synchronizeThisContextCatalog() {
@@ -84,6 +101,58 @@ class FolioStatementDocumentsApiTest(
             "extrato-${folioNumber(folio)}.pdf"
         response.getHeader(HttpHeaders.CACHE_CONTROL).shouldNotBeNull() shouldContain "no-store"
         String(response.contentAsByteArray, Charsets.ISO_8859_1) shouldStartWith "%PDF-"
+    }
+
+    @Test
+    fun `the statement of a reservation account shows the holder, the room and the dates`() {
+        val suffix = UuidV7.generate().toString().takeLast(SUFFIX_LENGTH)
+        val today = hotelApi.currentBusinessDate()
+        val holder =
+            UUID.fromString(
+                reservations.guests
+                    .createGuest(
+                        reservations.guests.createBody(
+                            profile =
+                                reservations.guests.profileBody(
+                                    extra =
+                                        mapOf(
+                                            "fullName" to "Civil Extrato $suffix",
+                                            "socialName" to "Social Extrato $suffix",
+                                        ),
+                                ),
+                            documents = emptyList(),
+                        ),
+                    )["id"]
+                    .asString(),
+            )
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(1, today)
+        val plan = reservations.plan(listOf(type))
+        reservations.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
+        val created =
+            reservations.created(
+                reservations.booking(
+                    holder,
+                    reservations.reservation(type, plan.id, today, today.plusDays(2), adults = 1),
+                ),
+            )["reservations"][0]
+        with(iam) {
+            call(
+                POST,
+                "/api/v1/reservations/${created["id"].asString()}/assign-room",
+                asAdmin(),
+                mapOf("roomId" to rooms.single()),
+            ).ok()
+        }
+
+        val text = pdfText(pdf(UUID.fromString(created["folioId"].asString()), billing.admin).contentAsByteArray)
+
+        val format = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+        text shouldContain "Reserva ${created["code"].asString()}"
+        text shouldContain "Social Extrato $suffix"
+        text shouldNotContain "Civil Extrato $suffix"
+        text shouldContain roomsApi.room(RoomId(rooms.single()))!!.number
+        text shouldContain "Chegada ${today.format(format)}"
+        text shouldContain "Saída ${today.plusDays(2).format(format)}"
     }
 
     @Test
@@ -295,5 +364,6 @@ class FolioStatementDocumentsApiTest(
 
     private companion object {
         const val SUFFIX_LENGTH = 12
+        const val PRICED_DAYS = 10L
     }
 }
