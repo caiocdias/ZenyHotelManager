@@ -381,7 +381,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M5 | #pendente | E03, E04, E05, E06, E08, E11, E14, E16 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
+| E12 | Gate do marco M5 | #em-andamento | E03, E04, E05, E06, E08, E11, E14, E16 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
 
 ---
 
@@ -1894,7 +1894,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E12 — Gate do marco M5 — #pendente
+## E12 — Gate do marco M5 — #em-andamento
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório e de um `docker compose` isolado, que a definição global de pronto do M5 é atendida, com um cenário ponta a ponta de recepção, e deixar o roadmap do M6 pronto para ser sincronizado.
 
