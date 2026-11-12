@@ -1,16 +1,16 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-06
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-12
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
-> **Pré-requisito:** a etapa de gate do marco M5 (última etapa de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`) está `#concluida`.
+> **Pré-requisito:** a etapa de gate do marco M5 (E12 de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`) está `#concluida` — atendido em 2026-11-12 (gate verificado em `6c16557`, integrado na `main` pelo merge `ab8b406`; decisões de arquitetura da E12 registradas em `3a42e35`). A M5 E09 (homologação da FNRH) segue `#bloqueada` pela Q-12, pela exceção M5 → M6 de `docs/roadmaps/README.md`: não trava o M6 e é cobrada pelo gate de inauguração (M8 E13).
 
 ## Como usar
 
 Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m6-operacao-fechamento`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
-**Este roadmap foi escrito antes do código existir e revisto em 2026-11-06 contra `ca9f9e2`, com o M5 ainda em andamento.** Antes da primeira etapa, sincronize-o com o código real usando a skill `development-roadmap` (modo atualização): confira caminhos, APIs públicas dos módulos de M1–M5 e convenções registradas nos handoffs e nas notas de tema do brain, e ajuste as etapas pendentes.
+**Sincronizado com o código em 2026-11-12**, depois do gate do M5 (`main` em `3a42e35`), pelo `arquiteto` com a skill `development-roadmap` no modo atualização (regra 2 de `docs/roadmaps/README.md`). As APIs públicas, os eventos, as portas e as views de M1 a M5 que o marco usa foram conferidos no código e estão em "Base técnica herdada", em "Contexto confirmado"; as notas do handoff da M5 E12 entraram nas etapas que tocam. Entraram três etapas de manutenção herdadas do M5 (E15 a E17), e o gate passou a depender delas. Nenhuma etapa foi renumerada nem removida, e todas seguem `#pendente`.
 
 ## Objetivo
 
@@ -26,7 +26,19 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - Convenções herdadas, documentadas nas notas de tema do brain (lista abaixo): M0 (API, erros, migrações, `Money`, IDs, idempotência, outbox, ShedLock), M1 (autenticação, `authz.require`/escopo `OWN`/limites/step-up, `@Audited`, data operacional, `staff` e escala, `files`), M2 (`rooms` e status, SSE, sync offline com `OfflineCommandHandler`, `checklists`, `notifications`), M3 (`guests`, `billing`, `payments` manual), M4 (`rates`, `reservations`, disponibilidade), M5 (`frontdesk`, eventos de hospedagem, `fnrh.report_submissions`, documentos montados pelo módulo dono e renderizados por `printing`).
 - Revisão de arquitetura dos roadmaps: `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`.
 - Conhecimento do projeto no Second Brain: hub `ZenyHotelManager` e as notas de tema `ZenyHotelManager - Estado por marco`, `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Schemas, migrações e views de relatório`, `ZenyHotelManager - Tipos do kernel`, `ZenyHotelManager - Convenções de API`, `ZenyHotelManager - Segurança, autenticação e autorização`, `ZenyHotelManager - Auditoria`, `ZenyHotelManager - Eventos e jobs`, `ZenyHotelManager - Tempo real (SSE)`, `ZenyHotelManager - Sincronização offline`, `ZenyHotelManager - Testes de integração`, `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo files`, `ZenyHotelManager - Módulo rooms`, `ZenyHotelManager - Módulo checklists`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)`, `ZenyHotelManager - Módulo billing (caixa, pagamentos, caução e encerramento)`, `ZenyHotelManager - Módulo rates`, `ZenyHotelManager - Módulo reservations (inventário, disponibilidade e reservas)`, `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Hospedagem e recepção` e `ZenyHotelManager - Docker, observabilidade e CI` (este para o gate).
-- Caminhos de código previstos: um pacote por módulo sob o pacote base `com.zeny.hotel` (hipótese herdada de M0) — `housekeeping/`, `maintenance/`, `endofday/`, `reporting/` (a criar).
+- Caminhos de código previstos: um pacote por módulo sob o pacote base `com.zeny.hotel` — `housekeeping/`, `maintenance/`, `endofday/`, `reporting/` (a criar; conferido em 2026-11-12 que nenhum existe).
+- **Base técnica herdada do M5** (conferida no código em 2026-11-12, `main` em `3a42e35`; referência completa nas notas de tema e nas capturas pendentes `ZenyHotelManager - atualização m5-recepcao-fnrh E08` a `E12`):
+  - **Módulos** em `src/main/kotlin/com/zeny/hotel/`: `shared`, `iam`, `audit`, `hotel`, `staff`, `files`, `rooms`, `checklists`, `notifications`, `guests`, `payments`, `billing`, `rates`, `reservations`, `frontdesk`, `fnrh` e `printing`. Cada um declara `allowedDependencies` no `…Module.kt`, e o `ModularityTest` confere a lista exata; módulo novo ganha o seu teste, e aresta nova atualiza o teste e a tabela §3.1 na mesma mudança. A ARCHITECTURE §3.2 registra desde 2026-11-12 a ordem interna da Hospedagem (`rates` < `reservations` < `frontdesk`); `endofday` → `reporting` continua exceção de mesma camada.
+  - **Migrações:** a última versão é `printing/V2026_11_11_1001__grant_printing_to_app_role.sql`; toda migração nova precisa de timestamp posterior a `V2026_11_11_1001` (`outOfOrder` desligado).
+  - **`ReservationsApi`:** além do que o M4 deixou, `assignRoom`, `checkIn`, `undoCheckIn`, `checkOut` e `moveRoom` (M5 E01, sem permissão; quem chama se autoriza). **Não há** no-show nem consultas por data (chegadas, saídas, hospedados): só os endpoints (H4). Eventos em `reservations/ReservationsEvents.kt`: os de reserva do M4 (sem autor) e os de hospedagem `GuestCheckedIn`, `GuestCheckInUndone`, `GuestCheckedOut` (com `roomId`, `early`, `businessDate`) e `RoomMoved` (com `fromRoomId`, `toRoomId`, `businessDate`), todos com `performedBy` e `version`; o KDoc dos quatro diz que a governança (M6) os escuta. Consumidor de produção hoje: só o `fnrh` (`FnrhSubmissionListeners`); `RoomMoved` não tem nenhum.
+  - **`HotelApi`:** `currentBusinessDate`, `timezone`, `profile()` (M5 E11), `policy`, `taxSettings`, `operationalSettings` e `advanceBusinessDate(expectedCurrent)`, único caminho de avanço, que devolve `BusinessDateAdvanced`.
+  - **`RoomsApi`:** `markDirty`, `markClean`, `markInspected`, `rejectInspection`, `markOccupied`, `markOccupiedIfReady`, `markVacant`, `setServiceFlag`, `isReadyForCheckIn`, `outOfOrder`, `outOfOrderPeriods`, `openOutOfOrder` e `releaseOutOfOrder`; `RoomStatusSource` já tem `TASK` e `END_OF_DAY`. Sem registro de discrepância (H3).
+  - **`BillingApi`:** `post` com `NewPosting.sourceReference` idempotente e a chave do fechamento fixada no KDoc (H5); a trinca da caução (`registerCardPreAuthorization`, `unsettledCardPreAuthorizations`, `releaseCardPreAuthorization`) e `cardPreAuthorizationsExpiring`. O extrato descreve o dono da conta pela porta `FolioOwnerDescriber` (M5 E11), implementada só para `RESERVATION`: quem criar conta de outro tipo de dono implementa a porta.
+  - **Plataforma:** `ChecklistsApi.startExecution`/`completeExecution` (H2), `StaffApi.daySchedule`, `NotificationsApi.notify` com os tipos `task-assigned`, `room-released`, `inspection-rejected`, `urgent-work-order` e `end-of-day-pending` já no catálogo (`notifications/NotificationTypes.kt`), `PrintingApi.render`/`print` com templates registrados pelo dono (`ModuleDocumentTemplates`) e `FilesApi.readContent`, só de anexo comum. A `FilesApi` **não grava conteúdo** pelo servidor (H6).
+  - **Views `report_*` publicadas:** `billing` (`report_cashier_counts`, `report_cashier_shifts`, `report_folios`, `report_payments`, `report_postings`), `checklists` (`report_check_item_outcome`, `report_execution_compliance`, `report_location_history`), `fnrh.report_submissions`, `guests.report_guests`, `rates` (`report_rate_plans`, `report_rate_prices`) e `reservations` (`report_block_allocations`, `report_inventory`, `report_reservations`, `report_room_assignments`, `report_room_nights`). O `rooms` não publica view.
+  - **FNRH:** a porta `FnrhGateway` tem 10 operações e nenhuma de no-show; `FnrhOperation` vai de `REGISTER_RESERVATION` a `CHECK_OUT` (contrato `x-extensible-enum`) e é conferida por `submission_operation_ck` no schema `fnrh` (E14).
+  - **Testes:** `@IntegrationTest` adia oito jobs (`testsupport/IntegrationTest.kt`); o banco é compartilhado por todos os testes; `ChecklistRoutinesTest`, `StayTransitionsApiTest` e `BusinessDateTest` já avançam a data operacional desse banco, e o `MilestoneM5EndToEndTest` nunca a avança (H10). Modelo de teste de gate: `MilestoneM5EndToEndTest`; modelo de compose do gate: `docker/gate/` (`run-gate.sh`, `gate-env.sh`, `compose.gate.yaml`, `fnrh-mock/`, `m5-roteiro.sh` e o `README.md` dele). Máquina de 14 GB: um Gradle ou `docker build` por vez, e nunca `./gradlew --stop`.
+- **Pendências herdadas do M5 e onde entram aqui:** rótulos de motivo de viagem e meio de transporte na ficha e descrição de `frontdesk.stays.checkin` (M5 E11 (f) e (g)) → **E15**; teste de índices mais fraco nas listas por situação (Média da M5 E01) e `FnrhSubmissionDismissCompat.kt` duplicado em `src/test` → **E16**; corpo mínimo nas respostas de `restrict`, `lift-restriction` e `merge` do `guests` (M5 E15 (h)) → **E17**; no-show na FNRH (H15 do M5) → **E14**; caminho próprio do fechamento para mudar a data nos testes (handoff da M5 E12) → **E10** (H10); `docker/gate/` e o padrão do `MilestoneM5EndToEndTest` no gate → **E12**. Não são do M6: o aviso da LGPL do openhtmltopdf (documentação de implantação do M8), a homologação da FNRH (M5 E09, cobrada pela M8 E13) e o expurgo dos sensíveis da FNRH (M8 E16).
 
 ## Escopo
 
@@ -43,7 +55,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 
 ## Restrições e invariantes
 
-- Respeitar o grafo de módulos e a regra por camadas da ARCHITECTURE §3.1; toda aresta nova (ex.: `reporting` → `files` e `reporting` → `printing` em E09) entra na tabela §3.1 na mesma etapa. Em especial: `housekeeping` não depende de `endofday` nem de `frontdesk` (reage a `BusinessDateAdvanced`, `GuestCheckedOut` e `RoomMoved`); `reporting` não lê tabelas internas de outros módulos, só views `report_*`; `maintenance` não chama `inventory` neste marco.
+- Respeitar o grafo de módulos e a regra por camadas da ARCHITECTURE §3.1 (com a ordem interna da Hospedagem da §3.2); toda aresta nova (ex.: `reporting` → `files` e `reporting` → `printing` em E09) entra na tabela §3.1 na mesma etapa. Em especial: `housekeeping` não depende de `endofday` nem de `frontdesk` (reage a `BusinessDateAdvanced`, `GuestCheckedOut` e `RoomMoved`); `reporting` não lê tabelas internas de outros módulos, só views `report_*`; `maintenance` não chama `inventory` neste marco.
 - RN-13: respostas e feeds de sincronização para camareira e manutenção nunca contêm nome, documento ou contato do hóspede.
 - RN-21: uma única execução de fechamento por data, nunca em paralelo; cada etapa é idempotente (ex.: diária de `(reserva, data, origem=EOD)` lançada uma vez).
 - RF-FEC-05: nada é lançado em data operacional fechada.
@@ -58,15 +70,17 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 
 | # | Hipótese ou decisão | Impacto se errada / sem decisão | Etapa afetada |
 |---|---|---|---|
-| H1 | Pacote base `com.zeny.hotel` (herdado de M0). | Ajuste mecânico de caminhos. | todas |
-| H2 | Conferida no código em 2026-11-06: `OfflineCommandHandler`, o feed `GET /api/v1/sync/changes` e a execução de checklist (`ChecklistsApi.startExecution` e `completeExecution`) existem, e `ChecklistCompleted` carrega as ocorrências configuradas (`MAINTENANCE`, `LOST_AND_FOUND`, `DAMAGE`). | Se faltar, a etapa afetada para e relata; não reimplementar a base de sync. | E04, E06, E08 |
-| H3 | Conferida em parte em 2026-11-06: a `RoomsApi` tem `markClean`, `markInspected`, `rejectInspection`, `markDirty`, `setServiceFlag` e OOO. O registro de discrepância (RF-UH-08) só existe por endpoint. | E04 acrescenta a discrepância à API pública de `rooms` (dependência permitida). | E04, E05, E07, E11 |
-| H4 | Conferida em 2026-11-06, **caiu**: a `ReservationsApi` tem `releaseUnused`, `blocksDueForRelease` e `cancelReservation`, mas não tem no-show nem consultas por data, que só existem nos endpoints. | E11 acrescenta a transição e as consultas à API pública de `reservations`; E02 reutiliza as consultas. | E02, E11 |
-| H5 | Conferida em 2026-11-06: `NewPosting.sourceReference` dá a idempotência, com a chave do fechamento definida na `BillingApi.post`. Não há bloqueio de data fechada: `post` grava na data corrente. | E11 prova RF-FEC-05 e acrescenta o bloqueio só se a prova falhar. | E06, E11 |
-| H6 | Os PDFs do fechamento são guardados em `files` (S3/MinIO) pelo próprio `reporting`, com um índice por data no schema `reporting`; o download é por URL assinada. A aresta `reporting` → `files` já consta na tabela §3.1; `endofday` não acessa `files`. | Mudar de dono pede aresta nova na §3.1. | E09 |
+| H1 | **Confirmada no código em 2026-11-12:** pacote base `com.zeny.hotel`; `housekeeping/`, `maintenance/`, `endofday/` e `reporting/` não existem. | — | todas |
+| H2 | Conferida no código em 2026-11-06 e de novo em 2026-11-12: `OfflineCommandHandler` (`shared/OfflineSync.kt`), o feed `GET /api/v1/sync/changes` e a execução de checklist (`ChecklistsApi.startExecution` e `completeExecution`) existem, e `ChecklistCompleted` carrega as ocorrências configuradas (`MAINTENANCE`, `LOST_AND_FOUND`, `DAMAGE`). | Se faltar, a etapa afetada para e relata; não reimplementar a base de sync. | E04, E06, E08 |
+| H3 | Conferida em parte em 2026-11-06 e de novo em 2026-11-12: a `RoomsApi` tem `markClean`, `markInspected`, `rejectInspection`, `markDirty`, `setServiceFlag`, `openOutOfOrder`/`releaseOutOfOrder` (sem conferir permissão) e `RoomStatusSource` com `TASK` e `END_OF_DAY`. O registro de discrepância (RF-UH-08) só existe por endpoint. | E04 acrescenta a discrepância à API pública de `rooms` (dependência permitida). | E04, E05, E07, E11 |
+| H4 | Conferida em 2026-11-06, **caiu**, e de novo em 2026-11-12 (o M5 acrescentou só as transições de hospedagem): a `ReservationsApi` tem `releaseUnused`, `blocksDueForRelease` e `cancelReservation`, mas não tem no-show nem consultas por data, que só existem nos endpoints. | E11 acrescenta a transição e as consultas à API pública de `reservations`; E02 reutiliza as consultas. | E02, E11 |
+| H5 | Conferida em 2026-11-06 e de novo em 2026-11-12: `NewPosting.sourceReference` dá a idempotência, com a chave do fechamento definida no KDoc da `BillingApi.post` (`reservations.reservation:<id>:<data>:room` ou `…:package:<packageId>`, pacotes inclusos à parte e sem taxa de serviço, como o check-out da M5 E04). Não há bloqueio de data fechada: `post` grava na data corrente. | E11 prova RF-FEC-05 e acrescenta o bloqueio só se a prova falhar. | E06, E11 |
+| H6 | Os PDFs do fechamento são guardados em `files` (S3/MinIO) pelo próprio `reporting`, com um índice por data no schema `reporting`; o download é por URL assinada. A aresta `reporting` → `files` já consta na tabela §3.1; `endofday` não acessa `files`. **Conferido em 2026-11-12:** a `FilesApi` não grava conteúdo pelo servidor (só `find`, `attach`, `detach`, `delete` e `readContent`, este só de anexo comum; M5 H18 e D-E11-7); a E09 acrescenta a gravação pelo servidor como acréscimo mínimo ao `files`, com finalidade própria do `reporting` e decidindo se o PDF com nome de hóspede é anexo sensível. | Mudar de dono pede aresta nova na §3.1. Guardar os PDFs no schema do `reporting` (como o `printing` guarda os jobs) é a alternativa se a gravação na `FilesApi` se mostrar cara. | E09 |
 | H7 | Exportação XLSX com biblioteca leve (ex.: fastexcel ou Apache POI) declarada no *version catalog*; os PDFs são renderizados por `printing` (M5): `reporting` monta os dados e chama `printing`, como todo módulo dono de documento. | Troca local ao `reporting`. | E09 |
 | H8 | Avisos de pendência do fechamento (RF-NOT-01) são enviados por `endofday` chamando `notifications` (push e painel) para quem tem permissão de acompanhar o fechamento, além do andamento no SSE e do endpoint de pendências. | Ajuste de destinatários é configuração. | E10 |
 | H9 | Q-14 (turndown) e Q-15 (cortesia e uso da casa) seguem os padrões da SPEC §10: turndown como tipo de limpeza desativado; cortesia conta na ocupação e não no ADR, uso da casa não conta em nenhum dos dois. | Ajuste de configuração e do cálculo de `DailyStatistics`. | E01, E09 |
+| H10 | **Decidida pela opção recomendada pelo `arquiteto`, 2026-11-12 (sincronização):** o fechamento age sobre o hotel inteiro (no-show, diárias, UHs Sujas) e avança a data operacional, e no banco compartilhado dos testes isso lançaria diárias e no-shows nas reservas de outros testes e mudaria a data de todos. Por isso, os testes que rodam o fechamento com as etapas reais (E11, E13, E14 e o gate) usam um **caminho próprio**: um banco ou contexto de teste isolado só para eles, criado na E10 junto do apoio de testes do fechamento. Os demais testes continuam sem avançar a data (como o `MilestoneM5EndToEndTest`). O mecanismo exato fica com o plano da E10. | Sem o isolamento, os testes do fechamento ficam intermitentes e quebram testes de outros módulos. Alternativa descartada: rodar o fechamento no banco compartilhado só sobre as reservas do próprio teste, que exigiria um filtro de teste no código de produção. | E10, E11, E13, E14, E12 |
+| H11 | **Confirmada no código em 2026-11-12:** o `fnrh` guarda os domínios da FNRH com rótulo (`FnrhDomainValue(code, label)`, `FnrhDomainCatalog.values`), semeados por migração desde o primeiro dia (`fnrh/V2026_11_04_1030__create_fnrh_domain_values.sql`, inclusive `TRAVEL_REASONS` e `TRANSPORT_MODES`) e trocados pelo `refresh`. A ficha (`frontdesk/application/RegistrationCardService.kt` e `templates/frontdesk/registration-card.*`) mostra os códigos crus com "(código FNRH)". | Se o catálogo não tiver o código, a ficha mostra o código cru, como hoje. | E15 |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
 
@@ -82,6 +96,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis.
 - [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
+- [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -164,6 +179,14 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E11 | Etapas financeiras e operacionais do fechamento | #pendente | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
 | E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
+**Manutenção herdada do M5**
+
+| ID | Etapa | Estado | Dependências | Entrega principal |
+|---|---|---|---|---|
+| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #pendente | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
+| E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
+| E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
+
 **Governança**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
@@ -193,7 +216,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -235,7 +258,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** sim
 
-**Notas para o plano:** H8; SPEC §5.13, RN-21 e §8.2.9 e ARCHITECTURE §13; etapas falsas nos testes (as de negócio são da E11). O tipo `notifications.end-of-day-pending` já existe no catálogo do `notifications` e é obrigatório no painel (nota `ZenyHotelManager - Módulo notifications`). Convenções de jobs (nota `ZenyHotelManager - Eventos e jobs`): método com `@SchedulerLock` não devolve tipo primitivo; o ShedLock trava pela hora do banco. Nos testes (nota `ZenyHotelManager - Testes de integração`), os jobs ficam adiados no `@IntegrationTest` e são chamados direto, o relógio avança pelo `MutableClockConfiguration` (devolvido no fim, porque o contexto é compartilhado) e a JVM roda em `America/Sao_Paulo`. Armadilhas do formato antigo: duas execuções simultâneas para a mesma data; retomada que reexecuta etapa concluída; gatilho calculado em UTC; fechamento manual sem step-up; testar a retomada depois de uma "queda" simulada.
+**Notas para o plano:** H8; SPEC §5.13, RN-21 e §8.2.9 e ARCHITECTURE §13; etapas falsas nos testes (as de negócio são da E11). O tipo `notifications.end-of-day-pending` já existe no catálogo do `notifications` e é obrigatório no painel (nota `ZenyHotelManager - Módulo notifications`). Convenções de jobs (nota `ZenyHotelManager - Eventos e jobs`): método com `@SchedulerLock` não devolve tipo primitivo; o ShedLock trava pela hora do banco. Nos testes (nota `ZenyHotelManager - Testes de integração`), os jobs ficam adiados no `@IntegrationTest` e são chamados direto, o relógio avança pelo `MutableClockConfiguration` (devolvido no fim, porque o contexto é compartilhado) e a JVM roda em `America/Sao_Paulo`. Armadilhas do formato antigo: duas execuções simultâneas para a mesma data; retomada que reexecuta etapa concluída; gatilho calculado em UTC; fechamento manual sem step-up; testar a retomada depois de uma "queda" simulada. **Caminho próprio para mudar a data (H10, handoff da M5 E12):** esta etapa cria o apoio de testes do fechamento, um banco ou contexto isolado onde a execução avança a data e age sobre todas as reservas sem afetar os demais testes. E11, E13, E14 e o gate o reutilizam. Com etapas falsas, a E10 ainda pode rodar no banco compartilhado se nenhuma etapa avança a data.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -292,7 +315,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** sim
 
-**Notas para o plano:** H4 e H5; RF-FEC-02, RF-FEC-05, RN-09, RN-15, RN-16 e RN-23; ler o handoff de E10 e os de M5 E04 e E05. A chave da diária já está definida no comentário de `BillingApi.post`: `reservations.reservation:<id>:<data>:room` ou `…:package:<packageId>`. `post` não recebe data: grava na data operacional corrente, então RF-FEC-05 pode estar coberto por construção, mas a etapa precisa provar a corrida com o avanço. Pendências que marcos anteriores deixaram endereçadas a este fechamento, registradas nas notas do brain (conferir na sincronização): só o fechamento chama `ReservationsApi.releaseUnused` para os ids de `blocksDueForRelease()` (M4 E11); a reserva `NO_SHOW` precisa soltar a UH alocada no mesmo commit (gatilho adiado `reservation_assignment_released`, M4 E10); a multa usa o código `NO_SHOW_FEE` (M4 E08); as hospedadas com a saída passada nunca têm check-out automático (RF-FEC-02); o `ProvisionalExpiryJob` já expira pré-reservas a cada 5 min (M4 E09), e a etapa do fechamento convive com ele; turnos de caixa esquecidos abertos ficam para o fechamento listar (M3 E07); `RoomsApi.markDirty(END_OF_DAY)` é a mudança prevista para as ocupadas (M2 E02); `BillingApi.cardPreAuthorizationsExpiring` serve à renovação do M7; a tarifa de grupo não aplica os pacotes do plano (M4 E11: decidir aqui se o bloqueio leva pacotes no lançamento diário). Notas `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)` e `ZenyHotelManager - Módulos hotel e staff` (`HotelApi.advanceBusinessDate(expectedCurrent)` é o único caminho de avanço). Nos testes, as datas partem da `HotelApi.currentBusinessDate()`, porque outros testes avançam a data no banco compartilhado. Armadilhas do formato antigo: diária lançada duas vezes após retomada; lançamento aceito em data fechada; multa pela política atual em vez da copiada na reserva; data avançada antes das etapas anteriores concluírem.
+**Notas para o plano:** H4 e H5; RF-FEC-02, RF-FEC-05, RN-09, RN-15, RN-16 e RN-23; ler o handoff de E10 e os de M5 E04 e E05. A chave da diária já está definida no comentário de `BillingApi.post`: `reservations.reservation:<id>:<data>:room` ou `…:package:<packageId>`. `post` não recebe data: grava na data operacional corrente, então RF-FEC-05 pode estar coberto por construção, mas a etapa precisa provar a corrida com o avanço. Pendências que marcos anteriores deixaram endereçadas a este fechamento, registradas nas notas do brain (conferir na sincronização): só o fechamento chama `ReservationsApi.releaseUnused` para os ids de `blocksDueForRelease()` (M4 E11); a reserva `NO_SHOW` precisa soltar a UH alocada no mesmo commit (gatilho adiado `reservation_assignment_released`, M4 E10); a multa usa o código `NO_SHOW_FEE` (M4 E08); as hospedadas com a saída passada nunca têm check-out automático (RF-FEC-02); o `ProvisionalExpiryJob` já expira pré-reservas a cada 5 min (M4 E09), e a etapa do fechamento convive com ele; turnos de caixa esquecidos abertos ficam para o fechamento listar (M3 E07); `RoomsApi.markDirty(END_OF_DAY)` é a mudança prevista para as ocupadas (M2 E02); `BillingApi.cardPreAuthorizationsExpiring` serve à renovação do M7; a tarifa de grupo não aplica os pacotes do plano (M4 E11: decidir aqui se o bloqueio leva pacotes no lançamento diário). Notas `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)`, `ZenyHotelManager - Módulo billing (contas, roteamento e taxa de serviço)` e `ZenyHotelManager - Módulos hotel e staff` (`HotelApi.advanceBusinessDate(expectedCurrent)` é o único caminho de avanço). Nos testes, as datas partem da `HotelApi.currentBusinessDate()`, porque outros testes avançam a data no banco compartilhado; o fechamento com as etapas reais roda no caminho próprio criado na E10 (H10), nunca no banco compartilhado. O check-out da M5 E04 já lança a diária e os pacotes do day use e do check-out no mesmo dia com a mesma chave: o teste "check-out e fechamento na mesma data" usa os dois caminhos reais. Armadilhas do formato antigo: diária lançada duas vezes após retomada; lançamento aceito em data fechada; multa pela política atual em vez da copiada na reserva; data avançada antes das etapas anteriores concluírem.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -340,13 +363,166 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** leia o handoff da M5 E07 ("Notas para a E09") e o da M5 E08. Se a M5 E09 já tiver sido feita, o no-show entra no roteiro de homologação dela e a divergência se resolve lá.
+**Notas para o plano:** leia o handoff da M5 E07 ("Notas para a E09") e o da M5 E08. Se a M5 E09 já tiver sido feita, o no-show entra no roteiro de homologação dela e a divergência se resolve lá. Conferido em 2026-11-12: `FnrhOperation` (`fnrh/domain/FnrhSubmission.kt`) tem `rank` por operação para a ordem causal, e a coluna é conferida por `submission_operation_ck` (`fnrh/V2026_11_10_1000__create_fnrh_submissions.sql`). A operação nova pede migração no schema `fnrh` e, se a `fnrh.report_submissions` expõe a operação, a nota do contrato da view. No contrato, a operação é `x-extensible-enum`, então acrescentá-la não quebra. O teste do no-show roda no caminho próprio do fechamento (H10) e conta só as submissões da própria reserva no WireMock compartilhado (`FnrhTestServer`).
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
 - Divergência no PDF sobre o caminho: sem credencial não há como confirmar; registrar a escolha e cobrá-la na homologação.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #pendente
+
+**Objetivo:** a ficha de registro passa a mostrar o motivo de viagem e o meio de transporte de cada hóspede pelo rótulo legível dos domínios da FNRH, no lugar do código cru, e a permissão `frontdesk.stays.checkin` passa a dizer que também abre a ficha. Atende às decisões que o usuário tomou em 2026-11-12, ao revisar a M5 E11 (decisões (f) e (g) do lote E11 de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`; D-E11-10 e D-E11-11).
+
+**Por que agora:** são pendências da revisão da M5 E11 que o usuário mandou resolver antes da operação real. A ficha vai para o hóspede, e "CONGRESSO_FEIRA (código FNRH)" se lê pior que "Congresso/Feira".
+
+**Dependências:** nenhuma dentro deste roadmap (exige o gate do M5, `#concluida`). Independente das demais etapas; se rodar em branch separada, o conflito esperado fica no `ModularityTest` e na tabela da ARCHITECTURE §3.1.
+
+**Escopo:**
+
+- `frontdesk`: uma porta pública na raiz do módulo, que traduz o código de motivo de viagem e o de meio de transporte no rótulo. A ficha (PDF e ESC/POS) usa a porta; código fora do catálogo sai cru, com "(código FNRH)", como hoje.
+- `fnrh`: implementa a porta lendo o catálogo de domínios (H11), só leitura, sem chamar o Serpro e sem trilha. É a **inversão por porta** decidida pelo usuário: o `frontdesk` continua sem importar o `fnrh`.
+- Aresta `fnrh` → `frontdesk`, só pela porta: segue a regra por camadas (a "Integração governamental" fica acima da Hospedagem, ARCHITECTURE §3.2). Entra na tabela §3.1 e no teste do `fnrh` no `ModularityTest`, cujo comentário "nunca frontdesk" passa a "do `frontdesk`, só a porta dos rótulos".
+- A descrição de `frontdesk.stays.checkin` passa a citar a ficha de registro (PDF e impressão). A sincronização do catálogo no boot (`PermissionCatalogSynchronizer`) leva a descrição nova ao banco; o código da permissão, os modelos de role e as concessões não mudam.
+- `README.md`: a seção "Documentos impressos" deixa de dizer que a ficha mostra "os códigos FNRH como guardados".
+
+**Fora de escopo:** rótulos nas respostas JSON da hospedagem (seguem com os códigos; o cliente lê os domínios em `GET /api/v1/fnrh/domains/{domain}`); uma permissão nova para a ficha (a D-E11-10 a manteve sob `frontdesk.stays.checkin`); mudar como a reserva guarda os códigos (M5 H10).
+
+**Critérios de aceite:**
+
+- [ ] O PDF e o ESC/POS da ficha de um hóspede com códigos do catálogo semeado mostram o rótulo do motivo de viagem e o do meio de transporte, sem "(código FNRH)" (o teste extrai o texto).
+- [ ] Um código fora do catálogo sai cru, com "(código FNRH)", e a ficha é gerada sem erro (teste).
+- [ ] Um rótulo trocado no catálogo (como faz o `refresh` dos domínios) aparece na ficha seguinte (teste).
+- [ ] `ModularityTest`: o `fnrh` depende exatamente de `shared`, `guests`, `reservations`, `notifications` e `frontdesk`, e do `frontdesk` usa só a porta; o `frontdesk` continua sem depender do `fnrh`; a tabela da ARCHITECTURE §3.1 lista a aresta nova.
+- [ ] `GET /api/v1/permissions` devolve a descrição nova de `frontdesk.stays.checkin`, com código, modelos de role e concessões iguais aos de antes (teste).
+- [ ] A ficha continua sem dado de RN-19 e sem número inteiro de documento (os testes da M5 E11 passam sem mudança de asserção).
+- [ ] `api/openapi.yaml` não muda, e o `README.md` descreve a ficha com os rótulos.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso (inclui `ModularityTest` e `checkOpenApi`).
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H11; a ficha está em `frontdesk/application/RegistrationCardService.kt` e nos templates `templates/frontdesk/registration-card.xhtml` e `.txt`; o catálogo, em `fnrh/domain/FnrhDomainCatalog.kt` (`TRAVEL_REASONS` e `TRANSPORT_MODES`). A porta precisa de uma única implementação no contexto: os testes do `frontdesk` usam a do `fnrh`, sem dublê de produção. A descrição nova muda a linha do catálogo, e a sincronização troca a versão das autorizações (triggers do `iam`): confirme no teste que isso não derruba sessões nem muda concessões. Os testes que mexem no catálogo de domínios devolvem o original no fim (o banco é compartilhado). Leia o handoff da M5 E11 e as decisões do lote E11.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Rótulo com caractere fora do IBM850 no ESC/POS: a limpeza de texto do `printing` (D-E11-4) já troca por `?`; confira um rótulo acentuado nos dois formatos.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E16 — Dívidas de teste herdadas do M5 — #pendente
+
+**Objetivo:** pagar as duas dívidas de teste que o gate do M5 passou ao M6: o teste de índices das listas por situação, que ficou mais fraco na M5 E01 (pendência Média), e a extensão de compatibilidade `FnrhSubmissionDismissCompat.kt`, duplicada em dois pacotes de teste desde a M5 E08.
+
+**Por que agora:** o handoff da M5 E12 as passou ao M6. O fechamento (E11) vai acrescentar consultas por data à `ReservationsApi`, e o teste de índices precisa voltar a guardar os índices parciais antes disso.
+
+**Dependências:** nenhuma dentro deste roadmap (exige o gate do M5). Independente das demais.
+
+**Escopo:** só código de teste:
+
+- `ReservationSearchApiTest` ("every search filter and every list is served by an index…"): nas listas por situação (hospedados e no-shows previstos) e na busca só por situação, exigir um percurso de índice com condição útil sobre `reservation r` (`Index Cond`, ou só os índices com condição útil), como sugeriu a revisão da M5 E01, mantendo o `ANALYZE` que tirou a intermitência.
+- Apagar as duas cópias de `FnrhSubmissionDismissCompat.kt` (`src/test/kotlin/com/zeny/hotel/fnrh/` e `…/fnrh/domain/`), com os testes que as chamam passando a usar `FnrhSubmission.dismiss()` de produção.
+
+**Fora de escopo:** mudar índice, consulta ou código de produção. Se o teste endurecido mostrar uma lista sem índice útil, a etapa para e relata (é defeito de produção da M5 E01, a tratar numa etapa própria).
+
+**Critérios de aceite:**
+
+- [ ] O teste de índices falha quando a lista de hospedados ou a de no-shows previstos é servida por um percurso sem `Index Cond` sobre `reservation r` (provado por mutação temporária, depois desfeita) e passa com os índices atuais.
+- [ ] O teste passa em três rodadas seguidas de `./gradlew test --tests '…ReservationSearchApiTest'` (sem voltar a intermitência).
+- [ ] Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test`, e nenhum teste chama `dismiss` com instante.
+- [ ] Nenhum arquivo de `src/main` muda.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** handoff da M5 E01 (o item "Médio (para o gate E12 ou o M6)" e o item 1 da correção da intermitência) e decisão E05 (f) do M5 (o filtro "period" aceita dois índices, e isso fica como está). O banco é compartilhado e outros testes avançam a data: o teste de índices precisa continuar estável com hospedadas reais de outros testes.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- O planejador do PostgreSQL pode preferir outro índice útil: aceite qualquer índice com condição útil na situação, não um nome fixo.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E17 — Corpo mínimo nas escritas de restrição e mesclagem do `guests` — #pendente
+
+**Objetivo:** fechar a lacuna do M3 apontada na M5 E15 (decisão (h), decidida pelo usuário em 2026-11-11): as respostas de `POST /api/v1/guests/{id}/restrict`, `POST …/lift-restriction` e `POST …/merge` só trazem o perfil inteiro (com a descrição de gênero e as restrições alimentares) a quem também tem `guests.profiles.read`; sem essa permissão, devolvem um corpo mínimo.
+
+**Por que agora:** o usuário decidiu a correção e pediu a etapa ao `arquiteto` (o que entrou nesta sincronização). Com os modelos de role padrão não há exposição, mas uma role customizada com `guests.restrictions.manage` ou `guests.profiles.merge` sem `guests.profiles.read` lê dado pessoal que não deveria.
+
+**Dependências:** nenhuma dentro deste roadmap (exige o gate do M5). Independente das demais.
+
+**Escopo:** `guests`:
+
+- Nas três rotas, a escrita continua exigindo só a própria permissão; o corpo da resposta passa a depender de `guests.profiles.read`: com ela, o perfil inteiro, como hoje; sem ela, um corpo mínimo, sem nome, documento, contato, dado sensível nem restrição alimentar (o que entra no mínimo é decisão do plano).
+- Contrato regenerado (`./gradlew updateOpenApi`), descrevendo os dois corpos, sem mudança `ERR` no oasdiff. Isso pode exigir manter o esquema atual e acrescentar o mínimo como alternativa, em vez de tornar opcionais as propriedades obrigatórias de hoje.
+- `README.md` e KDoc das três rotas.
+
+**Fora de escopo:** outras rotas do `guests`; mudar as permissões ou os modelos de role.
+
+**Critérios de aceite:**
+
+- [ ] Com `guests.restrictions.manage` e sem `guests.profiles.read`, `restrict` e `lift-restriction` gravam a mudança e devolvem o corpo mínimo, sem nome, documento, contato, descrição de gênero nem restrição alimentar (teste com role customizada).
+- [ ] Com `guests.profiles.merge` e sem `guests.profiles.read`, `merge` mescla e devolve o corpo mínimo (teste).
+- [ ] Com as duas permissões, as três rotas devolvem o perfil inteiro, como antes (os testes atuais passam).
+- [ ] A trilha das três escritas não muda.
+- [ ] `.github/scripts/check-api-breaking.sh` sem mudança `ERR` em `/api/v1`, e o contrato descreve os dois corpos.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** sim
+
+**Notas para o plano:** decisão E15 (h) do lote E15 e handoff da M5 E15 (`docs/roadmaps/roadmap-m5-recepcao-fnrh.md`); a nota `ZenyHotelManager - Módulo guests` e a captura pendente da E15 (o contrato e o KDoc já foram corrigidos para não prometer o contrário). As rotas estão em `guests/web/GuestsController.kt`. A conferência de permissão do corpo fica no caso de uso ou no controller, sem `iam`: use `Authorization` do kernel. Revisão humana porque muda a forma de uma resposta pública que os clientes consomem.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Cliente que lê o perfil da resposta sem ter `guests.profiles.read`: hoje só uma role customizada chega aí; registre a mudança na seção "API" do `README.md` e na captura do brain.
+
+**Rollback / migração:** sem migração. A mudança é só de resposta, e reverter é voltar ao corpo inteiro.
 
 **Evidências e handoff:**
 
@@ -441,7 +617,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** SPEC RF-GOV-02; H4. Os eventos `GuestCheckedOut` e `RoomMoved` (M5 E01) ainda não têm consumidor de produção no `housekeeping`: este é o primeiro (nota `ZenyHotelManager - Hospedagem e recepção`); o listener de `BusinessDateAdvanced` convive com o das rotinas de checklist (o outbox entrega a cada um). Testes de módulo com o `Scenario` do Spring Modulith; testar as duas ordens de chegada dos eventos (check-out antes e depois do avanço da data). Armadilhas do formato antigo: permanência nunca para UH vaga; nenhum dado pessoal do hóspede copiado para a tarefa.
+**Notas para o plano:** SPEC RF-GOV-02; H4. Os eventos `GuestCheckedOut` e `RoomMoved` (M5 E01) ainda não têm consumidor de produção no `housekeeping`: este é o primeiro (nota `ZenyHotelManager - Hospedagem e recepção`); o listener de `BusinessDateAdvanced` convive com o das rotinas de checklist (o outbox entrega a cada um). Testes de módulo com o `Scenario` do Spring Modulith; testar as duas ordens de chegada dos eventos (check-out antes e depois do avanço da data). O KDoc de `GuestCheckedIn` e `GuestCheckInUndone` (`reservations/ReservationsEvents.kt`) também diz "escutado pela governança (M6)": o plano decide se a governança precisa deles (o desfazer devolve a UH Vaga sem sujar) e, se não precisar, corrige o KDoc. Armadilhas do formato antigo: permanência nunca para UH vaga; nenhum dado pessoal do hóspede copiado para a tarefa.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -808,7 +984,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** H6, H7 e H9; ARCHITECTURE §11 ("Leitura para relatórios") e a convenção das views na nota `ZenyHotelManager - Schemas, migrações e views de relatório` (nome, contrato no comentário da migração, `GRANT SELECT`/`REVOKE` por view, coluna publicada que não muda de sentido). As views publicadas no M2 a M4 foram feitas para o `reporting` deste marco ler (ver a mesma nota); prova de "só as views" num teste que roda as consultas com um papel que só tem `SELECT` nas views (padrão do `ChecklistReportsTest`). Período em datas convertido no fuso do hotel. H7: a biblioteca XLSX entra no catálogo `gradle/libs.versions.toml`, sem versão literal no build. O formato antigo pedia `ModularityTest` mais uma regra ArchUnit para "`reporting` não referencia classes de outros módulos". Armadilhas do formato antigo: snapshot recalculado gerando duplicata; regra de cortesia e uso da casa diferente de Q-15; dados pessoais em relatório operacional.
+**Notas para o plano:** H6, H7 e H9; ARCHITECTURE §11 ("Leitura para relatórios") e a convenção das views na nota `ZenyHotelManager - Schemas, migrações e views de relatório` (nome, contrato no comentário da migração, `GRANT SELECT`/`REVOKE` por view, coluna publicada que não muda de sentido). As views publicadas no M2 a M4 foram feitas para o `reporting` deste marco ler (ver a mesma nota); prova de "só as views" num teste que roda as consultas com um papel que só tem `SELECT` nas views (padrão do `ChecklistReportsTest`). Período em datas convertido no fuso do hotel. H7: a biblioteca XLSX entra no catálogo `gradle/libs.versions.toml`, sem versão literal no build, com os lockfiles regravados e o scanner sem High/Critical novo. H6: a `FilesApi` não grava conteúdo pelo servidor; a gravação é acréscimo desta etapa. Os PDFs seguem o modelo dono + `printing` da M5 E11 (`ModuleDocumentTemplates`, templates em `templates/reporting/`). O formato antigo pedia `ModularityTest` mais uma regra ArchUnit para "`reporting` não referencia classes de outros módulos". Armadilhas do formato antigo: snapshot recalculado gerando duplicata; regra de cortesia e uso da casa diferente de Q-15; dados pessoais em relatório operacional.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -878,7 +1054,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** marca o fim da Fase 1 da SPEC ("o hotel opera a hospedagem") e é o critério de entrada do M7.
 
-**Dependências:** E06, E13, E14 (cobrem transitivamente todas as demais; sem paralelismo).
+**Dependências:** E06, E13, E14, E15, E16, E17 (cobrem transitivamente todas as demais; sem paralelismo).
 
 **Escopo:**
 
@@ -902,7 +1078,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** sim
 
-**Notas para o plano:** ler o handoff de todas as etapas do marco. Convenção dos gates anteriores (nota `ZenyHotelManager - Estado por marco`): o cenário do marco também vira teste de integração na raiz do pacote de testes (como `MilestoneM3EndToEndTest` e `MilestoneM4EndToEndTest`, com os modelos de role e o `MutableClock`), e o gate confere o ambiente ponta a ponta num `docker compose` isolado, pelo proxy, registrando o que só os testes provam. A nota herdada do M2 "Rotinas de checklist" (em "Hipóteses e decisões em aberto") pede conferir aqui que as rotinas passam a ser geradas quando o `endofday` avança a data. A captura de atualização do brain desta etapa leva o fim do M6 e da Fase 1 para `ZenyHotelManager - Estado por marco`. Armadilhas do formato antigo: item sem evidência; ponta a ponta com mocks entre módulos; pendências herdadas omitidas.
+**Notas para o plano:** ler o handoff de todas as etapas do marco. Convenção dos gates anteriores (nota `ZenyHotelManager - Estado por marco`): o cenário do marco também vira teste de integração na raiz do pacote de testes (como `MilestoneM3EndToEndTest` e `MilestoneM4EndToEndTest`, com os modelos de role e o `MutableClock`), e o gate confere o ambiente ponta a ponta num `docker compose` isolado, pelo proxy, registrando o que só os testes provam. A nota herdada do M2 "Rotinas de checklist" (em "Hipóteses e decisões em aberto") pede conferir aqui que as rotinas passam a ser geradas quando o `endofday` avança a data. A captura de atualização do brain desta etapa leva o fim do M6 e da Fase 1 para `ZenyHotelManager - Estado por marco`. **Do gate do M5 (handoff da M5 E12):** reaproveite `docker/gate/` (`run-gate.sh`, `gate-env.sh`, `compose.gate.yaml`, o WireMock da FNRH e o `check`/`redact`/varredura do `m5-roteiro.sh`, num roteiro novo do M6) e o padrão do `MilestoneM5EndToEndTest` (operadores pelos modelos de role, só as submissões da própria reserva, relógio devolvido no `finally`). Como o cenário da Fase 1 precisa do fechamento, o teste do marco roda no caminho próprio da E10 (H10), e o roteiro do compose roda num banco novo (`down -v` antes e depois). Os Menores do gate do M5 (falha do `docker ps` em `leftovers`, descrição de gênero com escape não ASCII na varredura, `gate.env` sobrescrito no mesmo workdir, templating sem escape JSON no mock) podem ser corrigidos aqui, se o roteiro novo tocar neles. Armadilhas do formato antigo: item sem evidência; ponta a ponta com mocks entre módulos; pendências herdadas omitidas.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -930,3 +1106,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-27 — protocolo de execução migrado para as souls do Second Brain: a sessão roda como `orquestrador-etapa` (`claude --agent orquestrador-etapa`), e as tarefas passam por `desenvolvedor` → `testador` → verificação mecânica dos testes → `revisor-seguranca`; a captura do brain é publicada pelo `brain-escriba`. Sem fallback para os prompts padrão do superpowers nem para `executing-plans`. Nenhuma etapa, tag, evidência ou handoff mudou.
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
 - 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. O fechamento passou para o início do roadmap: E10 e E11 vêm antes da governança, porque gravam dinheiro imutável e fazem a data andar. A E11 passou a depender só da E10 e foi dividida: o snapshot e os PDFs foram para a nova E13, e o no-show na FNRH para a nova E14. O gate passou a depender de E06, E13 e E14. A E10 ganhou métricas e alerta (ARCHITECTURE §16). Hipóteses H2 a H6 conferidas no código: a H4 caiu, e a H6 e o contexto citavam a aresta `endofday` → `files`, que não existe; o nome da view da FNRH foi corrigido para `fnrh.report_submissions`. Nenhuma etapa renumerada; tags inalteradas. Depois da revisão do `revisor-arquitetura`: `BusinessDay` fica só em `hotel`, a entrega do alerta passa à M8 E18, a E14 cobra o no-show na homologação e a H2 foi fechada.
+- 2026-11-12 — sincronizado com o código depois do gate do M5 (`main` em `3a42e35`) pelo `arquiteto` (skill `development-roadmap`, modo atualização; regra 2 de `docs/roadmaps/README.md`). Pré-requisito marcado como atendido, com a E09 do M5 `#bloqueada` pela exceção M5 → M6. "Contexto confirmado" ganhou a base técnica herdada do M5 (módulos, última migração `V2026_11_11_1001`, `ReservationsApi` com as transições de hospedagem e sem no-show nem consultas por data, eventos de hospedagem, `HotelApi`, `RoomsApi`, `BillingApi` e `FolioOwnerDescriber`, APIs de plataforma, views `report_*`, `FnrhGateway` e `FnrhOperation`, apoio de testes e o gate em `docker/gate/`) e as pendências do M5 com a etapa de cada uma. Hipóteses: H1 confirmada; H2 a H5 reconfirmadas; H6 ganhou a falta da gravação de conteúdo na `FilesApi`, a acrescentar pela E09; H10 (testes do fechamento num caminho próprio, isolado do banco compartilhado) **decidida pela opção recomendada pelo `arquiteto`**, revisável pelo usuário; H11 (rótulos no catálogo da FNRH) confirmada. Etapas novas no bloco "Manutenção herdada do M5", depois do fechamento: **E15** (rótulos da FNRH na ficha por porta do `frontdesk` implementada pelo `fnrh` e descrição de `frontdesk.stays.checkin`; decisões do usuário (f) e (g) do lote E11 do M5), **E16** (dívidas de teste: teste de índices da M5 E01 e `FnrhSubmissionDismissCompat.kt` duplicado) e **E17** (corpo mínimo do `guests`, decisão E15 (h) do M5; incluída a pedido do usuário em 2026-11-12). Onde entram (decidido pelo `arquiteto`, pela opção recomendada): no M6 e não no M5, cujo gate está concluído e não reabre; depois do fechamento, para não atrasar a E10 e a E11. A definição global de pronto ganhou o item da manutenção, e o gate passou a depender de E15, E16 e E17. Notas novas em E02 (KDoc dos eventos de hospedagem), E09 (H6 e o modelo dono + `printing`), E10 (H10), E11 (H10 e a chave comum com o check-out), E12 (`docker/gate/`, `MilestoneM5EndToEndTest` e os Menores do gate do M5) e E14 (`submission_operation_ck` e `rank`). Na mesma data, a ARCHITECTURE §3.2 passou a registrar a ordem interna da Hospedagem (`rates` < `reservations` < `frontdesk`). Nenhuma etapa renumerada nem removida; tags inalteradas.
