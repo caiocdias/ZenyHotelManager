@@ -1,0 +1,24 @@
+CONFIRMACAO DE RESERVA [[${document.code}]]
+Situacao: [[${document.status}]]
+[# th:if="${document.holder != null}"]Titular: [[${document.holder}]]
+[/][# th:if="${document.roomType != null}"]UH: [[${document.roomType}]]
+[/][# th:if="${document.ratePlan != null}"]Plano: [[${document.ratePlan}]]
+[/]Chegada [[${fmt.date(document.arrival)}]] Saida [[${fmt.date(document.departure)}]]
+[[${document.nights}]] noite(s), adultos [[${document.adults}]][# th:if="${document.childAges != ''}"], criancas [[${document.childAges}]][/]
+---
+[# th:each="night : ${document.nightlyRates}"][[${fmt.date(night.date)}]]  [[${fmt.money(night.amount)}]]
+[/]TOTAL: [[${fmt.money(document.total)}]]
+---
+Cancelamento [[${document.cancellation.name}]]: sem multa ate [[${document.cancellation.deadlineHours}]] horas antes da chegada;[# th:if="${document.cancellation.penaltyType == 'PERCENT_OF_STAY'}"] depois, multa de [[${fmt.percent(document.cancellation.penaltyPercent)}]] da estadia.[/][# th:if="${document.cancellation.penaltyType == 'NIGHTS'}"] depois, multa de [[${document.cancellation.penaltyNights}]] diaria(s).[/][# th:if="${document.cancellation.penaltyType == 'FIXED_AMOUNT'}"] depois, multa de [[${fmt.money(document.cancellation.penaltyAmount)}]].[/]
+Garantia [[${document.guarantee.name}]]:[# th:if="${document.guarantee.type == 'NONE'}"] sem garantia.[/][# th:if="${document.guarantee.type == 'CARD'}"] cartao de credito.[/][# th:if="${document.guarantee.type == 'DEPOSIT'}"] deposito de [[${fmt.percent(document.guarantee.depositPercent)}]] ate [[${document.guarantee.dueDaysBefore}]] dias antes da chegada.[/]
+---
+Check-in a partir das [[${fmt.time(document.checkInTime)}]]
+Check-out ate as [[${fmt.time(document.checkOutTime)}]]
+Janela de arrumacao [[${document.cleaningMinutes}]] minutos
+[# th:if="${document.earlyCheckIn == null}"]Early check-in nao oferecido
+[/][# th:if="${document.earlyCheckIn != null}"]Early check-in a partir das [[${fmt.time(document.earlyCheckIn.limitTime)}]]: [[${fmt.money(document.earlyCheckIn.fee)}]]
+[/][# th:if="${document.lateCheckOut == null}"]Late check-out nao oferecido
+[/][# th:if="${document.lateCheckOut != null}"]Late check-out ate as [[${fmt.time(document.lateCheckOut.limitTime)}]]: [[${fmt.money(document.lateCheckOut.fee)}]]
+[/][[${document.stayPolicyText}]]
+[# th:if="${document.additionalPolicyText != null}"][[${document.additionalPolicyText}]]
+[/]

@@ -338,6 +338,14 @@ object ReservationsErrorCodes {
      */
     val IN_HOUSE_PAST_NIGHT_FIXED = ErrorCode("IN_HOUSE_PAST_NIGHT_FIXED")
 
+    // --- Confirmação em PDF (M5 E11) ---------------------------------------------------------------------------------
+
+    /**
+     * 409: a reserva cancelada ou no-show não tem confirmação (só a pré-reserva, a confirmada, a hospedada e a
+     * encerrada têm). O problema traz a situação em `reservationStatus`.
+     */
+    val CONFIRMATION_UNAVAILABLE = ErrorCode("CONFIRMATION_UNAVAILABLE")
+
     // 422: a estadia não é vendável no canal da origem (`RatesApi.isSellable`). O `code` é o do primeiro motivo do
     // `rates` (`RATE_PLAN_INACTIVE`, `SALES_CHANNEL_NOT_ALLOWED`, `ROOM_TYPE_NOT_IN_PLAN`, `ROOM_TYPE_INACTIVE`,
     // `OCCUPANCY_EXCEEDS_ROOM_TYPE`, `ARRIVAL_BEFORE_BUSINESS_DATE`, `MIN_ADVANCE_NOT_MET`, `MAX_ADVANCE_EXCEEDED`,
