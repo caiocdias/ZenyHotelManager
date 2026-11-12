@@ -33,6 +33,30 @@ API=$BASE/api/v1
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 ROOT=$(cd "$script_dir/../.." && pwd -P)
+
+# Os argumentos antes de tocar em qualquer coisa: o projeto do usuário (zeny) nunca, e o env só o do gate-env.sh,
+# fora do projeto e de qualquer repositório git (a mesma regra do gate-env.sh: o docker/.env do usuário fica de fora).
+if ! [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || [ "$PROJECT" = zeny ]; then
+    echo "recusado: projeto inválido ou do usuário: $PROJECT (use o -p do gate, ex.: zeny-gate)" >&2
+    exit 2
+fi
+env_real=$(realpath -m -- "$ENV_FILE")
+case "$env_real" in
+    "$ROOT"/*)
+        echo "recusado: o env do gate não pode ficar dentro do projeto ($ROOT)" >&2
+        exit 2
+        ;;
+esac
+guard_dir=$(dirname -- "$env_real")
+while :; do
+    if [ -e "$guard_dir/.git" ]; then
+        echo "recusado: o env do gate não pode ficar dentro de um repositório git ($guard_dir)" >&2
+        exit 2
+    fi
+    [ "$guard_dir" = / ] && break
+    guard_dir=$(dirname -- "$guard_dir")
+done
+
 DC=(docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$ROOT/docker/compose.yaml" -f "$ROOT/docker/gate/compose.gate.yaml")
 
 T=$(mktemp -d "${TMPDIR:-/tmp}/m5-roteiro.XXXXXX")
@@ -46,10 +70,16 @@ exec > >(tee -- "$OUT") 2>&1
 N=0
 F=0
 SECRETS=()
+SECRET_KINDS=()
 
-# Guarda um valor que nunca pode sair na tela (segredo ou dado de hóspede): o redact o troca por ***.
+# secret <valor> [tipo]: guarda um valor que nunca pode sair na tela (segredo ou dado de hóspede): o redact o troca
+# por ***, e a varredura da seção 13 o procura nos logs e na própria saída (e, achando, diz só o tipo).
 secret() {
-    [ -n "$1" ] && SECRETS+=("$1")
+    if [ -n "$1" ]; then
+        SECRETS+=("$1")
+        SECRET_KINDS+=("${2:-segredo}")
+    fi
+    return 0
 }
 
 redact() {
@@ -68,8 +98,12 @@ check() {
     else
         F=$((F + 1))
         printf 'FALHA  %s\n' "$1"
-        printf '       esperado: %s\n' "$(redact "${2:0:300}")"
-        printf '       obtido:   %s\n' "$(redact "${3:0:300}")"
+        # Redige antes de cortar: um segredo que atravessa o corte nunca sai pela metade.
+        local expected got
+        expected=$(redact "$2")
+        got=$(redact "$3")
+        printf '       esperado: %s\n' "${expected:0:300}"
+        printf '       obtido:   %s\n' "${got:0:300}"
     fi
 }
 
@@ -87,6 +121,17 @@ bool() {
 
 is_uuid() {
     [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+is_money() {
+    [[ $1 =~ ^[0-9]+\.[0-9]{2}$ ]]
+}
+
+# require_uuid <nome> <valor>: um id só entra no SQL do dono se for um UUID (senão nada roda e a conferência falha).
+require_uuid() {
+    is_uuid "$2" && return 0
+    printf 'id inválido para o SQL: %s\n' "$1" >&2
+    return 1
 }
 
 section() {
@@ -167,7 +212,10 @@ sql() {
         2>"$T/sql.err"
     rc=$?
     if [ -s "$T/sql.err" ]; then
-        printf 'psql (stderr redigido): %s\n' "$(redact "$(head -c 2000 "$T/sql.err")")" >&2
+        # Redige o stderr inteiro e só depois corta: o corte nunca deixa um pedaço de segredo.
+        local err
+        err=$(redact "$(<"$T/sql.err")")
+        printf 'psql (stderr redigido): %s\n' "${err:0:2000}" >&2
     fi
     : >"$T/sql.err"
     return "$rc"
@@ -179,6 +227,7 @@ mock() {
 
 # A situação da publicação do evento <tipo> da reserva no listener do fnrh (vazio se não há).
 fnrh_publication() {
+    require_uuid RES_ID "$RES_ID" || return 1
     sql <<SQL
 SELECT string_agg(status, ',' ORDER BY publication_date) FROM shared.event_publication
 WHERE event_type LIKE '%.$1' AND listener_id LIKE '%fnrh%FnrhSubmissionListeners%'
@@ -271,6 +320,9 @@ EARLY_FEE=85.00
 LATE_FEE=70.00
 LATE_LIMIT=18:00
 LAUNDRY=30.00
+# Os preços do plano (bulk-update da seção 3): a diária de 2 adultos é a âncora das noites da reserva da seção 4.
+ONE_ADULT=300.00
+TWO_ADULTS=400.00
 # Uma foto PNG 64×48 lisa (a comprovação do menor).
 PROOF_PNG='iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAQ0lEQVR42u3PQQkAAAgEsItjfwxhLCv4FQYrsEzXaxEQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQuFoFK7EeBoF7bgAAAABJRU5ErkJggg=='
 
@@ -525,9 +577,10 @@ s3_setup() {
     req POST /rate-plans gerente "$T/req.json"
     check_http "[3] plano tarifário" 201
     PLAN_ID=$(jb .id)
-    jq -n --arg t "$TYPE_ID" --arg f "$bd" --arg u "$(date -d "$bd +30 days" +%F)" \
+    jq -n --arg t "$TYPE_ID" --arg f "$bd" --arg u "$(date -d "$bd +30 days" +%F)" --arg one "$ONE_ADULT" \
+        --arg two "$TWO_ADULTS" \
         '{roomTypeIds: [$t], from: $f, to: $u, seasonId: null, weekdays: [],
-          prices: {oneAdult: "300.00", twoAdults: "400.00", extraAdult: "120.00", children: []}}' >"$T/req.json"
+          prices: {oneAdult: $one, twoAdults: $two, extraAdult: "120.00", children: []}}' >"$T/req.json"
     req POST "/rate-plans/$PLAN_ID/prices/bulk-update" gerente "$T/req.json"
     check_http "[3] preços de 31 dias" 200
 
@@ -596,24 +649,35 @@ s3_setup() {
     # O token não fica em nenhuma coluna do schema printing; só o SHA-256 dele, no agente.
     local token_hash found
     token_hash=$(printf '%s' "$agent_token" | openssl dgst -sha256 -r | cut -d' ' -f1)
-    found=$(sql <<SQL
+    found=$(agent_token_in_printing "$agent_token")
+    check "[3] psql: tabelas do schema printing examinadas" 3 "${found%% *}"
+    check "[3] psql: token zpa_ em nenhuma coluna do schema printing" 0 "${found#* }"
+    check "[3] psql: o agente guarda só o SHA-256 do token" 1 "$(agent_token_hash_count "$token_hash")"
+}
+
+# "<tabelas examinadas> <linhas com o token>" no schema printing. O token (base64url, conferido antes) vai no SQL pela
+# entrada padrão do psql, nunca num argumento.
+agent_token_in_printing() {
+    [[ $1 =~ ^zpa_[A-Za-z0-9_-]+$ ]] || { echo "token do agente fora do formato para o SQL" >&2; return 1; }
+    sql <<SQL
 WITH t AS (
     SELECT c.relname,
            (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM printing.%I r WHERE r::text LIKE %L',
-                   c.relname, '%' || \$tok\$$agent_token\$tok\$ || '%'), false, true, '')))[1]::text::int AS n
+                   c.relname, '%' || \$tok\$$1\$tok\$ || '%'), false, true, '')))[1]::text::int AS n
     FROM pg_class c JOIN pg_namespace s ON s.oid = c.relnamespace
     WHERE s.nspname = 'printing' AND c.relkind IN ('r', 'p')
 )
 SELECT count(*) || ' ' || coalesce(sum(n), 0) FROM t;
 SQL
-)
-    check "[3] psql: tabelas do schema printing examinadas" 3 "${found%% *}"
-    check "[3] psql: token zpa_ em nenhuma coluna do schema printing" 0 "${found#* }"
-    found=$(sql <<SQL
-SELECT count(*) FROM printing.print_agent WHERE id = '$AGENT_ID' AND token_hash = '$token_hash';
+}
+
+# Quantos agentes AGENT_ID guardam o SHA-256 <hash> (o id e o hash conferidos antes de entrar no SQL).
+agent_token_hash_count() {
+    require_uuid AGENT_ID "$AGENT_ID" || return 1
+    [[ $1 =~ ^[0-9a-f]{64}$ ]] || { echo "SHA-256 fora do formato para o SQL" >&2; return 1; }
+    sql <<SQL
+SELECT count(*) FROM printing.print_agent WHERE id = '$AGENT_ID' AND token_hash = '$1';
 SQL
-)
-    check "[3] psql: o agente guarda só o SHA-256 do token" 1 "$found"
 }
 
 s4_check_in() {
@@ -794,6 +858,9 @@ s7_stay() {
     local tag nights
     tag=$(hdr etag)
     nights=$(jbc '[.reservation.nightlyRates[] | {date, amount}]')
+    # Âncora das comparações de noites abaixo: as duas noites da reserva, cada uma com a diária de 2 adultos do plano.
+    check "[7] duas noites a $TWO_ADULTS antes da troca" "$TWO_ADULTS,$TWO_ADULTS" \
+        "$(jb '[.reservation.nightlyRates[].amount] | join(",")')"
     jq -n --arg r "$ROOM2" '{roomId: $r, reason: "GUEST_REQUEST", tariff: "KEEP"}' >"$T/req.json"
     req POST "/reservations/$RES_ID/room-moves" recepcao "$T/req.json" "If-Match: $tag"
     check_http "[7] troca para a UH 1202 com If-Match" 200
@@ -857,6 +924,7 @@ s8_check_out() {
     req GET "/folios/$FOLIO_ID/card-pre-authorizations" admin
     local hold late arrival_night total
     hold=$(jb '.items[0].id')
+    check "[8] caução com id" true "$(bool is_uuid "$hold")"
     check "[8] caução ativa antes do check-out" "1 ACTIVE" "$(jb '"\(.items | length) \(.items[0].status)"')"
     req GET "/reservations/$RES_ID/early-late-quote" recepcao
     check_http "[8] cotação do late" 200
@@ -865,6 +933,7 @@ s8_check_out() {
     check "[8] valor do late cotado" "$LATE_FEE" "$late"
     reservation
     arrival_night=$(jb '.reservation.nightlyRates[0].amount')
+    check "[8] noite da chegada com a diária do plano" "$TWO_ADULTS" "$arrival_night"
 
     jq -n --arg l "$late" '{lateCheckOutFee: $l}' >"$T/checkout.json"
     req POST "/reservations/$RES_ID/check-out" recepcao "$T/checkout.json"
@@ -872,6 +941,7 @@ s8_check_out() {
     check "[8] code FOLIO_BALANCE_NOT_ZERO" FOLIO_BALANCE_NOT_ZERO "$(problem_code)"
     check "[8] conta da reserva na recusa" "$FOLIO_ID" "$(jb '[.folios[].folioId] | join(",")')"
     total=$(jb .total)
+    check "[8] total da recusa é um valor" true "$(bool is_money "$total")"
     check "[8] total: noite da chegada + late" "$(money $(($(cents "$arrival_night") + $(cents "$late"))))" "$total"
     reservation
     check "[8] reserva segue em casa" IN_HOUSE "$(jb .reservation.status)"

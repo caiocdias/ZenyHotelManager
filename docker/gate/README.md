@@ -16,25 +16,38 @@ Ferramentas do gate de marco (a partir do M5 E12): sobem o ambiente completo do 
 | `compose.gate.yaml` | Override do `docker/compose.yaml`: a `api` com a imagem `zeny-hotel-manager:gate` e as duas URLs da FNRH (`zeny.fnrh.homologation-url` e `zeny.fnrh.production-url`, pelas variáveis `ZENY_FNRH_HOMOLOGATIONURL` e `ZENY_FNRH_PRODUCTIONURL`) apontadas para `http://fnrh-mock:8080/FNRH_API/rest/v2`: o compose do gate nunca chama o Serpro real, em nenhum ambiente; o serviço `fnrh-mock` (WireMock 3.13.2 fixado por digest, sem porta publicada, com `--global-response-templating`). |
 | `fnrh-mock/mappings/*.json` | Os stubs da API v2.4, com os mesmos contratos do `FnrhTestServer` dos testes (ver abaixo). |
 | `m5-roteiro.sh <base-url> <projeto> <env-file>` | O roteiro `curl` do gate do M5, pelo proxy (ver [Roteiro do M5](#roteiro-do-m5)). |
+| `run-gate.sh <workdir> <porta> [projeto]` | O ciclo completo: gera o env, sobe, espera o readiness, roda o roteiro e faz `down -v` por `trap`, também em falha (ver [Uso](#uso)). |
 
 ## Uso
 
 Na raiz do projeto (ou da cópia limpa), com um diretório de trabalho **fora** do repositório e uma porta livre:
 
 ```bash
-GATE_DIR=/caminho/fora/do/repositorio      # ex.: o scratchpad da sessão
+docker/gate/run-gate.sh /caminho/fora/do/repositorio 18112 zeny-gate   # ex.: o scratchpad da sessão
+```
+
+O `run-gate.sh`:
+
+1. recusa (saída 2) o projeto `zeny` (o do usuário), um nome de projeto inválido e um projeto que já tenha contêiner, volume ou rede (o roteiro precisa de um banco novo, e o `down -v` do fim nunca apaga o que ele não subiu);
+2. gera `<workdir>/gate.env` pelo `gate-env.sh` (que recusa um `<workdir>` dentro do projeto ou de um repositório git);
+3. arma o `trap … EXIT` (também em erro e em Ctrl+C) que faz `down -v --remove-orphans`, apaga o `gate.env` e conta as sobras do projeto (`sobras: contêineres 0, volumes 0, redes 0`);
+4. roda `config -q` e `up -d --build`, espera o readiness (até 300 s) e mostra os serviços;
+5. roda o `m5-roteiro.sh` (a saída fica em `<workdir>/m5-roteiro.out`) e conta os níveis do log da `api`;
+6. sai com o código do roteiro (`0` sem falhas, `1` com falhas) ou `1` se o ambiente não subiu.
+
+Passo a passo, à mão (o `down -v` fica com você, também em falha):
+
+```bash
+GATE_DIR=/caminho/fora/do/repositorio
 PORT=18112
 ENV_FILE=$(docker/gate/gate-env.sh "$GATE_DIR" "$PORT")
 DC=(docker compose -p zeny-gate --env-file "$ENV_FILE" -f docker/compose.yaml -f docker/gate/compose.gate.yaml)
+trap '"${DC[@]}" down -v --remove-orphans; rm -f -- "$ENV_FILE"' EXIT
 
 "${DC[@]}" config -q                       # confere a composição, sem imprimir valores
 "${DC[@]}" up -d --build
 curl -fsS "http://localhost:$PORT/actuator/health/readiness"   # {"status":"UP"}
-
 docker/gate/m5-roteiro.sh "http://localhost:$PORT" zeny-gate "$ENV_FILE"   # o roteiro, pelo proxy
-
-"${DC[@]}" down -v                         # sempre, também em falha (num script, por trap)
-rm -f "$ENV_FILE"
 ```
 
 Não use `"${DC[@]}" config` sem `-q`: ele imprime o env resolvido, com os segredos. O login inicial do admin é `admin`, com a senha `ZENY_ADMIN_PASSWORD` do `gate.env`; um roteiro a lê do arquivo para uma variável e nunca a imprime.
@@ -64,9 +77,9 @@ Nenhum dado real fica nos stubs. **Os logs e o diário do `fnrh-mock` contêm os
 
 ## Roteiro do M5
 
-`m5-roteiro.sh <base-url> <projeto> <env-file>` faz o cenário do marco pelo proxy do gate (`<base-url>`, ex.: `http://localhost:18112`), no ambiente **recém-subido** (`up -d --build` depois de um `down -v`, com o readiness `UP`): ele faz a troca obrigatória da senha do admin inicial, então não roda duas vezes no mesmo banco. Não sobe nem derruba nada; o `up` e o `down -v` (por `trap`, também em falha) ficam com quem o chama, como em [Uso](#uso). O `<projeto>` e o `<env-file>` são os mesmos do `up`: o roteiro lê a senha do admin do env (sem eco) e usa o `docker compose exec` para o `psql` do `db` (o dono dos schemas) e para o diário do `fnrh-mock` (de dentro da rede, pelo `wget` da `api`).
+`m5-roteiro.sh <base-url> <projeto> <env-file>` faz o cenário do marco pelo proxy do gate (`<base-url>`, ex.: `http://localhost:18112`), no ambiente **recém-subido** (`up -d --build` depois de um `down -v`, com o readiness `UP`): ele faz a troca obrigatória da senha do admin inicial, então não roda duas vezes no mesmo banco. Não sobe nem derruba nada; o `up` e o `down -v` (por `trap`, também em falha) ficam com quem o chama, normalmente o `run-gate.sh` (ver [Uso](#uso)). Antes de tudo, recusa (saída 2, sem chamar o `docker`) o projeto `zeny` ou um nome de projeto inválido e um `<env-file>` dentro do projeto ou de um repositório git (a mesma regra do `gate-env.sh`: o `docker/.env` do usuário nunca entra). Os ids que entram no SQL do `psql` (reserva, agente) são conferidos como UUID antes, e o token do agente pelo formato `zpa_` + base64url. O `<projeto>` e o `<env-file>` são os mesmos do `up`: o roteiro lê a senha do admin do env (sem eco) e usa o `docker compose exec` para o `psql` do `db` (o dono dos schemas) e para o diário do `fnrh-mock` (de dentro da rede, pelo `wget` da `api`).
 
-Ferramentas: `curl`, `jq`, `openssl` e o `psql` do contêiner, além do `bash` e do coreutils. Toda conferência passa por `check <rótulo> <esperado> <obtido>`, que imprime `OK` ou `FALHA` e o rótulo; na falha, o esperado e o obtido saem com os segredos e os dados de hóspede trocados por `***`. Senhas, PIN, tokens (dos usuários e do agente) e a credencial da FNRH ficam só em variáveis e em arquivos temporários (modo 600, apagados na saída), nunca em argumentos de processo nem na saída. Cada `POST` leva uma `Idempotency-Key` própria. A saída inteira vai também para `<dir do env>/m5-roteiro.out` (ou `M5_ROTEIRO_OUT`), para a varredura de vazamento. O fim é `N conferências, F falhas`, com saída 1 se houver falha.
+Ferramentas: `curl`, `jq`, `openssl` e o `psql` do contêiner, além do `bash` e do coreutils. Toda conferência passa por `check <rótulo> <esperado> <obtido>`, que imprime `OK` ou `FALHA` e o rótulo; na falha, o esperado e o obtido saem com os segredos e os dados de hóspede trocados por `***` (redigidos antes do corte em 300 caracteres; o stderr do `psql` também é redigido inteiro antes do corte em 2000). Senhas, PIN, tokens (dos usuários e do agente) e a credencial da FNRH ficam só em variáveis e em arquivos temporários (modo 600, apagados na saída), nunca em argumentos de processo nem na saída. Cada `POST` leva uma `Idempotency-Key` própria. A saída inteira vai também para `<dir do env>/m5-roteiro.out` (ou `M5_ROTEIRO_OUT`), para a varredura de vazamento. O fim é `N conferências, F falhas`, com saída 1 se houver falha.
 
 As operações da recepção são feitas pelos operadores dos modelos de role do boot (`recepcao`, Recepcionista; `gerente`, Gerente, com PIN); o que é só do Administrador (política de early/late, FNRH, CPF solicitante, agente e impressora) é feito pelo admin inicial. Seções (cada uma é uma função; o estado passa entre elas por variáveis globais e a lista fica em `SECTIONS`, no fim do arquivo):
 
