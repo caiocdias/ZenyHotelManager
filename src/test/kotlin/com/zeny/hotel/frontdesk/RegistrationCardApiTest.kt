@@ -103,9 +103,22 @@ class RegistrationCardApiTest(
         val format =
             java.time.format.DateTimeFormatter
                 .ofPattern("dd/MM/yyyy")
-        text shouldContain "Chegada ${today.format(format)}"
-        text shouldContain "Saída ${today.plusDays(2).format(format)}"
-        text shouldContain "Entrada em ${today.format(format)}"
+        val (arrival, departure) =
+            jdbc
+                .sql("SELECT arrival, departure FROM reservations.reservation WHERE id = :id")
+                .param("id", scenario.reservation)
+                .query { rs, _ -> rs.getObject(1, LocalDate::class.java) to rs.getObject(2, LocalDate::class.java) }
+                .single()
+        text shouldContain "Chegada ${arrival.format(format)}"
+        text shouldContain "Saída ${departure.format(format)}"
+        // A entrada é o instante real do check-in no fuso do hotel (a data operacional do banco compartilhado anda).
+        val checkedInAt =
+            jdbc
+                .sql("SELECT checked_in_at FROM reservations.reservation WHERE id = :id")
+                .param("id", scenario.reservation)
+                .query { rs, _ -> rs.getTimestamp(1).toInstant() }
+                .single()
+        text shouldContain "Entrada em ${checkedInAt.atZone(hotelApi.timezone()).format(format)}"
         text shouldContain "Adultos 2"
         text shouldContain "Crianças 0"
         text shouldContain "14/03/1988"
