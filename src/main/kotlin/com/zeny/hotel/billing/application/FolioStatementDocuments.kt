@@ -1,6 +1,7 @@
 package com.zeny.hotel.billing.application
 
 import com.zeny.hotel.billing.BillingPermissions
+import com.zeny.hotel.billing.CardPreAuthorizationStatus
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.FolioOwnerDescriber
 import com.zeny.hotel.billing.FolioOwnerType
@@ -130,7 +131,7 @@ class FolioStatementDocuments(
             "preAuthorizations" to
                 statement.preAuthorizations.map {
                     mapOf(
-                        "status" to it.status.name,
+                        "status" to preAuthorizationLabel(it.status),
                         "amount" to it.amount,
                         "capturedAmount" to it.capturedAmount,
                         "releasedAmount" to it.releasedAmount,
@@ -167,6 +168,15 @@ class FolioStatementDocuments(
                     )
                 },
         )
+
+    private fun preAuthorizationLabel(status: CardPreAuthorizationStatus): String =
+        when (status) {
+            CardPreAuthorizationStatus.ACTIVE -> "ativa"
+            CardPreAuthorizationStatus.PARTIALLY_CAPTURED -> "parcialmente capturada"
+            CardPreAuthorizationStatus.CAPTURED -> "capturada"
+            CardPreAuthorizationStatus.RELEASED -> "liberada"
+            CardPreAuthorizationStatus.EXPIRED -> "vencida"
+        }
 
     private fun ownerTypeLabel(type: FolioOwnerType): String =
         when (type) {

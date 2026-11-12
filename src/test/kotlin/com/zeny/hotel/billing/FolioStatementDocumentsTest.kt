@@ -167,6 +167,42 @@ class FolioStatementDocumentsTest(
     }
 
     @Test
+    fun `a released and an active pre-authorization show the pt-BR label, not the enum name`() {
+        val scenario = scenario()
+        with(billing) {
+            val folio = scenario.folio.value
+
+            fun hold() =
+                call(
+                    POST,
+                    "/api/v1/folios/$folio/card-pre-authorizations",
+                    admin,
+                    mapOf(
+                        "amount" to "300.00",
+                        "expiresAt" to
+                            java.time.Instant
+                                .now()
+                                .plusSeconds(3 * 86_400L)
+                                .toString()
+                                .substringBefore('.') + "Z",
+                        "authorizationCode" to "AUT778",
+                        "cardBrand" to "VISA",
+                        "cardLast4" to "4242",
+                    ),
+                ).expect(201)
+            val released = hold()
+            call(POST, "/api/v1/folios/$folio/card-pre-authorizations/${released["id"].asString()}/release", admin)
+                .expect(200)
+            hold()
+        }
+        val text = actingAsAdmin { pdfText(documents.pdf(scenario.folio, StatementAudience.GUEST).content) }
+
+        text shouldContain "liberada"
+        text shouldContain "ativa"
+        listOf("RELEASED", "ACTIVE", "CAPTURED").forEach { text shouldNotContain it }
+    }
+
+    @Test
     fun `two describers of the same type refuse to build the service`() {
         val twice =
             List(2) {

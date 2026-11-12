@@ -123,14 +123,14 @@ dependencies {
         exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
     }
 
-    // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
-    // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
-    // que põe `traceId`/`spanId` no MDC dos logs e propaga o `traceparent` (W3C). Nenhum
-    // exportador de spans está ligado: o OpenTelemetry fica opcional.
     // Documentos do módulo printing (M5 E11).
     implementation(libs.thymeleaf.spring6)
     implementation(libs.openhtmltopdf.pdfbox)
 
+    // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
+    // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
+    // que põe `traceId`/`spanId` no MDC dos logs e propaga o `traceparent` (W3C). Nenhum
+    // exportador de spans está ligado: o OpenTelemetry fica opcional.
     implementation(libs.spring.boot.starter.actuator)
     runtimeOnly(libs.micrometer.registry.prometheus)
     implementation(libs.spring.boot.micrometer.tracing.opentelemetry)

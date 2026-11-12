@@ -5,8 +5,10 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.stream.MemoryCacheImageInputStream
+import javax.imageio.stream.MemoryCacheImageOutputStream
 import kotlin.math.roundToInt
 
 /**
@@ -93,8 +95,18 @@ object DocumentLogo {
     }
 
     private fun png(image: BufferedImage): ByteArray? {
+        val writer = ImageIO.getImageWritersByFormatName("png").asSequence().firstOrNull() ?: return null
         val bytes = ByteArrayOutputStream()
-        return if (ImageIO.write(image, "png", bytes)) bytes.toByteArray() else null
+        try {
+            // Cache em memória: o cache padrão do ImageIO pode gravar arquivo temporário.
+            MemoryCacheImageOutputStream(bytes).use { output ->
+                writer.output = output
+                writer.write(null, IIOImage(image, null, null), null)
+            }
+        } finally {
+            writer.dispose()
+        }
+        return bytes.toByteArray()
     }
 
     private fun ByteArray.startsWith(prefix: ByteArray) =
