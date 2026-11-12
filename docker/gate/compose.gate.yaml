@@ -5,6 +5,10 @@
 #
 # Os caminhos relativos valem a partir do diretório do projeto, o do primeiro arquivo (docker/).
 
+# Nome próprio do projeto (sobrepõe o `name: zeny` do docker/compose.yaml): esquecer o `-p` nunca toca o projeto
+# `zeny` do usuário. O `-p` da linha de comando continua valendo sobre este nome.
+name: zeny-gate
+
 services:
   api:
     # Tag própria: o gate não regrava a zeny-hotel-manager:dev do usuário.

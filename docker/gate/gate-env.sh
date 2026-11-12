@@ -6,8 +6,9 @@
 # Grava <dir>/gate.env (modo 600) a partir do docker/.env.example (achado pelo caminho deste script, sem git: funciona
 # numa cópia limpa), com as chaves de cifragem e do JWT, as senhas do banco, do MinIO e do admin sorteadas pelo
 # openssl, o proxy em 127.0.0.1:<porta>, o profile prod e o push desligado. Imprime só o caminho do arquivo, nunca
-# valores. Recusa (exit 2) um <dir> dentro da raiz do projeto: o env do gate nunca fica no repositório, e o
-# docker/.env do usuário nunca é lido nem tocado. Requer bash, openssl e o realpath do coreutils (GNU).
+# valores. Recusa (exit 2) um <dir> dentro da raiz do projeto ou de qualquer repositório git (um ancestral com .git,
+# o que pega o checkout principal acima de um worktree): o env do gate nunca fica num repositório, e o docker/.env do
+# usuário nunca é lido nem tocado. Requer bash, openssl e o realpath do coreutils (GNU).
 set -euo pipefail
 umask 077
 
@@ -20,7 +21,13 @@ usage() {
 target_dir=$1
 port=$2
 
-if ! [[ "$port" =~ ^[0-9]{1,5}$ ]] || [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+if ! [[ "$port" =~ ^[0-9]{1,5}$ ]]; then
+    echo "porta inválida: $port" >&2
+    exit 2
+fi
+# Em base 10 ("0080" vira 80, nunca octal): o env e a URL pública levam a porta sem zeros à esquerda.
+port=$((10#$port))
+if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
     echo "porta inválida: $port" >&2
     exit 2
 fi
@@ -38,6 +45,17 @@ case "$target_real/" in
         exit 2
         ;;
 esac
+# Nem dentro de outro repositório: um worktree fica dentro do checkout principal (.claude/worktrees/…), e a raiz
+# acima só enxerga o worktree. Recusa o destino se ele ou um ancestral tem um .git (diretório ou arquivo).
+dir=$target_real
+while :; do
+    if [ -e "$dir/.git" ]; then
+        echo "recusado: o env do gate não pode ficar dentro de um repositório git ($dir)" >&2
+        exit 2
+    fi
+    [ "$dir" = / ] && break
+    dir=$(dirname -- "$dir")
+done
 
 mkdir -p -- "$target_real"
 env_file="$target_real/gate.env"
