@@ -24,7 +24,7 @@
 - RN-01: data operacional pela `HotelApi.currentBusinessDate()` (teste) ou `GET /api/v1/hotel/business-date` (roteiro), lida no passo em que é usada. **Nunca avançar a data operacional do banco compartilhado** nos testes.
 - RN-13: eventos, notificações e trilha sem nome, documento ou contato de hóspede.
 - Testes: banco compartilhado; cada teste cria os próprios tipos de UH, UHs, planos e hóspedes; o que muda configuração global (FNRH, perfil do hotel, política de early/late) devolve o original no fim; `FnrhTestServer.reset()` no início e no fim; relógio do `MutableClock` devolvido no fim (padrão REWIND de `FnrhReservationSendTestBase.kt`); sem contexto de teste novo (reaproveitar as combinações de `@Import` existentes, como as de `FnrhStageEndToEndTest` e `FnrhSettingsClearSendTest`).
-- Máquina de 14 GB: um Gradle (ou um `docker build`) por vez; `./gradlew --stop` entre execuções longas.
+- Máquina de 14 GB: um Gradle (ou um `docker build`) por vez; antes de execução longa, conferir a memória disponível e builds de outras sessões; nunca `./gradlew --stop` (derruba daemons de outras sessões do usuário).
 - Commits com o trailer `Soul: <soul>` e a linha `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`; mensagens em pt-BR; código, nomes de teste e API em inglês (D17).
 - O `docker/.env` do usuário nunca é lido nem tocado; o compose do gate usa sempre `-p` próprio, `ZENY_HTTP_ADDRESS=127.0.0.1`, uma tag de imagem própria (não `zeny-hotel-manager:dev`) e `down -v` no fim, também em falha.
 
