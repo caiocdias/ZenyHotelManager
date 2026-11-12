@@ -2,6 +2,7 @@ package com.zeny.hotel
 
 import com.zeny.hotel.billing.BillingModule
 import com.zeny.hotel.checklists.ChecklistsModule
+import com.zeny.hotel.endofday.EndOfDayModule
 import com.zeny.hotel.fnrh.FnrhModule
 import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
@@ -155,6 +156,35 @@ class ModularityTest {
             .stream()
             .map { it.targetType.name }
             .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.checklists.") }
+            .filter { !it.startsWith("com.zeny.hotel.shared.") }
+            .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `endofday depends only on shared, hotel and notifications, and only on their public APIs`() {
+        val endofday = modules.getModuleByName("endofday").orElseThrow()
+        val allowed = setOf("shared", "hotel", "notifications")
+        val dependencies =
+            endofday
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1: o módulo declara exatamente shared, hotel e notifications; as dependências reais ficam
+        // contidas nesse conjunto (hotel e notifications ganham usos nas Tasks 4 a 6 da E10).
+        (dependencies - allowed) shouldBe emptyList()
+        EndOfDayModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Nenhum tipo interno de outro módulo (só a raiz de cada um; verify() também barra).
+        endofday
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.endofday.") }
             .filter { !it.startsWith("com.zeny.hotel.shared.") }
             .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
             .toList() shouldBe emptyList()
