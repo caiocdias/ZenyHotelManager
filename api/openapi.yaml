@@ -4861,6 +4861,115 @@ paths:
       summary: Extrato da conta
       tags:
       - billing
+  /api/v1/folios/{id}/statement/pdf:
+    get:
+      description: "O mesmo extrato de `GET /folios/{id}/statement`, como PDF (A4),\
+        \ com o logotipo do hotel se houver (sem ele, o documento sai igual). Exige\
+        \ `billing.folios.read`. `audience` padrão `GUEST`. Conta inexistente: 404\
+        \ `FOLIO_NOT_FOUND`. Qualquer erro sai em `application/problem+json`, mesmo\
+        \ com `Accept: application/pdf`. O arquivo se chama `extrato-<número da conta>.pdf`\
+        \ e não é guardado em cache."
+      operationId: getFolioStatementPdf
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: "`GUEST` (padrão, o documento vai ao hóspede) ou `INTERNAL`,\
+          \ com usuários, motivos e o bloco interno."
+        in: query
+        name: audience
+        required: false
+        schema:
+          type: string
+          default: GUEST
+          enum:
+          - INTERNAL
+          - GUEST
+      responses:
+        "200":
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: O extrato em PDF.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Extrato da conta em PDF
+      tags:
+      - billing
+  /api/v1/folios/{id}/statement/print:
+    post:
+      description: "Enfileira o extrato na impressora `printerId` (quem tem `billing.folios.read`\
+        \ imprime em qualquer impressora ativa) e devolve o job. Exige `Idempotency-Key`:\
+        \ repetir devolve o mesmo job. `audience` padrão `GUEST`. Impressora inexistente:\
+        \ 400 `UNKNOWN_PRINTER`; desativada: 422 `PRINTER_INACTIVE`."
+      operationId: printFolioStatement
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: "`GUEST` (padrão, o documento vai ao hóspede) ou `INTERNAL`,\
+          \ com usuários, motivos e o bloco interno."
+        in: query
+        name: audience
+        required: false
+        schema:
+          type: string
+          default: GUEST
+          enum:
+          - INTERNAL
+          - GUEST
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintDocumentRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJobAccepted"
+          description: O job de impressão criado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Imprimir o extrato da conta
+      tags:
+      - billing
   /api/v1/guarantee-policies:
     get:
       description: Em ordem de nome. Exige `rates.plans.read`.
@@ -8919,6 +9028,95 @@ paths:
         com a garantia
       tags:
       - reservations
+  /api/v1/reservations/{id}/confirmation/pdf:
+    get:
+      description: "O código, o titular (o nome social, se houver), o tipo de UH,\
+        \ o plano, as datas, as noites, a diária e o total, os termos de cancelamento\
+        \ e de garantia copiados na reserva (RN-15) e, da política do hotel, os horá\
+        rios, a janela de arrumação, o early e o late com o preço e os textos (RN-11).\
+        \ Exige `reservations.reservations.read`. Reserva inexistente: 404 `RESERVATION_NOT_FOUND`;\
+        \ cancelada ou no-show: 409 `CONFIRMATION_UNAVAILABLE`. Qualquer erro sai\
+        \ em `application/problem+json`. O arquivo se chama `confirmacao-<código da\
+        \ reserva>.pdf` e não é guardado em cache."
+      operationId: getReservationConfirmationPdf
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: A confirmação em PDF.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Confirmação da reserva em PDF
+      tags:
+      - reservations
+  /api/v1/reservations/{id}/confirmation/print:
+    post:
+      description: "Enfileira a confirmação na impressora `printerId` (quem tem `reservations.reservations.read`\
+        \ imprime em qualquer impressora ativa) e devolve o job. Exige `Idempotency-Key`:\
+        \ repetir devolve o mesmo job. Mesmas recusas do PDF; impressora inexistente:\
+        \ 400 `UNKNOWN_PRINTER`; desativada: 422 `PRINTER_INACTIVE`."
+      operationId: printReservationConfirmation
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintDocumentRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJobAccepted"
+          description: O job de impressão criado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Imprimir a confirmação da reserva
+      tags:
+      - reservations
   /api/v1/reservations/{id}/do-not-move:
     post:
       description: "Com a marca, a UH não é trocada nem solta (nem pela alteração\
@@ -9102,6 +9300,95 @@ paths:
       summary: Reativar uma reserva cancelada ou no-show
       tags:
       - reservations
+  /api/v1/reservations/{id}/registration-card/pdf:
+    get:
+      description: "A estadia (código, UH, datas) e, por hóspede, o nome (o social,\
+        \ se houver), a nacionalidade, o nascimento, o endereço, os documentos mascarados\
+        \ e o motivo de viagem e o meio de transporte como os códigos FNRH guardados,\
+        \ com a linha de assinatura. Nunca traz o número inteiro de documento nem\
+        \ raça/cor ou deficiência. Exige `frontdesk.stays.checkin`. Reserva inexistente:\
+        \ 404 `RESERVATION_NOT_FOUND`; fora de `CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`:\
+        \ 409 `REGISTRATION_CARD_UNAVAILABLE`. Qualquer erro sai em `application/problem+json`.\
+        \ O arquivo se chama `ficha-<código da reserva>.pdf` e não é guardado em cache."
+      operationId: getRegistrationCardPdf
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+          description: A ficha em PDF.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Ficha de registro da hospedagem em PDF
+      tags:
+      - frontdesk
+  /api/v1/reservations/{id}/registration-card/print:
+    post:
+      description: "Enfileira a ficha na impressora `printerId` (quem tem `frontdesk.stays.checkin`\
+        \ imprime em qualquer impressora ativa) e devolve o job. Exige `Idempotency-Key`:\
+        \ repetir devolve o mesmo job. Mesmas recusas do PDF; impressora inexistente:\
+        \ 400 `UNKNOWN_PRINTER`; desativada: 422 `PRINTER_INACTIVE`."
+      operationId: printRegistrationCard
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PrintDocumentRequest"
+        required: true
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrintJobAccepted"
+          description: O job de impressão criado.
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Imprimir a ficha de registro
+      tags:
+      - frontdesk
   /api/v1/reservations/{id}/room-assignments:
     get:
       description: "Todas as alocações da reserva, da mais recente à mais antiga (a\
@@ -20965,6 +21252,26 @@ components:
       - name
       - token
       - version
+    PrintDocumentRequest:
+      type: object
+      description: A impressora que vai imprimir o documento.
+      properties:
+        printerId:
+          type: string
+          format: uuid
+          description: Id da impressora ativa.
+      required:
+      - printerId
+    PrintJobAccepted:
+      type: object
+      description: O job de impressão criado.
+      properties:
+        printJobId:
+          type: string
+          format: uuid
+          description: Id do job na fila da impressora.
+      required:
+      - printJobId
     PrintJobAckRequest:
       type: object
       description: "A confirmação do agente: o job foi impresso ou falhou."

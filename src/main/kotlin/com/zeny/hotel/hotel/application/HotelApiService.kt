@@ -1,6 +1,7 @@
 package com.zeny.hotel.hotel.application
 
 import com.zeny.hotel.hotel.BusinessDateAdvanced
+import com.zeny.hotel.hotel.CurrentHotelProfile
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.hotel.OperationalSettings
 import com.zeny.hotel.hotel.PolicySettings
@@ -41,6 +42,10 @@ class HotelApiService(
 
     @Transactional(readOnly = true)
     override fun currentBusinessDate(): LocalDate = (store.businessDay() ?: notInitialized()).current
+
+    @Transactional(readOnly = true)
+    override fun profile(): CurrentHotelProfile? =
+        store.hotel()?.let { hotel -> hotel.profile()?.let { CurrentHotelProfile(hotel.id.value, it) } }
 
     @Transactional(readOnly = true)
     override fun policy(): PolicySettings = (store.policy() ?: notInitialized()).settings()

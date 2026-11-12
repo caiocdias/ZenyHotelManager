@@ -83,6 +83,7 @@ class GuestsApiService(
                 birthDate = guest.birthDate,
                 // O número mascarado sai do sufixo gravado em claro: o número cifrado nunca é lido.
                 documents = guest.documents.map { MaskedGuestDocument(it.id, it.type, it.issuingCountry, it.masked) },
+                address = guest.address,
             )
         }
 

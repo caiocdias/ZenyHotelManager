@@ -221,13 +221,15 @@ class ModularityTest {
     }
 
     @Test
-    fun `billing depends only on shared, hotel, guests, notifications and payments, and only on their public APIs`() {
+    fun `billing depends only on shared, hotel, guests, notifications, payments and printing, by public APIs`() {
         val billing = modules.getModuleByName("billing").orElseThrow()
-        val allowed = setOf("shared", "hotel", "guests", "notifications", "payments")
+        val allowed = setOf("shared", "hotel", "guests", "notifications", "payments", "printing")
 
         // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
         // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments (a intenção de pagamento
-        // de todo recebimento e o PaymentSucceeded, H1), M3 E08. Nunca iam, reservas nem fiscal.
+        // de todo recebimento e o PaymentSucceeded, H1), M3 E08;
+        // printing (o extrato em PDF e ESC/POS, só a PrintingApi e os tipos dela), M5 E11. Nunca iam, reservas nem
+        // fiscal.
         billing
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -238,13 +240,15 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz de hotel, guests, notifications e payments (a API pública); verify() também barra os internos.
+        // Só a raiz de hotel, guests, notifications, payments e printing (a API pública); verify() também barra os
+        // internos.
         val publicApis =
             setOf(
                 "com.zeny.hotel.hotel",
                 "com.zeny.hotel.guests",
                 "com.zeny.hotel.notifications",
                 "com.zeny.hotel.payments",
+                "com.zeny.hotel.printing",
             )
         billing
             .getDirectDependencies(modules)
@@ -284,15 +288,16 @@ class ModularityTest {
     }
 
     @Test
-    fun `reservations depends only on shared, hotel, rooms, rates, guests, billing, notifications, by public APIs`() {
+    fun `reservations depends only on the allowed modules, by public APIs`() {
         val reservations = modules.getModuleByName("reservations").orElseThrow()
-        val allowed = setOf("shared", "hotel", "rooms", "rates", "guests", "billing", "notifications")
+        val allowed = setOf("shared", "hotel", "rooms", "rates", "guests", "billing", "notifications", "printing")
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M4 E05: hotel (data operacional pela HotelApi) e rooms (UHs ativas e
         // períodos OOO pela RoomsApi; os eventos RoomRegistryChanged e OutOfOrderChanged); E06: rates (vendabilidade,
         // preço, cotação e calendário de preços e restrições pela RatesApi); E07: guests (hóspedes pela GuestsApi, o
         // evento GuestsMerged e as portas de privacidade) e billing (a conta da reserva pela BillingApi); E10:
-        // notifications (a notificação de realocação pela NotificationsApi, H11); nunca iam.
+        // notifications (a notificação de realocação pela NotificationsApi, H11); M5 E11: printing (a confirmação em
+        // PDF e na fila de impressão pela PrintingApi); nunca iam.
         reservations
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -311,6 +316,7 @@ class ModularityTest {
                 "com.zeny.hotel.guests",
                 "com.zeny.hotel.billing",
                 "com.zeny.hotel.notifications",
+                "com.zeny.hotel.printing",
             )
         reservations
             .getDirectDependencies(modules)
@@ -342,26 +348,38 @@ class ModularityTest {
     }
 
     @Test
-    fun `printing depends only on shared`() {
+    fun `printing depends only on shared, hotel and files`() {
         val printing = modules.getModuleByName("printing").orElseThrow()
 
-        // M5 E10: agentes, impressoras e fila de impressão (ARCHITECTURE §3.1 e §14). Só o kernel; nunca iam,
-        // notifications nem tabela de outro schema.
+        // M5 E10: agentes, impressoras e fila de impressão (ARCHITECTURE §3.1 e §14); nunca iam, notifications nem
+        // tabela de outro schema. M5 E11: hotel (o perfil para o cabeçalho dos documentos) e files (o logotipo).
         printing
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
-            .toList() shouldContainExactlyInAnyOrder listOf("shared")
+            .toList() shouldContainExactlyInAnyOrder listOf("shared", "hotel", "files")
         PrintingModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
-            .toSet() shouldBe setOf("shared")
+            .toSet() shouldBe setOf("shared", "hotel", "files")
     }
 
     @Test
     fun `frontdesk depends only on the lower layers and staff, by APIs`() {
         val frontdesk = modules.getModuleByName("frontdesk").orElseThrow()
-        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates", "staff")
+        val allowed =
+            setOf(
+                "shared",
+                "hotel",
+                "reservations",
+                "rooms",
+                "guests",
+                "billing",
+                "files",
+                "rates",
+                "staff",
+                "printing",
+            )
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M5 E02: hotel (data operacional, fuso e política de early/late pela
         // HotelApi), reservations (a reserva, a alocação e as transições pela ReservationsApi), rooms (RN-05 e a
@@ -369,7 +387,8 @@ class ModularityTest {
         // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); M5 E03: rates,
         // só os tipos públicos que a ReservationsApi usa (o id do plano do walk-in e o tipo de garantia da política
         // copiada) e, na E04, os do pacote da noite (PackageId e PackageCharge), nunca a RatesApi;
-        // M5 E06: staff, o setor e o responsável do recado, só pela StaffApi (e os tipos dela); nunca fnrh (camada
+        // M5 E06: staff, o setor e o responsável do recado, só pela StaffApi (e os tipos dela); M5 E11: printing, só a
+        // PrintingApi (e os tipos dela), para os documentos e a impressão; nunca fnrh (camada
         // acima) nem iam.
         frontdesk
             .getDirectDependencies(modules)

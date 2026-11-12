@@ -1,0 +1,17 @@
+FICHA DE REGISTRO [[${document.code}]]
+[# th:if="${document.room != null}"]UH [[${document.room}]]
+[/]Chegada [[${fmt.date(document.arrival)}]] Saída [[${fmt.date(document.departure)}]]
+[# th:if="${document.checkedInAt != null}"]Entrada em [[${fmt.instant(document.checkedInAt)}]]
+[/]Adultos [[${document.adults}]] Crianças [[${document.children}]]
+---
+[# th:each="guest : ${document.guests}"][[${guest.name}]]
+[# th:if="${guest.nationality != null}"]Nacionalidade: [[${guest.nationality}]]
+[/][# th:if="${guest.birthDate != null}"]Nascimento: [[${fmt.date(guest.birthDate)}]]
+[/][# th:if="${guest.address != null}"]Endereço: [[${guest.address}]]
+[/][# th:each="doc : ${guest.documents}"][[${doc.type}]] ([[${doc.country}]]): [[${doc.number}]]
+[/][# th:if="${guest.travelReason != null}"]Motivo: [[${guest.travelReason}]] (código FNRH)
+[/][# th:if="${guest.transportMode != null}"]Transporte: [[${guest.transportMode}]] (código FNRH)
+[/]
+Assinatura: ________________________________
+---
+[/]

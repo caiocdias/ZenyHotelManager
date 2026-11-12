@@ -241,7 +241,19 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 - **E10 (e) Ack:** `409` para job das próprias impressoras que não está `SENT` para o agente; `404` só para impressora de outro agente ou job inexistente; `result` só como texto.
 - **E10 (f) Sem alerta de falha (D-E10-10)** e **contato do agente sem trilha (D-E10-11)**; impressora ativa de agente desativado tem os jobs encerrados pela manutenção.
 
-**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07, E15 (salvo a (h), decidida em 2026-11-11), E08 (o padrão foi aprovado na revisão humana; as decisões (a) a (n) seguem revisáveis), E16 e E10 (salvo as decididas na revisão humana da E10), tomadas pela opção recomendada, e a revisão humana da E13 e da E07.
+**Decisões do lote E11** (entrevista do fim do lote). Em 2026-11-11, o usuário delegou toda intervenção, pedindo a opção recomendada depois de uma avaliação crítica dos prós e contras, salvo decisão de arquitetura. Por isso, as decisões abaixo foram **decididas pela opção recomendada em nome do usuário (delegado ao orquestrador), 2026-11-11 e 2026-11-12**. O detalhe e as alternativas descartadas estão no plano da E11 (D-E11-1 a 14) e no handoff dela. A E11 tem "Revisão humana: sim".
+
+- **E11 (a) Bibliotecas (D-E11-1):** Thymeleaf (`thymeleaf-spring6` do BOM, sem o starter) e o fork mantido do openhtmltopdf (`io.github.openhtmltopdf:openhtmltopdf-pdfbox` 1.1.110, sobre PDFBox 3.0.8). O openhtmltopdf é **LGPL-2.1+**: se a imagem for distribuída a terceiros, é preciso avisar a licença e permitir trocar a biblioteca (o fat jar a mantém como jar separado). A imagem Docker passou de 171,5 MB para 178,0 MB (+6,6 MB; build de 115 s para 142 s). Descartadas: iText (AGPL), JasperReports, PDFBox direto, FreeMarker. Novas versões do fork saem automaticamente: atualizar só com revisão manual.
+- **E11 (b) API de documentos no `printing` (D-E11-2 e 3):** `render`/`print` pela `PrintingApi`, templates registrados pelos donos, modelo só de mapas, listas e valores simples (até 32 níveis), layout e contexto do `printing`, corpo por um único `th:insert`, construções de template proibidas e varridas por teste; CSS só no layout (o template de dono não leva `<style>`).
+- **E11 (c) Texto (D-E11-4):** NFC, controle vira espaço, formatação removida; sem fonte embutida: nome em escrita não latina sai com `?` no PDF e no ESC/POS. Embutir uma TTF (~700 KB) resolve depois.
+- **E11 (d) Logotipo (D-E11-7):** `FilesApi.readContent` só para anexo **comum** (o sensível é recusado, mais estreito que a H18); lido em transação própria (uma 2ª conexão do pool) e reduzido a 400 px; falha vira documento sem logotipo. Sem cache.
+- **E11 (e) Rotas (D-E11-9, decisão aberta da E11):** rotas próprias `GET …/pdf` e `POST …/print` (`@Idempotent`, `202`), não negociação por `Accept`; `audience` padrão `GUEST` no PDF do extrato (o JSON segue `INTERNAL`); quem tem a permissão do dono imprime em qualquer impressora ativa; parâmetro de query repetido aceito; `Accept: application/json` na rota do PDF devolve o PDF.
+- **E11 (f) Permissões (D-E11-10):** a ficha (inclusive o `GET`, leitura de dado pessoal sem trilha) sob `frontdesk.stays.checkin`, sem um `frontdesk.stays.read` novo.
+- **E11 (g) Ficha (D-E11-11, decisão aberta da E11):** nome social sem o civil; motivo de viagem e meio de transporte como **códigos FNRH crus**, com "(código FNRH)". Os rótulos pedem uma porta do `frontdesk` implementada pelo `fnrh` (inversão por porta): decisão de arquitetura, levada à revisão humana. A linha "menor com autorização" foi tirada por estar fora da lista.
+- **E11 (h) Extrato (D-E11-12):** porta `FolioOwnerDescriber` na raiz do `billing`, implementada pelo `reservations` para `RESERVATION` (M6 a M8 implementam `GROUP`, `EVENT`, `COMPANY`); descritor que lança derruba o extrato. Descartadas: rótulo gravado na conta, "extrato da reserva" no `reservations`, extrato sem nome nem UH.
+- **E11 (i) Execução:** por falta de memória da máquina (14 GB; o kernel matou um Java e a sessão caiu duas vezes), as ondas passaram a um Gradle por vez depois da onda 1; a suíte da onda 1 rodou junto com a da onda 2.
+
+**Ainda sem confirmação do usuário:** as decisões dos lotes E04 a E06, E13, E14, E07, E15 (salvo a (h), decidida em 2026-11-11), E08 (o padrão foi aprovado na revisão humana; as decisões (a) a (n) seguem revisáveis), E16, E10 (salvo as decididas na revisão humana da E10) e E11, tomadas pela opção recomendada, e a revisão humana da E13, da E07 e da E11.
 
 ## Definição global de pronto
 
@@ -363,7 +375,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E10 | Agentes, impressoras e fila de impressão | #concluida | — | Módulo `printing`, agente com token próprio, jobs por SSE e long-poll, confirmação e reenvio |
-| E11 | Documentos: ficha, extrato e confirmação | #pendente | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
+| E11 | Documentos: ficha, extrato e confirmação | #concluida | E02, E10 | API de renderização em `printing`, cabeçalho pela `HotelApi`, PDFs e impressão nos módulos donos |
 
 **Gate**
 
@@ -1797,7 +1809,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 ---
 
-## E11 — Documentos: ficha, extrato e confirmação — #pendente
+## E11 — Documentos: ficha, extrato e confirmação — #concluida
 
 **Objetivo:** gerar a ficha de registro, o extrato de conta (RF-CTA-12) e a confirmação de reserva (RF-RES-12, com os textos da RN-11) em PDF A4 e em ESC/POS, para download (RF-NOT-04) e para impressão pela fila da E10 (RF-NOT-03), no modelo dono + `printing` (D2).
 
@@ -1818,13 +1830,13 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Ficha, extrato e confirmação saem em PDF pelos endpoints dos módulos donos; teste extrai o texto e encontra os campos-chave (nome do hóspede, UH, datas, saldo, políticas e horários da RN-11).
-- [ ] O endpoint de impressão de cada documento cria `PrintJob` na impressora escolhida com conteúdo ESC/POS ou PDF conforme o tipo da impressora.
-- [ ] Usuário sem a permissão do módulo dono → `403`.
-- [ ] Nenhum documento contém raça/cor, deficiência nem número inteiro de documento (a ficha mostra o mascarado; teste).
-- [ ] Dados do hotel nos documentos vêm da `HotelApi.profile()` e o logotipo da `FilesApi`, não de texto fixo (teste muda os dados pela API e os vê no PDF).
-- [ ] `ModularityTest` passa; `printing` depende só de `shared`, `hotel` e `files` e não tem listener de eventos de outros módulos.
-- [ ] A tabela da ARCHITECTURE §3.1 inclui `printing` → `files`; a captura de atualização do brain explica como registrar template e imprimir; `./gradlew build` verde e oasdiff sem `ERR`.
+- [x] Ficha, extrato e confirmação saem em PDF pelos endpoints dos módulos donos; teste extrai o texto e encontra os campos-chave (nome do hóspede, UH, datas, saldo, políticas e horários da RN-11).
+- [x] O endpoint de impressão de cada documento cria `PrintJob` na impressora escolhida com conteúdo ESC/POS ou PDF conforme o tipo da impressora.
+- [x] Usuário sem a permissão do módulo dono → `403`.
+- [x] Nenhum documento contém raça/cor, deficiência nem número inteiro de documento (a ficha mostra o mascarado; teste).
+- [x] Dados do hotel nos documentos vêm da `HotelApi.profile()` e o logotipo da `FilesApi`, não de texto fixo (teste muda os dados pela API e os vê no PDF).
+- [x] `ModularityTest` passa; `printing` depende só de `shared`, `hotel` e `files` e não tem listener de eventos de outros módulos.
+- [x] A tabela da ARCHITECTURE §3.1 inclui `printing` → `files`; a captura de atualização do brain explica como registrar template e imprimir; `./gradlew build` verde e oasdiff sem `ERR`.
 
 **Validação obrigatória:**
 
@@ -1851,12 +1863,34 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-11-m5-recepcao-fnrh-e11.md`, com 14 tarefas (13 `Risco: alto`; a Task 14, de documentação, `normal`) e as decisões D-E11-1 a 14, executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`), mais o testador de etapa.
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 1 rodada. A inicial bloqueou com 7 Importantes (bean único da `PrintingApi`; a falha do logotipo marcando a transação do dono como *rollback-only*; logotipo grande estourando o teto do job; trava contra injeção em template incompleta; tarefas acima do limite; risco `normal` em contratos; a porta `FolioOwnerDescriber` sem alternativas) e 11 Menores, todos aplicados; a rodada 1 aprovou com 3 notas Menores, aplicadas.
+  - **Ondas:** onda 1 (Tasks 1, 2 e 7) e onda 2 (Tasks 3, 4 e 5) em worktrees próprios; depois, por falta de memória da máquina (OOM do kernel), um Gradle por vez: Task 6 e as Tasks 8 a 14 em série.
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `7aa2527`):
+  - Plano e revisão de arquitetura: `8dd0e0c`, `8dcdab0` e `9f3f101`.
+  - Task 1 (bibliotecas e XHTML → PDF): `9f3f101..ca89b8d`. Task 2 (texto, formatação e ESC/POS): `ca89b8d..c3c4239`. Task 7 (logotipo reduzido): `c3c4239..381c274`.
+  - Task 3 (`HotelApi.profile()`): `381c274..f150b6e`. Task 4 (`FilesApi.readContent`): `f150b6e..a67b741`. Task 5 (catálogo e motor): `a67b741..7708728`. Task 6 (endereço na identificação): `7708728..857449f`.
+  - Task 8 (`render`/`print` na `PrintingApi`): `857449f..4093b60`. Task 9 (extrato, porta e templates): `4093b60..99ab938`. Task 10 (rotas do extrato): `99ab938..e8bd7f0`. Task 11 (ficha): `e8bd7f0..eb704c2` e `b2de404`. Task 12 (descritor da reserva): `eb704c2..4bd3884`. Task 13 (confirmação): `4bd3884..170eba0`. Task 14 (documentação e imagem): `fc4e646` e `8dd8ea5`.
+  - Testador de etapa: `5916bd3`. Onda da revisão final: `933b3ee`.
+  - Fechamento: o commit deste handoff.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `7aa2527..5916bd3`: "aprovado com ressalvas" (With fixes), 0 Críticos; os 2 Importantes eram de fechamento (esta captura e este handoff; a LGPL do openhtmltopdf nas decisões, E11 (a)). A onda única (`933b3ee`) corrigiu os 4 Menores pedidos antes do merge (bloco do `build.gradle.kts`, situação da caução em pt-BR no extrato, comentário do `ModularityTest`, logotipo sem arquivo temporário); a re-revisão restrita respondeu "all findings addressed". A seção de arquitetura do plano confere com o ledger; as rulings da execução foram aceitas.
+- **Integridade dos testes:** `check_test_integrity.py --base 7aa2527` → 4 apontamentos, todos justificados nas revisões (2 `DEV_TESTE_DO_TESTADOR` da rodada 1 da Task 5, que endureceu a varredura e restringiu o motor; 1 da Task 8, que fez a varredura falhar sem o layout; 1 `ASSERCAO_REMOVIDA` que é um comentário do `ModularityTest` reescrito).
+- **Critérios verificados** (tabela critério → teste no relatório do testador de etapa; ponta a ponta em `DocumentsStageEndToEndTest`, que baixa os 3 PDFs e imprime os 3 documentos numa `A4_PDF` e numa `THERMAL_ESCPOS`, recebidos pelo long-poll do agente):
+  - [x] PDFs pelos donos com os campos-chave (`FolioStatementDocumentsApiTest`, `RegistrationCardApiTest`, `ReservationConfirmationApiTest`, E2E).
+  - [x] `PrintJob` em PDF ou ESC/POS conforme a impressora (`DocumentRenderingTest`, os testes de API dos donos, E2E).
+  - [x] `403` sem a permissão do dono (matriz 3×3 no E2E e os testes de cada dono).
+  - [x] Sem raça/cor, deficiência nem documento inteiro (`RegistrationCardAttackTest`, E2E nos PDFs, nos jobs e no ESC/POS).
+  - [x] Hotel e logotipo pela API (`DocumentRenderingTest` e E2E mudam os dados pela API e os veem no PDF).
+  - [x] `printing` → só `shared`, `hotel`, `files`, sem listener (`ModularityTest` exato, ArchUnit no E2E).
+  - [x] §3.1 com `printing` → `files`; `./gradlew build` em `933b3ee`: BUILD SUCCESSFUL in 20m 58s, 3220 testes, 0 falhas; `.github/scripts/check-api-breaking.sh main`: nenhuma mudança `ERR` em `/api/v1`; a captura do brain `atualização m5-recepcao-fnrh E11` explica como registrar template e imprimir.
+  - Scanner (`osv-scanner scan source -r --no-ignore .`): 426 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low (os riscos aceitos na E14); nenhum pacote novo da E11 com achado.
+  - Imagem Docker: 171.458.666 B (115 s) → 178.024.307 B (142 s).
+- **Decisões para o usuário** (todas tomadas pela opção recomendada; ver "Decisões do lote E11"; as de arquitetura vão à entrevista da revisão humana): D-E11-1 (bibliotecas, LGPL e imagem), D-E11-4 (sem fonte embutida), D-E11-7 (leitura só de anexo comum; logotipo em transação própria), D-E11-9 (rotas, `audience` padrão `GUEST`, impressão em qualquer impressora ativa), D-E11-10 (ficha sob `frontdesk.stays.checkin`, `GET` sem trilha), D-E11-11 (nome social sem o civil; códigos FNRH sem rótulo) e D-E11-12 (porta `FolioOwnerDescriber`).
+- **Revisão humana desta etapa:** pendente (o lote parou nela).
+- **Notas para a próxima etapa:**
+  - E12 (gate): o roteiro `curl` pode baixar os três PDFs e imprimir a ficha pelo agente simulado; a `MilestoneM5EndToEndTest` pode reaproveitar o apoio do `DocumentsStageEndToEndTest` (`PdfText`, agente de teste por long-poll).
+  - Máquina de 14 GB: rodar um Gradle por vez (`./gradlew --stop` entre execuções); testes que comparam datas exibidas não devem usar a data operacional lida depois (outros testes a avançam).
+  - Pendências registradas (menores aceitos pela revisão final): o logotipo sem cache e com uma 2ª conexão; a regra "sem `<style>`" só por convenção; os descritores de teste `EVENT`/`COMPANY`/`WALK_IN` do `FolioStatementDocumentsAttackTest` colidirão com os de produção do M6 ao M8; `STATUS_LABELS.getValue` na confirmação (trocar por `when` exaustivo); a lógica do titular duplicada entre a confirmação e o descritor; o titular anonimizado sai "Hóspede anonimizado" no extrato; o `unbescape` usado direto só como transitivo do Thymeleaf; chaves do modelo sem limpeza; da E10, `claimPending`/`unackedSent` ainda carregam o conteúdo cifrado.
 
 ---
 
@@ -1934,3 +1968,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-11-06 — revisão de arquitetura (`claude --agent arquiteto`; `docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05: merge local na `main` no fim do lote, ondas paralelas, testador por risco, decisões pela opção recomendada, salvo as de arquitetura. Novas E15 (descrição de gênero, antes da E08) e E16 (limpar a credencial, antes da E09), que resolvem as decisões E07 (e) e (i). A E08 passou a depender da E15, com critérios de resultado incerto e da SPEC §8.2.17 e revisão humana, por fixar o padrão de M7 e M8; a E09 passou a depender da E16; a E12 passou a depender da E16. Contexto defasado corrigido. Nenhuma etapa renumerada; etapas concluídas, evidências e tags existentes inalteradas.
 - 2026-11-10 — E15 retomada pelo ledger e `#concluida` na branch `roadmap/m5-recepcao-fnrh`: descrição de gênero cifrada no perfil, na API, na exportação, na anonimização e no envio ao Serpro (`GeneroDescricao`). Revisão final "With fixes" (I-1, texto do contrato) corrigida numa onda; "Decisões do lote E15" acrescentadas, com a lacuna de leitura nas respostas das escritas do `guests` (E15 h) para o usuário.
 - 2026-11-11 — E08 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: `FnrhSubmission` por evento com ordem causal por reserva, job `fnrh-submissions-send` com retry de 8 tentativas, escrita em curso e conciliação antes de repetir, consulta da pessoa por documento antes de criar, ids remotos e link de pré-check-in cifrado por ambiente, pendências (`GET`, `retry`, `dismiss`), alerta de falha, gauge e view `fnrh.report_submissions`. Revisão final "With fixes" (I-1 a I-3) corrigida numa onda; "Decisões do lote E08" acrescentadas e a E05 (f) aplicada. O lote parou na revisão humana da E08, feita pelo usuário no mesmo dia (padrão aprovado; E15 (h) decidida).
+- 2026-11-12 — E11 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: API de documentos no `printing` (render e print, templates por dono, layout comum, limpeza de texto, sem recurso externo, ESC/POS IBM850 em 48 colunas, logotipo reduzido), `HotelApi.profile()`, `FilesApi.readContent`, extrato em PDF (`billing`, porta `FolioOwnerDescriber`), ficha de registro (`frontdesk`) e confirmação de reserva (`reservations`). Revisão final "With fixes" corrigida numa onda; "Decisões do lote E11" acrescentadas. O lote parou na revisão humana da E11. As demais tags não mudaram.

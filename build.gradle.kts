@@ -123,6 +123,10 @@ dependencies {
         exclude(group = "software.amazon.awssdk", module = "netty-nio-client")
     }
 
+    // Documentos do módulo printing (M5 E11).
+    implementation(libs.thymeleaf.spring6)
+    implementation(libs.openhtmltopdf.pdfbox)
+
     // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
     // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
     // que põe `traceId`/`spanId` no MDC dos logs e propaga o `traceparent` (W3C). Nenhum
@@ -144,6 +148,7 @@ dependencies {
     testImplementation(libs.archunit.junit5)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.mockk)
+    testImplementation(libs.pdfbox)
     // Testes de contrato das integrações (ARCHITECTURE §12): o FCM HTTP v1 do módulo notifications.
     testImplementation(libs.wiremock.standalone)
     testRuntimeOnly(libs.junit.platform.launcher)

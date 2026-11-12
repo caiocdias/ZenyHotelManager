@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Corpo da confirmação de reserva em PDF (M5 E11, D-E11-13): o layout do printing põe o cabeçalho e o rodapé. Só as
+  construções permitidas (DocumentTemplatesSafetyTest); o modelo chega limpo como document.*.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<body>
+<h1 th:text="|Confirmação de reserva ${document.code}|">Confirmação de reserva</h1>
+<table class="lines">
+<tr><td>Situação</td><td th:text="${document.status}">Confirmada</td></tr>
+<tr th:if="${document.holder != null}"><td>Titular</td><td th:text="${document.holder}">Titular</td></tr>
+<tr th:if="${document.roomType != null}"><td>Tipo de UH</td><td th:text="${document.roomType}">Tipo</td></tr>
+<tr th:if="${document.ratePlan != null}"><td>Plano</td><td th:text="${document.ratePlan}">Plano</td></tr>
+<tr><td>Chegada</td><td th:text="${fmt.date(document.arrival)}">Chegada</td></tr>
+<tr><td>Saída</td><td th:text="${fmt.date(document.departure)}">Saída</td></tr>
+<tr><td>Noites</td><td th:text="${document.nights}">1</td></tr>
+<tr><td>Adultos</td><td th:text="${document.adults}">2</td></tr>
+<tr th:if="${document.childAges != ''}"><td>Crianças</td><td th:text="${document.childAges}">7</td></tr>
+</table>
+<h2>Diárias</h2>
+<table class="lines">
+<tr th:each="night : ${document.nightlyRates}"><td th:text="${fmt.date(night.date)}">Data</td><td class="amount" th:text="${fmt.money(night.amount)}">R$ 0,00</td></tr>
+<tr class="total"><td>Total</td><td class="amount" th:text="${fmt.money(document.total)}">R$ 0,00</td></tr>
+</table>
+<h2>Políticas da reserva</h2>
+<p>
+<span th:text="|Cancelamento ${document.cancellation.name}: sem multa até ${document.cancellation.deadlineHours} horas antes da chegada;|">Cancelamento</span>
+<span th:if="${document.cancellation.penaltyType == 'PERCENT_OF_STAY'}" th:text="|depois, multa de ${fmt.percent(document.cancellation.penaltyPercent)} da estadia.|">multa</span>
+<span th:if="${document.cancellation.penaltyType == 'NIGHTS'}" th:text="|depois, multa de ${document.cancellation.penaltyNights} diária(s).|">multa</span>
+<span th:if="${document.cancellation.penaltyType == 'FIXED_AMOUNT'}" th:text="|depois, multa de ${fmt.money(document.cancellation.penaltyAmount)}.|">multa</span>
+</p>
+<p>
+<span th:text="|Garantia ${document.guarantee.name}:|">Garantia</span>
+<span th:if="${document.guarantee.type == 'NONE'}">sem garantia.</span>
+<span th:if="${document.guarantee.type == 'CARD'}">cartão de crédito.</span>
+<span th:if="${document.guarantee.type == 'DEPOSIT'}" th:text="|depósito de ${fmt.percent(document.guarantee.depositPercent)} até ${document.guarantee.dueDaysBefore} dias antes da chegada.|">depósito</span>
+</p>
+<h2>Políticas do hotel</h2>
+<table class="lines">
+<tr><td>Check-in</td><td th:text="|a partir das ${fmt.time(document.checkInTime)}|">14:00</td></tr>
+<tr><td>Check-out</td><td th:text="|até as ${fmt.time(document.checkOutTime)}|">12:00</td></tr>
+<tr><td>Janela de arrumação</td><td th:text="|${document.cleaningMinutes} minutos|">120 minutos</td></tr>
+<tr><td>Early check-in</td><td th:if="${document.earlyCheckIn == null}">não oferecido</td><td th:if="${document.earlyCheckIn != null}" th:text="|a partir das ${fmt.time(document.earlyCheckIn.limitTime)}, ${fmt.money(document.earlyCheckIn.fee)}|">oferecido</td></tr>
+<tr><td>Late check-out</td><td th:if="${document.lateCheckOut == null}">não oferecido</td><td th:if="${document.lateCheckOut != null}" th:text="|até as ${fmt.time(document.lateCheckOut.limitTime)}, ${fmt.money(document.lateCheckOut.fee)}|">oferecido</td></tr>
+</table>
+<p th:text="${document.stayPolicyText}">Texto da diária</p>
+<p th:if="${document.additionalPolicyText != null}" th:text="${document.additionalPolicyText}">Texto adicional</p>
+</body>
+</html>

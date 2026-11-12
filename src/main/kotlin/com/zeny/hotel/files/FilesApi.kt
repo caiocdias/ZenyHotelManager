@@ -57,6 +57,29 @@ interface FilesApi {
         purpose: FilePurposeCode,
         ownerEntityId: String,
     )
+
+    /**
+     * O conteúdo do anexo **comum** vinculado ao registro dono [ownerEntityId], lido pelo servidor
+     * (o logotipo do hotel nos documentos), conferido o SHA-256. Sem trilha, sem travar a linha.
+     * Falha com `404 FILE_NOT_FOUND` se o anexo não existe ou foi apagado, `422
+     * FILE_PURPOSE_MISMATCH` se ele é de outra finalidade e `409 FILE_ALREADY_ATTACHED` se ele é
+     * de outro registro ou órfão. Anexo sensível é erro de programação (`IllegalArgumentException`,
+     * antes de ler o objeto: a leitura de um sensível pelo servidor precisaria de trilha própria) e
+     * SHA-256 divergente é `IllegalStateException`.
+     */
+    fun readContent(
+        id: FileId,
+        purpose: FilePurposeCode,
+        ownerEntityId: String,
+    ): FileContent
+}
+
+/** O anexo e o conteúdo dele; o [toString] não traz o conteúdo. */
+class FileContent(
+    val summary: FileSummary,
+    val content: ByteArray,
+) {
+    override fun toString(): String = "FileContent(summary=$summary, sizeBytes=${content.size})"
 }
 
 /** Um anexo como os outros módulos o veem: sem o nome original, a chave no armazenamento nem o conteúdo. */

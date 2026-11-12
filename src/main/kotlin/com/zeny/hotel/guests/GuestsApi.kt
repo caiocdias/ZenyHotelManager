@@ -75,10 +75,10 @@ interface GuestsApi {
 
     /**
      * Os dados de identificação do hóspede para a conferência do check-in (M5 E02, H11): a nacionalidade, a data de
-     * nascimento e os documentos **sem o número** (o tipo, o país emissor e o número mascarado, `***` + o sufixo já
-     * guardado em claro); **nada é decifrado**. De um perfil mesclado, valem os do sobrevivente (seguindo a cadeia),
-     * com o id dele em [GuestIdentification.id]. `null` se o perfil não existe. A regra fina da FNRH é do `fnrh`, no
-     * envio; o número inteiro só sai por [fnrhData].
+     * nascimento, o endereço (M5 E11) e os documentos **sem o número** (o tipo, o país emissor e o número
+     * mascarado, `***` + o sufixo já guardado em claro); **nada é decifrado**. De um perfil mesclado, valem os
+     * do sobrevivente (seguindo a cadeia), com o id dele em [GuestIdentification.id]. `null` se o perfil não
+     * existe. A regra fina da FNRH é do `fnrh`, no envio; o número inteiro só sai por [fnrhData].
      */
     fun identification(id: GuestId): GuestIdentification?
 
@@ -267,8 +267,10 @@ data class GuestIdentification(
     val nationality: String?,
     val birthDate: LocalDate?,
     val documents: List<MaskedGuestDocument>,
+    /** O endereço do perfil corrente (M5 E11, para a ficha de registro); `null` sem endereço ou anonimizado. */
+    val address: Address? = null,
 ) {
-    /** Sem dado pessoal (pode acabar num log). */
+    /** Sem dado pessoal (pode acabar num log), nem o endereço. */
     override fun toString(): String = "GuestIdentification(id=$id, status=$status, documents=${documents.size})"
 }
 

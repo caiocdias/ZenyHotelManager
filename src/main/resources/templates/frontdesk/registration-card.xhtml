@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Corpo da ficha de registro em PDF (M5 E11, D-E11-11): o layout do printing põe o cabeçalho e o rodapé. Só as
+  construções permitidas (DocumentTemplatesSafetyTest); o modelo chega limpo como document.* e só com o documento
+  mascarado (nada de RN-19).
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<body>
+<h1 th:text="|Ficha de registro ${document.code}|">Ficha de registro</h1>
+<p>
+<span th:if="${document.room != null}" th:text="|UH ${document.room}|">UH</span>
+<span th:text="|· Chegada ${fmt.date(document.arrival)} · Saída ${fmt.date(document.departure)}|">Datas</span><br />
+<span th:if="${document.checkedInAt != null}" th:text="|Entrada em ${fmt.instant(document.checkedInAt)}|">Entrada</span>
+<span th:text="|· Adultos ${document.adults} · Crianças ${document.children}|">Pessoas</span>
+</p>
+<div th:each="guest : ${document.guests}">
+<h2 th:text="${guest.name}">Hóspede</h2>
+<table class="lines">
+<tr th:if="${guest.nationality != null}"><td>Nacionalidade</td><td th:text="${guest.nationality}">BR</td></tr>
+<tr th:if="${guest.birthDate != null}"><td>Data de nascimento</td><td th:text="${fmt.date(guest.birthDate)}">Nascimento</td></tr>
+<tr th:if="${guest.address != null}"><td>Endereço</td><td th:text="${guest.address}">Endereço</td></tr>
+<tr th:each="doc : ${guest.documents}"><td th:text="|Documento ${doc.type} (${doc.country})|">Documento</td><td th:text="${doc.number}">***00</td></tr>
+<tr th:if="${guest.travelReason != null}"><td>Motivo da viagem</td><td th:text="|${guest.travelReason} (código FNRH)|">Motivo</td></tr>
+<tr th:if="${guest.transportMode != null}"><td>Meio de transporte</td><td th:text="|${guest.transportMode} (código FNRH)|">Transporte</td></tr>
+</table>
+<p>Assinatura: ______________________________________</p>
+</div>
+</body>
+</html>
