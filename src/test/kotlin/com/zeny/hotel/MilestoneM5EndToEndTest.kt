@@ -1,10 +1,14 @@
 package com.zeny.hotel
 
+import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import com.github.tomakehurst.wiremock.client.WireMock.containing
 import com.github.tomakehurst.wiremock.client.WireMock.equalTo
+import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
+import com.github.tomakehurst.wiremock.stubbing.StubMapping
 import com.github.tomakehurst.wiremock.verification.LoggedRequest
 import com.zeny.hotel.billing.BillingTestSupport
 import com.zeny.hotel.files.TestImages
@@ -75,6 +79,7 @@ import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.async
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.math.BigDecimal
+import java.net.URLEncoder
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.time.Duration
@@ -94,8 +99,11 @@ import java.util.UUID
  * chegam ao Serpro em ordem, com o titular e o menor como pessoas distintas. Depois, a ficha sai pelo agente com o
  * documento mascarado, a estadia troca de UH, é estendida e reduzida, recebe um lançamento e o pagamento do saldo, o
  * extrato mostra o saldo zero e o check-out com o late cotado libera a caução e encerra tudo; nada de nome ou CPF do
- * hóspede em trilha, outbox, notificação ou view da FNRH. Cada teste cria os próprios cadastros, envia só as submissões
- * da própria reserva e devolve a configuração global (FNRH, política, relógio) no fim.
+ * hóspede em trilha, outbox, notificação ou view da FNRH. Os outros cenários: o walk-in de um hóspede de gênero
+ * `OUTRO` com descrição, que chega ao Serpro com ela; o desfazer do check-in, que exige a aprovação do Gerente e expira
+ * em outra data operacional; e o check-in com o Serpro fora do ar, que conclui, esgota as tentativas, alerta o Gerente
+ * só com o código da reserva e volta pelo reenvio sem registro remoto duplicado. Cada teste cria os próprios cadastros,
+ * envia só as submissões da própria reserva e devolve a configuração global (FNRH, política, relógio) no fim.
  */
 @IntegrationTest
 @Import(
@@ -134,6 +142,9 @@ class MilestoneM5EndToEndTest(
     private val manager: Operator by lazy {
         Operator(userWithTemplate("MANAGER").also { iam.setPin(it, managerPin) })
     }
+
+    /** O quanto o relógio andou no teste (devolvido no fim): o recuo inicial e o avanço pelas esperas da FNRH. */
+    private var advanced: Duration = Duration.ZERO
 
     @Test
     @Suppress("LongMethod") // o cenário do marco, passo a passo
@@ -338,6 +349,406 @@ class MilestoneM5EndToEndTest(
             frontdesk.putPolicy(originalPolicy)
         }
     }
+
+    @Test
+    @Suppress("LongMethod") // o walk-in, o envio à FNRH e a confirmação
+    fun `a walk-in guest of gender OTHER with a description is checked in and reaches FNRH`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        advance(REWIND.negated())
+        try {
+            iam.enableFnrh()
+            val description = "Pessoa não binária ${guests.suffix()}"
+            val stay = newStay(holderProfile = mapOf("gender" to "OTHER", "genderDescription" to description))
+            stubFnrhFor(stay)
+
+            // --- O walk-in pela Recepcionista na UH inspecionada ------------------------------------------------
+            val departure = hotelApi.currentBusinessDate().plusDays(2)
+            val walkIn =
+                api(
+                    POST,
+                    "/api/v1/walk-ins",
+                    receptionist,
+                    mapOf(
+                        "roomId" to stay.room,
+                        "ratePlanId" to stay.plan,
+                        "departure" to departure,
+                        "adults" to 1,
+                        "childAges" to emptyList<Int>(),
+                        "segment" to "LEISURE",
+                        "guests" to listOf(stayGuest(stay.holder, primary = true)),
+                    ),
+                ).expect(201)
+            val id = walkIn["reservation"].id()
+            walkIn["holderGuestId"].asString() shouldBe stay.holder.toString()
+            walkIn["reservation"]["status"].asString() shouldBe "IN_HOUSE"
+            walkIn["reservation"]["roomId"].asString() shouldBe stay.room.toString()
+            walkIn["room"]["occupancy"].asString() shouldBe "OCCUPIED"
+            support.status(id) shouldBe "IN_HOUSE"
+            roomsApi.status(RoomId(stay.room))!!.let {
+                it.occupancy.name shouldBe "OCCUPIED"
+                it.guestCount shouldBe 1
+            }
+            val code = support.reservation(id)["reservation"]["code"].asString()
+
+            // --- A FNRH: o registro e o check-in enviados, a pessoa com o gênero OUTRO e a descrição -------------
+            sendOwnFnrhSubmissions(id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
+            // No walk-in as duas nascem na mesma transação, sem ordem de gravação; a de envio são as chamadas abaixo.
+            fnrhStatuses(id) shouldContainExactlyInAnyOrder
+                listOf(
+                    FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
+                    FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
+                )
+            val calls = fnrhCallsOf(stay, code)
+            calls.map { it.line() } shouldContainExactly
+                listOf(
+                    "POST /reservas",
+                    "GET /pessoas/documento/CPF/${stay.holderFnrh.cpf}",
+                    "POST /pessoas",
+                    "POST /reservas/${stay.remote}/hospedes",
+                )
+            val person = jsonMapper.readTree(calls.single { it.url.endsWith("/pessoas") }.bodyAsString)["pessoa"]
+            person["documento_id"]["numero_documento"].asString() shouldBe stay.holderFnrh.cpf
+            person["genero_id"].asString() shouldBe "OUTRO"
+            withClue("a descrição de gênero vai no corpo da pessoa") {
+                person["GeneroDescricao"]?.asString() shouldBe description
+            }
+
+            // --- A confirmação com os horários da política do hotel lida aqui -----------------------------------
+            val confirmation = api(GET, "/api/v1/reservations/$id/confirmation/pdf", receptionist)
+            confirmation.status shouldBe 200
+            confirmation.contentType shouldBe "application/pdf"
+            val policy = hotelApi.policy()
+            pdfText(confirmation.contentAsByteArray).let { text ->
+                text shouldContain code
+                text shouldContain "Check-in a partir das ${policy.checkInTime.format(HOUR)}"
+                text shouldContain "Check-out até as ${policy.checkOutTime.format(HOUR)}"
+                text shouldNotContain description
+                text shouldNotContain stay.holderFnrh.cpf
+            }
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+            advance(advanced.negated())
+        }
+    }
+
+    @Test
+    @Suppress("LongMethod") // o desfazer aprovado e o desfazer expirado, com a trilha e a aprovação
+    fun `undoing a check-in needs a superior's approval on the same business date and is audited with both users`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        try {
+            val stay = newStay()
+            val booked = book(stay)
+            api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, mapOf("roomId" to stay.room)).ok()
+            val body = checkInBody(stay, EARLY_FEE, minorProof(stay.minor)) - "earlyCheckInFee"
+            checkIn(booked.id, body).expect(200)["reservation"]["status"].asString() shouldBe "IN_HOUSE"
+
+            // --- A Recepcionista não desfaz sozinha: o Gerente aprova com o PIN ---------------------------------
+            val required = undoCheckIn(booked.id, receptionist).problem(403, "APPROVAL_REQUIRED")
+            required["action"].asString() shouldBe UNDO_CHECK_IN_ACTION
+            required["permission"].asString() shouldBe "frontdesk.stays.undocheckin"
+            required["resourceRef"].asString() shouldBe "reservations.reservation:${booked.id}"
+            support.status(booked.id) shouldBe "IN_HOUSE"
+            val approval = approvedByManager(required)
+            val approvalId = approval["approvalId"].asString()
+
+            val undone = undoCheckIn(booked.id, receptionist, approval["approvalToken"].asString()).expect(200)
+            undone["reservation"]["status"].asString() shouldBe "CONFIRMED"
+            undone["reservation"]["roomId"].asString() shouldBe stay.room.toString()
+            undone["room"]["occupancy"].asString() shouldBe "VACANT"
+            undone["room"]["housekeepingStatus"].asString() shouldBe "INSPECTED"
+            support.status(booked.id) shouldBe "CONFIRMED"
+            roomsApi.status(RoomId(stay.room))!!.let {
+                it.occupancy.name shouldBe "VACANT"
+                it.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+                (it.guestCount ?: 0) shouldBe 0
+            }
+            withClue("a trilha do desfazer: a Recepcionista e a aprovação; a aprovação: o solicitante e o Gerente") {
+                support.auditEntries(booked.id).single { it["action"] == UNDO_CHECK_IN_ACTION }.let {
+                    it["userId"] shouldBe receptionist.user.id.value
+                    it["approvalId"].toString() shouldBe approvalId
+                }
+                jdbc
+                    .sql(
+                        "SELECT requester_id, approver_id, action, resource_ref FROM iam.approval " +
+                            "WHERE id = CAST(:id AS uuid)",
+                    ).param("id", approvalId)
+                    .query { rs, _ ->
+                        listOf(
+                            rs.getObject("requester_id", UUID::class.java),
+                            rs.getObject("approver_id", UUID::class.java),
+                            rs.getString("action"),
+                            rs.getString("resource_ref"),
+                        )
+                    }.single() shouldContainExactly
+                    listOf(
+                        receptionist.user.id.value,
+                        manager.user.id.value,
+                        UNDO_CHECK_IN_ACTION,
+                        "reservations.reservation:${booked.id}",
+                    )
+            }
+
+            // --- De novo hospedada; em outra data operacional da reserva, o desfazer expira (antes da aprovação) -
+            checkIn(booked.id, body - "preAuthorization").expect(200)
+            jdbc
+                .sql("UPDATE reservations.reservation SET checked_in_on = checked_in_on - 1 WHERE id = :id")
+                .param("id", booked.id)
+                .update() shouldBe 1
+            undoCheckIn(booked.id, receptionist).problem(422, "UNDO_CHECK_IN_EXPIRED")
+            undoCheckIn(booked.id, manager).problem(422, "UNDO_CHECK_IN_EXPIRED")
+            support.status(booked.id) shouldBe "IN_HOUSE"
+            roomsApi.status(RoomId(stay.room))!!.occupancy.name shouldBe "OCCUPIED"
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+        }
+    }
+
+    @Test
+    @Suppress("LongMethod") // a queda, as oito tentativas, o alerta e a volta do Serpro
+    fun `with Serpro down the check-in concludes and the failure alert carries no guest data`() {
+        FnrhTestServer.reset()
+        jdbc.resetFnrhSettings()
+        // Mais que as esperas das oito tentativas: as chamadas gravadas ficam no passado para os outros testes.
+        advance(OUTAGE_REWIND.negated())
+        try {
+            iam.enableFnrh()
+            val stay = newStay()
+            stubFnrhFor(stay)
+            val booked = book(stay)
+            val outage = serproDownFor(booked.code)
+            val leaks = guestDataOf(stay)
+
+            // --- O check-in conclui com o Serpro fora do ar ------------------------------------------------------
+            api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, mapOf("roomId" to stay.room)).ok()
+            val body = checkInBody(stay, EARLY_FEE, minorProof(stay.minor)) - "earlyCheckInFee"
+            checkIn(booked.id, body).expect(200)["reservation"]["status"].asString() shouldBe "IN_HOUSE"
+            support.status(booked.id) shouldBe "IN_HOUSE"
+
+            // --- A primeira tentativa: o registro pendente com a tentativa gasta, o check-in atrás dele ---------
+            sendOwnFnrhSubmissions(booked.id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
+            val (register, checkInSubmission) = fnrhSubmissions(booked.id)
+            register shouldBe
+                register.copy(
+                    operation = FnrhOperation.REGISTER_RESERVATION,
+                    status = FnrhSubmissionStatus.PENDING,
+                    attempts = 1,
+                    lastFailure = "SERVER_ERROR",
+                )
+            checkInSubmission shouldBe
+                checkInSubmission.copy(
+                    operation = FnrhOperation.CHECK_IN,
+                    status = FnrhSubmissionStatus.PENDING,
+                    attempts = 0,
+                )
+            fnrhCallsOf(stay, booked.code).map { it.line() } shouldContainExactly listOf("POST /reservas")
+            failureAlerts(booked.code).shouldBeEmpty()
+            listedSubmissions("PENDING", booked.id, leaks).map { it.first to it.second } shouldContainExactly
+                listOf("REGISTER_RESERVATION" to 1, "CHECK_IN" to 0)
+
+            // --- As outras sete tentativas (o relógio pelas esperas): FAILED e o alerta só com o código ----------
+            repeat(MAX_ATTEMPTS - 1) {
+                advance(Duration.ofHours(1).plusMinutes(1))
+                sender.sendDueFor(booked.id)
+            }
+            fnrhSubmissions(booked.id).map { Triple(it.operation, it.status, it.attempts) } shouldContainExactly
+                listOf(
+                    Triple(FnrhOperation.REGISTER_RESERVATION, FnrhSubmissionStatus.FAILED, MAX_ATTEMPTS),
+                    Triple(FnrhOperation.CHECK_IN, FnrhSubmissionStatus.PENDING, 0),
+                )
+            listedSubmissions("FAILED", booked.id, leaks).map { it.first to it.second } shouldContainExactly
+                listOf("REGISTER_RESERVATION" to MAX_ATTEMPTS)
+            await().atMost(Duration.ofSeconds(TIMEOUT_SECONDS)).pollInterval(Duration.ofMillis(POLL_MILLIS)).until {
+                failureAlerts(booked.code).isNotEmpty()
+            }
+            val alerts = failureAlerts(booked.code)
+            withClue("o alerta vai só a quem reenvia (o Gerente), com o código da reserva e nada do hóspede") {
+                alerts.filter { it.recipient == manager.user.id.value }.map { it.title to it.body } shouldContainExactly
+                    listOf("Falha no envio à FNRH" to "Reserva ${booked.code}: registro da reserva — falhou")
+                alerts.map { it.recipient } shouldNotContain receptionist.user.id.value
+                for (leak in leaks) alerts.forEach { it.row shouldNotContain leak }
+            }
+
+            // --- O Serpro de volta e o reenvio do Gerente: a conciliação acha a reserva, sem registro duplicado --
+            outage.forEach { FnrhTestServer.server.removeStub(it) }
+            FnrhTestServer.stubFindReservationByCode_v2_4(booked.code, stay.remote)
+            val before = fnrhCallsOf(stay, booked.code).size
+            api(POST, "/api/v1/fnrh/submissions/${register.id}/retry", manager).ok().let {
+                it["status"].asString() shouldBe "PENDING"
+                it["attempts"].asInt() shouldBe 0
+            }
+            advance(Duration.ofMinutes(2))
+            sender.sendDueFor(booked.id)
+
+            fnrhStatuses(booked.id) shouldContainExactly
+                listOf(
+                    FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
+                    FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
+                )
+            val calls = fnrhCallsOf(stay, booked.code)
+            withClue("um só POST /reservas desta reserva (o da queda); depois, a conciliação e os hóspedes") {
+                calls.count { it.line() == "POST /reservas" } shouldBe 1
+                calls.drop(before).map { it.line() } shouldContainExactly
+                    listOf(
+                        "GET ${reservationByCodePath(booked.code)}",
+                        "GET /pessoas/documento/CPF/${stay.holderFnrh.cpf}",
+                        "POST /pessoas",
+                        "POST /reservas/${stay.remote}/hospedes",
+                        "GET /pessoas/documento/CPF/${stay.minorFnrh.cpf}",
+                        "POST /pessoas",
+                        "POST /reservas/${stay.remote}/hospedes",
+                    )
+            }
+            remoteIds
+                .reservation(booked.id, FnrhEnvironment.HOMOLOGATION)
+                .shouldNotBeNull()
+                .remoteId.value shouldBe stay.remote
+        } finally {
+            jdbc.resetFnrhSettings()
+            FnrhTestServer.reset()
+            advance(advanced.negated())
+        }
+    }
+
+    // --- Apoio: walk-in, desfazer e Serpro fora do ar -------------------------------------------------------------
+
+    /** Anda o relógio e soma em [advanced], para o teste devolver tudo no fim. */
+    private fun advance(duration: Duration) {
+        clock.advance(duration)
+        advanced = advanced.plus(duration)
+    }
+
+    /** O desfazer do check-in pelo [operator], sem `Idempotency-Key`, com o token de aprovação se houver. */
+    private fun undoCheckIn(
+        reservation: UUID,
+        operator: Operator,
+        approvalToken: String? = null,
+    ): MockHttpServletResponse =
+        billing.call(
+            POST,
+            "/api/v1/reservations/$reservation/undo-check-in",
+            operator.auth,
+            idempotencyKey = null,
+            approvalToken = approvalToken,
+        )
+
+    /** A aprovação pedida pela Recepcionista (na sessão dela) e dada pelo Gerente com o login e o PIN. */
+    private fun approvedByManager(problem: JsonNode): JsonNode =
+        with(iam) {
+            val body =
+                mapOf(
+                    "action" to problem["action"].asString(),
+                    "permission" to problem["permission"].asString(),
+                    "resourceRef" to problem["resourceRef"].asString(),
+                    "approverLogin" to manager.user.login,
+                    "approverPin" to managerPin,
+                    "reason" to "Check-in feito na reserva errada",
+                )
+            call(POST, "/api/v1/auth/approvals", receptionist.auth, body).expectStatus(201)!!
+        }
+
+    /** O nome, o sufixo sorteado e o CPF (dígitos e formatado) do titular e do menor. */
+    private fun guestDataOf(stay: Stay): List<String> {
+        val cpfs = listOf(stay.holderFnrh.cpf, stay.minorFnrh.cpf)
+        val names = listOf(stay.holderName, stay.minorName)
+        return names + names.map { it.substringAfterLast(' ') } + cpfs + cpfs.map(::formattedCpf)
+    }
+
+    /**
+     * O Serpro fora do ar só para esta reserva: `503` no registro (`POST /reservas` com o código dela) e na
+     * conciliação pelo código. Devolve os stubs, para tirá-los quando ele voltar.
+     */
+    private fun serproDownFor(code: String): List<StubMapping> =
+        listOf(
+            FnrhTestServer.server.stubFor(
+                post(urlEqualTo("${FnrhTestServer.BASE_PATH}/reservas"))
+                    .withRequestBody(containing("\"numero_reserva\":\"$code\""))
+                    .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE)),
+            ),
+            FnrhTestServer.server.stubFor(
+                get(urlEqualTo("${FnrhTestServer.BASE_PATH}${reservationByCodePath(code)}"))
+                    .willReturn(aResponse().withStatus(SERVICE_UNAVAILABLE)),
+            ),
+        )
+
+    /** A chamada ao Serpro como o método e o caminho sem o prefixo da API (`POST /reservas`). */
+    private fun LoggedRequest.line(): String = "${method.value()} ${url.removePrefix(FnrhTestServer.BASE_PATH)}"
+
+    /** O caminho da conciliação da reserva pelo código no Serpro (sem o prefixo da API). */
+    private fun reservationByCodePath(code: String): String =
+        "/reservas?page_number=1&codigo_reserva=${URLEncoder.encode(code, Charsets.UTF_8)}"
+
+    private data class Submission(
+        val id: UUID,
+        val operation: FnrhOperation,
+        val status: FnrhSubmissionStatus,
+        val attempts: Int,
+        val lastFailure: String?,
+    )
+
+    /** As submissões da reserva na fila, em ordem, com as tentativas e a última falha. */
+    private fun fnrhSubmissions(reservationId: UUID): List<Submission> =
+        jdbc
+            .sql(
+                "SELECT id, operation, status, attempts, last_failure FROM fnrh.submission " +
+                    "WHERE reservation_id = :id ORDER BY sequence",
+            ).param("id", reservationId)
+            .query { rs, _ ->
+                Submission(
+                    rs.getObject("id", UUID::class.java),
+                    FnrhOperation.valueOf(rs.getString("operation")),
+                    FnrhSubmissionStatus.valueOf(rs.getString("status")),
+                    rs.getInt("attempts"),
+                    rs.getString("last_failure"),
+                )
+            }.list()
+
+    /**
+     * As submissões da reserva na lista da API (`GET /fnrh/submissions` pela Recepcionista, página a página) na
+     * situação [status]: a operação e as tentativas. Nenhum item delas tem um dos [leaks].
+     */
+    private fun listedSubmissions(
+        status: String,
+        reservation: UUID,
+        leaks: List<String>,
+    ): List<Pair<String, Int>> {
+        val found = mutableListOf<JsonNode>()
+        var cursor: String? = null
+        do {
+            val query = "status=$status&limit=$PAGE_LIMIT" + cursor?.let { "&cursor=$it" }.orEmpty()
+            val page = api(GET, "/api/v1/fnrh/submissions?$query", receptionist).ok()
+            found += page["items"].values().filter { it["reservationId"].asString() == reservation.toString() }
+            cursor = page["nextCursor"].takeUnless { it == null || it.isNull }?.asString()
+        } while (cursor != null)
+        for (leak in leaks) found.forEach { it.toString() shouldNotContain leak }
+        return found.map { it["operation"].asString() to it["attempts"].asInt() }
+    }
+
+    private data class Alert(
+        val recipient: UUID,
+        val title: String,
+        val body: String,
+        val row: String,
+    )
+
+    /** Os alertas de falha de integração que citam o código da reserva, de qualquer destinatário. */
+    private fun failureAlerts(code: String): List<Alert> =
+        jdbc
+            .sql(
+                "SELECT n.recipient_id, n.title, n.body, n::text AS row FROM notifications.notification n " +
+                    "WHERE n.type = 'notifications.integration-failure' AND n.body LIKE :code ORDER BY n.id",
+            ).param("code", "%$code%")
+            .query { rs, _ ->
+                Alert(
+                    rs.getObject("recipient_id", UUID::class.java),
+                    rs.getString("title"),
+                    rs.getString("body"),
+                    rs.getString("row"),
+                )
+            }.list()
 
     // --- Apoio: da ficha ao check-out ---------------------------------------------------------------------------
 
@@ -810,9 +1221,9 @@ class MilestoneM5EndToEndTest(
 
     /**
      * O Gerente cadastra o tipo de UH, duas UHs (deixadas inspecionadas), as políticas, o plano e os preços; a
-     * Recepcionista cadastra o titular e o menor.
+     * Recepcionista cadastra o titular (com os campos de perfil [holderProfile] a mais) e o menor.
      */
-    private fun newStay(): Stay {
+    private fun newStay(holderProfile: Map<String, Any?> = emptyMap()): Stay {
         val today = hotelApi.currentBusinessDate()
         val type = api(POST, "/api/v1/room-types", manager, rooms.roomTypeBody()).expect(201).id()
         val created = (1..2).map { api(POST, "/api/v1/rooms", manager, rooms.roomBody(type)).expect(201).id() }
@@ -844,7 +1255,7 @@ class MilestoneM5EndToEndTest(
         val holderCpf = newCpf()
         val minorCpf = newCpf()
         val holderName = guests.uniqueName("Titular")
-        val holder = guest(holderCpf, LocalDate.of(1988, 3, 14), holderName)
+        val holder = guest(holderCpf, LocalDate.of(1988, 3, 14), holderName, holderProfile)
         val minorName = guests.uniqueName("Menor")
         val minor = guest(minorCpf, today.minusYears(MINOR_AGE), minorName)
         val remote = "r-${UuidV7.generate()}"
@@ -863,13 +1274,14 @@ class MilestoneM5EndToEndTest(
     }
 
     /**
-     * Um hóspede brasileiro com o nome [fullName], CPF, data de nascimento e os dados que a FNRH exige, cadastrado pela
-     * Recepcionista.
+     * Um hóspede brasileiro com o nome [fullName], CPF, data de nascimento, os dados que a FNRH exige e os campos de
+     * perfil [extraProfile], cadastrado pela Recepcionista.
      */
     private fun guest(
         cpf: String,
         birthDate: LocalDate,
         fullName: String,
+        extraProfile: Map<String, Any?> = emptyMap(),
     ): UUID =
         api(
             POST,
@@ -879,7 +1291,7 @@ class MilestoneM5EndToEndTest(
                 profile =
                     guests.profileBody(
                         fullName = fullName,
-                        extra = mapOf("birthDate" to birthDate, "nationality" to "BR"),
+                        extra = mapOf("birthDate" to birthDate, "nationality" to "BR") + extraProfile,
                     ),
                 documents = listOf(guests.document("CPF", cpf)),
                 sensitiveData = mapOf("raceColor" to "BROWN"),
@@ -1061,8 +1473,8 @@ class MilestoneM5EndToEndTest(
 
     /**
      * As chamadas ao Serpro (WireMock, um por JVM) desta estadia, na ordem em que chegaram: as que levam o id remoto
-     * da reserva ou o CPF de um dos hóspedes no caminho, o cadastro de pessoa com um desses CPFs e o registro com o
-     * código da reserva.
+     * da reserva ou o CPF de um dos hóspedes no caminho, o cadastro de pessoa com um desses CPFs, o registro com o
+     * código da reserva e a conciliação pelo código.
      */
     private fun fnrhCallsOf(
         stay: Stay,
@@ -1075,7 +1487,8 @@ class MilestoneM5EndToEndTest(
             stay.remote in path ||
                 cpfs.any { it in path } ||
                 (path == "/pessoas" && cpfs.any { it in body }) ||
-                (path == "/reservas" && "\"numero_reserva\":\"$code\"" in body)
+                (path == "/reservas" && "\"numero_reserva\":\"$code\"" in body) ||
+                path == reservationByCodePath(code)
         }
     }
 
@@ -1135,6 +1548,11 @@ class MilestoneM5EndToEndTest(
                 "fnrh.report_submissions",
             )
         const val STAY_LISTENER = "StayTransitionsProbeListener"
+        val HOUR: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+        const val UNDO_CHECK_IN_ACTION = "frontdesk.stay.undo-check-in"
+        const val MAX_ATTEMPTS = 8
+        const val SERVICE_UNAVAILABLE = 503
+        const val PAGE_LIMIT = 200
 
         /** O CPF solicitante padrão que o `enableFnrh` configura, só dígitos. */
         const val REQUESTER_CPF = "52998224725"
@@ -1146,5 +1564,8 @@ class MilestoneM5EndToEndTest(
          * `fnrh.integration_call` (append-only, banco compartilhado) ficam no passado para os outros testes.
          */
         val REWIND: Duration = Duration.ofHours(3)
+
+        /** O recuo do teste do Serpro fora do ar: mais que as esperas das oito tentativas (7 h 7 min) e o reenvio. */
+        val OUTAGE_REWIND: Duration = Duration.ofHours(9)
     }
 }
