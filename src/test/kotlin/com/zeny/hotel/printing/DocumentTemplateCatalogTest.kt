@@ -204,4 +204,17 @@ class DocumentTemplateCatalogTest {
                 .isInstanceOf(IllegalArgumentException::class.java)
         }
     }
+
+    @Test
+    fun `o motor so resolve nomes sob templates mesmo se existirem no classpath`() {
+        val engine = catalog(PrintingExampleTemplates).engine
+
+        listOf("META-INF/MANIFEST.MF.txt", "application.xhtml", "logback.txt", "templates.txt").forEach {
+            assertThatThrownBy { engine.process(it, Context(Locale.ROOT)) }.describedAs(it).isNotNull()
+        }
+        // um recurso real fora de templates/, com extensão aceita pelo padrão antigo
+        val outside = "outside-templates.txt"
+        assertThat(DocumentTemplateCatalogTest::class.java.classLoader.getResource(outside)).isNotNull()
+        assertThatThrownBy { engine.process(outside, Context(Locale.ROOT)) }.isNotNull()
+    }
 }

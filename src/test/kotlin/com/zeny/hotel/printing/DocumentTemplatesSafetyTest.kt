@@ -83,6 +83,18 @@ class DocumentTemplatesSafetyTest {
     }
 
     @Test
+    fun `a linha do corpo no layout so passa uma vez e a regra ignora maiusculas`() {
+        val d = "$"
+        val line = """<div th:insert="~{$d{bodyTemplate} :: body}"></div>"""
+
+        assertThat(violations("templates/printing/layout.xhtml", line)).isEmpty()
+        assertThat(violations("templates/printing/layout.xhtml", line + "\n" + line)).isNotEmpty()
+        assertThat(violations("templates/x/a.xhtml", """<p TH:UTEXT="$d{x}">x</p>""")).isNotEmpty()
+        assertThat(violations("templates/x/a.xhtml", """<p TH:TEXT="__x__">x</p>""")).isNotEmpty()
+        assertThat(violations("templates/x/a.xhtml", """<div TH:REPLACE="~{$d{x} :: b}"></div>""")).isNotEmpty()
+    }
+
+    @Test
     fun `aceita o que e permitido`() {
         val d = "$"
         val good =
@@ -157,13 +169,16 @@ class DocumentTemplatesSafetyTest {
     private object TemplateRules {
         private const val LAYOUT = "templates/printing/layout.xhtml"
         private const val BODY_INSERT = """th:insert="~{${'$'}{bodyTemplate} :: body}""""
-        private val UTEXT = Regex("""(?:th:|data-th-)utext""")
+        private val UTEXT = Regex("""(?:th:|data-th-)utext""", RegexOption.IGNORE_CASE)
         private val INLINE_UNESCAPED = Regex("""\[\(""")
         private val PREPROCESS_FORM = Regex("""__[$*#@~]\{""")
-        private val TH_ATTRIBUTE = Regex("""(?:th:|data-th-)[\w-]+\s*=\s*("[^"]*"|'[^']*')""")
+        private val TH_ATTRIBUTE = Regex("""(?:th:|data-th-)[\w-]+\s*=\s*("[^"]*"|'[^']*')""", RegexOption.IGNORE_CASE)
         private val INLINE_ESCAPED = Regex("""\[\[(.*?)]]""", RegexOption.DOT_MATCHES_ALL)
         private val FRAGMENT =
-            Regex("""((?:th:|data-th-)(?:insert|replace|include|substituteby))\s*=\s*("[^"]*"|'[^']*')""")
+            Regex(
+                """((?:th:|data-th-)(?:insert|replace|include|substituteby))\s*=\s*("[^"]*"|'[^']*')""",
+                RegexOption.IGNORE_CASE,
+            )
 
         fun violations(
             path: String,
@@ -175,9 +190,13 @@ class DocumentTemplatesSafetyTest {
             if (PREPROCESS_FORM.containsMatchIn(content)) found += "pré-processamento (__\${ e afins)"
             if (TH_ATTRIBUTE.findAll(content).any { "__" in it.groupValues[1] }) found += "__ em atributo th:*"
             if (INLINE_ESCAPED.findAll(content).any { "__" in it.groupValues[1] }) found += "__ em [[ ]]"
+            var bodyInserts = 0
             FRAGMENT.findAll(content).forEach {
                 val isBodyInsert = path == LAYOUT && it.value.replace(" ", "") == BODY_INSERT.replace(" ", "")
-                if ("\${" in it.groupValues[2] && !isBodyInsert) found += "fragmento por variável: ${it.value}"
+                if (isBodyInsert) bodyInserts++
+                if ("\${" in it.groupValues[2] && (!isBodyInsert || bodyInserts > 1)) {
+                    found += "fragmento por variável: ${it.value}"
+                }
             }
             return found
         }

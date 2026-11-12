@@ -15,9 +15,9 @@ import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver
  * padrão `<módulo>.<documento>`, prefixo de outro módulo, caminho fora de `templates/<módulo>/` (`.xhtml` e `.txt`) ou
  * template inexistente no classpath; a mensagem cita o código.
  *
- * O [engine] tem dois resolvedores de classpath (UTF-8, cache ligado): `*.xhtml` em [TemplateMode.XML] e `*.txt` em
- * [TemplateMode.TEXT]. O nome do template é o caminho completo do classpath (`templates/<módulo>/<nome>.xhtml`), sem
- * prefixo nem sufixo.
+ * O [engine] tem dois resolvedores de classpath (UTF-8, cache ligado): arquivos `.xhtml` em [TemplateMode.XML] e
+ * `.txt` em [TemplateMode.TEXT], só sob `templates/`; nomes fora dali não resolvem. O nome do template é o caminho
+ * completo do classpath (`templates/<módulo>/<nome>.xhtml`), sem prefixo nem sufixo.
  */
 class DocumentTemplateCatalog(
     modules: List<ModuleDocumentTemplates>,
@@ -32,7 +32,7 @@ class DocumentTemplateCatalog(
         require(repeatedModules.isEmpty()) { "Templates de documento declarados mais de uma vez para $repeatedModules" }
         val all =
             modules.flatMap { module ->
-                module.templates.onEach { check(module.module, it, classLoader) }
+                module.templates.onEach { validate(module.module, it, classLoader) }
             }
         val repeated = all.groupBy { it.code }.filterValues { it.size > 1 }.keys
         require(repeated.isEmpty()) { "Template de documento repetido: $repeated" }
@@ -44,7 +44,7 @@ class DocumentTemplateCatalog(
     fun template(code: String): DocumentTemplate =
         requireNotNull(templates[code]) { "Template de documento desconhecido: '$code'" }
 
-    private fun check(
+    private fun validate(
         module: String,
         template: DocumentTemplate,
         classLoader: ClassLoader,
@@ -75,8 +75,8 @@ class DocumentTemplateCatalog(
 
     private fun newEngine(): SpringTemplateEngine =
         SpringTemplateEngine().apply {
-            setTemplateResolver(resolver(order = 1, pattern = "*.xhtml", mode = TemplateMode.XML))
-            addTemplateResolver(resolver(order = 2, pattern = "*.txt", mode = TemplateMode.TEXT))
+            setTemplateResolver(resolver(order = 1, pattern = "templates/*.xhtml", mode = TemplateMode.XML))
+            addTemplateResolver(resolver(order = 2, pattern = "templates/*.txt", mode = TemplateMode.TEXT))
         }
 
     private fun resolver(
