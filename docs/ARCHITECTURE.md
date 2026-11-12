@@ -109,7 +109,7 @@ flowchart LR
 | `staff` | PES | Colaboradores, setores, turnos e escala | shared, iam, hotel |
 | `files` | — | Anexos (S3), URLs assinadas e cifragem de sensíveis | shared |
 | `notifications` | NOT | Notificações internas, preferências e push | shared, iam |
-| `printing` | NOT | Agentes, impressoras e fila de impressão | shared, hotel |
+| `printing` | NOT | Agentes, impressoras e fila de impressão | shared, hotel, files |
 | `checklists` | CHK | Modelos, versões, execuções e rotinas | shared, hotel, staff, files |
 | `rooms` | UH | Tipos de UH, UHs, áreas, status e OOO/OOS | shared, hotel |
 | `guests` | HOS | Hóspedes, empresas, consentimentos e LGPD | shared, files |

@@ -17,7 +17,9 @@ class DocumentTemplatesSafetyTest {
     @Test
     fun `os templates do classpath principal usam so as construcoes permitidas`() {
         val root = Path.of("src/main/resources/templates")
-        if (!Files.isDirectory(root)) return
+        // M5 E11, Task 8: o layout do printing existe, então a varredura nunca passa em silêncio sem arquivo.
+        assertThat(root).isDirectory()
+        val scanned = mutableListOf<String>()
         val violations =
             Files.walk(root).use { paths ->
                 paths
@@ -25,10 +27,12 @@ class DocumentTemplatesSafetyTest {
                     .toList()
                     .flatMap { file ->
                         val classpath = file.invariantSeparatorsPathString.substringAfter("src/main/resources/")
+                        scanned += classpath
                         violations(classpath, file.readText())
                     }
             }
 
+        assertThat(scanned).contains("templates/printing/layout.xhtml")
         assertThat(violations).isEmpty()
     }
 

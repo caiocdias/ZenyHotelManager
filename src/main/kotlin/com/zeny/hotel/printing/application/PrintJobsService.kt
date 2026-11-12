@@ -3,7 +3,6 @@ package com.zeny.hotel.printing.application
 import com.zeny.hotel.printing.NewPrintJob
 import com.zeny.hotel.printing.PrintJobStatus
 import com.zeny.hotel.printing.PrinterKind
-import com.zeny.hotel.printing.PrintingApi
 import com.zeny.hotel.printing.PrintingErrorCodes
 import com.zeny.hotel.printing.PrintingPermissions
 import com.zeny.hotel.printing.domain.PrintJob
@@ -114,7 +113,7 @@ interface PrintJobStore {
     fun countFailedSince(since: Instant): Long
 }
 
-/** Os tetos do conteúdo (D-E10-5): o da [PrintingApi] e o menor, da rota manual. */
+/** Os tetos do conteúdo (D-E10-5): o da [com.zeny.hotel.printing.PrintingApi] e o menor, da rota manual. */
 @Component
 class PrintJobLimits(
     @Value("\${zeny.printing.max-content-bytes}") val maxContentBytes: Int,
@@ -122,9 +121,10 @@ class PrintJobLimits(
 )
 
 /**
- * A fila de jobs de impressão (D-E10-4 e D-E10-5). O [enqueue] da [PrintingApi] não confere permissão; a [create] da
- * rota exige `printing.jobs.manage` e o teto manual; [jobs] exige `printing.jobs.read`. O conteúdo é validado, cifrado
- * com o id do job como dado associado e nunca volta em resposta, log nem trilha.
+ * A fila de jobs de impressão (D-E10-4 e D-E10-5). O [enqueue] (da `PrintingApi`, pela fachada [PrintingApiService])
+ * não confere permissão; a [create] da rota exige `printing.jobs.manage` e o teto manual; [jobs] exige
+ * `printing.jobs.read`. O conteúdo é validado, cifrado com o id do job como dado associado e nunca volta em resposta,
+ * log nem trilha.
  */
 @Service
 @Suppress("LongParameterList") // as portas e os colaboradores do caso de uso; os tetos já vão agrupados
@@ -136,10 +136,18 @@ class PrintJobsService(
     private val audit: AuditContext,
     private val clock: Clock,
     private val limits: PrintJobLimits,
-) : PrintingApi {
+) {
+    /** O pedido da [com.zeny.hotel.printing.PrintingApi] (pela fachada [PrintingApiService]): sem permissão. */
     @Audited(JOB_CREATE)
     @Transactional
-    override fun enqueue(job: NewPrintJob): UUID = place(job, limits.maxContentBytes).id
+    fun enqueue(job: NewPrintJob): UUID = place(job, limits.maxContentBytes).id
+
+    /**
+     * O tipo da impressora em que um documento vai ser impresso, conferido antes de renderizá-lo: `UNKNOWN_PRINTER`
+     * (400) e `PRINTER_INACTIVE` (422), como no [enqueue].
+     */
+    @Transactional(readOnly = true)
+    fun usablePrinterKind(printerId: UUID): PrinterKind = usablePrinter(printerId).kind
 
     /** A rota manual: `printing.jobs.manage` e o teto menor. */
     @Audited(JOB_CREATE)

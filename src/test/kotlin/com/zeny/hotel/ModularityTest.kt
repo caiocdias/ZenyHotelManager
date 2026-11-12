@@ -342,20 +342,20 @@ class ModularityTest {
     }
 
     @Test
-    fun `printing depends only on shared`() {
+    fun `printing depends only on shared, hotel and files`() {
         val printing = modules.getModuleByName("printing").orElseThrow()
 
-        // M5 E10: agentes, impressoras e fila de impressão (ARCHITECTURE §3.1 e §14). Só o kernel; nunca iam,
-        // notifications nem tabela de outro schema.
+        // M5 E10: agentes, impressoras e fila de impressão (ARCHITECTURE §3.1 e §14); nunca iam, notifications nem
+        // tabela de outro schema. M5 E11: hotel (o perfil para o cabeçalho dos documentos) e files (o logotipo).
         printing
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
-            .toList() shouldContainExactlyInAnyOrder listOf("shared")
+            .toList() shouldContainExactlyInAnyOrder listOf("shared", "hotel", "files")
         PrintingModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
-            .toSet() shouldBe setOf("shared")
+            .toSet() shouldBe setOf("shared", "hotel", "files")
     }
 
     @Test

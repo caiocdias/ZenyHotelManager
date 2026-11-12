@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Layout padrão dos documentos em PDF (M5 E11, D-E11-3): cabeçalho com os dados do hotel e o logotipo, rodapé com o
+  título, a emissão e a paginação, e o corpo do módulo dono, inserido pela única linha com fragmento variável
+  permitida (DocumentTemplatesSafetyTest). Variáveis: document, hotel, logo, fmt, issuedAt, title e bodyTemplate.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+<title th:text="${title}">Documento</title>
+<style>
+@page {
+  size: A4;
+  margin: 40mm 15mm 20mm 15mm;
+  @top-center { content: element(header); vertical-align: bottom; }
+  @bottom-center { content: element(footer); vertical-align: top; }
+}
+body { font-family: Helvetica, sans-serif; font-size: 10pt; color: #000000; margin: 0; }
+.header { position: running(header); width: 100%; padding-bottom: 2mm; border-bottom: 0.5pt solid #555555; }
+.footer { position: running(footer); width: 100%; padding-top: 1.5mm; border-top: 0.5pt solid #555555; font-size: 8pt; }
+table.bar { width: 100%; border-collapse: collapse; }
+table.bar td { padding: 0; vertical-align: middle; }
+td.logo { width: 42mm; padding-right: 4mm; }
+td.logo img { max-width: 40mm; max-height: 22mm; }
+.trade { font-size: 13pt; font-weight: bold; }
+.right { text-align: right; }
+.center { text-align: center; }
+.pagination::after { content: "Página " counter(page) " de " counter(pages); }
+.content body { display: block; margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<div class="header">
+<table class="bar"><tr>
+<td class="logo" th:if="${logo != null}"><img th:src="${logo}" alt="" /></td>
+<td>
+<div class="trade" th:text="${hotel.tradeName}">Hotel</div>
+<div th:if="${hotel.legalName != null}" th:text="${hotel.legalName}">Razão social</div>
+<div>
+<span th:if="${hotel.cnpj != null}" th:text="|CNPJ ${hotel.cnpj}|">CNPJ</span>
+<span th:if="${hotel.cadastur != null}" th:text="|· Cadastur ${hotel.cadastur}|">Cadastur</span>
+<span th:if="${hotel.municipalRegistration != null}" th:text="|· Inscrição municipal ${hotel.municipalRegistration}|">IM</span>
+</div>
+<div th:if="${hotel.address != null}" th:text="${hotel.address}">Endereço</div>
+</td>
+</tr></table>
+</div>
+<div class="footer">
+<table class="bar"><tr>
+<td th:text="${title}">Título</td>
+<td class="center" th:text="|Emitido em ${fmt.instant(issuedAt)}|">Emitido em</td>
+<td class="right pagination"></td>
+</tr></table>
+</div>
+<div class="content" th:insert="~{${bodyTemplate} :: body}"></div>
+</body>
+</html>

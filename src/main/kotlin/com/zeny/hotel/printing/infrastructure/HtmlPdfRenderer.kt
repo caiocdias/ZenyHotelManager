@@ -4,7 +4,11 @@ import com.openhtmltopdf.extend.FSStream
 import com.openhtmltopdf.extend.FSStreamFactory
 import com.openhtmltopdf.extend.FSUriResolver
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder
+import com.openhtmltopdf.util.Diagnostic
 import com.openhtmltopdf.util.XRLog
+import com.openhtmltopdf.util.XRLogger
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.xml.sax.InputSource
 import java.io.ByteArrayInputStream
@@ -20,12 +24,13 @@ import javax.xml.parsers.DocumentBuilderFactory
  * Converte um documento XHTML em PDF sem ler nenhum recurso externo (D-E11-5): o *parse* usa um
  * `DocumentBuilderFactory` que recusa `DOCTYPE` (nem DTD nem entidade externa passam), e o openhtmltopdf só resolve
  * URIs `data:`; `http:`, `https:`, `file:`, `jar:` e caminhos relativos são recusados antes de qualquer acesso. O log
- * do openhtmltopdf fica em `WARN`.
+ * do openhtmltopdf fica em `WARN` e **sem conteúdo do documento** ([RedactedXRLogger]): as mensagens dele citam a URI
+ * da imagem, e uma URI `data:` é a própria imagem.
  */
 @Component
 class HtmlPdfRenderer {
     init {
-        XRLog.listRegisteredLoggers().forEach { XRLog.setLevel(it, Level.WARNING) }
+        XRLog.setLoggerImpl(RedactedXRLogger)
     }
 
     /** Falha com exceção se o XHTML não for XML bem formado ou tiver `DOCTYPE`. */
@@ -58,6 +63,56 @@ class HtmlPdfRenderer {
             setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "")
             setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
         }
+
+    /**
+     * O log do openhtmltopdf (processo inteiro, porque o `XRLog` é estático): só de `WARNING` para cima, com o
+     * identificador da mensagem e o tipo da exceção, nunca os argumentos (URI, texto) nem a mensagem da exceção.
+     */
+    private object RedactedXRLogger : XRLogger {
+        private val log: Logger = LoggerFactory.getLogger("com.openhtmltopdf")
+
+        override fun log(diagnostic: Diagnostic) {
+            if (isLogLevelEnabled(diagnostic)) {
+                log.warn(
+                    "openhtmltopdf: {}{}",
+                    diagnostic.logMessageId.enum.name,
+                    diagnostic.error?.let { " (${it.javaClass.simpleName})" }.orEmpty(),
+                )
+            }
+        }
+
+        override fun log(
+            where: String?,
+            level: Level?,
+            msg: String?,
+        ) = logWithoutMessage(where, level, null)
+
+        override fun log(
+            where: String?,
+            level: Level?,
+            msg: String?,
+            th: Throwable?,
+        ) = logWithoutMessage(where, level, th)
+
+        override fun setLevel(
+            logger: String?,
+            level: Level?,
+        ) = Unit
+
+        override fun isLogLevelEnabled(diagnostic: Diagnostic): Boolean = isWarning(diagnostic.level)
+
+        private fun logWithoutMessage(
+            where: String?,
+            level: Level?,
+            error: Throwable?,
+        ) {
+            if (isWarning(level)) {
+                log.warn("openhtmltopdf: {}{}", where, error?.let { " (${it.javaClass.simpleName})" }.orEmpty())
+            }
+        }
+
+        private fun isWarning(level: Level?): Boolean = level != null && level.intValue() >= Level.WARNING.intValue()
+    }
 
     /** Só `data:` passa; o resto vira `null` (recurso recusado). */
     private object DataUriOnlyResolver : FSUriResolver {
