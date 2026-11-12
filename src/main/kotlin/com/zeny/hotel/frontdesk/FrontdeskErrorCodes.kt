@@ -80,6 +80,11 @@ object FrontdeskErrorCodes {
     /** 400: a reserva do recado não existe (campo `reservationId`). */
     val UNKNOWN_RESERVATION = ErrorCode("UNKNOWN_RESERVATION")
 
+    // --- Ficha de registro (E11) ------------------------------------------------------------------------------------
+
+    /** 409: a ficha de registro só existe para a reserva confirmada, hospedada ou encerrada (D-E11-11). */
+    val REGISTRATION_CARD_UNAVAILABLE = ErrorCode("REGISTRATION_CARD_UNAVAILABLE")
+
     // --- Reexportados -----------------------------------------------------------------------------------------------
 
     val RESERVATION_NOT_FOUND: ErrorCode = ReservationsErrorCodes.RESERVATION_NOT_FOUND

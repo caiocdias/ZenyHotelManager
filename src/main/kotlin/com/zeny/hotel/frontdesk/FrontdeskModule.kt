@@ -23,7 +23,7 @@ import org.springframework.modulith.PackageInfo
  * `GuaranteeType`; desde a E04, o pacote da noite da chegada, `PackageId` e `PackageCharge`; nenhuma chamada à
  * `RatesApi`); desde a E06, `staff` (o setor e o responsável do recado, só pela `StaffApi`: `DepartmentId`,
  * `DepartmentSummary` e `EmployeeSummary`); nunca `fnrh` (camada acima: ele reage aos eventos de `reservations`) nem
- * `iam`.
+ * `iam`; desde a E11, `printing` (a ficha de registro em PDF e ESC/POS, só a `PrintingApi` e os tipos dela).
  *
  * A raiz do pacote é a API pública: as permissões ([FrontdeskPermissions]) e os códigos de erro
  * ([FrontdeskErrorCodes]).
@@ -31,6 +31,8 @@ import org.springframework.modulith.PackageInfo
 @PackageInfo
 @ApplicationModule(
     displayName = "Front desk",
-    allowedDependencies = ["shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates", "staff"],
+    allowedDependencies = [
+        "shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates", "staff", "printing",
+    ],
 )
 class FrontdeskModule

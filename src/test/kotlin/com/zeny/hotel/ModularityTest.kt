@@ -365,7 +365,19 @@ class ModularityTest {
     @Test
     fun `frontdesk depends only on the lower layers and staff, by APIs`() {
         val frontdesk = modules.getModuleByName("frontdesk").orElseThrow()
-        val allowed = setOf("shared", "hotel", "reservations", "rooms", "guests", "billing", "files", "rates", "staff")
+        val allowed =
+            setOf(
+                "shared",
+                "hotel",
+                "reservations",
+                "rooms",
+                "guests",
+                "billing",
+                "files",
+                "rates",
+                "staff",
+                "printing",
+            )
 
         // ARCHITECTURE §3.1 (camada Hospedagem), M5 E02: hotel (data operacional, fuso e política de early/late pela
         // HotelApi), reservations (a reserva, a alocação e as transições pela ReservationsApi), rooms (RN-05 e a
