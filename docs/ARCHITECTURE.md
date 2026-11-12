@@ -148,7 +148,7 @@ Exemplos:
 
 - O fechamento do dia avança a data por meio de `hotel`. A governança escuta `BusinessDateAdvanced`, publicado por `hotel`, em vez de depender de `endofday`.
 - `checklists` não conhece estoque, rouparia nem manutenção. Esses módulos escutam `ChecklistCompleted` e tratam as ações que lhes dizem respeito.
-- `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`.
+- `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`, e o extrato descreve o dono (nome, UH, datas) pela porta `FolioOwnerDescriber`, que o `billing` define e quem é dono do tipo implementa (o `reservations` para `RESERVATION`).
 - `guests` não reescreve referências em outros schemas ao mesclar perfis duplicados: publica `GuestsMerged`, e cada módulo que guarda o id de um hóspede (o primeiro é `reservations`) escuta o evento e reponta as próprias referências do absorvido para o sobrevivente.
 - Ao fechar uma comanda, o próprio `pos` chama `fiscal` (NFC-e) e `inventory` (baixa por ficha técnica). `fiscal` e `inventory` estão em camadas inferiores e não escutam `TabClosed`.
 

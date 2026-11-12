@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Corpo do extrato da conta em PDF (M5 E11, D-E11-12): o layout do printing põe o cabeçalho e o rodapé. Só as
+  construções permitidas (DocumentTemplatesSafetyTest); o modelo chega limpo como document.*.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<body>
+<style>
+table.lines { width: 100%; border-collapse: collapse; margin-bottom: 3mm; }
+table.lines td { padding: 1mm 1mm; border-bottom: 0.3pt solid #999999; vertical-align: top; }
+td.amount { text-align: right; white-space: nowrap; width: 28mm; }
+h1 { font-size: 14pt; margin: 0 0 2mm 0; }
+h2 { font-size: 11pt; margin: 4mm 0 1mm 0; }
+.muted { font-size: 8pt; color: #333333; }
+.total td { font-weight: bold; }
+</style>
+<h1 th:text="|Extrato da conta ${document.folio.number}|">Extrato da conta</h1>
+<p>
+<span th:text="|Situação: ${document.folio.status}|">Situação</span><br />
+<span th:text="|Aberta em ${fmt.date(document.folio.openedOn)}|">Abertura</span><br />
+<span th:if="${document.folio.payer != null}" th:text="|Pagador: ${document.folio.payer}|">Pagador</span>
+</p>
+<p>
+<span th:text="|Titular da conta: ${document.owner.type}|">Dono</span>
+<span th:if="${document.owner.label != null}" th:text="|· ${document.owner.label}|">Rótulo</span><br />
+<span th:if="${document.owner.guestName != null}" th:text="|Hóspede: ${document.owner.guestName}|">Hóspede</span>
+<span th:if="${document.owner.roomNumber != null}" th:text="|· ${document.owner.roomNumber}|">UH</span><br />
+<span th:if="${document.owner.arrival != null}" th:text="|Chegada ${fmt.date(document.owner.arrival)}|">Chegada</span>
+<span th:if="${document.owner.departure != null}" th:text="|· Saída ${fmt.date(document.owner.departure)}|">Saída</span>
+</p>
+<div th:each="day : ${document.days}">
+<h2 th:text="${fmt.date(day.date)}">Dia</h2>
+<table class="lines">
+<tr th:each="line : ${day.lines}">
+<td>
+<span th:text="${line.description}">Descrição</span>
+<div class="muted" th:if="${line.user != null}" th:text="|Usuário: ${line.user}|">Usuário</div>
+<div class="muted" th:if="${line.reason != null}" th:text="|Motivo: ${line.reason}|">Motivo</div>
+</td>
+<td class="amount" th:text="${fmt.money(line.amount)}">R$ 0,00</td>
+</tr>
+<tr class="total">
+<td th:text="|Saldo ao fim do dia (lançado ${fmt.money(day.charges)}, recebido ${fmt.money(day.payments)})|">Saldo do dia</td>
+<td class="amount" th:text="${fmt.money(day.balanceAtEnd)}">R$ 0,00</td>
+</tr>
+</table>
+</div>
+<table class="lines">
+<tr class="total"><td>Total lançado</td><td class="amount" th:text="${fmt.money(document.chargesTotal)}">R$ 0,00</td></tr>
+<tr class="total"><td>Total recebido</td><td class="amount" th:text="${fmt.money(document.paymentsTotal)}">R$ 0,00</td></tr>
+<tr class="total"><td>Saldo</td><td class="amount" th:text="${fmt.money(document.balance)}">R$ 0,00</td></tr>
+</table>
+<div th:if="${!document.preAuthorizations.isEmpty()}">
+<h2>Cauções de cartão</h2>
+<table class="lines">
+<tr th:each="pre : ${document.preAuthorizations}">
+<td th:text="|${pre.cardBrand} final ${pre.cardLast4} · ${pre.status} · capturado ${fmt.money(pre.capturedAmount)}|">Caução</td>
+<td class="amount" th:text="${fmt.money(pre.amount)}">R$ 0,00</td>
+</tr>
+</table>
+</div>
+<div th:if="${document.reopenings != null and !document.reopenings.isEmpty()}">
+<h2>Reaberturas</h2>
+<p class="muted" th:each="reopening : ${document.reopenings}"
+   th:text="|${fmt.instant(reopening.reopenedAt)} · ${reopening.reopenedBy} · ${reopening.reason}|">Reabertura</p>
+</div>
+</body>
+</html>

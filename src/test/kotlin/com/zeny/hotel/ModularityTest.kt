@@ -221,13 +221,14 @@ class ModularityTest {
     }
 
     @Test
-    fun `billing depends only on shared, hotel, guests, notifications and payments, and only on their public APIs`() {
+    fun `billing depends only on shared, hotel, guests, notifications, payments and printing, by public APIs`() {
         val billing = modules.getModuleByName("billing").orElseThrow()
-        val allowed = setOf("shared", "hotel", "guests", "notifications", "payments")
+        val allowed = setOf("shared", "hotel", "guests", "notifications", "payments", "printing")
 
         // ARCHITECTURE §3.1 (camada Financeiro): hotel (data operacional) e guests (empresa dona ou pagadora), M3 E04;
         // notifications (a diferença no fechamento do turno de caixa, H14), M3 E07; payments (a intenção de pagamento
-        // de todo recebimento e o PaymentSucceeded, H1), M3 E08. Nunca iam, reservas nem fiscal.
+        // de todo recebimento e o PaymentSucceeded, H1), M3 E08;
+        // printing (o extrato em PDF e ESC/POS, só a PrintingApi e os tipos dela), M5 E11. Nunca iam, reservas nem fiscal.
         billing
             .getDirectDependencies(modules)
             .uniqueModules()
@@ -238,13 +239,14 @@ class ModularityTest {
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz de hotel, guests, notifications e payments (a API pública); verify() também barra os internos.
+        // Só a raiz de hotel, guests, notifications, payments e printing (a API pública); verify() também barra os internos.
         val publicApis =
             setOf(
                 "com.zeny.hotel.hotel",
                 "com.zeny.hotel.guests",
                 "com.zeny.hotel.notifications",
                 "com.zeny.hotel.payments",
+                "com.zeny.hotel.printing",
             )
         billing
             .getDirectDependencies(modules)

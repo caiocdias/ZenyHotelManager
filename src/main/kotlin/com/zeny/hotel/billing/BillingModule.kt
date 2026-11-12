@@ -10,8 +10,9 @@ import org.springframework.modulith.PackageInfo
  * `hotel` (a data operacional, RN-01), de `guests` (a empresa dona ou pagadora, só pela `GuestsApi`) e, desde a E07,
  * de `notifications` (a diferença no fechamento do turno, H14; só a `NotificationsApi` e o catálogo de tipos);
  * desde a E08, de `payments` (a intenção de pagamento de todo recebimento, H1; só a `PaymentsApi` e o evento
- * `PaymentSucceeded`). Não conhece reservas (o dono é um [FolioOwner] opaco), não chama o `fiscal` e não importa
- * o `iam`.
+ * `PaymentSucceeded`) e, desde o M5 E11, de `printing` (o extrato em PDF e ESC/POS, só a `PrintingApi` e os tipos
+ * dela). O dono da conta é descrito pela porta [FolioOwnerDescriber], que quem é dono do tipo implementa. Não conhece
+ * reservas (o dono é um [FolioOwner] opaco), não chama o `fiscal` e não importa o `iam`.
  *
  * A raiz do pacote é a API pública: [BillingApi] (abrir conta, lançar e o turno de caixa aberto, para os módulos de
  * cima), os ids e tipos de valor, os códigos de erro ([BillingErrorCodes]), as permissões ([BillingPermissions]) e os
@@ -20,6 +21,6 @@ import org.springframework.modulith.PackageInfo
 @PackageInfo
 @ApplicationModule(
     displayName = "Billing",
-    allowedDependencies = ["shared", "hotel", "guests", "notifications", "payments"],
+    allowedDependencies = ["shared", "hotel", "guests", "notifications", "payments", "printing"],
 )
 class BillingModule
