@@ -132,7 +132,7 @@ flowchart LR
 
 O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo.
 
-**Regra por camadas.** A tabela acima registra as dependências conhecidas, mas a regra que vale é a das camadas de §3.2: um módulo pode depender de qualquer módulo de uma **camada inferior** e de qualquer módulo da camada **Plataforma**, desde que o grafo continue acíclico. Uma dependência nova que siga essa regra não precisa de aprovação: basta acrescentá-la à tabela na mesma mudança. Depender de um módulo da mesma camada (fora da Plataforma) ou de uma camada superior exige inversão; as arestas de mesma camada já na tabela (como `billing` → `payments`, `reservations` → `rates` e `endofday` → `reporting`) são exceções registradas, e uma nova exige decisão.
+**Regra por camadas.** A tabela acima registra as dependências conhecidas, mas a regra que vale é a das camadas de §3.2: um módulo pode depender de qualquer módulo de uma **camada inferior** e de qualquer módulo da camada **Plataforma**, desde que o grafo continue acíclico. Numa camada com **ordem interna** registrada em §3.2 (hoje só a Hospedagem: `rates` < `reservations` < `frontdesk`), um módulo também pode depender dos que vêm antes dele na ordem, nunca dos que vêm depois. Uma dependência nova que siga essa regra não precisa de aprovação: basta acrescentá-la à tabela na mesma mudança. Depender de outro módulo da mesma camada fora dessa ordem (fora da Plataforma) ou de uma camada superior exige inversão; as arestas de mesma camada já na tabela que não seguem uma ordem interna (como `billing` → `payments` e `endofday` → `reporting`) são exceções registradas, e uma nova exige decisão. As arestas `reservations` → `rates`, `frontdesk` → `reservations` e `frontdesk` → `rates` seguem a ordem da Hospedagem e deixaram de ser exceções (decisão do usuário, 2026-11-12); o alcance de `frontdesk` → `rates` continua o da tabela, só os tipos públicos que a `ReservationsApi` usa, porque preço e política chegam congelados na reserva, e ampliá-lo exige decisão.
 
 Consequências práticas:
 
@@ -154,7 +154,9 @@ Exemplos:
 
 ### 3.2 Camadas de módulos
 
-Cada seta resume as dependências entre os grupos.
+Cada seta resume as dependências entre os grupos; dentro da Hospedagem, as setas mostram a ordem interna da camada.
+
+**Ordem interna da Hospedagem** (decisão do usuário, 2026-11-12): `rates` < `reservations` < `frontdesk`. Um módulo da camada pode depender de quem vem antes dele nessa ordem, nunca de quem vem depois: `reservations` usa `rates` (vendabilidade, preço, cotação e calendário), e `frontdesk` usa `reservations` (a reserva e as transições de hospedagem) e os tipos públicos de `rates` que a `ReservationsApi` expõe. `rates` não depende de `reservations` nem de `frontdesk`, e `reservations` não depende de `frontdesk`; o que precisar ir no sentido contrário usa evento ou porta (§3.1). A ordem só registra as arestas que o código já tem, e o `ModularityTest` continua conferindo as dependências exatas de cada módulo. Alternativa descartada: manter as três arestas como exceções por aresta, cada uma exigindo decisão própria, o que não dizia qual sentido era proibido.
 
 ```mermaid
 flowchart TB
@@ -168,7 +170,8 @@ flowchart TB
     fin_m["payments · fiscal · billing"]
   end
   subgraph HOSP["Hospedagem"]
-    hosp_m["rates · reservations · frontdesk"]
+    hosp_fd["frontdesk"] --> hosp_res["reservations"] --> hosp_rat["rates"]
+    hosp_fd --> hosp_rat
   end
   subgraph OPS["Operações"]
     ops_m["housekeeping · maintenance<br/>inventory · linen"]
@@ -496,7 +499,7 @@ Regras que a FNRH (M5 E07 e E08) provou e que valem para toda integração:
 - **Resultado incerto:** timeout de leitura numa escrita não diz se o provedor gravou. Nunca se repete às cegas: reenvio só com a mesma referência idempotente do provedor ou depois de conciliar pela consulta. A conciliação ambígua (mais de um casamento, ou resposta sem o campo esperado) falha fechado. Antes de cada escrita que cria recurso, a marca de **escrita em curso** é gravada em transação própria e só some quando o id remoto é gravado: uma queda entre a resposta e a gravação leva à conciliação, nunca a um segundo envio. A marca vale para o recurso, não só para o pedido que a ligou (qualquer pedido do mesmo recurso concilia antes de criar).
 - **Envio assíncrono por pedido:** o evento só grava o pedido (idempotente por recurso, operação e evento); um job com ShedLock envia fora de transação, em ordem causal por recurso (a versão do agregado no evento), com retry de backoff limitado, e cada passo age sobre o estado atual, não sobre a ordem de chegada. Falha que o retry não resolve fica parada e visível, com reenvio e **encerramento manual** (o encerrado não segura a fila); o resultado é gravado mesmo se o alerta falhar.
 - **Registro de integração** em tabela *append-only* sem texto livre do provedor, porque ela não admite expurgo; a mensagem saneada vai só para o log e para a exceção, sem causa encadeada.
-- **Credencial** cifrada, nunca na trilha (nem o usuário), nunca devolvida na API e removível por uma ação com trilha. A forma dessa ação vale para toda integração: `POST …/clear-credentials` com `If-Match`, sem `Idempotency-Key`; apaga a credencial e desliga a integração, mantendo o ambiente e o que não é credencial; repetir é `200` e mantém o `ETag`; religar exige credencial nova; a trilha não leva segredo nem usuário. A M5 E16 (`POST /api/v1/fnrh/settings/clear-credentials`) é a primeira a segui-la. O administrador escolhe o ambiente, as URLs ficam em propriedade, e trocar de ambiente pede a credencial de novo.
+- **Credencial** (usuário e senha) cifrada em repouso, nunca na trilha nem nos logs (nem o usuário) e removível por uma ação com trilha. **Na API, o segredo é a senha:** ela nunca é devolvida, e a resposta só diz se há uma gravada (na FNRH, `passwordSet`). O usuário da integração pode voltar na resposta da configuração, que só quem administra a integração lê (na FNRH, `GET` e `PUT /api/v1/fnrh/settings`, com `fnrh.settings.manage`, só do Administrador), para ele conferir qual conta está configurada (decisão do usuário, 2026-11-12, que encerra a divergência registrada na M5 E16 sobre `FnrhSettingsResponse.username`; alternativa descartada: mascarar ou tirar o usuário da resposta, que mudaria o contrato sem proteger um segredo). A forma dessa ação vale para toda integração: `POST …/clear-credentials` com `If-Match`, sem `Idempotency-Key`; apaga a credencial e desliga a integração, mantendo o ambiente e o que não é credencial; repetir é `200` e mantém o `ETag`; religar exige credencial nova; a trilha não leva segredo nem usuário. A M5 E16 (`POST /api/v1/fnrh/settings/clear-credentials`) é a primeira a segui-la. O administrador escolhe o ambiente, as URLs ficam em propriedade, e trocar de ambiente pede a credencial de novo.
 - **Falha** alerta por chamada direta a `notifications`, com o tipo `notifications.integration-failure` e sem dado pessoal. A readiness nunca depende de provedor externo.
 
 Os testes de contrato usam WireMock.
