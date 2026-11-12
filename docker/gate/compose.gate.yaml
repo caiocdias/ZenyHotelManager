@@ -10,9 +10,11 @@ services:
     # Tag própria: o gate não regrava a zeny-hotel-manager:dev do usuário.
     image: zeny-hotel-manager:gate
     environment:
-      # zeny.fnrh.homologation-url (FnrhProperties) pelo relaxed binding: o ambiente HOMOLOGATION da configuração
-      # da FNRH fala com o mock, no mesmo caminho base da URL de homologação do Serpro.
+      # zeny.fnrh.homologation-url e zeny.fnrh.production-url (FnrhProperties) pelo relaxed binding: os dois
+      # ambientes da configuração da FNRH falam com o mock, no mesmo caminho base das URLs do Serpro. O gate nunca
+      # chama o Serpro real, em nenhum ambiente.
       ZENY_FNRH_HOMOLOGATIONURL: http://fnrh-mock:8080/FNRH_API/rest/v2
+      ZENY_FNRH_PRODUCTIONURL: http://fnrh-mock:8080/FNRH_API/rest/v2
     depends_on:
       fnrh-mock:
         condition: service_healthy
