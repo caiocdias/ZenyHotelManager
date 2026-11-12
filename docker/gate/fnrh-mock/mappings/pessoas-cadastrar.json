@@ -1,0 +1,18 @@
+{
+  "name": "FNRH v2.4: POST /pessoas com o cpf_solicitante de teste -> pessoa_id sorteado",
+  "request": {
+    "method": "POST",
+    "urlPath": "/FNRH_API/rest/v2/pessoas",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "equalTo": "52998224725" }
+    },
+    "bodyPatterns": [{ "matchesJsonPath": "$.pessoa.nome" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"pessoa_id\":\"{{randomValue type='UUID'}}\"}"
+  }
+}

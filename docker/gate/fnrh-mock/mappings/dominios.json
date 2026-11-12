@@ -1,0 +1,257 @@
+{
+  "mappings": [
+    {
+      "name": "FNRH v2.4: GET /dominios/fnrh/meios_transporte (valores de docs/fnrh/api-fnrh-v2.4.md)",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/fnrh/meios_transporte",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "ONIBUS", "label": "Ônibus" },
+            { "id": "AUTOMOVEL", "label": "Automóvel" },
+            { "id": "AVIAO", "label": "Avião" },
+            { "id": "MOTO", "label": "Moto" },
+            { "id": "NAVIO_BARCO", "label": "Navio/Barco" },
+            { "id": "PE", "label": "A pé" },
+            { "id": "TREM", "label": "Trem" },
+            { "id": "BICICLETA", "label": "Bicicleta" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/fnrh/motivos_viagem",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/fnrh/motivos_viagem",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "COMPRAS", "label": "Compras" },
+            { "id": "CONGRESSO_FEIRA", "label": "Congresso/Feira" },
+            { "id": "ESTUDOS_CURSOS", "label": "Estudos/Cursos" },
+            { "id": "LAZER_FERIAS", "label": "Lazer/Férias" },
+            { "id": "NEGOCIOS", "label": "Negócios" },
+            { "id": "PARENTES_AMIGOS", "label": "Parentes/Amigos" },
+            { "id": "RELIGIAO", "label": "Religião" },
+            { "id": "SAUDE", "label": "Saúde" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/hospedes/situacoes",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/hospedes/situacoes",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "CANCELADO", "label": "Cancelado" },
+            { "id": "CHECKIN_REALIZADO", "label": "Check-in realizado" },
+            { "id": "CHECKOUT_REALIZADO", "label": "Check-out realizado" },
+            { "id": "NOSHOW", "label": "No-Show" },
+            { "id": "PRECHECKIN_NAOVINCULADO", "label": "Pré-check-in não vinculado" },
+            { "id": "PRECHECKIN_PENDENTE", "label": "Pré-check-in pendente" },
+            { "id": "PRECHECKIN_REALIZADO", "label": "Pré-check-in realizado" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/pessoas/generos",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/pessoas/generos",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "HOMEM", "label": "Masculino" },
+            { "id": "MULHER", "label": "Feminino" },
+            { "id": "OUTRO", "label": "Outros" },
+            { "id": "NAOINFORMADO", "label": "Prefiro não informar" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/pessoas/opcao_deficiencia",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/pessoas/opcao_deficiencia",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "SIM", "label": "Sim" },
+            { "id": "NAO", "label": "Não" },
+            { "id": "NAOINFORMAR", "label": "Prefiro não informar" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/pessoas/racas",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/pessoas/racas",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "AMARELA", "label": "Amarelo" },
+            { "id": "BRANCA", "label": "Branco" },
+            { "id": "INDIGENA", "label": "Indígena" },
+            { "id": "PARDA", "label": "Pardo" },
+            { "id": "PRETA", "label": "Preto" },
+            { "id": "NAOINFORMAR", "label": "Prefiro não informar" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/pessoas/tipos_deficiencia",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/pessoas/tipos_deficiencia",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "FISICA", "label": "Deficiência Física" },
+            { "id": "AUDITIVA_SURDEZ", "label": "Deficiência Auditiva/Surdez" },
+            { "id": "VISUAL", "label": "Deficiência Visual" },
+            { "id": "INTELECTUAL", "label": "Deficiência Intelectual" },
+            { "id": "MULTIPLA", "label": "Deficiência Múltipla" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/pessoas/tipos_documento",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/pessoas/tipos_documento",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "CPF", "label": "CPF" },
+            { "id": "PASSAPORTE", "label": "Passaporte" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/reservas/situacoes",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/reservas/situacoes",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "CRIADA", "label": "Criada" },
+            { "id": "EM_ANDAMENTO", "label": "Em Andamento" },
+            { "id": "CONCLUIDA", "label": "Concluída" },
+            { "id": "CANCELADA", "label": "Cancelada" },
+            { "id": "NOSHOW", "label": "No-Show" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "FNRH v2.4: GET /dominios/fichas/situacoes",
+      "request": {
+        "method": "GET",
+        "urlPath": "/FNRH_API/rest/v2/dominios/fichas/situacoes",
+        "headers": {
+          "Authorization": { "matches": "^Basic .+" },
+          "Content-Type": { "contains": "application/json" },
+          "cpf_solicitante": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "dados": [
+            { "id": "AGUARDANDO_CHECKIN", "label": "Aguardando Check-in" },
+            { "id": "AGUARDANDO_CHECKOUT", "label": "Aguardando Check-out" },
+            { "id": "CHECK_OUT_CONFIRMADO", "label": "Check-out confirmado" },
+            { "id": "INVALIDADA", "label": "Invalidada" },
+            { "id": "NO_SHOW", "label": "No show" }
+          ]
+        }
+      }
+    }
+  ]
+}

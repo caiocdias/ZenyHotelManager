@@ -1,0 +1,18 @@
+{
+  "name": "FNRH v2.4: POST /reservas (registrar reserva) -> reserva CRIADA com reserva_id sorteado",
+  "request": {
+    "method": "POST",
+    "urlPath": "/FNRH_API/rest/v2/reservas",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    },
+    "bodyPatterns": [{ "matchesJsonPath": "$.numero_reserva" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"reserva\":{\"reserva_id\":\"{{randomValue type='UUID'}}\",\"situacao_reserva_id\":\"CRIADA\",\"link_precheckin\":\"https://precheckin.example/r/{{randomValue length=12 type='ALPHANUMERIC'}}\"}}"
+  }
+}

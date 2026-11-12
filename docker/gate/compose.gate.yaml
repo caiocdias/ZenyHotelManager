@@ -1,0 +1,30 @@
+# Override do compose isolado do gate (M5 E12): o ambiente completo com uma FNRH de mentira (WireMock) na rede do
+# projeto, no lugar do Serpro. Só para o gate; fora da imagem (.dockerignore) e da CI. Uso em docker/gate/README.md:
+#
+#   docker compose -p <projeto> --env-file <dir>/gate.env -f docker/compose.yaml -f docker/gate/compose.gate.yaml up -d --build
+#
+# Os caminhos relativos valem a partir do diretório do projeto, o do primeiro arquivo (docker/).
+
+services:
+  api:
+    # Tag própria: o gate não regrava a zeny-hotel-manager:dev do usuário.
+    image: zeny-hotel-manager:gate
+    environment:
+      # zeny.fnrh.homologation-url (FnrhProperties) pelo relaxed binding: o ambiente HOMOLOGATION da configuração
+      # da FNRH fala com o mock, no mesmo caminho base da URL de homologação do Serpro.
+      ZENY_FNRH_HOMOLOGATIONURL: http://fnrh-mock:8080/FNRH_API/rest/v2
+    depends_on:
+      fnrh-mock:
+        condition: service_healthy
+
+  # A FNRH de mentira: os stubs da API v2.4 de docker/gate/fnrh-mock/mappings/ (os mesmos contratos do FnrhTestServer
+  # dos testes), com ids remotos sorteados por templating. Sem porta publicada: só a api (e o roteiro, por um
+  # contêiner na rede do projeto) a alcançam em http://fnrh-mock:8080. Os logs e o diário de requisições
+  # (/__admin/requests) guardam os dados enviados, por desenho: ele faz o papel do Serpro.
+  fnrh-mock:
+    image: wiremock/wiremock:3.13.2@sha256:0d4ecb3e4dc8213fd7a4d37d6a78f6e6b553a6d2e15bd51b0999781282ac61b3
+    command: ["--global-response-templating"]
+    volumes:
+      - ./gate/fnrh-mock:/home/wiremock:ro
+    restart: "no"
+    # O HEALTHCHECK (GET /__admin/health) vem da imagem.

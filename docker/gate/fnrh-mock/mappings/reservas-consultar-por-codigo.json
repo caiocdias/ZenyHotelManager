@@ -1,0 +1,21 @@
+{
+  "name": "FNRH v2.4: GET /reservas?page_number=1&codigo_reserva=... (conciliação depois de escrita em curso) -> um item com o código pedido",
+  "request": {
+    "method": "GET",
+    "urlPath": "/FNRH_API/rest/v2/reservas",
+    "queryParameters": {
+      "page_number": { "equalTo": "1" },
+      "codigo_reserva": { "matches": ".+" }
+    },
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"dados\":[{\"reserva_id\":\"{{randomValue type='UUID'}}\",\"numero_reserva\":\"{{request.query.codigo_reserva}}\"}],\"pagination\":{\"TotalRegistros\":1}}"
+  }
+}

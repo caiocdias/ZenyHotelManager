@@ -1,0 +1,18 @@
+{
+  "name": "FNRH v2.4: PATCH /hospedes/{id}/checkout com o instante em text/plain (UTC com milissegundos e Z, sem aspas) -> CHECKOUT_REALIZADO",
+  "request": {
+    "method": "PATCH",
+    "urlPathPattern": "/FNRH_API/rest/v2/hospedes/[^/]+/checkout",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "text/plain" },
+      "cpf_solicitante": { "absent": true }
+    },
+    "bodyPatterns": [{ "matches": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"dados\":{\"hospede_id\":\"{{request.pathSegments.[4]}}\",\"situacao_id\":\"CHECKOUT_REALIZADO\"}}"
+  }
+}

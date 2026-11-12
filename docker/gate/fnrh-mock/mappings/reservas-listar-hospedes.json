@@ -1,0 +1,17 @@
+{
+  "name": "FNRH v2.4: GET /reservas/{id}/hospedes (conciliação do hóspede) -> lista vazia: nenhum hóspede gravado, e o envio repete o POST",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/FNRH_API/rest/v2/reservas/[^/]+/hospedes",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"dados\":[]}"
+  }
+}

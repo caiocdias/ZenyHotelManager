@@ -1,0 +1,17 @@
+{
+  "name": "FNRH v2.4: POST /reservas/{id}/cancelar (cancelar reserva) -> 200 de corpo vazio",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/FNRH_API/rest/v2/reservas/[^/]+/cancelar",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": ""
+  }
+}
