@@ -5,15 +5,6 @@
 -->
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
 <body>
-<style>
-table.lines { width: 100%; border-collapse: collapse; margin-bottom: 3mm; }
-table.lines td { padding: 1mm 1mm; border-bottom: 0.3pt solid #999999; vertical-align: top; }
-td.amount { text-align: right; white-space: nowrap; width: 28mm; }
-h1 { font-size: 14pt; margin: 0 0 2mm 0; }
-h2 { font-size: 11pt; margin: 4mm 0 1mm 0; }
-.muted { font-size: 8pt; color: #333333; }
-.total td { font-weight: bold; }
-</style>
 <h1 th:text="|Extrato da conta ${document.folio.number}|">Extrato da conta</h1>
 <p>
 <span th:text="|Situação: ${document.folio.status}|">Situação</span><br />
