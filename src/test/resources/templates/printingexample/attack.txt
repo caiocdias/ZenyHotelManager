@@ -1,0 +1,2 @@
+A: [[${document.value}]]
+B: [# th:text="${document.value}"]x[/]

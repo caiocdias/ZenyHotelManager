@@ -97,6 +97,58 @@ class DocumentTemplatesSafetyTest {
         assertThat(violations("templates/x/a.xhtml", good)).isEmpty()
     }
 
+    @Test
+    fun `pega cada forma proibida com variacoes de espaco aspas e quebra de linha`() {
+        val d = "$"
+        listOf(
+            "<p th:utext = \"$d{document.a}\">x</p>",
+            "<p th:utext\n=\n'$d{document.a}'>x</p>",
+            "<p\n  data-th-utext=\"$d{document.a}\">x</p>",
+            "<p th:text=\"$d{document.a}\n  + __$d{x}__\">x</p>",
+            "<p th:attr=\"title=__$d{x}__\">x</p>",
+            "<p th:attr='title=__x__'>x</p>",
+            "<p data-th-text=\"__x__\">x</p>",
+            "<p>[[\n$d{a}\n__x__\n]]</p>",
+            "<p>[($d{a})]</p>",
+            "[# th:utext=\"$d{document.a}\"]x[/]",
+            "[# th:insert=\"$d{x}\"]x[/]",
+            "<div th:replace = \"~{\n$d{x} :: body}\"></div>",
+            "<div data-th-include='~{$d{x}}'></div>",
+            "<div th:substituteby=\"$d{x}\"></div>",
+        ).forEach { assertThat(violations("templates/x/a.xhtml", it)).describedAs(it).isNotEmpty() }
+    }
+
+    @Test
+    fun `aplica as mesmas regras ao template de texto`() {
+        val d = "$"
+        listOf("[($d{document.a})]", "[[__$d{x}__]]", "x __#{k}__ y", "[# th:utext=\"$d{a}\"]x[/]")
+            .forEach { assertThat(violations("templates/x/a.txt", it)).describedAs(it).isNotEmpty() }
+    }
+
+    @Test
+    fun `sublinhado em texto comum passa mas as formas de pre processamento nao`() {
+        val d = "$"
+        listOf("______", "Assinatura: ____________________________", "<p>a__b</p>", "__", "_{x}_").forEach {
+            assertThat(violations("templates/x/a.xhtml", it)).describedAs(it).isEmpty()
+        }
+        assertThat(violations("templates/x/a.xhtml", "______$d{x}")).isNotEmpty()
+    }
+
+    @Test
+    fun `o th insert do layout so passa no caminho exato do layout do printing`() {
+        val body = """<div th:insert="~{${'$'}{bodyTemplate} :: body}"></div>"""
+
+        listOf(
+            "templates/printing/other.xhtml",
+            "templates/other/printing/layout.xhtml",
+            "templates/printing/layout.txt",
+            "templates/printing/Layout.xhtml",
+        ).forEach { assertThat(violations(it, body)).describedAs(it).isNotEmpty() }
+        assertThat(violations("templates/printing/layout.xhtml", body.replace("bodyTemplate", "other"))).isNotEmpty()
+        assertThat(violations("templates/printing/layout.xhtml", body.replace("th:insert", "data-th-replace")))
+            .isNotEmpty()
+    }
+
     private fun violations(
         path: String,
         content: String,

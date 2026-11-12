@@ -131,4 +131,77 @@ class DocumentTemplateCatalogTest {
         // O modo TEXT escapa [[ ]] como HTML e [( )] é proibido (D-E11-3): quem monta o ESC/POS desfaz as entidades.
         assertThat(text).contains("Hospede: Ana &lt;b&gt;")
     }
+
+    @Test
+    fun `recusa caminho absoluto, com ponto ponto, barra invertida ou nome fora do padrao`() {
+        val code = "printingexample.card"
+        listOf(
+            "/templates/printingexample/card.xhtml",
+            "templates/printingexample/../printingexample/card.xhtml",
+            "templates/printingexample/./card.xhtml",
+            "templates\\printingexample\\card.xhtml",
+            "templates/printingexample\\card.xhtml",
+            "templates/printingexample/sub/card.xhtml",
+            "templates/printingexample/Card.xhtml",
+            "templates/printingexample/card.xhtml\n",
+            "classpath:templates/printingexample/card.xhtml",
+            "../templates/printingexample/card.xhtml",
+            "templates/printingexample/.xhtml",
+        ).forEach {
+            assertThatThrownBy { catalog(module("printingexample", template(code, xhtml = it))) }
+                .describedAs("xhtml $it")
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining(code)
+        }
+        listOf(
+            "/templates/printingexample/card.txt",
+            "templates/printingexample/../printingexample/card.txt",
+            "templates\\printingexample\\card.txt",
+            "templates/printingexample/card.xhtml.txt",
+        ).forEach {
+            assertThatThrownBy { catalog(module("printingexample", template(code, text = it))) }
+                .describedAs("txt $it")
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining(code)
+        }
+    }
+
+    @Test
+    fun `recusa titulo em branco e codigo com quebra de linha`() {
+        assertThatThrownBy {
+            catalog(
+                module(
+                    "printingexample",
+                    DocumentTemplate(
+                        "printingexample.card",
+                        " ",
+                        "templates/printingexample/card.xhtml",
+                        "templates/printingexample/card.txt",
+                    ),
+                ),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("printingexample.card")
+        assertThatThrownBy { catalog(module("printingexample", template("printingexample.card\n"))) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `recusa codigo repetido entre dois modulos distintos do mesmo prefixo`() {
+        assertThatThrownBy {
+            catalog(
+                module("printingexample", template("printingexample.card")),
+                module("printingexample", template("printingexample.card")),
+            )
+        }.isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `codigo desconhecido com ponto ponto ou vazio e recusado sem vazar caminho`() {
+        val catalog = catalog(PrintingExampleTemplates)
+        listOf("", "../x", "printingexample.card ", "PRINTINGEXAMPLE.CARD").forEach {
+            assertThatThrownBy { catalog.template(it) }
+                .describedAs("'$it'")
+                .isInstanceOf(IllegalArgumentException::class.java)
+        }
+    }
 }
