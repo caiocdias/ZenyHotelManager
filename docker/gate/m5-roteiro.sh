@@ -159,8 +159,18 @@ starts_with_pdf() {
 
 # --- Banco (psql do dono, SQL pela entrada padrão) e o diário do fnrh-mock ------------------------------------------
 
+# O stderr do psql (e do compose) nunca sai cru: num erro, o psql ecoa o comando (LINE n:, QUERY:), que pode levar
+# um segredo (o token do agente vai no SQL); ele passa pelo redact antes de ir para a saída (e para o .out).
 sql() {
-    "${DC[@]}" exec -T db sh -c 'psql -X -q -At -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+    local rc
+    "${DC[@]}" exec -T db sh -c 'psql -X -q -At -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+        2>"$T/sql.err"
+    rc=$?
+    if [ -s "$T/sql.err" ]; then
+        printf 'psql (stderr redigido): %s\n' "$(redact "$(head -c 2000 "$T/sql.err")")" >&2
+    fi
+    : >"$T/sql.err"
+    return "$rc"
 }
 
 mock() {

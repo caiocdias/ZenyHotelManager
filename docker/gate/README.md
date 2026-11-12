@@ -6,7 +6,7 @@ Ferramentas do gate de marco (a partir do M5 E12): sobem o ambiente completo do 
 
 ## Requisitos
 
-`docker` (com o Compose v2), `bash`, `curl`, `jq`, `openssl` e o `realpath` do coreutils (GNU). O `up --build` compila a aplicação dentro do Docker: rode um build pesado por vez e pare os daemons do Gradle antes (`./gradlew --stop`).
+`docker` (com o Compose v2), `bash`, `curl`, `jq`, `openssl` e o `realpath` do coreutils (GNU). O `up --build` compila a aplicação dentro do Docker: rode um build pesado por vez: antes do `up --build`, confira a memória disponível (`free -g`) e que não há build pesado em andamento (Gradle ou `docker build`). Nunca rode `./gradlew --stop`: ele derruba os daemons de outras sessões do usuário.
 
 ## Arquivos
 
