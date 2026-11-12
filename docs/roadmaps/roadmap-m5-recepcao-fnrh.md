@@ -1,6 +1,6 @@
 # Roadmap — M5 Recepção, FNRH e impressão
 
-> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · branch de execução: `roadmap/m5-recepcao-fnrh` · criado em 2026-10-13 · última revisão 2026-11-06
+> Arquivo: `docs/roadmaps/roadmap-m5-recepcao-fnrh.md` · branch de execução: `roadmap/m5-recepcao-fnrh` · criado em 2026-10-13 · última revisão 2026-11-12
 >
 > Marco 5 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M4 — Tarifas, disponibilidade e reservas](roadmap-m4-tarifas-reservas.md) · próximo marco: [M6 — Operação diária e fechamento](roadmap-m6-operacao-fechamento.md)
 >
@@ -257,18 +257,18 @@ Colocar a recepção para funcionar: check-in orquestrado numa única transaçã
 
 ## Definição global de pronto
 
-- [ ] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`.
-- [ ] Desfazer check-in exige permissão ou aprovação de superior (`403 APPROVAL_REQUIRED`), só na mesma data operacional, e fica na trilha com solicitante e aprovador.
-- [ ] Walk-in, check-out (saldo zero, cauções liberadas, contas encerradas, UH Vaga + Suja, alocação encerrada), troca de UH, extensão e redução do hospedado, early/late com o preço informado antes e recados têm endpoints no contrato e testes de integração.
-- [ ] Eventos de reserva e de hospedagem geram `FnrhSubmission` enviadas ao adaptador Serpro (WireMock), com retry, ordem por reserva, identificadores remotos guardados, pendências listadas e alerta de falha sem dado de hóspede; com o Serpro fora do ar o check-in conclui.
-- [ ] Agente de impressão autenticado recebe só os jobs das próprias impressoras, confirma, e jobs não confirmados são reenviados; o token fica só como hash.
-- [ ] Ficha de registro, extrato e confirmação de reserva saem em PDF e em job de impressão, com os dados do hotel pela `HotelApi` e sem dado de RN-19 nem número inteiro de documento.
-- [ ] `ApplicationModules.verify()` passa, com um teste por módulo novo no `ModularityTest` e as arestas na ARCHITECTURE §3.1; build, testes, `checkOpenApi` e oasdiff sem `ERR` contra `ffae917`.
-- [ ] O compose isolado do gate mostra as publicações dos eventos de reserva e de hospedagem concluídas pelo listener do `fnrh`.
-- [ ] A homologação real da FNRH (E09) está concluída ou registrada como pendência obrigatória antes da operação real.
-- [ ] `gradle.lockfile` versionado e atualizado; `osv-scanner scan source -r .` lista os pacotes do projeto.
-- [ ] Nenhuma vulnerabilidade High ou Critical conhecida no `productionRuntimeClasspath` nem no classpath dos plugins na data do gate, salvo as registradas como risco aceito pelo usuário (E14).
-- [ ] Hóspede de gênero `OUTRO` com descrição é enviado à FNRH (E15), e a credencial do Serpro pode ser apagada por uma ação com trilha (E16).
+- [x] `POST /api/v1/reservations/{id}/check-in` executa o fluxo da ARCHITECTURE §6.1 numa transação: UH não pronta → `409 ROOM_NOT_READY`; sem UH alocada → `409 ROOM_NOT_ASSIGNED`; menor sem comprovação → `422 MINOR_AUTHORIZATION_REQUIRED`; falha no meio não deixa caução, lançamento, transição nem ocupação; sucesso deixa a reserva `IN_HOUSE`, a UH Ocupada e publica `GuestCheckedIn`. **Evidência (E12):** `MilestoneM5EndToEndTest` (as três recusas sem caução, lançamento, transição nem ocupação; `IN_HOUSE`, UH Ocupada, `GuestCheckedIn`) e `FrontdeskCheckInApiTest` nas três rodadas da cópia limpa; roteiro do compose §4.
+- [x] Desfazer check-in exige permissão ou aprovação de superior (`403 APPROVAL_REQUIRED`), só na mesma data operacional, e fica na trilha com solicitante e aprovador. **Evidência (E12):** `MilestoneM5EndToEndTest` (`403 APPROVAL_REQUIRED`, aprovação do Gerente, trilha com o solicitante e o `approval_id`, `iam.approval` com os dois, token preso à reserva e de uso único, `422 UNDO_CHECK_IN_EXPIRED`); roteiro §9.
+- [x] Walk-in, check-out (saldo zero, cauções liberadas, contas encerradas, UH Vaga + Suja, alocação encerrada), troca de UH, extensão e redução do hospedado, early/late com o preço informado antes e recados têm endpoints no contrato e testes de integração. **Evidência (E12):** `MilestoneM5EndToEndTest` (walk-in, troca de UH, extensão e redução com preços congelados, early e late cotados antes, check-out com caução liberada, contas encerradas, UH Vaga e Suja e alocação encerrada) e os testes de E03 a E06 na cópia limpa; roteiro §4, §7 a §10; rotas no `api/openapi.yaml`.
+- [x] Eventos de reserva e de hospedagem geram `FnrhSubmission` enviadas ao adaptador Serpro (WireMock), com retry, ordem por reserva, identificadores remotos guardados, pendências listadas e alerta de falha sem dado de hóspede; com o Serpro fora do ar o check-in conclui. **Evidência (E12):** `MilestoneM5EndToEndTest` (envio em ordem, ids remotos, `SENT`; Serpro fora do ar: check-in `200`, `FAILED` na 8ª tentativa, alerta só com o código da reserva, reenvio sem duplicar o registro) e `FnrhStageEndToEndTest`; roteiro §5 e §11 com o WireMock na rede do compose.
+- [x] Agente de impressão autenticado recebe só os jobs das próprias impressoras, confirma, e jobs não confirmados são reenviados; o token fica só como hash. **Evidência (E12):** `MilestoneM5EndToEndTest` (cada agente recebe só o job da própria impressora, `404` no conteúdo e no ack do alheio, `PRINTED`) e os testes da E10 (reenvio); roteiro §3 (o token não aparece no schema `printing`, só o SHA-256) e §6 (SSE, ack, recusas cruzadas de token e JWT).
+- [x] Ficha de registro, extrato e confirmação de reserva saem em PDF e em job de impressão, com os dados do hotel pela `HotelApi` e sem dado de RN-19 nem número inteiro de documento. **Evidência (E12):** `MilestoneM5EndToEndTest` (PDF da ficha com o documento mascarado e sem o CPF inteiro; horários da política na confirmação) e `DocumentsStageEndToEndTest`; roteiro §6 e §7.
+- [x] `ApplicationModules.verify()` passa, com um teste por módulo novo no `ModularityTest` e as arestas na ARCHITECTURE §3.1; build, testes, `checkOpenApi` e oasdiff sem `ERR` contra `ffae917`. **Evidência (E12):** cópia limpa de `6c16557` (`git archive`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`): `clean build` com 3228 testes e 0 falhas, mais duas rodadas de `clean test` iguais, `lint checkOpenApi` verde; `allowedDependencies` dos módulos do marco contidos na §3.1; `.github/scripts/check-api-breaking.sh ffae917` sem `ERR`.
+- [x] O compose isolado do gate mostra as publicações dos eventos de reserva e de hospedagem concluídas pelo listener do `fnrh`. **Evidência (E12):** roteiro do compose isolado a partir da cópia limpa (302 conferências, 0 falhas): `shared.event_publication` com o listener do `fnrh` `COMPLETED` para `ReservationCreated`, `GuestCheckedIn` (§5) e `GuestCheckedOut` (§8).
+- [x] A homologação real da FNRH (E09) está concluída ou registrada como pendência obrigatória antes da operação real. **Evidência (E12):** a E09 segue `#bloqueada` pela Q-12, registrada como pendência obrigatória antes da operação real; o gate de inauguração (M8 E13) a cobra.
+- [x] `gradle.lockfile` versionado e atualizado; `osv-scanner scan source -r .` lista os pacotes do projeto. **Evidência (E12):** `gradle.lockfile`, `buildscript-gradle.lockfile` e `settings-gradle.lockfile` versionados; `dependencies --write-locks` na cópia limpa sem diferença; `osv-scanner scan -r --no-ignore .` lista 426 + 74 pacotes.
+- [x] Nenhuma vulnerabilidade High ou Critical conhecida no `productionRuntimeClasspath` nem no classpath dos plugins na data do gate, salvo as registradas como risco aceito pelo usuário (E14). **Evidência (E12):** 0 Critical e 0 High; 2 Medium e 3 Low, os riscos aceitos na E14.
+- [x] Hóspede de gênero `OUTRO` com descrição é enviado à FNRH (E15), e a credencial do Serpro pode ser apagada por uma ação com trilha (E16). **Evidência (E12):** `MilestoneM5EndToEndTest` (walk-in de gênero `OUTRO` com a `GeneroDescricao` no corpo enviado) e roteiro §9 e §12 (`clear-credentials` com trilha sem usuário nem senha).
 
 ## Protocolo de execução
 
@@ -381,7 +381,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M5 | #em-andamento | E03, E04, E05, E06, E08, E11, E14, E16 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
+| E12 | Gate do marco M5 | #concluida | E03, E04, E05, E06, E08, E11, E14, E16 | Definição global de pronto verificada numa cópia limpa e num compose isolado |
 
 ---
 
@@ -1889,12 +1889,12 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - **Revisão humana desta etapa:** feita pelo usuário em 2026-11-12, na entrevista do fim do lote, que aprovou pela opção recomendada: a porta `FolioOwnerDescriber` (D-E11-12); o contrato das rotas como está (D-E11-9); as bibliotecas, com o aviso da LGPL a registrar na documentação de implantação (D-E11-1); a leitura de conteúdo só de anexo comum (D-E11-7); a ficha sob `frontdesk.stays.checkin`, com a descrição da permissão a atualizar (D-E11-10); e os rótulos da FNRH na ficha por uma porta do `frontdesk` implementada pelo `fnrh` (D-E11-11), numa etapa de manutenção a criar pelo `arquiteto`.
 - **Notas para a próxima etapa:**
   - E12 (gate): o roteiro `curl` pode baixar os três PDFs e imprimir a ficha pelo agente simulado; a `MilestoneM5EndToEndTest` pode reaproveitar o apoio do `DocumentsStageEndToEndTest` (`PdfText`, agente de teste por long-poll).
-  - Máquina de 14 GB: rodar um Gradle por vez (`./gradlew --stop` entre execuções); testes que comparam datas exibidas não devem usar a data operacional lida depois (outros testes a avançam).
+  - Máquina de 14 GB: rodar um Gradle por vez (correção da E12: nunca `./gradlew --stop`, que derruba daemons de outras sessões; conferir a memória livre e builds de outras sessões); testes que comparam datas exibidas não devem usar a data operacional lida depois (outros testes a avançam).
   - Pendências registradas (menores aceitos pela revisão final): o logotipo sem cache e com uma 2ª conexão; a regra "sem `<style>`" só por convenção; os descritores de teste `EVENT`/`COMPANY`/`WALK_IN` do `FolioStatementDocumentsAttackTest` colidirão com os de produção do M6 ao M8; `STATUS_LABELS.getValue` na confirmação (trocar por `when` exaustivo); a lógica do titular duplicada entre a confirmação e o descritor; o titular anonimizado sai "Hóspede anonimizado" no extrato; o `unbescape` usado direto só como transitivo do Thymeleaf; chaves do modelo sem limpeza; da E10, `claimPending`/`unackedSent` ainda carregam o conteúdo cifrado.
 
 ---
 
-## E12 — Gate do marco M5 — #em-andamento
+## E12 — Gate do marco M5 — #concluida
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório e de um `docker compose` isolado, que a definição global de pronto do M5 é atendida, com um cenário ponta a ponta de recepção, e deixar o roadmap do M6 pronto para ser sincronizado.
 
@@ -1914,10 +1914,10 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Critérios de aceite:**
 
-- [ ] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa e, onde o compose alcança, no roteiro pelo proxy (inclusive as publicações de `ReservationCreated` e `GuestCheckedIn` concluídas pelo listener do `fnrh`).
-- [ ] O teste ponta a ponta passa usando os módulos reais (só a FNRH em WireMock), nas três rodadas.
-- [ ] O estado de E09 está registrado: concluída, ou pendência obrigatória antes da operação real, com a ação de desbloqueio.
-- [ ] Notas do projeto no brain (com as capturas pendentes) e `README.md` coerentes com o código; `docs/roadmaps/README.md` registra a conclusão do M5 no histórico de revisões.
+- [x] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa e, onde o compose alcança, no roteiro pelo proxy (inclusive as publicações de `ReservationCreated` e `GuestCheckedIn` concluídas pelo listener do `fnrh`).
+- [x] O teste ponta a ponta passa usando os módulos reais (só a FNRH em WireMock), nas três rodadas.
+- [x] O estado de E09 está registrado: concluída, ou pendência obrigatória antes da operação real, com a ação de desbloqueio.
+- [x] Notas do projeto no brain (com as capturas pendentes) e `README.md` coerentes com o código; `docs/roadmaps/README.md` registra a conclusão do M5 no histórico de revisões.
 
 **Validação obrigatória:**
 
@@ -1942,12 +1942,38 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa (marco M6): —
+- **Plano:** `docs/superpowers/plans/2026-11-12-m5-recepcao-fnrh-e12.md`, com 8 tarefas (Tasks 1 a 6 `Risco: alto`: o `MilestoneM5EndToEndTest` em três partes, a infraestrutura do compose do gate e o roteiro em duas partes; Task 7, o `README.md`, e Task 8, a auditoria só de leitura do brain contra o código, `normal`), executado pelas souls (`desenvolvedor` → `testador` → verificação mecânica → `revisor-seguranca`), mais o testador de etapa e a verificação do gate pelo orquestrador.
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovado com notas em 1 rodada. A inicial bloqueou com 8 Importantes (permissões só do Administrador dadas ao Gerente; um teste inexistente e o avanço da data operacional; mapeamentos estáticos do WireMock que não casariam; early/late e extensão/redução sem tarefa; lockfiles sem evidência; o critério do brain sem passo executável; segredos no roteiro e varredura mais fraca que a do M4; risco e tamanho das tarefas) e 11 Menores, todos aplicados; a rodada 1 aprovou com 3 Menores, aplicados.
+  - **Execução:** em série, por memória (14 GB, um Gradle ou `docker build` por vez), salvo a Task 8 (só leitura) junto da Task 1 e as Tasks 2, 3 e 7 junto dos testadores e do roteiro (arquivos disjuntos).
+- **Commits** (branch `roadmap/m5-recepcao-fnrh`, a partir de `6c87b04`):
+  - Início, plano e revisão de arquitetura: `2860f61`, `b0739bf`, `9bcadd2` e `3a9542c`; restrição do `--stop` corrigida no plano: `0b45fe6`.
+  - Task 1 (preparo, recusas, check-in com early e FNRH): `3a9542c..cec01a2` (`b070cfa`, testador `cec01a2`). Task 2 (ficha, troca, extensão e redução, extrato, check-out com late e privacidade): `8f6cf0b`, testador `986d253`. Task 3 (walk-in, desfazer e Serpro fora do ar): `e5d8e7c`, testador `f909e8c`.
+  - Task 4 (compose do gate e WireMock da FNRH): `721c48b` e `db4d44c`. Task 5 (roteiro, §1 a §8): `a4e1e8e`, `60ba321` e a rodada de correção `0955c87`. Task 6 (roteiro, §9 a §13, e `run-gate.sh`): `21cc994` e `6c16557`. Task 7 (`README.md`): `00eca76`. Task 8: sem commit.
+  - Ajustes triviais de documentação do orquestrador: `93c0364` (ARCHITECTURE §14, dependências do `printing`) e `73b7bcc` (`README.md`, CPF solicitante).
+  - Fechamento: o commit deste handoff.
+- **Revisão final:** `revisor-seguranca` (opus) sobre `6c87b04..73b7bcc`: "aprovado com ressalvas", pronto para merge, 0 Críticos. Os 2 Importantes eram de fechamento e foram cumpridos aqui: a recomendação do `./gradlew --stop` (nota da E11 corrigida acima e substituída na captura do brain) e a captura acrescentando o `docker/gate/` e o `MilestoneM5EndToEndTest` às notas de tema. Nenhum Menor do ledger precisou de correção antes do merge; sem onda de correção. A seção de arquitetura do plano confere com o ledger.
+- **Integridade dos testes:** `check_test_integrity.py --base 6c87b04` → 2 apontamentos `DEV_TESTE_DO_TESTADOR` (`8f6cf0b`, `e5d8e7c`: o desenvolvedor editou o `MilestoneM5EndToEndTest.kt`, que tem commits do testador), julgados justificados pela revisão final (só KDoc, assinaturas de apoio e um filtro ampliado; nenhuma asserção removida). Por tarefa, todas "OK: nenhum apontamento". Cada teste novo foi provado por mutação de produção temporária (18 mutações; 17 falharam no ponto previsto e uma era equivalente, a M3 da aprovação de uso único, coberta pela variante M3b).
+- **Critérios verificados:**
+  - [x] Definição global de pronto marcada item a item com a evidência (acima, no topo deste roadmap).
+  - [x] Cópia limpa (`git archive 6c16557`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`; de `6c16557` a `73b7bcc` só documentação): `clean build` BUILD SUCCESSFUL in 17m 48s, 3228 testes em 330 classes, 0 falhas, 0 erros, 0 pulados; `clean test` 14m 41s e 14m 38s, 3228/0 cada, `MilestoneM5EndToEndTest` 8/8 nas três; `lint checkOpenApi` 3m 37s; `dependencies --write-locks` sem diferença nos três lockfiles.
+  - [x] `.github/scripts/check-api-breaking.sh ffae917`: "Nenhuma mudança incompatível (nível ERR) em /api/v1"; `api/openapi.yaml` idêntico ao da cópia.
+  - [x] Compose isolado a partir da cópia limpa (`docker/gate/run-gate.sh`, projeto `zeny-e12-final`, porta 18114, profile `prod`, pelo proxy, env sorteado no scratchpad, sem tocar o `docker/.env`): readiness `UP` em ~20 s, **302 conferências, 0 falhas**, listener do `fnrh` `COMPLETED` para `ReservationCreated`, `GuestCheckedIn` e `GuestCheckedOut`, envio ao WireMock da FNRH na rede do projeto, agente simulado por SSE recebendo e confirmando a ficha, logs sem documento, nome, credencial da FNRH, token de agente, access token, PIN nem senhas; `down -v` com 0 sobras.
+  - [x] Scanner (`osv-scanner scan -r --no-ignore .`): 426 + 74 pacotes, 0 Critical, 0 High, 2 Medium e 3 Low (os aceitos na E14); nenhuma dependência mudou.
+  - [x] E09: `#bloqueada` pela Q-12, pendência obrigatória antes da operação real; ação de desbloqueio no "Bloqueios" dela; cobrada pelo M8 E13.
+  - [x] `README.md` coerente (Task 7 e testador de etapa: 64 códigos de erro, 25 permissões e 50 rotas dos itens do M5 conferidos no código, nos testes e no contrato); `docs/roadmaps/README.md` com a conclusão do M5; captura do brain `ZenyHotelManager - atualização m5-recepcao-fnrh E12` com as 14 correções da auditoria (G1 a G14), o compose do gate, o teste de gate e o estado do marco.
+  - O que o compose não alcança (prazos do reenvio da FNRH e do job de impressão, 8 tentativas até `FAILED`): evidência no `MilestoneM5EndToEndTest` com o `MutableClock` e nos testes das etapas, na cópia limpa.
+- **Decisões para o usuário** (tomadas pela opção recomendada; as de arquitetura vão à entrevista da revisão humana):
+  - R1: o roteiro e o compose do gate versionados em `docker/gate/` (antes, scratchpad), fora da imagem e da CI.
+  - R2: defeito achado pelo gate seria corrigido na própria E12, sem mudar a tag de outra etapa (nenhum apareceu).
+  - Imagem `wiremock/wiremock:3.13.2` (por digest) com CVEs de SO segundo scanners de terceiros, sem scanner de imagem local: risco aceito (só no gate, sem porta publicada, rede descartável); a variante `-alpine` fica como alternativa.
+  - Os 41 WARN no log do `api` em `prod` (39 do PDFBox, "fallback font", pela D-E11-4; 2 da queda simulada da FNRH) aceitos: sem dado nem segredo.
+  - Incidente: um `./gradlew --stop` pedido pelo orquestrador derrubou daemons de outra sessão do usuário (ZenyHotelManager-DesktopFront), talvez interrompendo um build dela; a regra virou "nunca `--stop`" no plano, no README do gate e na captura.
+  - **Arquitetura (entrevista):** a ordem interna da camada Hospedagem (`rates` < `reservations` < `frontdesk`) na ARCHITECTURE §3.2 (nota da E03); o `FnrhSettingsResponse.username` devolvido em claro contra a ARCHITECTURE §12 ("credencial nunca devolvida na API"), divergência anterior registrada na E16.
+- **Notas para a próxima etapa (marco M6):**
+  - Sincronize o roadmap do M6 com o código antes do primeiro lote (regra 2 de `docs/roadmaps/README.md`); a captura E12 lista as APIs, eventos, portas e views do M5.
+  - Gate do M6: reaproveite `docker/gate/` (`run-gate.sh`, `gate-env.sh`, `compose.gate.yaml`, o `check`/`redact`/varredura do `m5-roteiro.sh`) e o padrão do `MilestoneM5EndToEndTest` (operadores pelos modelos de role, só as submissões da própria reserva, sem avançar a data operacional; o fechamento do M6 vai precisar de um caminho próprio para mudar a data).
+  - Pendências que passam ao M6: a Média da E01 (teste de índices mais fraco nas listas por situação); a descrição de `frontdesk.stays.checkin` sem a ficha (D-E11-10) e os rótulos da FNRH na ficha, na etapa de manutenção que o usuário pediu ao `arquiteto`; `FnrhSubmissionDismissCompat.kt` duplicado em `src/test`.
+  - Menores do gate (sem efeito no produto): `run-gate.sh` não propaga falha do `docker ps` em `leftovers`; a varredura não acharia a descrição de gênero se o encoder escapasse não-ASCII; dois gates no mesmo workdir sobrescrevem o `gate.env`; templating sem escape JSON no mock.
 
 ---
 
@@ -1970,3 +1996,4 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 - 2026-11-11 — E08 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: `FnrhSubmission` por evento com ordem causal por reserva, job `fnrh-submissions-send` com retry de 8 tentativas, escrita em curso e conciliação antes de repetir, consulta da pessoa por documento antes de criar, ids remotos e link de pré-check-in cifrado por ambiente, pendências (`GET`, `retry`, `dismiss`), alerta de falha, gauge e view `fnrh.report_submissions`. Revisão final "With fixes" (I-1 a I-3) corrigida numa onda; "Decisões do lote E08" acrescentadas e a E05 (f) aplicada. O lote parou na revisão humana da E08, feita pelo usuário no mesmo dia (padrão aprovado; E15 (h) decidida).
 - 2026-11-12 — E11 executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: API de documentos no `printing` (render e print, templates por dono, layout comum, limpeza de texto, sem recurso externo, ESC/POS IBM850 em 48 colunas, logotipo reduzido), `HotelApi.profile()`, `FilesApi.readContent`, extrato em PDF (`billing`, porta `FolioOwnerDescriber`), ficha de registro (`frontdesk`) e confirmação de reserva (`reservations`). Revisão final "With fixes" corrigida numa onda; "Decisões do lote E11" acrescentadas. O lote parou na revisão humana da E11. As demais tags não mudaram.
 - 2026-11-12 — revisão humana da E11 feita pelo usuário na entrevista do fim do lote (decisões em "Decisões do lote E11" e no handoff da E11); a etapa de manutenção para os rótulos da FNRH na ficha fica a cargo do `arquiteto`.
+- 2026-11-12 — E12 (gate do marco) executada pelas souls na branch `roadmap/m5-recepcao-fnrh` e `#concluida`: `MilestoneM5EndToEndTest` (8 testes, módulos reais, só a FNRH em WireMock) e o compose isolado do gate versionado em `docker/gate/` (`run-gate.sh`, roteiro `curl` com 302 conferências e WireMock da FNRH na rede do projeto). Cópia limpa de `6c16557` com três rodadas (3228 testes, 0 falhas), lint, contrato, lockfiles e oasdiff contra `ffae917` verdes; compose da cópia com 0 falhas; scanner sem High/Critical. "Definição global de pronto" marcada item a item com a evidência; a E09 segue `#bloqueada` como pendência obrigatória antes da operação real. Revisão final "aprovado com ressalvas" (ressalvas de fechamento, cumpridas). Correções de documentação: ARCHITECTURE §14 (dependências do `printing`), `README.md` e a nota do `--stop` no handoff da E11. O lote parou na revisão humana da E12. As demais tags não mudaram.
