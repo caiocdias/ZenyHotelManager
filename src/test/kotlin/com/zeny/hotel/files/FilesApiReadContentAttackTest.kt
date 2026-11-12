@@ -33,7 +33,10 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 
-/** Ataques a `FilesApi.readContent` (M5 E11, D-E11-7, Task 4): dono, finalidade, objeto ausente e leitura sem efeito. */
+/**
+ * Ataques a `FilesApi.readContent` (M5 E11, D-E11-7, Task 4): dono, finalidade, objeto ausente e
+ * leitura sem efeito.
+ */
 @IntegrationTest
 @Import(
     IamTestConfiguration::class,
