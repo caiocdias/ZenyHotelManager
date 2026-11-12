@@ -25,6 +25,12 @@ interface HotelApi {
     /** A data operacional corrente (RN-01, RF-CFG-05). */
     fun currentBusinessDate(): LocalDate
 
+    /**
+     * Os dados cadastrais com o id do hotel (RF-CFG-01), ou `null` enquanto o hotel não foi
+     * configurado. O id é o dono do vínculo do logotipo no módulo `files`.
+     */
+    fun profile(): CurrentHotelProfile?
+
     /** As políticas operacionais vigentes (RF-CFG-02). */
     fun policy(): PolicySettings
 
@@ -65,6 +71,12 @@ data class HotelProfile(
     val timezone: ZoneId,
     val taxRegime: TaxRegime,
     val logoFileId: UUID?,
+)
+
+/** Os dados cadastrais do hotel único junto com o id dele ([HotelApi.profile]). */
+data class CurrentHotelProfile(
+    val hotelId: UUID,
+    val profile: HotelProfile,
 )
 
 /** Early check-in ou late check-out oferecido (RN-11): até/desde que horário e o preço informado antes. */
