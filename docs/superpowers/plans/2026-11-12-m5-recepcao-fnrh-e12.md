@@ -14,7 +14,7 @@
 
 - Sem funcionalidade nova (E12 "Fora de escopo"). **Nenhuma mudança no catálogo de permissões nem nos modelos de role**; nenhuma migração nova; nenhuma aresta nova na ARCHITECTURE §3.1.
 - Defeito de produção achado pelo gate: o implementador para e relata (`DONE_WITH_CONCERNS`/`BLOCKED`) com a evidência; não corrige sozinho. O orquestrador decide (ruling R2): correção pequena sem mudar contrato, migração ou catálogo entra nesta etapa como rodada de correção, com nota no handoff da etapa de origem e **sem mudar a tag dela**; o que mudar contrato, migração ou catálogo para o lote.
-- `fnrh.settings.manage` e `printing.agents.manage` são **só do Administrador** (sem modelo de role, H20): configurar e limpar a FNRH, o CPF solicitante, o agente e a impressora são feitos pelo administrador inicial (`asAdmin()` nos testes).
+- `fnrh.settings.manage`, `printing.agents.manage` e `hotel.settings.manage` são **só do Administrador** (sem modelo de role, H20): configurar e limpar a FNRH, o CPF solicitante, o agente, a impressora e a política de early/late são feitos pelo administrador inicial (`asAdmin()` nos testes). As operações da recepção (reserva, check-in e as recusas, troca, pagamento, check-out, walk-in, desfazer) são feitas pelos operadores dos modelos de role por `call`, nunca pelos helpers que chamam como administrador (`FrontdeskTestSupport.checkIn`).
 - `frontdesk` não chama `fnrh`; `printing` não conhece modelos de negócio.
 - Falha da FNRH nunca bloqueia check-in nem check-out (RF-FNRH-03).
 - Dados sensíveis da FNRH (RN-19) e o número inteiro dos documentos nunca aparecem em respostas, logs, trilha, eventos, notificações, views nem documentos impressos.
@@ -153,7 +153,7 @@
 - [ ] **Step 1: Escrever as seções 1 a 8**, modelo no handoff da E13 do M4:
   1. Públicos: readiness 200, `meta/version` 200, `/actuator/prometheus` 404 pelo proxy, `/api/v1/reservations` sem token 401.
   2. Admin inicial com troca obrigatória; `recepcao` (Recepcionista) e `gerente` (Gerente, com PIN) pelos modelos do boot, com a troca de senha; usuário de caixa só se o catálogo exigir.
-  3. Cadastro: o Gerente cria tipo de UH, UHs, inspeção, plano e preços; política de early/late oferecendo os dois com valor; o **administrador** configura a FNRH (`PUT /api/v1/fnrh/settings`, `HOMOLOGATION`, credencial de teste sorteada no script, ligada) e o CPF solicitante de teste, cria o agente (token só em variável) e a impressora `A4_PDF`; `psql`: o token `zpa_` não aparece em nenhuma coluna do schema `printing`.
+  3. Cadastro: o Gerente cria tipo de UH, UHs, inspeção, plano e preços; o **administrador** ajusta a política de early/late oferecendo os dois com valor, configura a FNRH (`PUT /api/v1/fnrh/settings`, `HOMOLOGATION`, credencial de teste sorteada no script, ligada) e o CPF solicitante de teste, cria o agente (token só em variável) e a impressora `A4_PDF`; `psql`: o token `zpa_` não aparece em nenhuma coluna do schema `printing`.
   4. Reserva (titular e menor com CPF e data de nascimento) → `409 ROOM_NOT_READY` antes da inspeção → alocação → cotação → check-in com o menor autorizado (anexo pelo upload do `files`), caução e `earlyCheckInFee`.
   5. **FNRH:** laço com teto (≤ 3 min) até as submissões da reserva ficarem `SENT` em `GET /api/v1/fnrh/submissions`; `shared.event_publication` com o listener do `fnrh` `COMPLETED` para `ReservationCreated` e `GuestCheckedIn`; `GET /api/v1/fnrh/status` com `lastSuccessAt`; os logs do `fnrh-mock` sem pedido não casado (pedido não casado = falha de stub).
   6. **Ficha pelo agente:** `POST …/registration-card/print` → `202`; o agente abre `GET /api/v1/print-agents/me/jobs/stream` (`curl -N`, tempo limite), lê o evento `job`, baixa o conteúdo (`%PDF-`), confirma (`ack` `PRINTED`); `GET /api/v1/print-jobs` mostra `PRINTED`; JWT de usuário em `/api/v1/print-agents/me/identity` → 401; token do agente em `/api/v1/reservations` → 401.
@@ -174,7 +174,7 @@
   10. Recados: criar para um setor vinculado à reserva, listar, resolver; `409 TRACE_ALREADY_RESOLVED` na segunda resolução.
   11. Serpro fora do ar: `docker compose stop fnrh-mock`; check-in de outra reserva → `200` e `IN_HOUSE`; a submissão não `SENT`, com tentativa gasta; `start fnrh-mock`.
   12. E16: `POST /api/v1/fnrh/settings/clear-credentials` (administrador, `If-Match`) → `passwordSet=false`, integração desligada; a trilha `fnrh.settings.clear-credentials` existe e não contém o usuário nem a senha da FNRH.
-  13. Varredura: `docker compose logs --no-color` de `api`, `db`, `proxy`, `storage` e `storage-init` (o `fnrh-mock` fica de fora: faz o papel do Serpro) não contém: os nomes dos hóspedes, os números de CPF/documento, o usuário e a senha da FNRH e o Basic em base64, o token `zpa_` do agente, `eyJ` (access tokens), o PIN, as senhas do admin, dos usuários, do banco e do MinIO; a própria saída do roteiro também não (o roteiro guarda a saída e se varre no fim).
+  13. Varredura: `docker compose logs --no-color` de `api`, `db`, `proxy`, `storage` e `storage-init` (o `fnrh-mock` fica de fora: faz o papel do Serpro) não contém: os nomes dos hóspedes, os números de CPF/documento, o usuário e a senha da FNRH e o Basic em base64, o token `zpa_` do agente, `eyJ` (access tokens), o PIN, as senhas do admin, dos usuários, do banco e do MinIO; a própria saída do roteiro também não (o roteiro guarda a saída e se varre no fim). Os logs do `fnrh-mock` não têm pedido não casado em nenhum ponto do roteiro, inclusive na volta depois da queda da §11 (a conciliação `GET /reservas?codigo_reserva=…` precisa de mapeamento que devolva o código consultado por templating).
 - [ ] **Step 2: Rodar** o ciclo completo (seções 1 a 13) como na Task 5 → `0 falhas`, exit 0; `down -v`.
 - [ ] **Step 3: Commit** `Completa o roteiro curl do gate do M5 (M5 E12)`.
 
@@ -226,3 +226,10 @@ Rodados pelo orquestrador, um Gradle por vez, com a saída inteira no workspace 
 
 - O estado da E09 (`#bloqueada` pela Q-12, pendência obrigatória antes da operação real, cobrada pelo M8 E13) e a conclusão do M5 em `docs/roadmaps/README.md`: documentos do orquestrador no fechamento.
 - A captura de atualização do brain, com o texto da Task 8 e o estado do marco em `ZenyHotelManager - Estado por marco`: `brain-escriba`, no fechamento.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas.
+- **Rodadas:** 1 (a revisão inicial bloqueou com 8 Importantes e 11 Menores, todos aplicados em `9bcadd2`; a rodada 1 aprovou com 3 Menores novos).
+- **Modelo:** opus (`revisor-arquitetura`).
+- **Notas Menores da rodada 1, aplicadas:** N-1 a política de early/late é do administrador (`hotel.settings.manage` sem modelo de role); N-2 check-in, recusas e check-out pela Recepcionista por `call`, não pelo `FrontdeskTestSupport.checkIn`; N-3 pedido não casado no `fnrh-mock` conferido no roteiro inteiro, inclusive na volta do Serpro.
