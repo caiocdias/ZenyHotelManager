@@ -1,11 +1,14 @@
 package com.zeny.hotel.testsupport
 
+import com.zeny.hotel.ZenyHotelApplication
 import com.zeny.hotel.hotel.HotelApi
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldEndWith
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.builder.SpringApplicationBuilder
 import org.springframework.boot.test.context.SpringBootTest
 import java.sql.DriverManager
 import java.sql.SQLException
@@ -60,24 +63,54 @@ class EndOfDayIsolationTest(
     }
 
     /**
-     * A data operacional do banco compartilhado, lida direto como dono; nula se ele ainda não foi migrado ou não tem
-     * hotel (rodando esta classe sozinha, nenhum contexto compartilhado o criou).
+     * A data operacional do banco compartilhado, lida direto como dono. Antes de ler, garante que o banco compartilhado
+     * existe migrado e com o hotel inicial: rodando esta classe sozinha nenhum contexto compartilhado o criou, e a
+     * comparação seria nula com nula.
      */
-    private fun sharedBusinessDate(): LocalDate? {
+    private fun sharedBusinessDate(): LocalDate {
+        seedSharedDatabase()
         val postgres = PostgresContainer.instance
         return DriverManager
             .getConnection(postgres.jdbcUrl, PostgresContainer.ownerUsername, PostgresContainer.ownerPassword)
             .use { connection ->
                 connection.createStatement().use { statement ->
-                    val migrated =
-                        statement.executeQuery("SELECT to_regclass('hotel.business_day')").use { rows ->
-                            rows.next() && rows.getString(1) != null
-                        }
-                    if (!migrated) return null
                     statement.executeQuery("SELECT business_date FROM hotel.business_day").use { rows ->
-                        if (rows.next()) rows.getObject(1, LocalDate::class.java) else null
+                        rows.next() shouldBe true
+                        rows.getObject(1, LocalDate::class.java).shouldNotBeNull()
                     }
                 }
             }
+    }
+
+    private companion object {
+        /**
+         * Sobe e fecha um contexto sobre o banco compartilhado (como o do `EventPublicationRegistryTest`): o boot migra
+         * o banco e cria o hotel inicial; num banco que outro contexto já preparou, não muda nada.
+         */
+        val sharedDatabaseSeeded: Unit by lazy {
+            SpringApplicationBuilder(ZenyHotelApplication::class.java)
+                .profiles("local")
+                .initializers(
+                    PostgresInitializer(),
+                    TestEncryptionKeysInitializer(),
+                    TestAuthInitializer(),
+                    TestStorageInitializer(),
+                )
+                // Como argumentos de linha de comando: `properties()` teria prioridade abaixo do application.yaml.
+                .run(
+                    "--$TEST_MIGRATIONS",
+                    "--$RESUBMISSION_JOB_DEFERRED",
+                    "--$OUTBOX_PURGE_DEFERRED",
+                    "--$FILES_PURGE_DEFERRED",
+                    "--$GUESTS_REKEY_DEFERRED",
+                    "--$INVENTORY_HORIZON_DEFERRED",
+                    "--$PROVISIONAL_EXPIRY_DEFERRED",
+                    "--$FNRH_SEND_DEFERRED",
+                    "--$PRINTING_MAINTENANCE_DEFERRED",
+                    "--server.port=0",
+                ).close()
+        }
+
+        fun seedSharedDatabase() = sharedDatabaseSeeded
     }
 }
