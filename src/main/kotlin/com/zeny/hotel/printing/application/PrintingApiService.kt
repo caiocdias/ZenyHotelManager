@@ -176,37 +176,65 @@ class PrintingApiService(
         ).mapValues { (_, value) -> value?.let(text)?.takeIf(String::isNotEmpty) }
     }
 
-    /** O modelo validado (D-E11-2) com todo texto limpo; outro tipo de folha é `IllegalArgumentException`. */
+    /**
+     * O modelo validado (D-E11-2) com todo texto limpo; outro tipo de folha é `IllegalArgumentException`, e também o
+     * aninhamento além de [MAX_MODEL_DEPTH] mapas e listas (um modelo cíclico esbarra nesse limite, sem estourar a
+     * pilha).
+     */
     private fun cleanMap(
         map: Map<*, *>,
         text: (String) -> String,
         path: String,
-    ): Map<String, Any?> =
-        map.entries.associate { (key, value) ->
+        depth: Int = 0,
+    ): Map<String, Any?> {
+        requireDepth(depth, path)
+        return map.entries.associate { (key, value) ->
             require(key is String) { "Chave que não é texto no modelo do documento, em $path" }
-            key to cleanValue(value, text, "$path.$key")
+            key to cleanValue(value, text, "$path.$key", depth + 1)
         }
+    }
 
     private fun cleanValue(
         value: Any?,
         text: (String) -> String,
         path: String,
+        depth: Int,
     ): Any? =
         when (value) {
-            null, is Boolean, is Number, is LocalDate, is LocalTime, is Instant, is Money, is Percent -> value
+            null, is Boolean, is Number, is LocalDate, is LocalTime, is Instant, is Money, is Percent -> {
+                value
+            }
 
-            is String -> text(value)
+            is String -> {
+                text(value)
+            }
 
-            is Map<*, *> -> cleanMap(value, text, path)
+            is Map<*, *> -> {
+                cleanMap(value, text, path, depth)
+            }
 
-            is List<*> -> value.mapIndexed { index, item -> cleanValue(item, text, "$path[$index]") }
+            is List<*> -> {
+                requireDepth(depth, path)
+                value.mapIndexed { index, item -> cleanValue(item, text, "$path[$index]", depth + 1) }
+            }
 
-            else -> throw IllegalArgumentException(
-                "Tipo não permitido no modelo do documento, em $path: ${value::class.java.name}",
-            )
+            else -> {
+                throw IllegalArgumentException(
+                    "Tipo não permitido no modelo do documento, em $path: ${value::class.java.name}",
+                )
+            }
         }
 
+    private fun requireDepth(
+        depth: Int,
+        path: String,
+    ) = require(depth < MAX_MODEL_DEPTH) {
+        "Modelo do documento aninhado além de $MAX_MODEL_DEPTH níveis (ou cíclico), em ${path.take(MAX_PATH_IN_ERROR)}"
+    }
+
     private companion object {
+        const val MAX_MODEL_DEPTH = 32
+        const val MAX_PATH_IN_ERROR = 200
         const val LAYOUT = "templates/printing/layout.xhtml"
         const val UNCONFIGURED_NAME = "Hotel"
         const val TRADE_NAME = "tradeName"
