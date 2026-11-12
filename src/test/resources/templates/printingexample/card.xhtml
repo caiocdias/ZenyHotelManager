@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<body>
+<p id="name" th:text="${document.guest.name}">nome</p>
+<p id="inline">[[${document.guest.name}]]</p>
+<ul>
+<li th:each="item : ${document.items}" th:text="${item}">item</li>
+</ul>
+</body>
+</html>
