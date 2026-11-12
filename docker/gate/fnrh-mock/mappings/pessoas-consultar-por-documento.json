@@ -1,0 +1,17 @@
+{
+  "name": "FNRH v2.4: GET /pessoas/documento/{tipo}/{numero} com o cpf_solicitante de teste -> pessoa sem id neste meio de hospedagem (o envio a cadastra)",
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/FNRH_API/rest/v2/pessoas/documento/(CPF|PASSAPORTE)/[^/]+",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "equalTo": "52998224725" }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"dados\":{\"documento\":{\"tipo_documento_id\":\"{{request.pathSegments.[5]}}\"}}}"
+  }
+}

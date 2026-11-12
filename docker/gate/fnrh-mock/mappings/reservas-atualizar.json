@@ -1,0 +1,18 @@
+{
+  "name": "FNRH v2.4: PUT /reservas/{id} (atualizar reserva) -> 200 de corpo vazio",
+  "request": {
+    "method": "PUT",
+    "urlPathPattern": "/FNRH_API/rest/v2/reservas/[^/]+",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    },
+    "bodyPatterns": [{ "matchesJsonPath": "$.numero_reserva" }]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": ""
+  }
+}

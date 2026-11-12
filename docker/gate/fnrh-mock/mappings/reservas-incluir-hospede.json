@@ -1,0 +1,21 @@
+{
+  "name": "FNRH v2.4: POST /reservas/{id}/hospedes (incluir hóspede já com check-in) -> hospede_id sorteado",
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/FNRH_API/rest/v2/reservas/[^/]+/hospedes",
+    "headers": {
+      "Authorization": { "matches": "^Basic .+" },
+      "Content-Type": { "contains": "application/json" },
+      "cpf_solicitante": { "absent": true }
+    },
+    "bodyPatterns": [
+      { "matchesJsonPath": "$.pessoa_id" },
+      { "matchesJsonPath": { "expression": "$.situacao_hospede_id", "equalTo": "CHECKIN_REALIZADO" } }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/json" },
+    "body": "{\"hospede_id\":\"{{randomValue type='UUID'}}\"}"
+  }
+}
