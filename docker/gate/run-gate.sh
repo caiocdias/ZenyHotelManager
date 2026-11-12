@@ -79,7 +79,7 @@ echo "== readiness"
 BASE=http://localhost:$PORT
 started=$SECONDS
 deadline=$((SECONDS + 300))
-until curl -fsS -o /dev/null --max-time 5 "$BASE/actuator/health/readiness"; do
+until curl -fs -o /dev/null --max-time 5 "$BASE/actuator/health/readiness"; do
     if [ "$SECONDS" -ge "$deadline" ]; then
         echo "readiness sem 200 em 300 s"
         "${DC[@]}" ps --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
@@ -96,6 +96,8 @@ rc=$?
 echo "roteiro exit=$rc"
 
 echo "== logs da api: níveis"
-"${DC[@]}" logs --no-color api 2>/dev/null | grep -oE ' (TRACE|DEBUG|INFO|WARN|ERROR) ' | sort | uniq -c
+# Os logs do profile prod são JSON (ECS): conta o log.level de cada linha (o WARN do PDFBox é esperado, D-E11-4).
+"${DC[@]}" logs --no-color --no-log-prefix api 2>/dev/null |
+    jq -Rr 'fromjson? // {} | (.log.level? // ."log.level"? // "não-JSON")' | sort | uniq -c
 
 exit "$rc"

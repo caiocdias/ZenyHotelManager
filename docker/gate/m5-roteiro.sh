@@ -153,7 +153,7 @@ uuid() {
 
 # O token de <quem> num arquivo de cabeçalho (curl -H @arquivo): nunca em argumento de processo.
 set_token() {
-    secret "$2"
+    if [ "$1" = agent ]; then secret "$2" "token do agente"; else secret "$2" "access token"; fi
     printf 'Authorization: Bearer %s\n' "$2" >"$T/auth-$1"
 }
 
@@ -280,6 +280,61 @@ mock_all_basic() {
         | (length > 0 and all)'
 }
 
+# true se o mock recebeu um POST /pessoas com genero_id OUTRO e a descrição de gênero G_DESC (o jq só responde
+# true/false: o corpo, com nome e documento, nunca sai).
+mock_person_other() {
+    mock requests | G_DESC=$G_DESC jq '[.requests[].request
+        | select(.method == "POST" and (.url | test("^/FNRH_API/rest/v2/pessoas$")))
+        | (.body | fromjson? // {}) | .pessoa // {}
+        | select(.genero_id == "OUTRO" and .GeneroDescricao == env.G_DESC)] | length >= 1'
+}
+
+mock_up() {
+    if mock health >/dev/null 2>&1; then echo true; else echo false; fi
+}
+
+# A situação das submissões da FNRH da reserva <id>, em ordem alfabética ("OPERAÇÃO:SITUAÇÃO,…"): o walk-in grava as
+# duas na mesma transação, sem ordem de criação.
+fnrh_states() {
+    req GET "/fnrh/submissions?limit=100" recepcao
+    jq -r --arg r "$1" '[.items[] | select(.reservationId == $r) | "\(.operation):\(.status)"] | sort | join(",")' \
+        "$T/body" 2>/dev/null
+}
+
+# A submissão <operação> da reserva <id> pelo filtro jq <expr> (vazio se não há).
+fnrh_item() {
+    req GET "/fnrh/submissions?limit=100" recepcao
+    jq -r --arg r "$1" --arg o "$2" \
+        "[.items[] | select(.reservationId == \$r and .operation == \$o)][0] | if . == null then \"\" else $3 end" \
+        "$T/body" 2>/dev/null
+}
+
+fnrh_pending_count() {
+    req GET "/fnrh/submissions?limit=100" recepcao
+    jq '[.items[] | select(.status == "PENDING")] | length' "$T/body" 2>/dev/null
+}
+
+# poll <esperado> <segundos> <intervalo> <comando...>: repete o comando até a saída ser <esperado> ou o prazo vencer,
+# com a última saída em GOT. Fora de subshell e com o ensure_tokens a cada volta: esperas longas não perdem o token.
+poll() {
+    local expected=$1 deadline=$((SECONDS + $2)) interval=$3
+    shift 3
+    while :; do
+        ensure_tokens
+        GOT=$("$@")
+        [ "$GOT" = "$expected" ] || [ "$SECONDS" -ge "$deadline" ] && break
+        sleep "$interval"
+    done
+}
+
+# "solicitante|aprovador|ação|recurso" da aprovação <id> em iam.approval (o id conferido antes do SQL).
+approval_row() {
+    require_uuid approvalId "$1" || return 1
+    sql <<SQL
+SELECT requester_id || '|' || approver_id || '|' || action || '|' || resource_ref FROM iam.approval WHERE id = '$1';
+SQL
+}
+
 # --- Usuários -----------------------------------------------------------------------------------------------------
 
 LOGIN_AT=0
@@ -293,7 +348,7 @@ login() {
     NO_IDEM=1 req POST /auth/login - "$T/req.json"
     if [ "$ST" = 200 ]; then
         set_token "$1" "$(jb .accessToken)"
-        secret "$(jb .refreshToken)"
+        secret "$(jb .refreshToken)" "refresh token"
     fi
 }
 
@@ -426,6 +481,121 @@ pay() {
     req POST "/folios/$1/payments" recepcao "$T/req.json"
 }
 
+# new_guest <rótulo ASCII> [perfil extra em JSON]: a Recepcionista cadastra um hóspede adulto brasileiro com CPF
+# sorteado e os dados que a FNRH exige. Nome, CPF e e-mail viram dado de hóspede (secret) e entram no jq pelo ambiente.
+# Deixa o id em GUEST_ID e o status em ST.
+new_guest() {
+    local suffix cpf name email
+    suffix=$(openssl rand -hex 3)
+    cpf=$(new_cpf)
+    name="$1 Gate $suffix"
+    email="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]').$suffix@example.com"
+    secret "$cpf" hóspede
+    secret "${cpf:0:3}.${cpf:3:3}.${cpf:6:3}-${cpf:9:2}" hóspede
+    secret "$name" hóspede
+    secret "$email" hóspede
+    G_NAME=$name G_EMAIL=$email G_CPF=$cpf G_EXTRA=${2:-'{}'} jq -n \
+        '{profile: ({fullName: env.G_NAME, socialName: null, nationality: "BR", birthDate: "1990-07-21",
+            gender: "FEMALE", email: env.G_EMAIL, phone: "+55 11 98765-4321", residenceCountry: "BR",
+            address: {street: "Rua das Acácias", number: "742", complement: "Apto 12", district: "Jardim Paulista",
+                      city: "São Paulo", state: "SP", postalCode: "01407-000", ibgeCityCode: "3550308"},
+            preferences: {floor: "Alto", bed: "Casal", pillow: "Baixo"}, vip: false, notes: "Gate do M5",
+            companyId: null} + (env.G_EXTRA | fromjson)),
+          documents: [{type: "CPF", issuingCountry: null, number: env.G_CPF}],
+          sensitiveData: {raceColor: "BROWN"}}' >"$T/req.json"
+    req POST /guests recepcao "$T/req.json"
+    GUEST_ID=$(jb .id)
+}
+
+# O hóspede <id> como único (e principal) da estadia, sem comprovação de menor.
+single_guest() {
+    jq -nc --arg g "$1" \
+        '{guestId: $g, primary: true, travelReason: "LAZER_FERIAS", transportMode: "AUTOMOVEL", minorAuthorization: null}'
+}
+
+# book_single <hóspede>: a Recepcionista reserva de BD a BD+2, 1 adulto, sem UH. Deixa o id em BOOKED_ID.
+book_single() {
+    jq -n --arg h "$1" --arg t "$TYPE_ID" --arg p "$PLAN_ID" --arg a "$BD" --arg d "$(date -d "$BD +2 days" +%F)" \
+        '{holderGuestId: $h, origin: "PHONE", externalId: null,
+          reservations: [{roomTypeId: $t, ratePlanId: $p, arrival: $a, departure: $d, adults: 1, childAges: [],
+            segment: "LEISURE", specialRequests: null, guests: [{guestId: $h, primary: true}], nightlyRates: []}]}' \
+        >"$T/req.json"
+    req POST /bookings recepcao "$T/req.json"
+    BOOKED_ID=$(jb '.reservations[0].id')
+}
+
+# O pedido de check-in só com o hóspede <id> (sem caução e sem early: sem valor cotado, nada de early).
+single_check_in_body() {
+    jq -n --argjson g "$(single_guest "$1")" '{guests: [$g]}' >"$T/req.json"
+}
+
+# new_rooms <seção> <número...>: o Gerente cria as UHs do tipo do roteiro, espera o inventário e as limpa e inspeciona.
+# Deixa os ids em NEW_ROOMS.
+new_rooms() {
+    local tag=$1 number id total deadline
+    shift
+    NEW_ROOMS=()
+    for number in "$@"; do
+        jq -n --arg n "$number" --arg t "$TYPE_ID" \
+            '{number: $n, floor: "12º andar", roomTypeId: $t, featureIds: [], notes: "Gate do M5"}' >"$T/req.json"
+        req POST /rooms gerente "$T/req.json"
+        check_http "[$tag] UH $number pelo Gerente" 201
+        NEW_ROOMS+=("$(jb .id)")
+    done
+    deadline=$((SECONDS + 60))
+    while :; do
+        req GET "/room-type-inventory?roomTypeId=$TYPE_ID&from=$BD&to=$BD" gerente
+        total=$(jb '.items[0].total')
+        [ "$total" = $((2 + $#)) ] || [ "$SECONDS" -ge "$deadline" ] && break
+        sleep 2
+    done
+    check "[$tag] inventário do tipo com as $((2 + $#)) UHs" $((2 + $#)) "$total"
+    for id in "${NEW_ROOMS[@]}"; do
+        housekeeping "$id" MARK_CLEAN
+        check_http "[$tag] UH nova limpa pelo Gerente" 200
+        housekeeping "$id" MARK_INSPECTED
+        check_http "[$tag] UH nova inspecionada pelo Gerente" 200
+        check "[$tag] UH nova pronta para check-in" true "$(jb .readyForCheckIn)"
+    done
+}
+
+env_value() {
+    grep -m1 "^$1=" "$ENV_FILE" | cut -d= -f2-
+}
+
+# Os segredos do env do gate (banco, MinIO, chaves de cifragem e do JWT): redigidos na saída e procurados na varredura.
+register_env_secrets() {
+    local v
+    secret "$(env_value ZENY_DB_MIGRATION_PASSWORD)" "senha do banco"
+    secret "$(env_value ZENY_DB_PASSWORD)" "senha do banco"
+    secret "$(env_value ZENY_STORAGE_ROOT_PASSWORD)" "senha do MinIO"
+    secret "$(env_value ZENY_STORAGE_SECRET_KEY)" "chave do MinIO"
+    v=$(env_value ZENY_ENCRYPTION_KEYS)
+    secret "${v#*:}" "chave de cifragem"
+    v=$(env_value ZENY_JWT_KEYS)
+    secret "${v#*:}" "chave do JWT"
+}
+
+# leaked_kinds <arquivo>: os tipos (nunca os valores) dos segredos e dados de hóspede achados no arquivo, ou "nenhum".
+# Cada valor vai ao grep por um arquivo de padrões (process substitution), nunca por argumento; o PIN, de 6 dígitos,
+# só como palavra inteira.
+leaked_kinds() {
+    local i opts found=()
+    [ -r "$1" ] || { echo "arquivo ilegível"; return; }
+    for i in "${!SECRETS[@]}"; do
+        opts=-qF
+        [ "${SECRET_KINDS[i]}" = PIN ] && opts=-qwF
+        if grep "$opts" -f <(printf '%s\n' "${SECRETS[i]}") -- "$1"; then
+            found+=("${SECRET_KINDS[i]}")
+        fi
+    done
+    if [ "${#found[@]}" -eq 0 ]; then
+        echo nenhum
+    else
+        printf '%s\n' "${found[@]}" | sort -u | paste -sd, -
+    fi
+}
+
 # ==================================================================================================================
 # Seções. Cada uma é uma função; o estado que passa de uma a outra fica em variáveis globais (ids da reserva, das
 # UHs, da conta, do agente…). Para acrescentar uma seção, escreva a função e a ponha em SECTIONS (no fim do arquivo).
@@ -450,10 +620,10 @@ s2_users() {
     admin_login=$(grep -m1 '^ZENY_ADMIN_LOGIN=' "$ENV_FILE" | cut -d= -f2-)
     admin_login=${admin_login:-admin}
     admin_initial=$(grep -m1 '^ZENY_ADMIN_PASSWORD=' "$ENV_FILE" | cut -d= -f2-)
-    secret "$admin_initial"
+    secret "$admin_initial" "senha do admin"
     LOGIN_OF[admin]=$admin_login
     PASSWORD_OF[admin]=$(openssl rand -hex 16)
-    secret "${PASSWORD_OF[admin]}"
+    secret "${PASSWORD_OF[admin]}" "senha do admin"
 
     login admin "$admin_login" "$admin_initial"
     check_http "[2] login do admin com a senha inicial" 200
@@ -478,16 +648,16 @@ s2_users() {
     check "[2] modelo Gerente no boot" true "$(bool is_uuid "$manager_role")"
 
     MANAGER_PIN=$(printf '%06d' $((16#$(openssl rand -hex 3) % 1000000)))
-    secret "$MANAGER_PIN"
+    secret "$MANAGER_PIN" PIN
     local who role provisional
     for who in recepcao gerente; do
         role=$receptionist_role
         [ "$who" = gerente ] && role=$manager_role
         provisional=$(openssl rand -hex 16)
-        secret "$provisional"
+        secret "$provisional" "senha de usuário"
         LOGIN_OF[$who]=$who
         PASSWORD_OF[$who]=$(openssl rand -hex 16)
-        secret "${PASSWORD_OF[$who]}"
+        secret "${PASSWORD_OF[$who]}" "senha de usuário"
         if [ "$who" = gerente ]; then
             PROVISIONAL=$provisional PIN=$MANAGER_PIN jq -n --arg r "$role" \
                 '{login: "gerente", name: "Gerente do gate", password: env.PROVISIONAL, pin: env.PIN, roleIds: [$r]}' \
@@ -604,9 +774,9 @@ s3_setup() {
     # FNRH em homologação (o mock), com a credencial de teste sorteada aqui e o CPF solicitante de teste.
     FNRH_USER="gate-$(openssl rand -hex 4)"
     FNRH_PASSWORD=$(openssl rand -hex 16)
-    secret "$FNRH_USER"
-    secret "$FNRH_PASSWORD"
-    secret "$(printf '%s:%s' "$FNRH_USER" "$FNRH_PASSWORD" | openssl base64 -A)"
+    secret "$FNRH_USER" "usuário da FNRH"
+    secret "$FNRH_PASSWORD" "senha da FNRH"
+    secret "$(printf '%s:%s' "$FNRH_USER" "$FNRH_PASSWORD" | openssl base64 -A)" "Basic da FNRH"
     req GET /fnrh/settings admin
     check_http "[3] configuração da FNRH" 200
     tag=$(hdr etag)
@@ -699,10 +869,10 @@ s4_check_in() {
             cpf=$MINOR_CPF name=$MINOR_NAME birth=$(date -d "$bd -10 years" +%F)
         fi
         email="$who.$suffix@example.com"
-        secret "$cpf"
-        secret "${cpf:0:3}.${cpf:3:3}.${cpf:6:3}-${cpf:9:2}"
-        secret "$name"
-        secret "$email"
+        secret "$cpf" hóspede
+        secret "${cpf:0:3}.${cpf:3:3}.${cpf:6:3}-${cpf:9:2}" hóspede
+        secret "$name" hóspede
+        secret "$email" hóspede
         jq -n --arg name "$name" --arg birth "$birth" --arg email "$email" --arg cpf "$cpf" \
             '{profile: {fullName: $name, socialName: null, nationality: "BR", birthDate: $birth, gender: "FEMALE",
                 email: $email, phone: "+55 11 98765-4321", residenceCountry: "BR",
@@ -970,10 +1140,267 @@ s8_check_out() {
     check "[8] fnrh-mock: nenhum pedido não casado" 0 "$(mock_unmatched)"
 }
 
+s9_walk_in_and_undo() {
+    section "9. Walk-in (gênero OUTRO com descrição) e desfazer check-in com a aprovação do Gerente"
+    ensure_tokens
+    business_date recepcao
+    check_http "[9] data operacional" 200
+    check "[9] data operacional é uma data" true "$(bool is_date "$BD")"
+    # 1203 (walk-in), 1204 (desfazer) e 1205 (seção 11), prontas para o check-in.
+    new_rooms 9 1203 1204 1205
+    ROOM3=${NEW_ROOMS[0]}
+    ROOM4=${NEW_ROOMS[1]}
+    ROOM5=${NEW_ROOMS[2]}
+
+    # --- Walk-in pela Recepcionista: hóspede de gênero OUTRO com a descrição (E15) -------------------------------
+    G_DESC="Pessoa não binária $(openssl rand -hex 3)"
+    secret "$G_DESC" hóspede
+    new_guest Avulso "$(G_DESC=$G_DESC jq -nc '{gender: "OTHER", genderDescription: env.G_DESC}')"
+    check_http "[9] hóspede do walk-in (OUTRO com descrição) pela Recepcionista" 201
+    WALK_GUEST=$GUEST_ID
+    req GET "/guests/$WALK_GUEST" recepcao
+    check_http "[9] hóspede do walk-in lido" 200
+    check "[9] gênero OUTRO gravado" OTHER "$(jb .gender)"
+    check "[9] descrição de gênero gravada" true "$(bool [ "$(jb .genderDescription)" = "$G_DESC" ])"
+
+    jq -n --arg r "$ROOM3" --arg p "$PLAN_ID" --arg d "$(date -d "$BD +2 days" +%F)" \
+        --argjson g "$(single_guest "$WALK_GUEST")" \
+        '{roomId: $r, ratePlanId: $p, departure: $d, adults: 1, childAges: [], segment: "LEISURE", guests: [$g]}' \
+        >"$T/req.json"
+    req POST /walk-ins recepcao "$T/req.json"
+    check_http "[9] walk-in na UH 1203 pela Recepcionista" 201
+    WALK_ID=$(jb .reservation.id)
+    check "[9] walk-in em casa na 1203" "IN_HOUSE $ROOM3" "$(jb '"\(.reservation.status) \(.reservation.roomId)"')"
+    check "[9] titular do walk-in é o hóspede" "$WALK_GUEST" "$(jb .holderGuestId)"
+    check "[9] UH 1203 ocupada" OCCUPIED "$(jb .room.occupancy)"
+    check "[9] UH 1203 ocupada com 1 hóspede (status)" "OCCUPIED 1" "$(room_occupancy "$ROOM3")"
+    check "[9] walk-in com id" true "$(bool is_uuid "$WALK_ID")"
+    poll "CHECK_IN:SENT,REGISTER_RESERVATION:SENT" 180 5 fnrh_states "$WALK_ID"
+    check "[9] submissões do walk-in enviadas (≤ 3 min)" "CHECK_IN:SENT,REGISTER_RESERVATION:SENT" "$GOT"
+    check "[9] fnrh-mock: pessoa com gênero OUTRO e a descrição" true "$(mock_person_other)"
+    check "[9] fnrh-mock: nenhum pedido não casado" 0 "$(mock_unmatched)"
+
+    # --- Desfazer o check-in de outra reserva: a Recepcionista precisa da aprovação do Gerente (PIN) ------------
+    new_guest Desfazer
+    check_http "[9] hóspede da reserva a desfazer" 201
+    local guest=$GUEST_ID
+    book_single "$guest"
+    check_http "[9] reserva a desfazer pela Recepcionista" 201
+    UNDO_ID=$BOOKED_ID
+    check "[9] reserva a desfazer com id" true "$(bool is_uuid "$UNDO_ID")"
+    jq -n --arg r "$ROOM4" '{roomId: $r}' >"$T/req.json"
+    req POST "/reservations/$UNDO_ID/assign-room" recepcao "$T/req.json"
+    check_http "[9] alocação da UH 1204" 200
+    single_check_in_body "$guest"
+    req POST "/reservations/$UNDO_ID/check-in" recepcao "$T/req.json"
+    check_http "[9] check-in na 1204 pela Recepcionista" 200
+    check "[9] reserva em casa na 1204" "IN_HOUSE $ROOM4" "$(jb '"\(.reservation.status) \(.reservation.roomId)"')"
+
+    NO_IDEM=1 req POST "/reservations/$UNDO_ID/undo-check-in" recepcao
+    check_http "[9] desfazer pela Recepcionista sem aprovação" 403
+    check "[9] code APPROVAL_REQUIRED" APPROVAL_REQUIRED "$(problem_code)"
+    check "[9] ação, permissão e recurso da aprovação" \
+        "frontdesk.stay.undo-check-in frontdesk.stays.undocheckin reservations.reservation:$UNDO_ID" \
+        "$(jb '"\(.action) \(.permission) \(.resourceRef)"')"
+    PIN=$MANAGER_PIN jq '{action, permission, resourceRef, approverLogin: "gerente", approverPin: env.PIN,
+        reason: "Check-in feito na reserva errada"}' "$T/body" >"$T/approval.json"
+    reservation_status "$UNDO_ID"
+    check "[9] reserva segue em casa sem a aprovação" IN_HOUSE "$GOT"
+
+    # A aprovação na sessão da Recepcionista (o token vale só nela, uma vez, 2 min): nada de ensure_tokens até o uso.
+    NO_IDEM=1 req POST /auth/approvals recepcao "$T/approval.json"
+    rm -f -- "$T/approval.json"
+    check_http "[9] aprovação do Gerente com login e PIN" 201
+    local approval_id approval_token
+    approval_id=$(jb .approvalId)
+    approval_token=$(jb .approvalToken)
+    secret "$approval_token" "token de aprovação"
+    check "[9] aprovador é o Gerente" "$MANAGER_ID" "$(jb .approverId)"
+    check "[9] aprovação com id" true "$(bool is_uuid "$approval_id")"
+    printf 'X-Approval-Token: %s\n' "$approval_token" >"$T/approval.hdr"
+    : >"$T/body"
+    NO_IDEM=1 req POST "/reservations/$UNDO_ID/undo-check-in" recepcao "" "@$T/approval.hdr"
+    rm -f -- "$T/approval.hdr"
+    check_http "[9] desfazer com a aprovação" 200
+    check "[9] reserva confirmada, ainda na 1204" "CONFIRMED $ROOM4" "$(jb '"\(.reservation.status) \(.reservation.roomId)"')"
+    check "[9] UH 1204 vaga e inspecionada (sem sujar)" "VACANT INSPECTED" \
+        "$(jb '"\(.room.occupancy) \(.room.housekeepingStatus)"')"
+    check "[9] UH 1204 vaga e inspecionada (status)" "VACANT INSPECTED 0" "$(room_status "$ROOM4")"
+
+    req GET "/audit-entries?entityType=frontdesk.stay&entityId=$UNDO_ID&limit=50" admin
+    check_http "[9] trilha da estadia" 200
+    check "[9] trilha do desfazer: a Recepcionista e a aprovação" "$RECEPTIONIST_ID $approval_id" \
+        "$(jb '[.items[] | select(.action == "frontdesk.stay.undo-check-in")]
+            | if length == 1 then "\(.[0].userId) \(.[0].approvalId)" else "\(length) entradas" end')"
+    check "[9] psql: iam.approval com a Recepcionista e o Gerente" \
+        "$RECEPTIONIST_ID|$MANAGER_ID|frontdesk.stay.undo-check-in|reservations.reservation:$UNDO_ID" \
+        "$(approval_row "$approval_id")"
+}
+
+# A situação da reserva <id>, em GOT (fora de subshell).
+reservation_status() {
+    req GET "/reservations/$1" recepcao
+    GOT=$(jb .reservation.status)
+}
+
+s10_traces() {
+    section "10. Recados para um setor, vinculados à reserva"
+    ensure_tokens
+    business_date recepcao
+    check_http "[10] data operacional" 200
+    local bd=$BD dept trace
+    req GET "/departments?limit=100" gerente
+    check_http "[10] setores pelo Gerente" 200
+    dept=$(jb '[.items[] | select(.key == "HOUSEKEEPING")][0].id')
+    check "[10] setor da governança pré-carregado" true "$(bool is_uuid "$dept")"
+
+    TRACE_TEXT="Berço na UH $(openssl rand -hex 3)"
+    secret "$TRACE_TEXT" "texto do recado"
+    TEXT=$TRACE_TEXT jq -n --arg d "$dept" --arg due "$bd" --arg r "$UNDO_ID" \
+        '{departmentId: $d, dueOn: $due, text: env.TEXT, reservationId: $r, roomId: null, assigneeUserId: null}' \
+        >"$T/req.json"
+    req POST /traces recepcao "$T/req.json"
+    check_http "[10] recado para a governança pela Recepcionista" 201
+    trace=$(jb .id)
+    check "[10] recado aberto, da governança, na reserva, para hoje" "OPEN $dept $UNDO_ID $bd" \
+        "$(jb '"\(.status) \(.departmentId) \(.reservationId) \(.dueOn)"')"
+    check "[10] recado criado pela Recepcionista" "$RECEPTIONIST_ID" "$(jb .createdBy)"
+    check "[10] texto gravado" true "$(bool [ "$(jb .text)" = "$TRACE_TEXT" ])"
+
+    req GET "/traces?reservationId=$UNDO_ID&limit=50" recepcao
+    check_http "[10] lista dos recados da reserva" 200
+    check "[10] lista com o recado aberto" "$trace:OPEN" "$(jb '[.items[] | "\(.id):\(.status)"] | join(",")')"
+    req GET "/traces?departmentId=$dept&dueOn=$bd&status=OPEN&limit=200" gerente
+    check_http "[10] lista do setor no dia pelo Gerente" 200
+    check "[10] recado na lista do setor" true \
+        "$(jq -r --arg t "$trace" '[.items[].id] | index($t) != null' "$T/body" 2>/dev/null)"
+
+    req POST "/traces/$trace/resolve" recepcao
+    check_http "[10] recado resolvido pela Recepcionista" 200
+    check "[10] resolvido por quem e quando" "RESOLVED $RECEPTIONIST_ID true" \
+        "$(jb '"\(.status) \(.resolvedBy) \(.resolvedAt != null)"')"
+    req POST "/traces/$trace/resolve" recepcao
+    check_http "[10] segunda resolução" 409
+    check "[10] code TRACE_ALREADY_RESOLVED" TRACE_ALREADY_RESOLVED "$(problem_code)"
+    req GET "/traces?reservationId=$UNDO_ID&status=RESOLVED&limit=50" recepcao
+    check "[10] lista dos resolvidos com o recado" "$trace:RESOLVED" "$(jb '[.items[] | "\(.id):\(.status)"] | join(",")')"
+}
+
+s11_serpro_down() {
+    section "11. Serpro fora do ar: o check-in conclui e a submissão espera a volta"
+    ensure_tokens
+    # Antes da queda, a fila sem pendência e o diário sem pedido não casado: o que falhar a seguir é desta seção.
+    poll 0 180 5 fnrh_pending_count
+    check "[11] nenhuma submissão pendente antes da queda (≤ 3 min)" 0 "$GOT"
+    check "[11] fnrh-mock: nenhum pedido não casado antes da queda" 0 "$(mock_unmatched)"
+    "${DC[@]}" stop fnrh-mock >"$T/compose.out" 2>&1
+    check "[11] fnrh-mock parado (compose stop)" 0 "$?"
+    check "[11] fnrh-mock fora do ar" false "$(mock_up)"
+
+    business_date recepcao
+    check_http "[11] data operacional" 200
+    new_guest Queda
+    check_http "[11] hóspede da reserva na queda" 201
+    local guest=$GUEST_ID
+    book_single "$guest"
+    check_http "[11] reserva na queda pela Recepcionista" 201
+    DOWN_ID=$BOOKED_ID
+    check "[11] reserva com id" true "$(bool is_uuid "$DOWN_ID")"
+    jq -n --arg r "$ROOM5" '{roomId: $r}' >"$T/req.json"
+    req POST "/reservations/$DOWN_ID/assign-room" recepcao "$T/req.json"
+    check_http "[11] alocação da UH 1205" 200
+    single_check_in_body "$guest"
+    req POST "/reservations/$DOWN_ID/check-in" recepcao "$T/req.json"
+    check_http "[11] check-in com o Serpro fora do ar" 200
+    check "[11] reserva em casa na 1205" "IN_HOUSE $ROOM5" "$(jb '"\(.reservation.status) \(.reservation.roomId)"')"
+    reservation_status "$DOWN_ID"
+    check "[11] reserva segue em casa (leitura)" IN_HOUSE "$GOT"
+
+    poll "PENDING gasta" 180 5 fnrh_item "$DOWN_ID" REGISTER_RESERVATION \
+        '"\(.status) \(if .attempts >= 1 then "gasta" else "nenhuma" end)"'
+    check "[11] registro da reserva pendente, com tentativa gasta (≤ 3 min)" "PENDING gasta" "$GOT"
+    check "[11] falha de indisponibilidade na submissão" true \
+        "$(fnrh_item "$DOWN_ID" REGISTER_RESERVATION '[.lastFailure] | inside(["UNAVAILABLE", "UNKNOWN_OUTCOME", "SERVER_ERROR"])')"
+    check "[11] check-in na FNRH ainda não enviado" PENDING "$(fnrh_item "$DOWN_ID" CHECK_IN .status)"
+
+    "${DC[@]}" start fnrh-mock >"$T/compose.out" 2>&1
+    check "[11] fnrh-mock de volta (compose start)" 0 "$?"
+    poll true 120 3 mock_up
+    check "[11] fnrh-mock respondendo (≤ 2 min)" true "$GOT"
+    poll "CHECK_IN:SENT,REGISTER_RESERVATION:SENT" 420 10 fnrh_states "$DOWN_ID"
+    check "[11] na volta, registro e check-in enviados (≤ 7 min)" "CHECK_IN:SENT,REGISTER_RESERVATION:SENT" "$GOT"
+    check "[11] fnrh-mock: nenhum pedido não casado na volta" 0 "$(mock_unmatched)"
+    check "[11] fnrh-mock: hóspede incluído na volta" true \
+        "$(bool [ "$(mock_count POST '^/FNRH_API/rest/v2/reservas/[^/]+/hospedes$')" -ge 1 ])"
+    printf '       (na volta, conciliações pelo código: %s)\n' \
+        "$(mock_count GET '^/FNRH_API/rest/v2/reservas[?]')"
+}
+
+s12_clear_credentials() {
+    section "12. E16: limpar a credencial da FNRH"
+    ensure_tokens
+    req GET /fnrh/settings admin
+    check_http "[12] configuração da FNRH" 200
+    local tag entries
+    tag=$(hdr etag)
+    check "[12] credencial gravada e integração ligada antes" "true true" "$(jb '"\(.passwordSet) \(.enabled)"')"
+    req POST /fnrh/settings/clear-credentials gerente "" "If-Match: $tag"
+    check_http "[12] o Gerente não limpa a credencial" 403
+    req POST /fnrh/settings/clear-credentials admin
+    check_http "[12] limpar sem If-Match" 428
+    req POST /fnrh/settings/clear-credentials admin "" "If-Match: $tag"
+    check_http "[12] credencial limpa pelo admin com If-Match" 200
+    check "[12] sem senha" false "$(jb .passwordSet)"
+    check "[12] integração desligada" false "$(jb .enabled)"
+    check "[12] sem usuário nem CPF padrão" "null null" "$(jb '"\(.username) \(.defaultRequesterCpf)"')"
+    check "[12] ambiente mantido" HOMOLOGATION "$(jb .environment)"
+    req GET /fnrh/status recepcao
+    check_http "[12] status da FNRH" 200
+    check "[12] status: integração desligada" false "$(jb .enabled)"
+
+    req GET "/audit-entries?entityType=fnrh.settings&limit=100" admin
+    check_http "[12] trilha da configuração da FNRH" 200
+    entries=$(jbc '[.items[] | select(.action == "fnrh.settings.clear-credentials")]')
+    check "[12] trilha fnrh.settings.clear-credentials" 1 "$(jq 'length' <<<"$entries" 2>/dev/null)"
+    check "[12] trilha: antes com usuário e senha, depois sem e desligada" "true true false false false" \
+        "$(jq -r '.[0] | "\(.before.usernameSet) \(.before.passwordSet) \(.after.usernameSet) \(.after.passwordSet) \(.after.enabled)"' \
+            <<<"$entries" 2>/dev/null)"
+    check "[12] trilha com quem limpou" true "$(jq -r '.[0].userId != null' <<<"$entries" 2>/dev/null)"
+    check "[12] trilha sem o usuário da FNRH" false "$(bool [ "${entries//"$FNRH_USER"/}" != "$entries" ])"
+    check "[12] trilha sem a senha da FNRH" false "$(bool [ "${entries//"$FNRH_PASSWORD"/}" != "$entries" ])"
+    check "[12] trilha não vazia" true "$(bool [ "${#entries}" -gt 2 ])"
+}
+
+# O começo de todo JWT ({"alg"… em base64url). Fica numa variável: os rótulos das conferências não o levam, senão a
+# varredura da própria saída o acharia nos rótulos.
+JWT_PREFIX=eyJ
+
+s13_leak_sweep() {
+    section "13. Varredura: logs do compose (sem o fnrh-mock) e a própria saída, sem segredo nem dado de hóspede"
+    check "[13] fnrh-mock: nenhum pedido não casado até o fim" 0 "$(mock_unmatched)"
+    check "[13] valores procurados (≥ 40)" true "$(bool [ "${#SECRETS[@]}" -ge 40 ])"
+    local svc rc
+    for svc in api db proxy storage storage-init; do
+        "${DC[@]}" logs --no-color "$svc" >"$T/log-$svc" 2>"$T/compose.out"
+        rc=$?
+        check "[13] logs do $svc lidos" 0 "$rc"
+        check "[13] logs do $svc: nenhum segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/log-$svc")"
+        check "[13] logs do $svc: nenhum JWT (prefixo dos access tokens)" 0 "$(grep -c "$JWT_PREFIX" "$T/log-$svc")"
+    done
+    check "[13] logs da api não vazios" true "$(bool [ -s "$T/log-api" ])"
+    check "[13] logs do db não vazios" true "$(bool [ -s "$T/log-db" ])"
+    rm -f -- "$T"/log-*
+    check "[13] saída do roteiro não vazia" true "$(bool [ -s "$OUT" ])"
+    check "[13] saída do roteiro: nenhum segredo nem dado de hóspede" nenhum "$(leaked_kinds "$OUT")"
+    check "[13] saída do roteiro: nenhum JWT (prefixo dos access tokens)" 0 "$(grep -c "$JWT_PREFIX" "$OUT")"
+}
+
 # ==================================================================================================================
 
-SECTIONS=(s1_public s2_users s3_setup s4_check_in s5_fnrh s6_registration_card s7_stay s8_check_out)
+SECTIONS=(s1_public s2_users s3_setup s4_check_in s5_fnrh s6_registration_card s7_stay s8_check_out
+    s9_walk_in_and_undo s10_traces s11_serpro_down s12_clear_credentials s13_leak_sweep)
 
+register_env_secrets
 printf 'Roteiro do gate do M5 em %s (projeto %s), %s\n' "$BASE" "$PROJECT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 for s in "${SECTIONS[@]}"; do
     "$s"
