@@ -146,7 +146,6 @@ class RegistrationCardService(
             "documents" to identification?.documents.orEmpty().map(::documentModel),
             "travelReason" to stayGuest.travelReason,
             "transportMode" to stayGuest.transportMode,
-            "minorAuthorized" to (stayGuest.minorAuthorization != null),
         )
     }
 

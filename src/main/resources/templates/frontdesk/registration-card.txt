@@ -5,13 +5,12 @@ FICHA DE REGISTRO [[${document.code}]]
 [/]Adultos [[${document.adults}]] Crianças [[${document.children}]]
 ---
 [# th:each="guest : ${document.guests}"][[${guest.name}]]
-Nacionalidade: [[${guest.nationality}]]
-[# th:if="${guest.birthDate != null}"]Nascimento: [[${fmt.date(guest.birthDate)}]]
+[# th:if="${guest.nationality != null}"]Nacionalidade: [[${guest.nationality}]]
+[/][# th:if="${guest.birthDate != null}"]Nascimento: [[${fmt.date(guest.birthDate)}]]
 [/][# th:if="${guest.address != null}"]Endereço: [[${guest.address}]]
 [/][# th:each="doc : ${guest.documents}"][[${doc.type}]] ([[${doc.country}]]): [[${doc.number}]]
 [/][# th:if="${guest.travelReason != null}"]Motivo: [[${guest.travelReason}]] (código FNRH)
 [/][# th:if="${guest.transportMode != null}"]Transporte: [[${guest.transportMode}]] (código FNRH)
-[/][# th:if="${guest.minorAuthorized}"]Menor com autorização registrada
 [/]
 Assinatura: ________________________________
 ---

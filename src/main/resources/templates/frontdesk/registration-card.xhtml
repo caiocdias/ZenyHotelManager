@@ -16,13 +16,12 @@
 <div th:each="guest : ${document.guests}">
 <h2 th:text="${guest.name}">Hóspede</h2>
 <table class="lines">
-<tr><td>Nacionalidade</td><td th:text="${guest.nationality}">BR</td></tr>
+<tr th:if="${guest.nationality != null}"><td>Nacionalidade</td><td th:text="${guest.nationality}">BR</td></tr>
 <tr th:if="${guest.birthDate != null}"><td>Data de nascimento</td><td th:text="${fmt.date(guest.birthDate)}">Nascimento</td></tr>
 <tr th:if="${guest.address != null}"><td>Endereço</td><td th:text="${guest.address}">Endereço</td></tr>
 <tr th:each="doc : ${guest.documents}"><td th:text="|Documento ${doc.type} (${doc.country})|">Documento</td><td th:text="${doc.number}">***00</td></tr>
 <tr th:if="${guest.travelReason != null}"><td>Motivo da viagem</td><td th:text="|${guest.travelReason} (código FNRH)|">Motivo</td></tr>
 <tr th:if="${guest.transportMode != null}"><td>Meio de transporte</td><td th:text="|${guest.transportMode} (código FNRH)|">Transporte</td></tr>
-<tr th:if="${guest.minorAuthorized}"><td colspan="2">Menor de idade com autorização registrada</td></tr>
 </table>
 <p>Assinatura: ______________________________________</p>
 </div>
