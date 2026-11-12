@@ -50,6 +50,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -349,37 +350,28 @@ class MilestoneM5EndToEndTest(
         stay: Stay,
         booked: Booked,
     ) {
-        val suffix = guests.suffix()
-        val agent = iam.call(POST, "/api/v1/print-agents", iam.asAdmin(), mapOf("name" to "Agente $suffix")).expect(201)
-        val token = agent["token"].asString()
-        val printer =
-            iam
-                .call(
-                    POST,
-                    "/api/v1/printers",
-                    iam.asAdmin(),
-                    mapOf(
-                        "name" to "A4 $suffix",
-                        "kind" to "A4_PDF",
-                        "address" to "a4-$suffix",
-                        "agentId" to agent.id(),
-                    ),
-                ).expect(201)
-                .id()
+        val (token, printer) = agentWithPrinter()
+        val (otherToken, otherPrinter) = agentWithPrinter()
 
-        val job =
-            api(
-                POST,
-                "/api/v1/reservations/${booked.id}/registration-card/print",
-                receptionist,
-                mapOf("printerId" to printer),
-            ).expect(202)["printJobId"]
-                .asString()
-        agentLongPoll(token).single().let {
-            it["id"].asString() shouldBe job
-            it["printerId"].asString() shouldBe printer.toString()
-            it["mediaType"].asString() shouldBe "application/pdf"
+        val job = printCard(booked.id, printer)
+        val otherJob = printCard(booked.id, otherPrinter)
+        withClue("cada agente recebe só o job da própria impressora") {
+            agentLongPoll(token).single().let {
+                it["id"].asString() shouldBe job
+                it["printerId"].asString() shouldBe printer.toString()
+                it["mediaType"].asString() shouldBe "application/pdf"
+            }
+            agentLongPoll(otherToken).single().let {
+                it["id"].asString() shouldBe otherJob
+                it["printerId"].asString() shouldBe otherPrinter.toString()
+            }
+            agentRequest(GET, "/api/v1/print-agents/me/jobs/$otherJob/content", token).status shouldBe 404
+            agentRequest(POST, "/api/v1/print-agents/me/jobs/$otherJob/ack", token, mapOf("result" to "PRINTED"))
+                .status shouldBe 404
         }
+        agentRequest(GET, "/api/v1/print-agents/me/jobs/$otherJob/content", otherToken).status shouldBe 200
+        agentRequest(POST, "/api/v1/print-agents/me/jobs/$otherJob/ack", otherToken, mapOf("result" to "PRINTED"))
+            .status shouldBe 204
         val content = agentRequest(GET, "/api/v1/print-agents/me/jobs/$job/content", token)
         content.status shouldBe 200
         content.contentType shouldBe "application/pdf"
@@ -394,7 +386,7 @@ class MilestoneM5EndToEndTest(
         room shouldBe stay.room
         val text = pdfText(content.contentAsByteArray)
         text shouldContain stay.holderName
-        text shouldContain "UH ${roomsApi.room(RoomId(room))!!.number}"
+        text shouldContain Regex("UH ${Regex.escape(roomsApi.room(RoomId(room))!!.number)}(\\D|$)")
         text shouldContain "Chegada ${date(reservation["arrival"])}"
         text shouldContain "Saída ${date(reservation["departure"])}"
         for (cpf in listOf(stay.holderFnrh.cpf, stay.minorFnrh.cpf)) {
@@ -403,6 +395,39 @@ class MilestoneM5EndToEndTest(
             text shouldNotContain formattedCpf(cpf)
         }
     }
+
+    /** O administrador cadastra um agente (o token fica só com quem chama) e uma impressora `A4_PDF` dele. */
+    private fun agentWithPrinter(): Pair<String, UUID> {
+        val suffix = guests.suffix()
+        val agent = iam.call(POST, "/api/v1/print-agents", iam.asAdmin(), mapOf("name" to "Agente $suffix")).expect(201)
+        val printer =
+            iam
+                .call(
+                    POST,
+                    "/api/v1/printers",
+                    iam.asAdmin(),
+                    mapOf(
+                        "name" to "A4 $suffix",
+                        "kind" to "A4_PDF",
+                        "address" to "a4-$suffix",
+                        "agentId" to agent.id(),
+                    ),
+                ).expect(201)
+                .id()
+        return agent["token"].asString() to printer
+    }
+
+    /** A Recepcionista imprime a ficha da reserva na [printer]; devolve o id do job (`202`). */
+    private fun printCard(
+        reservation: UUID,
+        printer: UUID,
+    ): String =
+        api(
+            POST,
+            "/api/v1/reservations/$reservation/registration-card/print",
+            receptionist,
+            mapOf("printerId" to printer),
+        ).expect(202)["printJobId"].asString()
 
     /** A Recepcionista troca a reserva para a UH 2 mantendo a tarifa: UH 1 Vaga e Suja, UH 2 Ocupada, `RoomMoved`. */
     private fun movedToSecondRoom(
@@ -467,6 +492,11 @@ class MilestoneM5EndToEndTest(
         nightlyAmounts(booked.id).let { extended ->
             extended.map { it.first } shouldContainExactly nights.map { it.first } + departure
             extended.take(nights.size) shouldContainExactly nights
+            withClue(
+                "a tarifa subiu de fato: a noite nova é mais cara, então as antigas só ficaram porque são congeladas",
+            ) {
+                BigDecimal(extended.last().second) shouldBeGreaterThan BigDecimal(nights.last().second)
+            }
         }
         roomsApi.status(RoomId(destination))!!.occupancy.name shouldBe "OCCUPIED"
 
@@ -513,7 +543,14 @@ class MilestoneM5EndToEndTest(
         val late = quote["fee"].asString()
         late shouldBe LATE_FEE
         val body = mapOf("lateCheckOutFee" to late)
-        val arrivalNight = nightlyAmounts(booked.id).first().second
+        // A noite da chegada só é lançada no check-out se a data operacional ainda for a da chegada (H14): lida aqui.
+        val arrival = LocalDate.parse(support.reservation(booked.id)["reservation"]["arrival"].asString())
+        val arrivalNight =
+            if (hotelApi.currentBusinessDate() == arrival) {
+                BigDecimal(nightlyAmounts(booked.id).single { it.first == arrival }.second)
+            } else {
+                BigDecimal.ZERO
+            }
 
         val total =
             checkOut(booked.id, body).problem(409, "FOLIO_BALANCE_NOT_ZERO").let {
@@ -521,7 +558,7 @@ class MilestoneM5EndToEndTest(
                     listOf(booked.folio.toString())
                 it["total"].asString()
             }
-        total shouldBe (BigDecimal(arrivalNight) + BigDecimal(late)).toPlainString()
+        total shouldBe (arrivalNight + BigDecimal(late)).toPlainString()
         support.status(booked.id) shouldBe "IN_HOUSE"
         frontdesk.preAuthorizations(booked.folio).single()["status"].asString() shouldBe "ACTIVE"
         billing.folio(booked.folio)["status"].asString() shouldBe "OPEN"
@@ -532,6 +569,7 @@ class MilestoneM5EndToEndTest(
 
         response["reservation"]["status"].asString() shouldBe "CHECKED_OUT"
         response["lateCheckOut"]["amount"].asString() shouldBe late
+        response["stayCharges"].size() shouldBe if (arrivalNight.signum() == 0) 0 else 1
         response["room"].let {
             it["roomId"].asString() shouldBe destination.toString()
             it["occupancy"].asString() shouldBe "VACANT"
@@ -606,7 +644,8 @@ class MilestoneM5EndToEndTest(
         booked: Booked,
     ) {
         val cpfs = listOf(stay.holderFnrh.cpf, stay.minorFnrh.cpf)
-        val leaks = listOf(stay.holderName, stay.holderName.substringAfterLast(' ')) + cpfs + cpfs.map(::formattedCpf)
+        val names = listOf(stay.holderName, stay.minorName)
+        val leaks = names + names.map { it.substringAfterLast(' ') } + cpfs + cpfs.map(::formattedCpf)
         val reservation = "%${booked.id}%"
         val sources =
             mapOf(
@@ -635,15 +674,12 @@ class MilestoneM5EndToEndTest(
                 for (leak in leaks) found.forEach { it shouldNotContain leak }
             }
         }
-        for (leak in leaks) {
-            withClue("outbox inteiro e notificações") {
-                rows(
-                    "SELECT serialized_event FROM shared.event_publication WHERE serialized_event LIKE :v " +
-                        "UNION ALL SELECT n::text FROM notifications.notification n WHERE n.title LIKE :v " +
-                        "OR n.body LIKE :v",
-                    "v" to "%$leak%",
-                ).shouldBeEmpty()
-            }
+        // O banco todo, não só as linhas da reserva: o valor sorteado de cada hóspede não pode estar em lugar nenhum
+        // destas tabelas (o PDF do job fica fora, por desenho).
+        val params = leaks.mapIndexed { i, leak -> "v$i" to "%$leak%" }.toTypedArray()
+        for (table in LEAK_TABLES) {
+            val any = params.joinToString(" OR ") { (name, _) -> "t::text LIKE :$name" }
+            withClue(table) { rows("SELECT t::text FROM $table t WHERE $any", *params).shouldBeEmpty() }
         }
     }
 
@@ -758,6 +794,7 @@ class MilestoneM5EndToEndTest(
         val holder: UUID,
         val holderName: String,
         val minor: UUID,
+        val minorName: String,
         val remote: String,
         val holderFnrh: FnrhGuestIds,
         val minorFnrh: FnrhGuestIds,
@@ -808,7 +845,8 @@ class MilestoneM5EndToEndTest(
         val minorCpf = newCpf()
         val holderName = guests.uniqueName("Titular")
         val holder = guest(holderCpf, LocalDate.of(1988, 3, 14), holderName)
-        val minor = guest(minorCpf, today.minusYears(MINOR_AGE), guests.uniqueName("Menor"))
+        val minorName = guests.uniqueName("Menor")
+        val minor = guest(minorCpf, today.minusYears(MINOR_AGE), minorName)
         val remote = "r-${UuidV7.generate()}"
         return Stay(
             type,
@@ -817,6 +855,7 @@ class MilestoneM5EndToEndTest(
             holder,
             holderName,
             minor,
+            minorName,
             remote,
             FnrhGuestIds(holderCpf, "p-titular-$remote", "h-titular-$remote"),
             FnrhGuestIds(minorCpf, "p-menor-$remote", "h-menor-$remote"),
@@ -1085,6 +1124,16 @@ class MilestoneM5EndToEndTest(
         const val LONG_POLL_SECONDS = 5
         val DOCUMENT_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
         const val MINOR_AUTHORIZATION_PHOTO = "guests.minor-authorization-photo"
+        val LEAK_TABLES =
+            listOf(
+                "audit.audit_entry",
+                "shared.event_publication",
+                "notifications.notification",
+                "fnrh.submission",
+                "fnrh.submission_error",
+                "fnrh.integration_call",
+                "fnrh.report_submissions",
+            )
         const val STAY_LISTENER = "StayTransitionsProbeListener"
 
         /** O CPF solicitante padrão que o `enableFnrh` configura, só dígitos. */
