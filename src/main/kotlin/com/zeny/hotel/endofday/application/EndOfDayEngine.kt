@@ -5,7 +5,6 @@ import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.StepStart
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunMetrics
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
-import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import net.javacrumbs.shedlock.core.ClockProvider
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
@@ -60,7 +59,7 @@ class EndOfDayEngine(
     @Qualifier("endOfDayLockingTaskExecutor") private val locking: LockingTaskExecutor,
     @Qualifier("endOfDayExecutor") private val executor: ExecutorService,
     @Value("\${zeny.endofday.lock-at-most-for}") private val lockAtMostFor: Duration,
-    private val metrics: EndOfDayRunMetrics = EndOfDayRunMetrics(SimpleMeterRegistry()),
+    private val metrics: EndOfDayRunMetrics,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -130,7 +129,9 @@ class EndOfDayEngine(
 
     /**
      * A primeira etapa que esta chamada iniciou já indica trabalho de antes: não é a primeira do registro (as de trás
-     * já terminaram) ou já é a segunda tentativa dela (a queda ou a falha interrompeu a anterior).
+     * já terminaram) ou já é a segunda tentativa dela (a queda ou a falha interrompeu a anterior). Difere de "a
+     * execução tinha etapa concluída" só quando a primeira etapa do registro falhou ou foi interrompida sem nenhuma
+     * concluída: conta como retomada. Não consulta o banco: a entidade não carrega as etapas fora de transação.
      */
     private fun isResumed(first: StepStart): Boolean =
         first.attempts > 1 || first.name != registry.slots.firstOrNull()?.name

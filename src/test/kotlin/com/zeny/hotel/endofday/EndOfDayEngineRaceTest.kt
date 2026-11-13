@@ -11,8 +11,10 @@ import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.domain.StepSlot
 import com.zeny.hotel.endofday.domain.StepStart
+import com.zeny.hotel.endofday.infrastructure.EndOfDayRunMetrics
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -45,6 +47,7 @@ class EndOfDayEngineRaceTest {
             DefaultLockingTaskExecutor { _ -> Optional.of(SimpleLock {}) },
             executor,
             Duration.ofMinutes(5),
+            EndOfDayRunMetrics(SimpleMeterRegistry()),
         )
 
     private object Step : EndOfDayStepHandler {
