@@ -250,6 +250,7 @@ Regras internas de cada módulo, verificadas com ArchUnit:
 4. **Commit**: na mesma transação, os eventos são gravados no *Event Publication Registry*, a tabela de outbox do Modulith.
 5. **Pós-commit**: os listeners (`@ApplicationModuleListener`) rodam de forma assíncrona e em transação própria. O que falhar fica pendente e é reprocessado com backoff exponencial (1 min dobrando até 1 h); a que ainda falha 24 h depois da publicação é abandonada (fica na tabela, sai do reenvio automático, gera alerta e é reenviada à mão). As concluídas são apagadas depois de 7 dias.
 6. A **auditoria** é gravada na mesma transação do caso de uso, via aspecto `@Audited(action)` que captura antes e depois: o caso de uso descreve as entidades que muda pela porta `AuditContext` (o retrato de antes é lido ao acompanhar a entidade e o de depois no fim do método), e o aspecto, que roda dentro da transação, entrega as entradas à porta `AuditTrail` do `shared`, implementada por `audit`. Rollback não deixa entrada, e uma falha ao gravar a entrada desfaz a escrita. Todo caso de uso de escrita leva a anotação (regra ArchUnit).
+   - **Rollback em toda exceção** (decisão do usuário, 2026-11-13, H12 do M6; implementada pela M6 E18): o `@EnableTransactionManagement` do `shared` usa `rollbackOn = RollbackOn.ALL_EXCEPTIONS`. Assim, qualquer exceção que escape de um caso de uso, inclusive uma *checked*, que o Kotlin não declara, desfaz a escrita, e a escrita nunca fica confirmada sem trilha. A única exceção é o `noRollbackFor` explícito de quem precisa gravar a recusa (`recordRejections`, como a falha de login). Alternativa descartada: `rollbackFor = Throwable` em cada caso de uso, que depende de lembrar a anotação.
 7. O broadcaster **SSE** recebe os eventos relevantes depois do commit e notifica os clientes inscritos.
 
 Concorrência: os agregados têm `version` para lock otimista, que a API expõe como `ETag`/`If-Match`. Pontos de disputa usam lock pessimista curto, como os contadores de disponibilidade por tipo/data (§11).
@@ -349,9 +350,9 @@ sequenceDiagram
 | Erros | RFC 9457 (`application/problem+json`) com `code` estável (`ROOM_NOT_READY`, `APPROVAL_REQUIRED`, `LIMIT_EXCEEDED`), `detail` e `errors[]` por campo |
 | Idempotência | Header `Idempotency-Key` obrigatório em POSTs com efeito financeiro ou externo (pagamentos, lançamentos, emissão fiscal). A resposta fica guardada por 24h. |
 | Concorrência | `ETag` com a versão do agregado; `If-Match` nas alterações; `412` em conflito |
-| Paginação | Por cursor: `?cursor=…&limit=…` |
+| Paginação | Por cursor: `?cursor=…&limit=…`. O cursor é opaco e não assinado: as chaves são entrada não confiável. Cursor ilegível ou com chave de data ou de instante fora do alcance do `date` ou do `timestamptz` do PostgreSQL (§11) dá `400 INVALID_CURSOR`, recusado pelo próprio `PageCursor` do `shared` e não por consulta (decisão do usuário, 2026-11-13, H12 e H13 do M6; implementada pela M6 E18) |
 | Enums de resposta que crescem | Decisão do usuário em 2026-10-19 (M3 E05): uma propriedade de resposta cujo conjunto de valores vai crescer (tipos de lançamento, origens, situações que ganham valores a cada marco) sai no contrato como `string` com a lista em `x-extensible-enum`, não como `enum`, porque acrescentar um valor a um `enum` de resposta é *breaking change* (o `oasdiff` o barra: um cliente gerado do contrato anterior falharia no valor novo). Declara-se marcando a propriedade do DTO com `@field:ExtensibleEnum` (`shared`); a lista é gerada das constantes do `enum` Kotlin. O cliente **precisa tolerar valores desconhecidos** (tratá-los como "outro", sem falhar). Um `enum` fechado e estável (dias da semana, `OPEN`/`CLOSED`) continua `enum`; trocar um `enum` já publicado para `x-extensible-enum` muda o tipo gerado nos clientes e precisa de decisão registrada. Primeiro uso: `type` do lançamento (`PostingResponse`). |
-| Datas e valores | ISO-8601. Instantes em UTC (`Z`), datas de negócio como `YYYY-MM-DD`. Dinheiro como string decimal (`"123.45"`), sempre em BRL. |
+| Datas e valores | ISO-8601. Instantes em UTC (`Z`), datas de negócio como `YYYY-MM-DD`. Dinheiro como string decimal (`"123.45"`), sempre em BRL. A leitura é estrita (decisão do usuário, 2026-11-13, H13 do M6; implementada pela M6 E18): numa data (`format: date`) só vale o texto `YYYY-MM-DD`, e num instante (`format: date-time`) só o texto ISO-8601. Número (epoch) ou data-hora numa data, e número num instante, dão `400 VALIDATION_FAILED` com o erro no campo. A regra vale para os corpos JSON da API e para os payloads dos comandos offline (§9), pelo mesmo mapeador: o comando fora do formato volta `REJECTED`, com código. |
 | Documentos impressos | Decisão M5 E11 (D-E11-9): um documento do módulo dono é um subrecurso do recurso, com duas rotas: `GET …/<documento>/pdf` (`200 application/pdf`, `format: binary`, `Content-Disposition: attachment`, `Cache-Control: no-store`) e `POST …/<documento>/print` (`@Idempotent`, corpo `PrintDocumentRequest {printerId}`, `202` com `PrintJobAccepted {printJobId}`). Sem negociação por `Accept` no mesmo caminho (um `operationId` por operação); um erro do `GET …/pdf` sai em `application/problem+json` mesmo com `Accept: application/pdf`. Cada dono confere a própria permissão (D2), e o `printing` não confere nenhuma. |
 | Documentação | Swagger UI só fora de produção |
 
@@ -457,7 +458,7 @@ sequenceDiagram
 
 - Chaves `uuid` (v7). Números legíveis vêm de *sequences* próprias.
 - Dinheiro em `numeric(14,2)` com tipo `Money` no domínio. Percentuais em `numeric(7,4)`.
-- Instantes em `timestamptz` (UTC); datas de negócio em `date`; períodos de estadia em `daterange`.
+- Instantes em `timestamptz` (UTC); datas de negócio em `date`; períodos de estadia em `daterange`. O alcance do PostgreSQL é menor que o do Java: `timestamptz` vai de 4714-11-24 a.C. (ano ISO −4713) a 294276 d.C., e `date` do mesmo início a 5874897 d.C. Valor de fora que chega a uma consulta sem passar por regra de negócio, como a chave do cursor (§7), é recusado antes do banco.
 
 **Garantias no banco**
 
@@ -523,6 +524,8 @@ Como o servidor não verifica sozinho o resultado de um TEF reportado pelo clien
 ## 13. Jobs agendados
 
 São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada mesmo após um restart no meio do job.
+
+Uma exceção que escapa de um job, inclusive a falha da trava do ShedLock com o banco fora, é logada pelo tratador de erro do agendador do `shared` com o nome da tarefa e só a classe da exceção e das causas, sem a mensagem, que pode trazer valores do banco (§16). Decisão do usuário, 2026-11-13, H12 do M6, implementada pela M6 E18. Alternativa descartada: um `try/catch` por job, que cada job novo precisaria repetir.
 
 | Job | Frequência padrão |
 |---|---|

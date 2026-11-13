@@ -1,6 +1,6 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-12
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-13
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
@@ -81,7 +81,8 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H9 | Q-14 (turndown) e Q-15 (cortesia e uso da casa) seguem os padrões da SPEC §10: turndown como tipo de limpeza desativado; cortesia conta na ocupação e não no ADR, uso da casa não conta em nenhum dos dois. | Ajuste de configuração e do cálculo de `DailyStatistics`. | E01, E09 |
 | H10 | **Decidida pela opção recomendada pelo `arquiteto`, 2026-11-12 (sincronização):** o fechamento age sobre o hotel inteiro (no-show, diárias, UHs Sujas) e avança a data operacional, e no banco compartilhado dos testes isso lançaria diárias e no-shows nas reservas de outros testes e mudaria a data de todos. Por isso, os testes que rodam o fechamento com as etapas reais (E11, E13, E14 e o gate) usam um **caminho próprio**: um banco ou contexto de teste isolado só para eles, criado na E10 junto do apoio de testes do fechamento. Os demais testes continuam sem avançar a data (como o `MilestoneM5EndToEndTest`). O mecanismo exato fica com o plano da E10. **Mecanismo definido na E10 (2026-11-13):** banco próprio `zeny_endofday` no mesmo container de testes, pela anotação `@EndOfDayIntegrationTest` (`testsupport/EndOfDayIntegrationTest.kt`); cada teste termina com a data corrente sem execução ou `COMPLETED` (`EndOfDayTestRuns.settle()`) e afirma só sobre os próprios dados. | Sem o isolamento, os testes do fechamento ficam intermitentes e quebram testes de outros módulos. Alternativa descartada: rodar o fechamento no banco compartilhado só sobre as reservas do próprio teste, que exigiria um filtro de teste no código de produção. | E10, E11, E13, E14, E12 |
 | H11 | **Confirmada no código em 2026-11-12:** o `fnrh` guarda os domínios da FNRH com rótulo (`FnrhDomainValue(code, label)`, `FnrhDomainCatalog.values`), semeados por migração desde o primeiro dia (`fnrh/V2026_11_04_1030__create_fnrh_domain_values.sql`, inclusive `TRAVEL_REASONS` e `TRANSPORT_MODES`) e trocados pelo `refresh`. A ficha (`frontdesk/application/RegistrationCardService.kt` e `templates/frontdesk/registration-card.*`) mostra os códigos crus com "(código FNRH)". | Se o catálogo não tiver o código, a ficha mostra o código cru, como hoje. | E15 |
-| H12 | **Decidida pelo usuário em 2026-11-13 (entrevista do fim do lote da E10):** o fechamento manual responde `201` síncrono com a execução no estado em que estiver; uma execução por data (`run_business_date_uk`) com reconciliação das etapas na retomada; os problemas transversais achados na E10 (cursor por instante sem faixa em 9 consultas, `rollbackOn` global, Jackson aceitando número/data-hora em `format: date`, log do ShedLock com a mensagem do JDBC) viram uma etapa de manutenção do M6, a criar pelo `arquiteto` antes do gate; na E11, o gatilho automático só dispara o motor e volta, sem aumentar o pool do agendador. | Mudar qualquer uma delas depois pede migração (unicidade) ou breaking change (resposta do `POST`). | E11, E12, etapa de manutenção nova |
+| H12 | **Decidida pelo usuário em 2026-11-13 (entrevista do fim do lote da E10):** o fechamento manual responde `201` síncrono com a execução no estado em que estiver; uma execução por data (`run_business_date_uk`) com reconciliação das etapas na retomada; os problemas transversais achados na E10 (cursor por instante sem faixa em 9 consultas, `rollbackOn` global, Jackson aceitando número/data-hora em `format: date`, log do ShedLock com a mensagem do JDBC) viram uma etapa de manutenção do M6, a criar pelo `arquiteto` antes do gate (criada em 2026-11-13: **E18**); na E11, o gatilho automático só dispara o motor e volta, sem aumentar o pool do agendador. | Mudar qualquer uma delas depois pede migração (unicidade) ou breaking change (resposta do `POST`). | E11, E12, E18 |
+| H13 | **Decidida pelo usuário em 2026-11-13 (entrevista do `arquiteto` ao criar a E18), pelas opções recomendadas:** (a) a faixa do cursor vale para as chaves de instante **e** de data (`PageCursor.instant` e `PageCursor.localDate`), o que cobre 15 consultas: as 9 por instante da E10 e mais 6 por data (`EndOfDayQueries` na lista de execuções, `ReservationQueries`, `RoomAssignments`, `TraceService`, `OutOfOrderService` e `Scheduling`), conferidas no código em 2026-11-13; (b) a leitura estrita vale para `format: date` **e** `format: date-time`: número (epoch) ou data-hora num campo de data, e número num campo de instante, são recusados; (c) o mapeador é um só: os payloads dos comandos offline também ficam estritos, e um comando fora do formato vira `REJECTED` com código, registrado e não descartado (RN-22). **Decidido pelo `arquiteto`:** a faixa vive no `PageCursor` (`shared`), e a validação local do `endofday` sai; o tratador de erro é o do agendador da aplicação, não um por job. Registrado na ARCHITECTURE §5, §7, §11 e §13. | Voltar atrás é só configuração. Nenhum cliente está em produção, então apertar a entrada agora não quebra ninguém. | E18 |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
 
@@ -98,6 +99,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
+- [ ] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -188,6 +190,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
+**Manutenção transversal**
+
+| ID | Etapa | Estado | Dependências | Entrega principal |
+|---|---|---|---|---|
+| E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #pendente | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
+
 **Governança**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
@@ -217,7 +225,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17, E18 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -526,6 +534,73 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Cliente que lê o perfil da resposta sem ter `guests.profiles.read`: hoje só uma role customizada chega aí; registre a mudança na seção "API" do `README.md` e na captura do brain.
 
 **Rollback / migração:** sem migração. A mudança é só de resposta, e reverter é voltar ao corpo inteiro.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E18 — Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs — #pendente
+
+**Objetivo:** resolver no `shared`, para todos os módulos, os quatro problemas transversais achados na E10 (nenhum foi introduzido por ela): (1) chave de data ou de instante do cursor fora do alcance do PostgreSQL dá 500 em vez de `400 INVALID_CURSOR`; (2) uma exceção *checked* que escapa de um caso de uso confirma a transação, e a escrita fica sem trilha; (3) campos de data e de instante aceitam formatos fora do ISO-8601 da ARCHITECTURE §7; (4) a falha de um job, inclusive a da trava do ShedLock com o banco fora, é logada com a mensagem do JDBC.
+
+**Por que agora:** decisão do usuário de 2026-11-13 (H12; handoff da E10, "Decisões do usuário", item 3), com o escopo de H13. A etapa fica depois do fechamento e da manutenção herdada e antes da governança, da manutenção e dos relatórios (E01 a E09), que vão criar muitos casos de uso, listas por cursor e campos de data. Com a regra corrigida no `shared` antes disso, os módulos novos não copiam a validação local do `endofday` nem passam a depender do commit numa exceção *checked*. O item 2 muda a semântica transacional de todos os módulos: fazê-lo antes desse volume de código reduz o que precisa ser reconferido.
+
+**Dependências:** nenhuma dentro deste roadmap (exige o gate do M5). É independente das demais. Se rodar numa branch separada de uma etapa que mude a API, espere conflito em `api/openapi.yaml`.
+
+**Escopo:**
+
+1. **Faixa do cursor (`PageCursor`, `shared/Pagination.kt`):** `instant(i)` e `localDate(i)` recusam, com `400 INVALID_CURSOR`, valor fora do alcance do `timestamptz` e do `date` do PostgreSQL (ARCHITECTURE §11). Assim, toda consulta que lê essas chaves fica protegida sem código local: as 9 por instante (`AuditQueries`, `ChecklistReports`, `ChecklistExecutions`, `ReservationLifecycle`, `ProvisionalReservations`, `CardPreAuthorizationService`, `PaymentService`, `FolioService`, `RoomStatusService`) e as 6 por data (`EndOfDayQueries` na lista de execuções, `ReservationQueries`, `RoomAssignments`, `TraceService`, `OutOfOrderService`, `Scheduling`), todas conferidas em 2026-11-13. A validação local do `endofday` (`EndOfDayQueries.requireStorable` e as constantes dela) sai, e o comportamento observável não muda.
+2. **Rollback em toda exceção:** o `@EnableTransactionManagement` do `shared` (`TransactionOrderingConfiguration`, em `shared/infrastructure/audit/AuditAspect.kt`, que substitui o do Boot) passa a usar `rollbackOn = RollbackOn.ALL_EXCEPTIONS`. As regras explícitas `noRollbackFor` de hoje continuam valendo: login e refresh com falha, aprovação recusada e `files`, que gravam a recusa (`recordRejections`). O inventário dos caminhos que lançam exceção *checked* dentro de `@Transactional` sai no handoff, com o efeito da mudança em cada um. Pistas de 2026-11-13: IO em `files`, `printing` e `fnrh`, o tempo real e o `endofday`, cujas transições já usam `rollbackFor = Throwable`; o plano decide se essa regra local sai.
+3. **Datas e instantes estritos no JSON:** o mapeador da aplicação (Jackson 3, `tools.jackson`, configurado pelo Spring Boot) recusa número e data-hora em `LocalDate` (`format: date`) e número (epoch) em `Instant` (`format: date-time`), com `400 VALIDATION_FAILED` e o erro no campo, igual à resposta de hoje para uma data malformada. Vale para todo corpo JSON de `/api/v1` e para os payloads dos comandos offline (`POST /api/v1/sync/commands`): o mapeador é um só (H13), e o comando fora do formato vira `REJECTED` com código. O JSON que o próprio servidor grava e relê (em `reservations` e `checklists`) continua legível. O contrato já declara `format: date` e `date-time`. Se o `api/openapi.yaml` mudar, ele é regenerado com `./gradlew updateOpenApi`, sem mudança `ERR`.
+4. **Log dos jobs sem mensagem:** um tratador de erro no agendador da aplicação (o `TaskScheduler` dos `@Scheduled`) loga a exceção que escapa de um job com o nome da tarefa e só a classe, a dela e a das causas, sem a mensagem (ARCHITECTURE §16 e §13; nota `ZenyHotelManager - Docker, observabilidade e CI`, "Valores do banco fora do log"). Ele vale para os 15 `@Scheduled` de hoje e para os futuros, sem código por job, e cobre a falha da trava do ShedLock com o banco fora. O plano confere também o que o próprio ShedLock loga nesse caminho.
+
+**Fora de escopo:**
+
+- Datas e instantes em query string e path (conversão do Spring MVC, não do Jackson) e datas fora do alcance do banco no **corpo** de outros endpoints: o plano confere se sofrem do mesmo problema e registra o achado em "Notas para a próxima etapa", sem corrigir.
+- Mudar o formato de saída (já é ISO-8601) ou aceitar/recusar deslocamento diferente de `Z` num instante.
+- Logs fora dos jobs: as respostas de erro das requisições já passam pelo tratador RFC 9457.
+- Mudar o executor do `endofday`, que já loga só a classe.
+
+**Critérios de aceite:**
+
+- [ ] **Cursor, unidade:** `PageCursor.instant` e `PageCursor.localDate` aceitam os extremos do `timestamptz` e do `date` do PostgreSQL e recusam com `INVALID_CURSOR` o valor imediatamente fora de cada extremo (teste do `PageCursor`).
+- [ ] **Cursor, consultas:** em cada uma das 15 consultas do escopo, um cursor bem formado com a chave fora da faixa dá `400 INVALID_CURSOR` e não 500 (teste pelo endpoint que expõe a consulta, ou pelo serviço quando ela não tiver endpoint). Teste vermelho antes da correção em pelo menos uma consulta por instante e uma por data.
+- [ ] **Cursor, `endofday`:** `EndOfDayQueries` não tem validação própria de faixa, e os testes de cursor das pendências da E10 continuam passando.
+- [ ] **Transação:** um caso de uso de teste `@Transactional` + `@Audited` que grava e lança uma exceção *checked* não deixa nem a escrita nem a entrada de trilha. O teste fica vermelho com a configuração de antes e verde com a nova.
+- [ ] **Transação, exceções explícitas:** um `noRollbackFor` continua confirmando a transação com `ALL_EXCEPTIONS` (teste novo), e os testes atuais de login com falha, refresh, aprovação recusada e `files` passam.
+- [ ] **Transação, inventário:** o handoff lista cada caminho com exceção *checked* dentro de `@Transactional` e diz, em cada um, que nada dependia do commit ou qual ajuste foi feito.
+- [ ] **Datas:** no `POST /api/v1/end-of-day/runs` e em pelo menos outro endpoint com `LocalDate` no corpo, `businessDate` em número (`20405`) e em data-hora (`"2026-11-13T00:00:00"` e `"2026-11-13T00:00:00Z"`) dão `400 VALIDATION_FAILED` com o erro no campo, e `"2026-11-13"` continua aceito.
+- [ ] **Instantes:** num corpo de entrada com `Instant`, número (epoch em segundos e em milissegundos) dá `400 VALIDATION_FAILED` no campo, e o ISO-8601 com `Z` continua aceito.
+- [ ] **Mapeador:** um teste sobre o mapeador do contexto da aplicação (não um montado no teste) recusa os mesmos formatos para `LocalDate` e `Instant`.
+- [ ] **Offline:** um comando offline com data em número volta `REJECTED`, com código, e fica registrado; com data ISO, é aplicado.
+- [ ] **Jobs:** um job agendado real, com o `LockProvider` falhando com uma exceção cuja mensagem e cuja causa levam um valor sentinela, gera log (saída capturada) com a classe da exceção e sem o sentinela em lugar nenhum. Teste vermelho antes da correção.
+- [ ] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa mudança `ERR` em `/api/v1`.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não. O item 3 aperta entradas que o contrato já declara (`format: date` e `date-time`), sem mudar o esquema, e nenhum cliente está em produção. Se o `api/openapi.yaml` mudar além de descrições, a mudança vai para "Decisões para o usuário".
+
+**Notas para o plano:** H12 e H13; handoff da E10 (as transversais e "Decisões do usuário") e a captura pendente `ZenyHotelManager - atualização m6-operacao-fechamento E10` e a dela "(revisão humana)"; ARCHITECTURE §5, §7, §11 e §13, onde a decisão já está registrada (o plano só a cumpre). **Cursor:** o cursor é opaco e não assinado, e as chaves são entrada não confiável (nota `ZenyHotelManager - Convenções de API`). As constantes do `endofday` (`MIN_STORABLE_INSTANT`, `MAX_STORABLE_INSTANT_EXCLUSIVE`) são o ponto de partida do instante; o limite da data é outro (o `date` vai além do `timestamptz`). **Transação:** o `RollbackOn` é da Spring Framework 6.2 em diante (o stack usa a 7). As regras de rollback dos `TransactionTemplate` programáticos, se houver, não seguem o atributo e precisam ser conferidas à parte. A interação com `recordRejections` e `noRollbackFor` está na nota `ZenyHotelManager - Auditoria`. **Datas:** o `JsonMapper` da aplicação é injetado em `JdbcBookingStore`, `JdbcRoomBlockStore`, `JdbcChecklists`, `ChecklistsOfflineSources`, `OfflineCommands` (`convertValue` do payload), `ProblemWriter`, `SecurityConfiguration` e `PrintAgentStreamController`. O `SerproFnrhWire` tem mapeador próprio, fora do escopo. A configuração atual está em `spring.jackson` (`application.yaml`). Testes que enviam data em número para entrada legítima são dívida de teste e mudam junto. **Jobs:** `@EnableScheduling` e o `LockProvider` ficam em `shared/infrastructure/scheduling/SchedulingConfiguration.kt`. O driver já conecta com `logServerErrorDetail=false` (sem o DETAIL do PostgreSQL), mas a mensagem do JDBC ainda pode trazer valores. Máquina de 14 GB: um Gradle por vez.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- O item 2 muda a semântica transacional de todos os módulos: um caso de uso que hoje confirma de propósito numa exceção *checked* passaria a desfazer. Mitigação: o inventário do escopo vem antes da mudança e passa pelo `revisor-arquitetura` no plano; há teste do `noRollbackFor` e o build completo com os testes de todos os módulos.
+- O item 3 pode recusar algo que o próprio servidor, um teste ou um payload offline já envia em formato leniente. Mitigação: os testes de leitura do JSON persistido e dos comandos offline estão nos critérios; os ajustes de teste ficam registrados no handoff.
+- O item 4 pode esconder a causa de uma falha real de job. Mitigação: a classe da exceção e das causas continua no log, e o nome do job vai junto; métrica e alerta dos jobs seguem como estão.
+
+**Rollback / migração:** sem migração. Reverter é tirar as regras do `shared` (faixa, `rollbackOn`, leniência e tratador).
 
 **Evidências e handoff:**
 
@@ -1057,7 +1132,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** marca o fim da Fase 1 da SPEC ("o hotel opera a hospedagem") e é o critério de entrada do M7.
 
-**Dependências:** E06, E13, E14, E15, E16, E17 (cobrem transitivamente todas as demais; sem paralelismo).
+**Dependências:** E06, E13, E14, E15, E16, E17, E18 (cobrem transitivamente todas as demais; sem paralelismo).
 
 **Escopo:**
 
@@ -1110,3 +1185,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
 - 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. O fechamento passou para o início do roadmap: E10 e E11 vêm antes da governança, porque gravam dinheiro imutável e fazem a data andar. A E11 passou a depender só da E10 e foi dividida: o snapshot e os PDFs foram para a nova E13, e o no-show na FNRH para a nova E14. O gate passou a depender de E06, E13 e E14. A E10 ganhou métricas e alerta (ARCHITECTURE §16). Hipóteses H2 a H6 conferidas no código: a H4 caiu, e a H6 e o contexto citavam a aresta `endofday` → `files`, que não existe; o nome da view da FNRH foi corrigido para `fnrh.report_submissions`. Nenhuma etapa renumerada; tags inalteradas. Depois da revisão do `revisor-arquitetura`: `BusinessDay` fica só em `hotel`, a entrega do alerta passa à M8 E18, a E14 cobra o no-show na homologação e a H2 foi fechada.
 - 2026-11-12 — sincronizado com o código depois do gate do M5 (`main` em `3a42e35`) pelo `arquiteto` (skill `development-roadmap`, modo atualização; regra 2 de `docs/roadmaps/README.md`). Pré-requisito marcado como atendido, com a E09 do M5 `#bloqueada` pela exceção M5 → M6. "Contexto confirmado" ganhou a base técnica herdada do M5 (módulos, última migração `V2026_11_11_1001`, `ReservationsApi` com as transições de hospedagem e sem no-show nem consultas por data, eventos de hospedagem, `HotelApi`, `RoomsApi`, `BillingApi` e `FolioOwnerDescriber`, APIs de plataforma, views `report_*`, `FnrhGateway` e `FnrhOperation`, apoio de testes e o gate em `docker/gate/`) e as pendências do M5 com a etapa de cada uma. Hipóteses: H1 confirmada; H2 a H5 reconfirmadas; H6 ganhou a falta da gravação de conteúdo na `FilesApi`, a acrescentar pela E09; H10 (testes do fechamento num caminho próprio, isolado do banco compartilhado) **decidida pela opção recomendada pelo `arquiteto`**, revisável pelo usuário; H11 (rótulos no catálogo da FNRH) confirmada. Etapas novas no bloco "Manutenção herdada do M5", depois do fechamento: **E15** (rótulos da FNRH na ficha por porta do `frontdesk` implementada pelo `fnrh` e descrição de `frontdesk.stays.checkin`; decisões do usuário (f) e (g) do lote E11 do M5), **E16** (dívidas de teste: teste de índices da M5 E01 e `FnrhSubmissionDismissCompat.kt` duplicado) e **E17** (corpo mínimo do `guests`, decisão E15 (h) do M5; incluída a pedido do usuário em 2026-11-12). Onde entram (decidido pelo `arquiteto`, pela opção recomendada): no M6 e não no M5, cujo gate está concluído e não reabre; depois do fechamento, para não atrasar a E10 e a E11. A definição global de pronto ganhou o item da manutenção, e o gate passou a depender de E15, E16 e E17. Notas novas em E02 (KDoc dos eventos de hospedagem), E09 (H6 e o modelo dono + `printing`), E10 (H10), E11 (H10 e a chave comum com o check-out), E12 (`docker/gate/`, `MilestoneM5EndToEndTest` e os Menores do gate do M5) e E14 (`submission_operation_ck` e `rank`). Na mesma data, a ARCHITECTURE §3.2 passou a registrar a ordem interna da Hospedagem (`rates` < `reservations` < `frontdesk`). Nenhuma etapa renumerada nem removida; tags inalteradas.
+- 2026-11-13 — etapa nova **E18** (faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs), no bloco novo "Manutenção transversal", pelo `arquiteto` (skill `development-roadmap`, modo atualização), cumprindo a decisão do usuário H12 (handoff da E10, "Decisões do usuário", item 3). Ela resolve os quatro problemas transversais achados na E10, conferidos no código em 2026-11-13 (`main` em `9e65b3a`). Entrevista do usuário na mesma data, pelas opções recomendadas (H13): a faixa do cursor vale também para as chaves de data (6 consultas a mais que as 9 por instante); a leitura estrita vale para `format: date` e `date-time`; e o mapeador é único, com os payloads offline também estritos. Decidido pelo `arquiteto`: a faixa fica no `PageCursor`, e a validação local do `endofday` sai. A E18 entra depois da E17 e antes da governança, para que os módulos novos já nasçam sobre as regras corrigidas. Revisão humana: não. A definição global de pronto ganhou o item da E18, e o gate E12 passou a depender dela. Na mesma mudança, a ARCHITECTURE registra as decisões em §5 (rollback), §7 (cursor e datas), §11 (alcance de `date` e `timestamptz`) e §13 (log dos jobs), e o `docs/roadmaps/README.md` passou a contar 18 etapas no M6. Nenhuma outra etapa foi renumerada, removida nem mudou de tag ou conteúdo.
