@@ -135,7 +135,14 @@ class EndOfDayRunsApiAttackTest(
             .query(Int::class.java)
             .single()
 
-    private fun allRuns(): Int = jdbc.sql("SELECT count(*) FROM endofday.run").query(Int::class.java).single()
+    /** Os ids de todas as execuções do banco isolado: a foto de antes e a de depois mostram o que o teste criou. */
+    private fun runIds(): Set<UUID> =
+        jdbc
+            .sql("SELECT id FROM endofday.run")
+            .query(UUID::class.java)
+            .list()
+            .filterNotNull()
+            .toSet()
 
     private fun invocations(date: LocalDate): List<Int> = STEPS.map { probe.invocations(it, date) }
 
@@ -232,6 +239,7 @@ class EndOfDayRunsApiAttackTest(
         settled {
             val date = hotelApi.currentBusinessDate()
             val auth = asUser(manager().id.value)
+            val before = runIds()
             val invalid =
                 listOf(
                     "\"13/11/2026\"",
@@ -255,22 +263,15 @@ class EndOfDayRunsApiAttackTest(
             }
 
             runCount(date) shouldBe 0
-            allRuns() shouldBe allRunsBefore(date)
+            runIds() shouldBe before
         }
-
-    /** As execuções que já existiam antes deste teste: todas de datas anteriores à corrente. */
-    private fun allRunsBefore(date: LocalDate): Int =
-        jdbc
-            .sql("SELECT count(*) FROM endofday.run WHERE business_date < :d")
-            .param("d", date)
-            .query(Int::class.java)
-            .single()
 
     @Test
     fun `absurd but valid dates are a DATE_MISMATCH and never reach a 500`() =
         settled {
             val current = hotelApi.currentBusinessDate()
             val auth = asUser(manager().id.value)
+            val before = runIds()
 
             listOf("9999-12-31", "0001-01-01", "1970-01-01", "+10000-01-01").forEach { value ->
                 withClue("businessDate = $value") {
@@ -280,14 +281,14 @@ class EndOfDayRunsApiAttackTest(
                 }
             }
 
-            allRuns() shouldBe allRunsBefore(current)
+            runIds() shouldBe before
         }
 
     @Test
     fun `the extremes of LocalDate are a DATE_MISMATCH and never reach a 500`() =
         settled {
-            val current = hotelApi.currentBusinessDate()
             val auth = asUser(manager().id.value)
+            val before = runIds()
 
             listOf("+999999999-12-31", "-999999999-01-01").forEach { value ->
                 withClue("businessDate = $value") {
@@ -295,21 +296,19 @@ class EndOfDayRunsApiAttackTest(
                 }
             }
 
-            allRuns() shouldBe allRunsBefore(current)
+            runIds() shouldBe before
         }
 
     /**
-     * Vermelho de propósito: documenta um defeito (achado do testador na Task 9). Uma data válida para o `LocalDate`,
-     * mas fora do intervalo do tipo `date` do PostgreSQL (4713 a.C. a 5874897 d.C.), chega à consulta
-     * `findByBusinessDate` antes da comparação com a data corrente e volta `500 INTERNAL_ERROR`, guardado pela
-     * idempotência. Entrada externa nunca deveria dar 500: o esperado é um 4xx estável (400 no campo ou 409
-     * `END_OF_DAY_DATE_MISMATCH`).
+     * Achado do testador na Task 9 (corrigido em `8fab7a9`): uma data válida para o `LocalDate`, mas fora do intervalo
+     * do tipo `date` do PostgreSQL (4713 a.C. a 5874897 d.C.), chegava à consulta `findByBusinessDate` e voltava
+     * `500 INTERNAL_ERROR`, guardado pela idempotência. Entrada externa nunca dá 500: o esperado é um 4xx estável.
      */
     @Test
     fun `dates outside the range of the database are a stable 4xx and never a 500`() =
         settled {
-            val current = hotelApi.currentBusinessDate()
             val auth = asUser(manager().id.value)
+            val before = runIds()
 
             val answers =
                 listOf("+5874898-01-01", "-4714-11-23").associateWith { value ->
@@ -321,7 +320,7 @@ class EndOfDayRunsApiAttackTest(
 
             withClue(answers) { answers.values.all { it.take(3).toInt() in 400..499 } shouldBe true }
 
-            allRuns() shouldBe allRunsBefore(current)
+            runIds() shouldBe before
         }
 
     @Test
