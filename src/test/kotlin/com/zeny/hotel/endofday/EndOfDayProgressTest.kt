@@ -7,6 +7,7 @@ import com.zeny.hotel.endofday.application.EndOfDayStepRegistry
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.RunTrigger
+import com.zeny.hotel.endofday.domain.StepSlot
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.shared.Actor
@@ -69,7 +70,7 @@ class EndOfDayProgressTest(
             frames,
         )
 
-    private fun newRun(): EndOfDayRun =
+    private fun newRun(slots: List<StepSlot> = registry.slots): EndOfDayRun =
         tx
             .execute {
                 runs.save(
@@ -77,7 +78,7 @@ class EndOfDayProgressTest(
                         hotelApi.currentBusinessDate(),
                         RunTrigger.AUTOMATIC,
                         null,
-                        registry.slots,
+                        slots,
                         clock.instant().truncatedTo(ChronoUnit.MICROS),
                     ),
                 )
@@ -137,6 +138,29 @@ class EndOfDayProgressTest(
             Thread.sleep(SETTLE_MILLIS)
 
             frames.about(run.id.value).size shouldBe before
+        } finally {
+            hub.release(connection)
+            EndOfDayTestRuns.settle(context)
+        }
+    }
+
+    @Test
+    fun `a begin that completes the run by skipping every unregistered step publishes the completed version`() {
+        val frames = Frames()
+        val connection = connect(frames)
+        val gone = registry.slots.map { StepSlot("gone-${it.name}", it.position) }
+        val run = newRun(gone)
+        try {
+            engine.execute(run.id, WAIT) shouldBe EndOfDayExecution.Finished(RunStatus.COMPLETED)
+
+            val persisted = runs.findById(run.id.value).orElseThrow().version
+            await().atMost(Duration.ofSeconds(5)).until {
+                frames.about(run.id.value).lastOrNull()?.version() ==
+                    persisted
+            }
+            frames.about(run.id.value).size shouldBe 1
+            // Nenhuma etapa real avançou a data: avança aqui, para o próximo teste abrir a execução da data seguinte.
+            hotelApi.advanceBusinessDate(run.businessDate)
         } finally {
             hub.release(connection)
             EndOfDayTestRuns.settle(context)

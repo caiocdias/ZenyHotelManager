@@ -21,6 +21,7 @@ import com.zeny.hotel.notifications.NotificationsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ErrorCode
+import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -63,6 +64,7 @@ class EndOfDayRunTransitionsTest(
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val audit: AuditContext,
     @Autowired private val clock: Clock,
+    @Autowired private val realtime: RealtimePublisher,
     @Autowired private val beanFactory: AutowireCapableBeanFactory,
     @Autowired private val notifications: NotificationsApi,
 ) {
@@ -93,6 +95,7 @@ class EndOfDayRunTransitionsTest(
                 EndOfDayStepRegistry(handlers.toList()),
                 audit,
                 clock,
+                realtime,
             ),
             "endOfDayRunTransitionsUnderTest",
         ) as EndOfDayRunTransitions

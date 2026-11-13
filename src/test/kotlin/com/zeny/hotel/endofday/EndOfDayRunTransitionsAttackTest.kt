@@ -23,6 +23,7 @@ import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -61,6 +62,7 @@ class EndOfDayRunTransitionsAttackTest(
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val audit: AuditContext,
     @Autowired private val clock: Clock,
+    @Autowired private val realtime: RealtimePublisher,
     @Autowired private val beanFactory: AutowireCapableBeanFactory,
     @Autowired private val notifications: NotificationsApi,
 ) {
@@ -100,6 +102,7 @@ class EndOfDayRunTransitionsAttackTest(
                 EndOfDayStepRegistry(handlers.toList()),
                 audit,
                 clock,
+                realtime,
             ),
             "endOfDayRunTransitionsAttack",
         ) as EndOfDayRunTransitions

@@ -14,7 +14,6 @@ import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.RealtimeMessage
 import com.zeny.hotel.shared.RealtimePublisher
-import com.zeny.hotel.shared.RealtimeTopic
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -35,9 +34,7 @@ class EndOfDayRunTransitions(
     private val registry: EndOfDayStepRegistry,
     private val audit: AuditContext,
     private val clock: Clock,
-    // Último e com padrão: os testes de transição montam esta classe com os cinco primeiros argumentos (sem canal);
-    // o Spring injeta o publicador do kernel, que sempre existe.
-    private val realtime: RealtimePublisher = NoRealtime,
+    private val realtime: RealtimePublisher,
 ) {
     /**
      * Reconcilia a execução com o [registry] e inicia a próxima etapa ([EndOfDayRun.beginNext]): abre uma pendência
@@ -174,14 +171,6 @@ class EndOfDayRunTransitions(
                 error.javaClass.simpleName.ifEmpty { error.javaClass.name.substringAfterLast('.') }
             }
     }
-}
-
-/** O publicador vazio, só para quem monta [EndOfDayRunTransitions] sem o canal de tempo real. */
-private object NoRealtime : RealtimePublisher {
-    override fun publish(
-        topic: RealtimeTopic,
-        message: RealtimeMessage,
-    ) = Unit
 }
 
 /** Os códigos de auditoria do fechamento. */
