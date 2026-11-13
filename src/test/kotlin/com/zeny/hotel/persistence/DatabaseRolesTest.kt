@@ -144,15 +144,15 @@ class DatabaseRolesTest(
         appendOnlyTables shouldContain "iam.approval"
         appendOnlyTables shouldContain "iam.approval_use"
 
+        tables shouldContainAll NO_DELETE_TABLES
+
         assertSoftly {
             tables.forEach { table ->
                 val expected =
-                    if (table in
-                        appendOnlyTables
-                    ) {
-                        setOf("SELECT", "INSERT")
-                    } else {
-                        setOf("SELECT", "INSERT", "UPDATE", "DELETE")
+                    when (table) {
+                        in appendOnlyTables -> setOf("SELECT", "INSERT")
+                        in NO_DELETE_TABLES -> setOf("SELECT", "INSERT", "UPDATE")
+                        else -> setOf("SELECT", "INSERT", "UPDATE", "DELETE")
                     }
                 withClue(table) { privilegesOn(table) shouldBe expected }
             }
@@ -271,5 +271,8 @@ class DatabaseRolesTest(
         const val INSUFFICIENT_PRIVILEGE = "42501"
         const val PROBE_SUFFIX = 12
         val PRIVILEGES = listOf("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+
+        /** Tabelas que o papel da aplicação altera mas nunca apaga: o histórico do fechamento do dia (M6 E10). */
+        val NO_DELETE_TABLES = setOf("endofday.run", "endofday.run_step", "endofday.run_issue")
     }
 }

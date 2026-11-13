@@ -49,6 +49,8 @@ tags:
   name: FNRH
 - description: "Tipos de UH, características, UHs e áreas comuns."
   name: rooms
+- description: "Fechamento do dia: execuções e etapas."
+  name: end-of-day
 - description: Informações sobre o servidor e a API.
   name: meta
 - description: Sincronização offline do app operacional.
@@ -3055,6 +3057,264 @@ paths:
       summary: Reativar um colaborador
       tags:
       - staff
+  /api/v1/end-of-day/runs:
+    get:
+      description: "Paginação por cursor, da data operacional mais nova para a mais\
+        \ antiga (desempate pelo id), sem filtros. Cada item traz as etapas em ordem.\
+        \ Exige `endofday.runs.read`."
+      operationId: listEndOfDayRuns
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageEndOfDayRunResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as execuções do fechamento do dia
+      tags:
+      - end-of-day
+    post:
+      description: "Cria a execução do fechamento da data operacional corrente e a\
+        \ roda, esperando até `zeny.endofday.manual-wait` (30 s por padrão). A resposta\
+        \ traz a execução **no estado em que estiver**: `COMPLETED`, `FAILED` (a etapa\
+        \ que falhou e o motivo nas etapas; a retomada é manual) ou `RUNNING`, que\
+        \ quer dizer que o fechamento continua (ou que outro disparo o executa); o\
+        \ cliente acompanha pelo tópico `end-of-day` do tempo real ou por `GET /api/v1/end-of-day/runs/{id}`.\
+        \ Exige `Idempotency-Key` e `endofday.runs.execute` ou a aprovação de um superior\
+        \ (ação `endofday.run.start`, recurso `endofday.business-date:<data>`); a\
+        \ autorização vem antes de qualquer recusa que revele o estado do fechamento.\
+        \ Na ordem: data já fechada (execução `COMPLETED`) 409 `END_OF_DAY_ALREADY_CLOSED`;\
+        \ execução da data `RUNNING` ou `FAILED` (uma por data) 409 `END_OF_DAY_RUN_EXISTS`,\
+        \ com `runId`, que **pode vir sem `runId`** quando outra criação da mesma\
+        \ data passou à frente ao mesmo tempo (o cliente relê a execução da data);\
+        \ data diferente da operacional corrente 409 `END_OF_DAY_DATE_MISMATCH`, com\
+        \ `currentBusinessDate`; nenhuma etapa registrada 409 `END_OF_DAY_NOT_CONFIGURED`.\
+        \ A repetição com a mesma `Idempotency-Key` devolve a resposta guardada (que\
+        \ pode ser `RUNNING`), não o estado atual; acompanhe pelo `GET …/runs/{id}`\
+        \ ou pelo tópico `end-of-day`. Publica `endofday.run` no tópico `end-of-day`."
+      operationId: startEndOfDayRun
+      parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartEndOfDayRunRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayRunResponse"
+          description: "Execução criada, no estado em que estiver."
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Executar o fechamento do dia manualmente
+      tags:
+      - end-of-day
+  /api/v1/end-of-day/runs/{id}:
+    get:
+      description: "A execução com as etapas em ordem de posição; a `ETag` é a versã\
+        o dela (sobe a cada mudança da execução ou de uma etapa). Exige `endofday.runs.read`.\
+        \ Execução inexistente: 404 `END_OF_DAY_RUN_NOT_FOUND`."
+      operationId: getEndOfDayRun
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayRunResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma execução do fechamento do dia
+      tags:
+      - end-of-day
+  /api/v1/end-of-day/runs/{id}/issues:
+    get:
+      description: "Paginação por cursor, da pendência mais antiga para a mais nova\
+        \ (`createdAt`, desempate pelo id). Exige `endofday.runs.read`. Execução inexistente:\
+        \ 404 `END_OF_DAY_RUN_NOT_FOUND`."
+      operationId: listEndOfDayRunIssues
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageEndOfDayIssueResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as pendências de uma execução do fechamento do dia
+      tags:
+      - end-of-day
+  /api/v1/end-of-day/runs/{id}/resume:
+    post:
+      description: "Retoma a execução `FAILED` (a etapa que falhou volta a `PENDING`;\
+        \ as concluídas não rodam de novo) ou aceita a `RUNNING` interrompida por\
+        \ uma queda, sem mudá-la, e a roda, esperando até `zeny.endofday.manual-wait`\
+        \ (30 s por padrão). Sem corpo e sem `If-Match`: a trava do fechamento e o\
+        \ `END_OF_DAY_RUN_NOT_RESUMABLE` já cobrem a corrida. A resposta traz a execuç\
+        ão **no estado em que estiver**: `COMPLETED`, `FAILED` ou `RUNNING` (o fechamento\
+        \ continua). A repetição com a mesma `Idempotency-Key` devolve a resposta\
+        \ guardada (que pode ser `RUNNING`), não o estado atual; acompanhe pelo `GET\
+        \ …/runs/{id}` ou pelo tópico `end-of-day`. Exige `Idempotency-Key` e `endofday.runs.execute`\
+        \ ou a aprovação de um superior (ação `endofday.run.resume`, recurso `endofday.run:<id>`);\
+        \ a autorização vem antes de saber se a execução existe. Recusas: execuçã\
+        o inexistente 404 `END_OF_DAY_RUN_NOT_FOUND`; `COMPLETED` 409 `END_OF_DAY_RUN_NOT_RESUMABLE`;\
+        \ outro executor com a trava 409 `END_OF_DAY_RUN_IN_PROGRESS`. Publica `endofday.run`\
+        \ no tópico `end-of-day` quando a execução muda."
+      operationId: resumeEndOfDayRun
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/IdempotencyKey"
+      - $ref: "#/components/parameters/ApprovalToken"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayRunResponse"
+          description: "Execução retomada, no estado em que estiver."
+          headers:
+            Idempotent-Replayed:
+              $ref: "#/components/headers/IdempotentReplayed"
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_IN_USE`: a requisição com esta chave ainda\
+            \ está em andamento."
+        "422":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "`IDEMPOTENCY_KEY_REUSED`: a chave já foi usada com outra requisiç\
+            ão."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retomar o fechamento do dia manualmente
+      tags:
+      - end-of-day
   /api/v1/files:
     post:
       description: "Multipart com `purpose` (a finalidade, como `hotel.logo`) e `file`.\
@@ -16655,6 +16915,34 @@ components:
           nullable: true
       required:
       - items
+    CursorPageEndOfDayIssueResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EndOfDayIssueResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageEndOfDayRunResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EndOfDayRunResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageFnrhSubmissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -17748,6 +18036,145 @@ components:
       - name
       - position
       - updatedAt
+    EndOfDayIssueResponse:
+      type: object
+      description: Uma pendência levantada pelo fechamento do dia.
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: "O tipo da pendência, um código estável."
+        message:
+          type: string
+          description: "O texto da pendência, sem dado pessoal."
+        reference:
+          type: string
+          description: A referência opaca do que ficou pendente; nulo se não há.
+          nullable: true
+        resolved:
+          type: boolean
+          description: Se a pendência já foi resolvida.
+        runId:
+          type: string
+          format: uuid
+        stepName:
+          type: string
+          description: A etapa que levantou a pendência; nulo se não é de uma etapa.
+          nullable: true
+      required:
+      - createdAt
+      - id
+      - kind
+      - message
+      - resolved
+      - runId
+    EndOfDayRunResponse:
+      type: object
+      description: "Uma execução do fechamento do dia (RN-21: uma por data operacional),\
+        \ com as etapas em ordem."
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional fechada pela execução.
+        finishedAt:
+          type: string
+          format: date-time
+          description: Quando terminou (`COMPLETED` ou `FAILED`); nulo em andamento.
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          description: "`RUNNING` (em andamento), `FAILED` (parada numa etapa, à espera\
+            \ da retomada) ou `COMPLETED` (data fechada). O cliente trata um valor\
+            \ desconhecido sem falhar."
+          x-extensible-enum:
+          - RUNNING
+          - FAILED
+          - COMPLETED
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/EndOfDayRunStepResponse"
+        trigger:
+          type: string
+          description: "Quem disparou: o horário (`AUTOMATIC`) ou alguém (`MANUAL`).\
+            \ O cliente trata um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - AUTOMATIC
+          - MANUAL
+        triggeredBy:
+          type: string
+          format: uuid
+          description: Quem disparou o fechamento manual; nulo = o horário.
+          nullable: true
+        version:
+          type: integer
+          format: int64
+          description: Versão da execução; sobe a cada mudança dela ou de uma etapa.
+      required:
+      - businessDate
+      - id
+      - startedAt
+      - status
+      - steps
+      - trigger
+      - version
+    EndOfDayRunStepResponse:
+      type: object
+      description: Uma etapa da execução do fechamento.
+      properties:
+        attempts:
+          type: integer
+          format: int32
+          description: Quantas vezes a etapa foi iniciada.
+        finishedAt:
+          type: string
+          format: date-time
+          description: O fim da última tentativa; nulo se não terminou.
+          nullable: true
+        name:
+          type: string
+          description: "O nome estável da etapa, como um código."
+        position:
+          type: integer
+          format: int32
+          description: A posição da etapa na ordem do fechamento.
+        result:
+          type: string
+          description: "O resultado (um código) da etapa concluída, o motivo da falha\
+            \ ou da etapa pulada; nulo antes."
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          description: O início da última tentativa; nulo se não começou.
+          nullable: true
+        status:
+          type: string
+          description: A situação da etapa; `COMPLETED` e `SKIPPED` são finais. O
+            cliente trata um valor desconhecido sem falhar.
+          x-extensible-enum:
+          - PENDING
+          - RUNNING
+          - COMPLETED
+          - FAILED
+          - SKIPPED
+      required:
+      - attempts
+      - name
+      - position
+      - status
     EntryShiftResponse:
       type: object
       description: O turno de uma entrada da escala.
@@ -20236,7 +20663,11 @@ components:
         endOfDayTime:
           type: string
           format: time-local
-          description: "Horário do fechamento do dia, no fuso do hotel."
+          description: "Horário do fechamento do dia, no fuso do hotel. Define quando\
+            \ o fechamento automático vence: antes de 12:00 é a madrugada seguinte\
+            \ à data operacional; de 12:00 em diante é o próprio dia operacional.\
+            \ O automático só age até 24 h depois desse horário; depois disso o fechamento\
+            \ da data é manual."
           example: 03:00:00
         lostAndFoundRetentionDays:
           type: integer
@@ -25550,6 +25981,17 @@ components:
           format: uuid
           description: O modelo a executar (ativo e publicado).
           nullable: true
+    StartEndOfDayRunRequest:
+      type: object
+      description: O fechamento manual de uma data.
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: "A data operacional a fechar: a corrente."
+          nullable: true
+      required:
+      - businessDate
     StatementDayResponse:
       type: object
       description: "As linhas de uma data operacional, com os totais do dia e o saldo\

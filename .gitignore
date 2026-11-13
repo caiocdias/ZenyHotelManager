@@ -26,3 +26,6 @@ out/
 # Worktrees da execução de roadmap (superpowers e Claude Code)
 .worktrees/
 .claude/worktrees/
+
+# Workspace local do superpowers (nunca versionado)
+.superpowers/

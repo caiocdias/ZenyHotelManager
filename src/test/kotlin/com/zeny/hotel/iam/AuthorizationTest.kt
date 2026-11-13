@@ -264,6 +264,8 @@ class AuthorizationTest(
                 "fnrh.submissions.manage:ALL",
                 "printing.jobs.read:ALL",
                 "printing.jobs.manage:ALL",
+                "endofday.runs.read:ALL",
+                "endofday.runs.execute:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

@@ -436,7 +436,7 @@ sequenceDiagram
 
 ## 10. Tempo real
 
-- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications`, via SSE.
+- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications,end-of-day`, via SSE.
 - O payload é mínimo (`type`, `id`, `version`): o cliente aplica a mudança ou rebusca o recurso.
 - Os eventos são filtrados por permissão e escopo do usuário conectado.
 - O tópico `notifications` é pessoal: não exige permissão, e cada usuário recebe só as mensagens das próprias notificações.
@@ -526,7 +526,7 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 
 | Job | Frequência padrão |
 |---|---|
-| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, horário do hotel |
+| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, no horário do hotel: gatilho de 1 min (`end-of-day-trigger`) que decide pelo `endOfDayTime` no fuso do hotel e pela janela (`zeny.endofday.trigger.catch-up-window`, 24 h por padrão; depois dela, só manual); a execução roda sob a trava global `end-of-day-run` (com *keep-alive*), uma de cada vez, e há uma única execução por data; a `RUNNING` interrompida é retomada, a `FAILED` só pela retomada manual |
 | Envio de ARI pendente; pull de reservas do channel manager | 1–5 min |
 | Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
 | Reprocessamento de eventos com falha no outbox (backoff de 1 min a 1 h, abandono após 24 h) | 1 min |

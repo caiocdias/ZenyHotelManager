@@ -334,6 +334,24 @@ zeny:
     max-connections-per-agent: 2
     maintenance-interval: PT1M
     maintenance-initial-delay: PT1M
+  # Fechamento do dia (M6 E10): o motor roda sob a trava do ShedLock end-of-day-run, que o keep-alive renova a cada
+  # metade deste prazo enquanto a execução anda e que vence nele se o processo cair. Mínimo de 30 s (KeepAliveLockProvider).
+  endofday:
+    lock-at-most-for: PT5M
+    # Quanto o POST /api/v1/end-of-day/runs espera o motor antes de responder com a execução no estado em que estiver
+    # (RUNNING se ainda não terminou: o cliente acompanha pelo tópico end-of-day).
+    manual-wait: PT30S
+    # O gatilho automático (EndOfDayTriggerJob, sob a trava do ShedLock end-of-day-trigger) roda a cada interval e fecha a
+    # data operacional quando vence o horário do fechamento, no fuso do hotel. Só age até catch-up-window depois do
+    # vencimento: fora disso o fechamento é só manual (aviso END_OF_DAY_PENDING a quem acompanha o fechamento).
+    trigger:
+      interval: PT1M
+      initial-delay: PT1M
+      catch-up-window: PT24H
+    # As métricas do fechamento (EndOfDayMetrics: execuções FAILED e atraso) são relidas do banco neste intervalo; a
+    # raspagem do /actuator/prometheus só lê a última leitura.
+    metrics:
+      refresh-interval: PT30S
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

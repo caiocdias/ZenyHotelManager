@@ -400,7 +400,14 @@ data class TaxSettingsDto(
 
 @Schema(description = "Parâmetros operacionais do hotel (RF-CFG-04).")
 data class OperationalSettingsDto(
-    @field:Schema(description = "Horário do fechamento do dia, no fuso do hotel.", example = "03:00")
+    @field:Schema(
+        description =
+            "Horário do fechamento do dia, no fuso do hotel. Define quando o fechamento automático vence: " +
+                "antes de 12:00 é a madrugada seguinte à data operacional; de 12:00 em diante é o próprio dia " +
+                "operacional. " +
+                "O automático só age até 24 h depois desse horário; depois disso o fechamento da data é manual.",
+        example = "03:00",
+    )
     val endOfDayTime: LocalTime,
     @field:Schema(description = "Validade da pré-reserva, em horas (1 a 720).")
     val preReservationExpiryHours: Int,
