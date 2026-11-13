@@ -17,6 +17,8 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -88,6 +90,8 @@ class FakeStepsProbe(
     private val issueKinds = ConcurrentHashMap<String, String>()
     private val itemPlans = ConcurrentHashMap<String, ItemPlan>()
     private val pauses = ConcurrentHashMap<String, Duration>()
+    private val gates = ConcurrentHashMap<String, CountDownLatch>()
+    private val errors = ConcurrentHashMap<String, Throwable>()
 
     private data class ItemPlan(
         val items: Int,
@@ -137,6 +141,25 @@ class FakeStepsProbe(
         pauses[step] = duration
     }
 
+    /**
+     * A etapa [step] espera o [gate] abrir (no máximo [GATE_LIMIT]) antes de terminar, dentro da transação do
+     * `complete`: o teste sabe que ela começou pelas [invocations] e a solta quando quiser.
+     */
+    fun holdOn(
+        step: String,
+        gate: CountDownLatch,
+    ) {
+        gates[step] = gate
+    }
+
+    /** A próxima execução da etapa [step] lança o [error] (depois do resto do trabalho), uma vez só. */
+    fun throwNext(
+        step: String,
+        error: Throwable,
+    ) {
+        errors[step] = error
+    }
+
     /** Esquece contagens e comandos. */
     fun reset() {
         calls.clear()
@@ -144,6 +167,8 @@ class FakeStepsProbe(
         issueKinds.clear()
         itemPlans.clear()
         pauses.clear()
+        gates.clear()
+        errors.clear()
     }
 
     internal fun run(
@@ -152,9 +177,11 @@ class FakeStepsProbe(
     ): EndOfDayStepOutcome {
         calls.computeIfAbsent(step to context.businessDate) { AtomicInteger() }.incrementAndGet()
         pauses[step]?.let { Thread.sleep(it) }
+        gates[step]?.await(GATE_LIMIT.toMillis(), TimeUnit.MILLISECONDS)
         issueKinds[step]?.let { context.issues.raise(it, step, "Pendência de teste.") }
         itemPlans[step]?.let { plan -> (1..plan.items).forEach { process(context, it, it == plan.failingItem) } }
         check((failures[step]?.getAndDecrement() ?: 0) <= 0) { "Falha de teste na etapa $step." }
+        errors.remove(step)?.let { throw it }
         return EndOfDayStepOutcome.DONE
     }
 
@@ -178,6 +205,9 @@ class FakeStepsProbe(
 
         /** As etapas falsas, em ordem de posição. */
         val STEPS = listOf(ONE, TWO, THREE, ADVANCE)
+
+        /** O máximo que uma etapa espera pelo portão do [holdOn], para um teste quebrado não travar a thread. */
+        val GATE_LIMIT: Duration = Duration.ofSeconds(30)
 
         /** A pendência do trabalho por item. */
         const val TEST_ITEM = "TEST_ITEM"
