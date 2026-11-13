@@ -1,0 +1,9 @@
+# Configuração de todos os contextos de teste (inclusive os montados à mão com o SpringApplicationBuilder): o Spring
+# Boot lê classpath:/config/application.yaml depois do classpath:/application.yaml, e este vence.
+zeny:
+  endofday:
+    trigger:
+      # O gatilho automático do fechamento só roda quando o teste o chama (M6 E10, Task 12): solto, ele fecharia a data
+      # operacional do banco do contexto (o compartilhado dos @IntegrationTest, inclusive), e um contexto com o relógio
+      # adiantado (MutableClock) a fecharia fora de hora.
+      initial-delay: PT24H
