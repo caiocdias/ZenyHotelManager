@@ -3,7 +3,9 @@ package com.zeny.hotel.endofday.application
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.StepStart
+import com.zeny.hotel.endofday.infrastructure.EndOfDayRunMetrics
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import net.javacrumbs.shedlock.core.ClockProvider
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
@@ -50,6 +52,7 @@ sealed interface EndOfDayExecution {
  * tentativa deste executor).
  */
 @Component
+@Suppress("LongParameterList") // as portas do motor, o prazo da trava e as métricas
 class EndOfDayEngine(
     private val runs: EndOfDayRunRepository,
     private val transitions: EndOfDayRunTransitions,
@@ -57,6 +60,7 @@ class EndOfDayEngine(
     @Qualifier("endOfDayLockingTaskExecutor") private val locking: LockingTaskExecutor,
     @Qualifier("endOfDayExecutor") private val executor: ExecutorService,
     @Value("\${zeny.endofday.lock-at-most-for}") private val lockAtMostFor: Duration,
+    private val metrics: EndOfDayRunMetrics = EndOfDayRunMetrics(SimpleMeterRegistry()),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -111,13 +115,25 @@ class EndOfDayEngine(
     private fun runUnderLock(runId: EndOfDayRunId): EndOfDayExecution {
         val status = runs.findById(runId.value).orElse(null)?.status
         checkNotNull(status) { "Execução do fechamento inexistente: ${runId.value}." }
-        var outcome: EndOfDayExecution? = EndOfDayExecution.Finished(status).takeIf { status != RunStatus.RUNNING }
+        if (status != RunStatus.RUNNING) return EndOfDayExecution.Finished(status)
+        val sample = metrics.start()
+        var resumed: Boolean? = null
+        var outcome: EndOfDayExecution? = null
         while (outcome == null) {
             val start = transitions.begin(runId)
+            if (start != null && resumed == null) resumed = isResumed(start)
             outcome = if (start == null) EndOfDayExecution.Finished(RunStatus.COMPLETED) else runStep(runId, start)
         }
+        if (outcome is EndOfDayExecution.Finished) metrics.finished(sample, outcome.status, resumed ?: false)
         return outcome
     }
+
+    /**
+     * A primeira etapa que esta chamada iniciou já indica trabalho de antes: não é a primeira do registro (as de trás
+     * já terminaram) ou já é a segunda tentativa dela (a queda ou a falha interrompeu a anterior).
+     */
+    private fun isResumed(first: StepStart): Boolean =
+        first.attempts > 1 || first.name != registry.slots.firstOrNull()?.name
 
     /** Roda a etapa [start]; nulo se ela concluiu e o laço segue. */
     private fun runStep(
@@ -151,6 +167,7 @@ class EndOfDayEngine(
                 false // outro executor já concluiu ou falhou a etapa
             }
         if (!recorded) return lostRace(runId, start)
+        metrics.failure()
         log.warn("Fechamento {}: a etapa {} falhou: {}", runId.value, start.name, reason)
         log.debug("Fechamento {}: falha da etapa {}", runId.value, start.name, error)
         return EndOfDayExecution.Finished(RunStatus.FAILED)

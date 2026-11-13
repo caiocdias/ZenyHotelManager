@@ -348,6 +348,10 @@ zeny:
       interval: PT1M
       initial-delay: PT1M
       catch-up-window: PT24H
+    # As métricas do fechamento (EndOfDayMetrics: execuções FAILED e atraso) são relidas do banco neste intervalo; a
+    # raspagem do /actuator/prometheus só lê a última leitura.
+    metrics:
+      refresh-interval: PT30S
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

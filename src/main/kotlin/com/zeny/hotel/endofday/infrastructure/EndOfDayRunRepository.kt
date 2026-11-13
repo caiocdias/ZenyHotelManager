@@ -3,6 +3,7 @@ package com.zeny.hotel.endofday.infrastructure
 import com.zeny.hotel.endofday.domain.EndOfDayIssue
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
+import com.zeny.hotel.endofday.domain.RunStatus
 import org.postgresql.util.PSQLException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.domain.Pageable
@@ -21,6 +22,9 @@ import java.util.UUID
  */
 interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
     fun findByBusinessDate(businessDate: LocalDate): EndOfDayRun?
+
+    /** Quantas execuções estão no [status] (a métrica das `FAILED`). */
+    fun countByStatus(status: RunStatus): Long
 
     /** A primeira página das execuções: data mais nova primeiro, desempate pelo id (mais novo primeiro). */
     @Query("SELECT r FROM EndOfDayRun r ORDER BY r.businessDate DESC, r.id DESC")

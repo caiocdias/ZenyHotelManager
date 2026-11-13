@@ -53,3 +53,31 @@ groups:
         annotations:
           summary: "Métricas do outbox indisponíveis"
           description: "O servidor não consegue ler shared.event_publication."
+  # Fechamento do dia (M6 E10). A entrega do alerta a uma pessoa (Alertmanager e canal) é da M8 E18; aqui ficam só as
+  # regras. Sem etapa registrada o atraso é 0, então nada dispara antes de o fechamento ter o que rodar.
+  - name: zeny-end-of-day
+    rules:
+      - alert: ZenyEndOfDayFailed
+        expr: zeny_endofday_runs_failed > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "O fechamento do dia falhou"
+          description: "{{ $value }} execução(ões) do fechamento em FAILED. Veja as pendências em GET /api/v1/end-of-day/runs/{id}/issues, corrija a causa e retome a execução."
+      - alert: ZenyEndOfDayNotRun
+        expr: zeny_endofday_overdue_seconds > 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "O fechamento do dia não rodou até 1 hora depois do horário"
+          description: "A data operacional corrente segue sem fechamento {{ $value | humanizeDuration }} depois do horário; execute o fechamento ou retome a execução (o automático só age até 24 h depois do horário)."
+      # NaN: o servidor não conseguiu ler as execuções do fechamento (banco fora).
+      - alert: ZenyEndOfDayMetricsUnavailable
+        expr: zeny_endofday_overdue_seconds != zeny_endofday_overdue_seconds
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Métricas do fechamento do dia indisponíveis"
+          description: "O servidor não consegue ler endofday.run."
