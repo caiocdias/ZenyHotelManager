@@ -52,12 +52,14 @@ enum class TickOutcome {
  * horário do fechamento e o fuso do hotel ([HotelApi]) se roda o fechamento, sempre com o ator sistema.
  *
  * - Antes do vencimento ([EndOfDaySchedule.dueAt]): [TickOutcome.NOT_DUE].
+ * - Sem etapa registrada: [TickOutcome.NO_STEPS], com no máximo um `WARN` por data e nenhum aviso, nem fora da janela
+ *   (não há o que executar nem retomar).
  * - A partir do vencimento mais a janela (`zeny.endofday.trigger.catch-up-window`, 24 h): [TickOutcome.OUTSIDE_WINDOW]
  *   e nada roda, nem a execução interrompida. Fechar sozinho uma data atrasada (servidor fora do ar) lançaria no-show
  *   com multa (RN-15, imutável pela RN-03) e enviaria à FNRH hóspedes que podem ter chegado nesse meio-tempo: o
  *   fechamento fica para o operador. Uma vez por data e processo, `WARN` e o aviso `END_OF_DAY_PENDING` a quem
- *   acompanha o fechamento (`endofday.runs.read`), só com a data e o código.
- * - Sem etapa registrada: [TickOutcome.NO_STEPS], com no máximo um `WARN` por data.
+ *   acompanha o fechamento (`endofday.runs.read`), só com a data e o código: a ação é executar
+ *   o fechamento ou retomar a execução que falhou ou foi interrompida.
  * - Sem execução da data: cria a execução ([EndOfDayRunCommands.createAutomatic]) e a roda ([TickOutcome.STARTED]).
  *   Perdeu a corrida da criação (`END_OF_DAY_RUN_EXISTS`, `END_OF_DAY_ALREADY_CLOSED` ou `END_OF_DAY_DATE_MISMATCH`):
  *   relê a execução e segue pelo estado dela.
@@ -94,8 +96,8 @@ class EndOfDayTrigger(
         val now = clock.instant()
         return when {
             now < dueAt -> TickOutcome.NOT_DUE
-            now >= dueAt.plus(catchUpWindow) -> outsideWindow(date)
             registry.slots.isEmpty() -> noSteps(date)
+            now >= dueAt.plus(catchUpWindow) -> outsideWindow(date)
             else -> runs.findByBusinessDate(date)?.let { follow(it) } ?: start(date)
         }
     }
@@ -127,7 +129,11 @@ class EndOfDayTrigger(
 
     private fun outsideWindow(date: LocalDate): TickOutcome {
         if (warnedOutsideWindow.getAndSet(date) != date) {
-            log.warn("Fechamento de {}: fora da janela do automático ({}); execute manualmente", date, catchUpWindow)
+            log.warn(
+                "Fechamento de {}: fora da janela do automático ({}); execute ou retome manualmente",
+                date,
+                catchUpWindow,
+            )
             try {
                 notifications.notify(
                     NotificationsTypes.END_OF_DAY_PENDING,
@@ -160,6 +166,7 @@ class EndOfDayTrigger(
                 EndOfDayErrorCodes.END_OF_DAY_DATE_MISMATCH,
             )
         val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-        const val OUTSIDE_WINDOW_TEXT = "OUTSIDE_WINDOW: fechamento automático fora da janela; execute manualmente"
+        const val OUTSIDE_WINDOW_TEXT =
+            "OUTSIDE_WINDOW: fechamento automático fora da janela; execute ou retome manualmente"
     }
 }

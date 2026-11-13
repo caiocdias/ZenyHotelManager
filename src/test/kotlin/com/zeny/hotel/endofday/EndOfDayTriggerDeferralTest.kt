@@ -1,5 +1,6 @@
 package com.zeny.hotel.endofday
 
+import com.zeny.hotel.endofday.application.EndOfDayTriggerProperties
 import com.zeny.hotel.endofday.infrastructure.EndOfDayTriggerJob
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.shouldBe
@@ -19,7 +20,13 @@ import java.time.Duration
 class EndOfDayTriggerDeferralTest(
     @Autowired private val environment: Environment,
     @Autowired private val holders: List<ScheduledTaskHolder>,
+    @Autowired private val properties: EndOfDayTriggerProperties,
 ) {
+    @Test
+    fun `the trigger configuration is bound and validated at boot`() {
+        properties shouldBe EndOfDayTriggerProperties(Duration.ofMinutes(1), Duration.ofHours(24), Duration.ofHours(24))
+    }
+
     @Test
     fun `the trigger is deferred in every test context`() {
         environment.getProperty("zeny.endofday.trigger.initial-delay") shouldBe "PT24H"

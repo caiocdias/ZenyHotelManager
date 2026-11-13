@@ -211,7 +211,7 @@ class EndOfDayTriggerAttackTest(
     private fun outsideWindowNotice(date: LocalDate) =
         Notice(
             "Pendência no fechamento de ${date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
-            "OUTSIDE_WINDOW: fechamento automático fora da janela; execute manualmente",
+            "OUTSIDE_WINDOW: fechamento automático fora da janela; execute ou retome manualmente",
         )
 
     private fun runCount(date: LocalDate): Int =

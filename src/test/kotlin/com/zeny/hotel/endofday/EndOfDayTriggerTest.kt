@@ -28,6 +28,7 @@ import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.asUser
 import io.kotest.assertions.withClue
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -314,7 +315,7 @@ class EndOfDayTriggerTest(
                 listOf(
                     Notice(
                         "Pendência no fechamento de ${date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
-                        "OUTSIDE_WINDOW: fechamento automático fora da janela; execute manualmente",
+                        "OUTSIDE_WINDOW: fechamento automático fora da janela; execute ou retome manualmente",
                     ),
                 )
             val run = startManually(manager(), date).body(201)
@@ -414,6 +415,7 @@ class EndOfDayTriggerTest(
     @Test
     fun `with an empty registry nothing runs and the warning is logged once per date`() =
         scenario { date, dueAt ->
+            val reader = follower()
             val empty =
                 EndOfDayTrigger(
                     hotelApi,
@@ -433,12 +435,16 @@ class EndOfDayTriggerTest(
             try {
                 empty.tick() shouldBe TickOutcome.NO_STEPS
                 empty.tick() shouldBe TickOutcome.NO_STEPS
+                // Sem etapas, nem fora da janela o gatilho avisa: não há o que executar nem retomar.
+                setClock(dueAt.plus(Duration.ofHours(25)))
+                empty.tick() shouldBe TickOutcome.NO_STEPS
             } finally {
                 logger.detachAppender(appender)
             }
 
             runCount(date) shouldBe 0
             appender.list.count { it.level == Level.WARN } shouldBe 1
+            noticesOf(reader).shouldBeEmpty()
         }
 
     private companion object {
