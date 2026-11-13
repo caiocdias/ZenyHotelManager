@@ -124,6 +124,9 @@ enum class ReservationHistoryKind {
 
     /** A troca de UH do hospedado (M5 E01). */
     ROOM_MOVE,
+
+    /** O no-show do fechamento do dia (M6 E11): a confirmada que não chegou passa a no-show, com a multa se houver. */
+    NO_SHOW,
 }
 
 /** Uma noite no retrato do histórico: a data, o plano, a diária gravada, o total e se foi editada. */

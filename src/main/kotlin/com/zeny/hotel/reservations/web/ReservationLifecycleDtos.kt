@@ -293,8 +293,8 @@ data class ReservationHistoryResponse(
         description =
             "`CHANGE`, `CANCEL` (inclusive a expiração da pré-reserva, com o motivo `EXPIRED`), `REACTIVATE`, " +
                 "`CONFIRM` (a confirmação da pré-reserva com a garantia), `GUARANTEE` (a garantia registrada numa " +
-                "reserva confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `ROOM_MOVE` (a troca de UH " +
-                "do hospedado). $UNKNOWN_VALUE",
+                "reserva confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT`, `ROOM_MOVE` (a troca de UH " +
+                "do hospedado) ou `NO_SHOW` (o no-show do fechamento do dia). $UNKNOWN_VALUE",
     )
     val kind: ReservationHistoryKind,
     val businessDate: LocalDate,

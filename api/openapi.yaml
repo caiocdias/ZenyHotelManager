@@ -23426,9 +23426,10 @@ components:
           description: "`CHANGE`, `CANCEL` (inclusive a expiração da pré-reserva,\
             \ com o motivo `EXPIRED`), `REACTIVATE`, `CONFIRM` (a confirmação da pré\
             -reserva com a garantia), `GUARANTEE` (a garantia registrada numa reserva\
-            \ confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `ROOM_MOVE`\
-            \ (a troca de UH do hospedado). A lista pode crescer (`x-extensible-enum`):\
-            \ trate um valor desconhecido sem falhar."
+            \ confirmada sem ela), `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT`, `ROOM_MOVE`\
+            \ (a troca de UH do hospedado) ou `NO_SHOW` (o no-show do fechamento do\
+            \ dia). A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido\
+            \ sem falhar."
           x-extensible-enum:
           - CHANGE
           - CANCEL
@@ -23439,6 +23440,7 @@ components:
           - UNDO_CHECK_IN
           - CHECK_OUT
           - ROOM_MOVE
+          - NO_SHOW
         occurredAt:
           type: string
           format: date-time
@@ -24536,8 +24538,9 @@ components:
         releaseReason:
           type: string
           description: "Por que deixou de valer: `UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`,\
-            \ `RESERVATION_CHANGED`, `CHECKED_OUT` (o check-out) ou `ROOM_MOVED` (a\
-            \ troca de UH do hospedado); nulo na ativa. A lista pode crescer (`x-extensible-enum`):\
+            \ `RESERVATION_CHANGED`, `CHECKED_OUT` (o check-out), `ROOM_MOVED` (a\
+            \ troca de UH do hospedado) ou `RESERVATION_NO_SHOW` (o no-show do fechamento\
+            \ do dia); nulo na ativa. A lista pode crescer (`x-extensible-enum`):\
             \ trate um valor desconhecido sem falhar."
           nullable: true
           x-extensible-enum:
@@ -24547,6 +24550,7 @@ components:
           - RESERVATION_CHANGED
           - CHECKED_OUT
           - ROOM_MOVED
+          - RESERVATION_NO_SHOW
         releasedAt:
           type: string
           format: date-time

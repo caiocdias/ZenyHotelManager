@@ -44,8 +44,8 @@ enum class RoomAssignmentReason {
  * Por que a alocação deixou de valer (M4 E10): [UNASSIGNED] desalocada por quem opera, [REALLOCATED] substituída por
  * outra UH, [RESERVATION_CANCELLED] a reserva foi cancelada (ou a pré-reserva expirou), [RESERVATION_CHANGED] a
  * alteração da reserva (outro tipo de UH, ou datas em que a UH não está livre) a soltou; desde o M5 E01, [CHECKED_OUT]
- * e [ROOM_MOVED]. A alocação solta continua gravada (o histórico das UHs da reserva) e não bloqueia mais a UH. Nas
- * respostas é `x-extensible-enum`.
+ * e [ROOM_MOVED]; desde o M6 E11, [RESERVATION_NO_SHOW]. A alocação solta continua gravada (o histórico das UHs da
+ * reserva) e não bloqueia mais a UH. Nas respostas é `x-extensible-enum`.
  */
 enum class RoomAssignmentEndReason {
     UNASSIGNED,
@@ -58,6 +58,9 @@ enum class RoomAssignmentEndReason {
 
     /** A troca de UH do hospedado (M5 E01): a alocação termina na data operacional e outra começa nela. */
     ROOM_MOVED,
+
+    /** O no-show do fechamento do dia (M6 E11): a reserva que não chegou deixa a UH livre. */
+    RESERVATION_NO_SHOW,
 }
 
 /**
