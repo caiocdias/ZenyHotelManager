@@ -526,7 +526,7 @@ São Spring `@Scheduled` com **ShedLock** (JDBC), que evita execução duplicada
 
 | Job | Frequência padrão |
 |---|---|
-| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, horário do hotel |
+| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). | Diário, no horário do hotel: gatilho de 1 min (`end-of-day-trigger`) que decide pelo `endOfDayTime` no fuso do hotel e pela janela de 24 h (depois dela, só manual); a execução roda sob a trava `end-of-day-run` (com *keep-alive*), exclusiva por data; a `RUNNING` interrompida é retomada, a `FAILED` só pela retomada manual |
 | Envio de ARI pendente; pull de reservas do channel manager | 1–5 min |
 | Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
 | Reprocessamento de eventos com falha no outbox (backoff de 1 min a 1 h, abandono após 24 h) | 1 min |

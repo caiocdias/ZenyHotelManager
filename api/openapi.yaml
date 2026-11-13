@@ -20663,7 +20663,11 @@ components:
         endOfDayTime:
           type: string
           format: time-local
-          description: "Horário do fechamento do dia, no fuso do hotel."
+          description: "Horário do fechamento do dia, no fuso do hotel. Define quando\
+            \ o fechamento automático vence: antes de 12:00 é a madrugada seguinte\
+            \ à data operacional; de 12:00 em diante é o próprio dia operacional.\
+            \ O automático só age até 24 h depois desse horário; depois disso o fechamento\
+            \ da data é manual."
           example: 03:00:00
         lostAndFoundRetentionDays:
           type: integer
