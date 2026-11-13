@@ -9,6 +9,8 @@ import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
+import com.zeny.hotel.endofday.infrastructure.RUN_BUSINESS_DATE_UK
+import com.zeny.hotel.endofday.infrastructure.violatesUnique
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
@@ -80,8 +82,10 @@ class EndOfDayRunCommands(
             )
         try {
             runs.saveAndFlush(run)
-        } catch (_: DataIntegrityViolationException) {
-            // run_business_date_uk: outra transação criou a execução da data entre a checagem e a gravação.
+        } catch (e: DataIntegrityViolationException) {
+            // Outra transação criou a execução da data entre a checagem e a gravação. A execução dela não pode ser lida
+            // nesta transação, que já falhou, então o problema sai sem `runId`. Qualquer outra violação sobe como está.
+            if (!e.violatesUnique(RUN_BUSINESS_DATE_UK)) throw e
             throw EndOfDayRunExistsException(businessDate, null)
         }
         audit.created(EndOfDayAudit.RUN, run.id) { run.auditState() }

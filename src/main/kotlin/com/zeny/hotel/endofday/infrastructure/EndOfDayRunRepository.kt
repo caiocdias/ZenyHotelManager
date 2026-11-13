@@ -3,6 +3,8 @@ package com.zeny.hotel.endofday.infrastructure
 import com.zeny.hotel.endofday.domain.EndOfDayIssue
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
+import org.postgresql.util.PSQLException
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.transaction.annotation.Propagation
@@ -39,6 +41,20 @@ interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
     fun lockForUpdate(id: EndOfDayRunId): EndOfDayRun? =
         lockRowForNoKeyUpdate(id.value)?.let { findById(it).orElse(null) }
 }
+
+/** A restrição única da data operacional da execução (RN-21: uma execução por data). */
+internal const val RUN_BUSINESS_DATE_UK = "run_business_date_uk"
+
+private const val UNIQUE_VIOLATION = "23505"
+
+/**
+ * A violação é de unicidade (`23505`) na restrição [constraint], reconhecida pelo campo `constraint` do erro do
+ * servidor (`PSQLException.serverErrorMessage`) na cadeia de causas, nunca pelo texto da mensagem.
+ */
+internal fun DataIntegrityViolationException.violatesUnique(constraint: String): Boolean =
+    generateSequence<Throwable>(this) { it.cause }
+        .filterIsInstance<PSQLException>()
+        .any { it.sqlState == UNIQUE_VIOLATION && it.serverErrorMessage?.constraint == constraint }
 
 /** As pendências das execuções do fechamento. */
 interface EndOfDayIssueRepository : JpaRepository<EndOfDayIssue, UUID> {
