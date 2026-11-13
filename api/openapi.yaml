@@ -49,12 +49,12 @@ tags:
   name: FNRH
 - description: "Tipos de UH, características, UHs e áreas comuns."
   name: rooms
+- description: "Fechamento do dia: execuções e etapas."
+  name: end-of-day
 - description: Informações sobre o servidor e a API.
   name: meta
 - description: Sincronização offline do app operacional.
   name: sync
-- description: "Fechamento do dia: execuções e etapas."
-  name: end-of-day
 - description: "Perfis de hóspedes, documentos, lista de restrição e empresas."
   name: guests
 - description: Trilha de auditoria das escritas.
@@ -3058,6 +3058,45 @@ paths:
       tags:
       - staff
   /api/v1/end-of-day/runs:
+    get:
+      description: "Paginação por cursor, da data operacional mais nova para a mais\
+        \ antiga (desempate pelo id), sem filtros. Cada item traz as etapas em ordem.\
+        \ Exige `endofday.runs.read`."
+      operationId: listEndOfDayRuns
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageEndOfDayRunResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as execuções do fechamento do dia
+      tags:
+      - end-of-day
     post:
       description: "Cria a execução do fechamento da data operacional corrente e a\
         \ roda, esperando até `zeny.endofday.manual-wait` (30 s por padrão). A resposta\
@@ -3129,6 +3168,81 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Executar o fechamento do dia manualmente
+      tags:
+      - end-of-day
+  /api/v1/end-of-day/runs/{id}:
+    get:
+      description: "A execução com as etapas em ordem de posição; a `ETag` é a versã\
+        o dela (sobe a cada mudança da execução ou de uma etapa). Exige `endofday.runs.read`.\
+        \ Execução inexistente: 404 `END_OF_DAY_RUN_NOT_FOUND`."
+      operationId: getEndOfDayRun
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayRunResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma execução do fechamento do dia
+      tags:
+      - end-of-day
+  /api/v1/end-of-day/runs/{id}/issues:
+    get:
+      description: "Paginação por cursor, da pendência mais antiga para a mais nova\
+        \ (`createdAt`, desempate pelo id). Exige `endofday.runs.read`. Execução inexistente:\
+        \ 404 `END_OF_DAY_RUN_NOT_FOUND`."
+      operationId: listEndOfDayRunIssues
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageEndOfDayIssueResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as pendências de uma execução do fechamento do dia
       tags:
       - end-of-day
   /api/v1/end-of-day/runs/{id}/resume:
@@ -16801,6 +16915,34 @@ components:
           nullable: true
       required:
       - items
+    CursorPageEndOfDayIssueResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EndOfDayIssueResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageEndOfDayRunResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EndOfDayRunResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageFnrhSubmissionResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -17894,6 +18036,43 @@ components:
       - name
       - position
       - updatedAt
+    EndOfDayIssueResponse:
+      type: object
+      description: Uma pendência levantada pelo fechamento do dia.
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          description: "O tipo da pendência, um código estável."
+        message:
+          type: string
+          description: "O texto da pendência, sem dado pessoal."
+        reference:
+          type: string
+          description: A referência opaca do que ficou pendente; nulo se não há.
+          nullable: true
+        resolved:
+          type: boolean
+          description: Se a pendência já foi resolvida.
+        runId:
+          type: string
+          format: uuid
+        stepName:
+          type: string
+          description: A etapa que levantou a pendência; nulo se não é de uma etapa.
+          nullable: true
+      required:
+      - createdAt
+      - id
+      - kind
+      - message
+      - resolved
+      - runId
     EndOfDayRunResponse:
       type: object
       description: "Uma execução do fechamento do dia (RN-21: uma por data operacional),\

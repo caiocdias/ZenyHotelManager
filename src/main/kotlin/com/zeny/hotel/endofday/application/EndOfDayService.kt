@@ -1,6 +1,7 @@
 package com.zeny.hotel.endofday.application
 
 import com.zeny.hotel.endofday.EndOfDayRunInProgressException
+import com.zeny.hotel.endofday.domain.EndOfDayIssue
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.endofday.domain.EndOfDayRunStep
@@ -48,6 +49,18 @@ data class EndOfDayRunView(
     val finishedAt: Instant?,
     val version: Long,
     val steps: List<EndOfDayRunStepView>,
+)
+
+/** Uma pendência do fechamento, como a API mostra (a mensagem é um código, sem dado pessoal). */
+data class EndOfDayIssueView(
+    val id: UUID,
+    val runId: UUID,
+    val stepName: String?,
+    val kind: String,
+    val reference: String?,
+    val message: String,
+    val resolved: Boolean,
+    val createdAt: Instant,
 )
 
 /**
@@ -100,7 +113,10 @@ class EndOfDayService(
         }
 }
 
-private fun EndOfDayRun.toView() =
+internal fun EndOfDayIssue.toView() =
+    EndOfDayIssueView(id, runId.value, stepName, kind, reference, message, resolved, createdAt)
+
+internal fun EndOfDayRun.toView() =
     EndOfDayRunView(
         id.value,
         businessDate,

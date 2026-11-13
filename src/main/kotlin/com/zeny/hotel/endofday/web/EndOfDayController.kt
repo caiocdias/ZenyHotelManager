@@ -1,5 +1,7 @@
 package com.zeny.hotel.endofday.web
 
+import com.zeny.hotel.endofday.application.EndOfDayIssueView
+import com.zeny.hotel.endofday.application.EndOfDayQueries
 import com.zeny.hotel.endofday.application.EndOfDayRunStatusView
 import com.zeny.hotel.endofday.application.EndOfDayRunStepView
 import com.zeny.hotel.endofday.application.EndOfDayRunTriggerView
@@ -8,8 +10,11 @@ import com.zeny.hotel.endofday.application.EndOfDayService
 import com.zeny.hotel.endofday.application.EndOfDayStepStatusView
 import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.ApiV1Controller
+import com.zeny.hotel.shared.CursorPage
+import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ExtensibleEnum
 import com.zeny.hotel.shared.Idempotent
+import com.zeny.hotel.shared.PageParams
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -17,6 +22,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -30,14 +36,15 @@ import java.util.UUID
 private const val UNKNOWN = "O cliente trata um valor desconhecido sem falhar."
 
 /**
- * O fechamento do dia (M6 E10, RF-FEC, RN-21): o disparo manual, ação sensível (RF-ACS-08) com aprovação de superior
- * para quem não tem `endofday.runs.execute`.
+ * O fechamento do dia (M6 E10, RF-FEC, RN-21): as consultas (`endofday.runs.read`) e o disparo manual, ação
+ * sensível (RF-ACS-08) com aprovação de superior para quem não tem `endofday.runs.execute`.
  */
 @ApiV1Controller
 @RequestMapping("/end-of-day/runs")
 @Tag(name = "end-of-day", description = "Fechamento do dia: execuções e etapas.")
 class EndOfDayController(
     private val endOfDay: EndOfDayService,
+    private val queries: EndOfDayQueries,
 ) {
     @PostMapping
     @Idempotent
@@ -73,6 +80,47 @@ class EndOfDayController(
             .body(EndOfDayRunResponse.of(run))
     }
 
+    @GetMapping
+    @Operation(
+        operationId = "listEndOfDayRuns",
+        summary = "Listar as execuções do fechamento do dia",
+        description =
+            "Paginação por cursor, da data operacional mais nova para a mais antiga (desempate pelo id), sem " +
+                "filtros. Cada item traz as etapas em ordem. Exige `endofday.runs.read`.",
+    )
+    fun list(
+        @Valid page: PageParams,
+    ): CursorPage<EndOfDayRunResponse> = queries.listRuns(page).map(EndOfDayRunResponse::of)
+
+    @GetMapping("/{id}")
+    @Operation(
+        operationId = "getEndOfDayRun",
+        summary = "Consultar uma execução do fechamento do dia",
+        description =
+            "A execução com as etapas em ordem de posição; a `ETag` é a versão dela (sobe a cada mudança da " +
+                "execução ou de uma etapa). Exige `endofday.runs.read`. Execução inexistente: 404 " +
+                "`END_OF_DAY_RUN_NOT_FOUND`.",
+    )
+    fun get(
+        @PathVariable id: UUID,
+    ): ResponseEntity<EndOfDayRunResponse> {
+        val run = queries.getRun(id)
+        return ResponseEntity.ok().eTag(ETags.of(run.version)).body(EndOfDayRunResponse.of(run))
+    }
+
+    @GetMapping("/{id}/issues")
+    @Operation(
+        operationId = "listEndOfDayRunIssues",
+        summary = "Listar as pendências de uma execução do fechamento do dia",
+        description =
+            "Paginação por cursor, da pendência mais antiga para a mais nova (`createdAt`, desempate pelo id). " +
+                "Exige `endofday.runs.read`. Execução inexistente: 404 `END_OF_DAY_RUN_NOT_FOUND`.",
+    )
+    fun issues(
+        @PathVariable id: UUID,
+        @Valid page: PageParams,
+    ): CursorPage<EndOfDayIssueResponse> = queries.listIssues(id, page).map(EndOfDayIssueResponse::of)
+
     @PostMapping("/{id}/resume")
     @Idempotent
     @Operation(
@@ -97,6 +145,37 @@ class EndOfDayController(
         @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
         @PathVariable id: UUID,
     ): EndOfDayRunResponse = EndOfDayRunResponse.of(endOfDay.resumeManually(id, approvalToken))
+}
+
+@Schema(description = "Uma pendência levantada pelo fechamento do dia.")
+data class EndOfDayIssueResponse(
+    val id: UUID,
+    val runId: UUID,
+    @field:Schema(description = "A etapa que levantou a pendência; nulo se não é de uma etapa.", nullable = true)
+    val stepName: String?,
+    @field:Schema(description = "O tipo da pendência, um código estável.")
+    val kind: String,
+    @field:Schema(description = "A referência opaca do que ficou pendente; nulo se não há.", nullable = true)
+    val reference: String?,
+    @field:Schema(description = "O texto da pendência, sem dado pessoal.")
+    val message: String,
+    @field:Schema(description = "Se a pendência já foi resolvida.")
+    val resolved: Boolean,
+    val createdAt: Instant,
+) {
+    companion object {
+        fun of(issue: EndOfDayIssueView) =
+            EndOfDayIssueResponse(
+                issue.id,
+                issue.runId,
+                issue.stepName,
+                issue.kind,
+                issue.reference,
+                issue.message,
+                issue.resolved,
+                issue.createdAt,
+            )
+    }
 }
 
 @Schema(description = "O fechamento manual de uma data.")

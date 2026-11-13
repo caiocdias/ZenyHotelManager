@@ -5,10 +5,12 @@ import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import org.postgresql.util.PSQLException
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -19,6 +21,21 @@ import java.util.UUID
  */
 interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
     fun findByBusinessDate(businessDate: LocalDate): EndOfDayRun?
+
+    /** A primeira página das execuções: data mais nova primeiro, desempate pelo id (mais novo primeiro). */
+    @Query("SELECT r FROM EndOfDayRun r ORDER BY r.businessDate DESC, r.id DESC")
+    fun firstPage(pageable: Pageable): List<EndOfDayRun>
+
+    /** As execuções depois do cursor `(afterDate, afterId)`, na mesma ordem de [firstPage]. */
+    @Query(
+        "SELECT r FROM EndOfDayRun r WHERE r.businessDate < :afterDate " +
+            "OR (r.businessDate = :afterDate AND r.id < :afterId) ORDER BY r.businessDate DESC, r.id DESC",
+    )
+    fun pageAfter(
+        afterDate: LocalDate,
+        afterId: UUID,
+        pageable: Pageable,
+    ): List<EndOfDayRun>
 
     /**
      * Trava a linha da execução com `SELECT … FOR NO KEY UPDATE` até o fim da transação; devolve o id, ou nulo se ela
@@ -69,4 +86,23 @@ internal fun DataIntegrityViolationException.violatesUnique(constraint: String):
 /** As pendências das execuções do fechamento. */
 interface EndOfDayIssueRepository : JpaRepository<EndOfDayIssue, UUID> {
     fun findByRunIdOrderByCreatedAtAscIdAsc(runId: UUID): List<EndOfDayIssue>
+
+    /** A primeira página das pendências da execução [runId]: mais antiga primeiro, desempate pelo id. */
+    @Query("SELECT i FROM EndOfDayIssue i WHERE i.runId = :runId ORDER BY i.createdAt ASC, i.id ASC")
+    fun firstPage(
+        runId: UUID,
+        pageable: Pageable,
+    ): List<EndOfDayIssue>
+
+    /** As pendências da execução [runId] depois do cursor `(afterCreatedAt, afterId)`, na ordem de [firstPage]. */
+    @Query(
+        "SELECT i FROM EndOfDayIssue i WHERE i.runId = :runId AND (i.createdAt > :afterCreatedAt " +
+            "OR (i.createdAt = :afterCreatedAt AND i.id > :afterId)) ORDER BY i.createdAt ASC, i.id ASC",
+    )
+    fun pageAfter(
+        runId: UUID,
+        afterCreatedAt: Instant,
+        afterId: UUID,
+        pageable: Pageable,
+    ): List<EndOfDayIssue>
 }
