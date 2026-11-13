@@ -47,6 +47,9 @@ enum class ReservationAction {
 
     /** Trocar a UH do hospedado (M5 E01). */
     MOVE_ROOM,
+
+    /** Marcar a confirmada como no-show no fechamento do dia (M6 E11). */
+    NO_SHOW,
 }
 
 /**
@@ -54,7 +57,8 @@ enum class ReservationAction {
  * saída, [InHouseChangeRules]); cancelar só uma pré-reserva ou uma confirmada (a encerrada, a cancelada e o no-show não
  * mudam); reativar só uma cancelada ou no-show, que volta a confirmada; desde a E09, confirmar só uma pré-reserva
  * ("garantia recebida"); desde o M5 E01, o check-in só de uma confirmada (a pré-reserva confirma antes), e desfazê-lo,
- * o check-out e a troca de UH só de uma hospedada. Fora disso, `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
+ * o check-out e a troca de UH só de uma hospedada; desde o M6 E11, o no-show só de uma confirmada. Fora disso,
+ * `409 RESERVATION_TRANSITION_NOT_ALLOWED`.
  */
 object ReservationTransitions {
     private val allowed =
@@ -68,6 +72,7 @@ object ReservationTransitions {
             ReservationAction.UNDO_CHECK_IN to setOf(ReservationStatus.IN_HOUSE),
             ReservationAction.CHECK_OUT to setOf(ReservationStatus.IN_HOUSE),
             ReservationAction.MOVE_ROOM to setOf(ReservationStatus.IN_HOUSE),
+            ReservationAction.NO_SHOW to setOf(ReservationStatus.CONFIRMED),
         )
 
     fun allows(
@@ -114,6 +119,7 @@ class ReservationTransitionNotAllowedException(
                 ReservationAction.UNDO_CHECK_IN to "voltar a confirmada (desfazer o check-in)",
                 ReservationAction.CHECK_OUT to "encerrada (check-out)",
                 ReservationAction.MOVE_ROOM to "trocada de UH como hospedada",
+                ReservationAction.NO_SHOW to "marcada como no-show",
             )
     }
 }

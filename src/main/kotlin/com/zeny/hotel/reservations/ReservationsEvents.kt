@@ -198,6 +198,27 @@ data class GuestCheckedOut(
 )
 
 /**
+ * A reserva [reservationId] foi marcada como no-show (SPEC §8.4 `Confirmed → NoShow`) no fechamento da data operacional
+ * [businessDate]: o hóspede não chegou. [roomId] é a UH que estava alocada (solta no mesmo commit; nula se não havia),
+ * e [penaltyCharged] diz se a multa de no-show foi lançada na conta. Publicado por `reservations` pelo outbox na
+ * transação. Sem hóspede, observação nem valores. Escutado pela FNRH (M6 E14).
+ */
+data class ReservationMarkedNoShow(
+    val reservationId: UUID,
+    val bookingId: UUID,
+    val roomTypeId: UUID,
+    val roomId: UUID?,
+    val arrival: LocalDate,
+    val departure: LocalDate,
+    val dayUse: Boolean,
+    val businessDate: LocalDate,
+    val penaltyCharged: Boolean,
+    val performedBy: UUID?,
+    val version: Long,
+    val markedAt: Instant,
+)
+
+/**
  * O hospedado da reserva [reservationId] trocou da UH [fromRoomId] para a [toRoomId] (SPEC §8.3, RF-REC-04) na data
  * operacional [businessDate], pelo [reason], com a tarifa das noites restantes mantida ou recalculada ([tariff]).
  * Publicado por `reservations` pelo outbox na transação. Escutado pela governança (M6: a UH de origem fica para
