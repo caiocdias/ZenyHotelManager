@@ -179,7 +179,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
-| E11 | Etapas financeiras e operacionais do fechamento | #pendente | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
+| E11 | Etapas financeiras e operacionais do fechamento | #em-andamento | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
 | E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
 **Manutenção herdada do M5**
@@ -288,7 +288,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E11 — Etapas financeiras e operacionais do fechamento — #pendente
+## E11 — Etapas financeiras e operacionais do fechamento — #em-andamento
 
 **Objetivo:** implementar no motor de E10, na ordem de RF-FEC-02, as etapas que não dependem de `reporting`: no-show com multa pela política copiada na reserva (RN-15), alerta de saídas pendentes, lançamento de diárias, pacotes e taxas, liberação de bloqueios vencidos (RN-16), expiração de pré-reservas (RN-23), renovação de pré-autorizações (não aplicável até M7), UHs ocupadas → Sujo (RN-09) e avanço da data operacional via `hotel` (que publica `BusinessDateAdvanced`).
 
