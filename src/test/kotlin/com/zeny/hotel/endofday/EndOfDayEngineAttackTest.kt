@@ -377,20 +377,22 @@ class EndOfDayEngineAttackTest(
     }
 
     @Test
-    fun `an Error thrown by a step escapes, releases the lock and leaves the run resumable from that step`() {
+    fun `an Error thrown by a step fails it by the class name, releases the lock and is resumable from that step`() {
         probe.throwNext(TWO, NotImplementedError("Hóspede Fulano"))
         val run = created()
         settled {
-            shouldThrow<NotImplementedError> { engine.execute(run.id, WAIT) }
+            engine.execute(run.id, WAIT) shouldBe EndOfDayExecution.Finished(RunStatus.FAILED)
 
             lockIsFree() shouldBe true
-            issuesOf(run.id).shouldBeEmpty()
+            issuesOf(run.id).map { listOf(it.kind, it.reference, it.message) } shouldContainExactly
+                listOf(listOf(EndOfDayRunTransitions.STEP_FAILED, TWO, "NotImplementedError"))
             inspect(run.id) {
-                status shouldBe RunStatus.RUNNING
-                step(TWO).status shouldBe StepStatus.RUNNING
+                status shouldBe RunStatus.FAILED
+                step(TWO).status shouldBe StepStatus.FAILED
                 step(TWO).attempts shouldBe 1
             }
 
+            tx.executeWithoutResult { _ -> runs.lockForUpdate(run.id).shouldNotBeNull().resume(now()) }
             engine.execute(run.id, WAIT) shouldBe EndOfDayExecution.Finished(RunStatus.COMPLETED)
             invocationsOf(run) shouldContainExactly listOf(1, 2, 1, 1)
             inspect(run.id) { step(TWO).attempts shouldBe 2 }

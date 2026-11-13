@@ -1,5 +1,9 @@
 package com.zeny.hotel.endofday
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.zeny.hotel.endofday.FakeStepsProbe.Companion.ADVANCE
 import com.zeny.hotel.endofday.FakeStepsProbe.Companion.ONE
 import com.zeny.hotel.endofday.FakeStepsProbe.Companion.STEPS
@@ -24,13 +28,18 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.comparables.shouldBeGreaterThanOrEqualTo
 import io.kotest.matchers.comparables.shouldBeLessThanOrEqualTo
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import net.javacrumbs.shedlock.core.ClockProvider
 import net.javacrumbs.shedlock.core.LockConfiguration
@@ -39,6 +48,7 @@ import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.Import
@@ -120,6 +130,29 @@ class EndOfDayEngineTest(
     private fun issuesOf(id: EndOfDayRunId): List<EndOfDayIssue> = issues.findByRunIdOrderByCreatedAtAscIdAsc(id.value)
 
     private fun invocationsOf(run: EndOfDayRun): List<Int> = STEPS.map { probe.invocations(it, run.businessDate) }
+
+    private fun lockIsFree(): Boolean =
+        lockProvider
+            .lock(LockConfiguration(ClockProvider.now(), EndOfDayEngine.LOCK_NAME, HELD_FOR, Duration.ZERO))
+            .map {
+                it.unlock()
+                true
+            }.orElse(false)
+
+    private fun ListAppender<ILoggingEvent>.errors(): Int = list.count { it.level == Level.ERROR }
+
+    /** Os eventos do log do motor durante o [block], que recebe o apêndice para esperar por eles. */
+    private fun capturingEngineLog(block: (ListAppender<ILoggingEvent>) -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(EndOfDayEngine::class.java) as Logger
+        val captured = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(captured)
+        try {
+            block(captured)
+        } finally {
+            logger.detachAppender(captured)
+        }
+        return captured.list.toList()
+    }
 
     @Test
     fun `runs all steps in order and records start, finish and result of each`() {
@@ -327,6 +360,79 @@ class EndOfDayEngineTest(
 
             await().atMost(WAIT).until { statusOf(run.id) == RunStatus.COMPLETED }
             invocationsOf(run) shouldContainExactly listOf(1, 1, 1, 1)
+        }
+    }
+
+    @Test
+    fun `a StackOverflowError in a step fails the step by its class name like any other error`() {
+        probe.throwNext(TWO, StackOverflowError("Hóspede Fulano"))
+        val run = created()
+        settled {
+            engine.execute(run.id, WAIT) shouldBe EndOfDayExecution.Finished(RunStatus.FAILED)
+
+            issuesOf(run.id).map { listOf(it.kind, it.reference, it.message) } shouldContainExactly
+                listOf(listOf(EndOfDayRunTransitions.STEP_FAILED, TWO, "StackOverflowError"))
+            inspect(run.id) { step(TWO).status shouldBe StepStatus.FAILED }
+        }
+    }
+
+    @Test
+    fun `a virtual machine error in a step escapes and leaves the run running for the restart`() {
+        probe.throwNext(TWO, InternalError("Hóspede Fulano"))
+        val run = created()
+        settled {
+            shouldThrow<InternalError> { engine.execute(run.id, WAIT) }
+
+            issuesOf(run.id).shouldBeEmpty()
+            inspect(run.id) {
+                status shouldBe RunStatus.RUNNING
+                step(TWO).status shouldBe StepStatus.RUNNING
+            }
+        }
+    }
+
+    @Test
+    fun `a failure outside the steps after StillRunning is logged once as ERROR by its class, without its message`() {
+        val marker = "Fulano-${UuidV7.generate()}"
+        probe.sleepOn(TWO, Duration.ofSeconds(1))
+        probe.throwNext(TWO, InternalError("Hóspede $marker"))
+        val run = created()
+        settled {
+            val events =
+                capturingEngineLog {
+                    engine.execute(run.id, Duration.ofMillis(100)) shouldBe EndOfDayExecution.StillRunning
+                    await().atMost(WAIT).until {
+                        lockIsFree() && statusOf(run.id) == RunStatus.RUNNING &&
+                            it.errors() > 0
+                    }
+                }
+
+            val errors = events.filter { it.level == Level.ERROR }
+            errors shouldHaveSize 1
+            errors.single().formattedMessage shouldContain run.id.value.toString()
+            errors.single().formattedMessage shouldContain InternalError::class.java.name
+            errors.single().throwableProxy.shouldBeNull()
+            events.filter { it.level.isGreaterOrEqual(Level.INFO) }.map { it.formattedMessage }.forEach {
+                it shouldNotContain marker
+            }
+        }
+    }
+
+    @Test
+    fun `a handled step failure is a WARN and never an ERROR`() {
+        probe.failNext(THREE, 1)
+        val run = created()
+        settled {
+            val events =
+                capturingEngineLog {
+                    engine.execute(
+                        run.id,
+                        WAIT,
+                    ) shouldBe EndOfDayExecution.Finished(RunStatus.FAILED)
+                }
+
+            events.filter { it.level == Level.WARN } shouldHaveSize 1
+            events.filter { it.level == Level.ERROR }.shouldBeEmpty()
         }
     }
 

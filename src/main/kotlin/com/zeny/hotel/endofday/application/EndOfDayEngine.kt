@@ -39,8 +39,10 @@ sealed interface EndOfDayExecution {
  * Sob a trava: execução `COMPLETED` ou `FAILED` devolve [EndOfDayExecution.Finished] sem rodar nada (retomar uma
  * `FAILED` é o `resume` do domínio, feito por quem retoma antes de chamar [execute]); `RUNNING` (nova ou interrompida
  * por uma queda) roda o laço [EndOfDayRunTransitions.begin] → [EndOfDayRunTransitions.complete] até não sobrar etapa.
- * A exceção de uma etapa a falha ([EndOfDayRunTransitions.fail]) pelo código, nunca pela mensagem, e a execução para
- * `FAILED`. Uma etapa que saiu do registro é pulada pela reconciliação do `begin`.
+ * A exceção ou o erro de uma etapa a falha ([EndOfDayRunTransitions.fail]) pelo código, nunca pela mensagem, e a
+ * execução para `FAILED` à espera da retomada manual; só um erro da máquina virtual que deixa o processo instável
+ * (`OutOfMemoryError`, `InternalError`) escapa e deixa a execução `RUNNING`. Uma etapa que saiu do registro é pulada
+ * pela reconciliação do `begin`.
  *
  * O executor tem uma thread só: um segundo [execute] no mesmo processo espera na fila (e encontra a execução já
  * terminada) em vez de receber [EndOfDayExecution.Busy]. `Busy` vem só de outro processo segurando a trava, ou de
@@ -67,7 +69,7 @@ class EndOfDayEngine(
         runId: EndOfDayRunId,
         waitAtMost: Duration,
     ): EndOfDayExecution {
-        val work = executor.submit<EndOfDayExecution> { executeWithLock(runId) }
+        val work = executor.submit<EndOfDayExecution> { loggingUnhandled(runId) { executeWithLock(runId) } }
         return try {
             work.get(waitAtMost.toNanos(), TimeUnit.NANOSECONDS)
         } catch (_: TimeoutException) {
@@ -76,6 +78,25 @@ class EndOfDayEngine(
             throw e.cause ?: e
         }
     }
+
+    /**
+     * Registra uma falha fora das etapas (banco fora do ar, trava recusada, erro da máquina virtual) antes de deixá-la
+     * escapar: depois de um [EndOfDayExecution.StillRunning], ninguém mais lê o resultado. Pelo nome da classe, nunca
+     * pela mensagem; o *stack trace* só em `DEBUG`. A falha de uma etapa já tratada não passa por aqui.
+     */
+    private fun loggingUnhandled(
+        runId: EndOfDayRunId,
+        work: () -> EndOfDayExecution,
+    ): EndOfDayExecution =
+        try {
+            work()
+        } catch (
+            @Suppress("TooGenericExceptionCaught") error: Throwable, // registra e relança, sem engolir
+        ) {
+            log.error("Fechamento {}: falhou fora de uma etapa ({})", runId.value, error.javaClass.name)
+            log.debug("Fechamento {}: falha fora de uma etapa", runId.value, error)
+            throw error
+        }
 
     private fun executeWithLock(runId: EndOfDayRunId): EndOfDayExecution {
         val lock = LockConfiguration(ClockProvider.now(), LOCK_NAME, lockAtMostFor, Duration.ZERO)
@@ -109,9 +130,10 @@ class EndOfDayEngine(
             try {
                 transitions.complete(runId, start.name, start.attempts) { handler.execute(it) }
             } catch (
-                @Suppress("TooGenericExceptionCaught") e: Exception, // qualquer falha da etapa falha a etapa
+                @Suppress("TooGenericExceptionCaught") error: Throwable, // qualquer falha da etapa falha a etapa
             ) {
-                return failed(runId, start, e)
+                if (error.isUnrecoverable()) throw error
+                return failed(runId, start, error)
             }
         return if (completed) null else lostRace(runId, start)
     }
@@ -119,7 +141,7 @@ class EndOfDayEngine(
     private fun failed(
         runId: EndOfDayRunId,
         start: StepStart,
-        error: Exception,
+        error: Throwable,
     ): EndOfDayExecution {
         val reason = EndOfDayRunTransitions.reasonOf(error)
         val recorded =
@@ -142,6 +164,13 @@ class EndOfDayEngine(
         log.info("Fechamento {}: a etapa {} passou para outro executor", runId.value, start.name)
         return EndOfDayExecution.Busy
     }
+
+    /**
+     * Erro da máquina virtual que deixa o processo instável (`OutOfMemoryError`, `InternalError`): escapa sem tocar na
+     * execução, que fica `RUNNING` e é retomada depois do reinício. `StackOverflowError` é da etapa (recursão) e a
+     * falha como qualquer outro erro, inclusive `NotImplementedError` e `LinkageError` depois de um deploy.
+     */
+    private fun Throwable.isUnrecoverable(): Boolean = this is VirtualMachineError && this !is StackOverflowError
 
     companion object {
         /** A trava do ShedLock do fechamento: uma execução de cada vez, em todos os processos (RN-21). */
