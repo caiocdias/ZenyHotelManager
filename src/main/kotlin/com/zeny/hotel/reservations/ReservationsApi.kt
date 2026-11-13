@@ -229,6 +229,22 @@ interface ReservationsApi {
      * passada, por id. Sem conferir permissão e sem trava; o fechamento do dia chama com a data que fecha.
      */
     fun inHouse(date: LocalDate): List<ReservationId>
+
+    /**
+     * As cobranças devidas da hospedada [id] até [through] (M6 E11; a regra única do fechamento do dia e do
+     * check-out): `null` se a reserva não existe ou não está `IN_HOUSE`. Senão, as cobranças
+     * ([ReservationNightCharges]) de cada noite congelada `n` com
+     * `max(chegada, data operacional do check-in) <= n <= through` (no day use, a noite da chegada), em ordem de
+     * noite, com a taxa de turismo **vigente** (`HotelApi.taxSettings`). Sem conferir permissão. As chaves de
+     * lançamento (`sourceReference`) deduplicam o que já foi lançado: quem chama lança todas.
+     *
+     * Custo: cada fechamento repete o `post` das noites passadas de cada hospedada (cresce com o quadrado da estadia;
+     * aceitável em 30 UHs); se ficar lento, filtrar as chaves já lançadas.
+     */
+    fun chargesDue(
+        id: ReservationId,
+        through: LocalDate,
+    ): StayCharges?
 }
 
 /**

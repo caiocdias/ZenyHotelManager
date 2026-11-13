@@ -12,6 +12,8 @@ import com.zeny.hotel.reservations.NewRoomBlock
 import com.zeny.hotel.reservations.PendingGuarantee
 import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationNightCharges
+import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsErrorCodes
@@ -20,6 +22,7 @@ import com.zeny.hotel.reservations.RoomAssignmentReason
 import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.RoomBlockSummary
 import com.zeny.hotel.reservations.RoomMove
+import com.zeny.hotel.reservations.StayCharges
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryOutOfHorizonException
@@ -225,6 +228,7 @@ class ReservationsApiService(
     private val assignments: RoomAssignmentService,
     private val stays: StayTransitionsService,
     private val reservationQueries: ReservationQueryStore,
+    private val hotel: HotelApi,
 ) : ReservationsApi {
     override fun assignRoom(
         id: ReservationId,
@@ -302,6 +306,24 @@ class ReservationsApiService(
 
     @Transactional(readOnly = true)
     override fun inHouse(date: LocalDate): List<ReservationId> = reservationQueries.inHouseIds(date)
+
+    @Transactional(readOnly = true)
+    override fun chargesDue(
+        id: ReservationId,
+        through: LocalDate,
+    ): StayCharges? {
+        val reservation =
+            bookingStore.reservation(id)?.takeIf { it.status == ReservationStatus.IN_HOUSE } ?: return null
+        val from = maxOf(reservation.arrival, reservation.checkIn?.businessDate ?: reservation.arrival)
+        val fee = hotel.taxSettings().tourismFeePerPersonNight
+        val charges =
+            reservation.nightlyRates
+                .map { it.date }
+                .filter { it >= from && it <= through }
+                .sorted()
+                .flatMap { ReservationNightCharges.of(reservation, it, fee) }
+        return StayCharges(reservation.id, reservation.folioId, charges)
+    }
 
     override fun recountInventory(
         from: LocalDate?,
