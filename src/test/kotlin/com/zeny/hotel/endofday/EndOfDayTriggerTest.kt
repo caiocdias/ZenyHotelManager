@@ -349,16 +349,44 @@ class EndOfDayTriggerTest(
                 val outcome = runCatching { tick.get(60, TimeUnit.SECONDS) }
                 val response = runCatching { manual.get(60, TimeUnit.SECONDS) }
 
-                outcome.getOrThrow() shouldBeIn
-                    listOf(TickOutcome.STARTED, TickOutcome.RESUMED, TickOutcome.ALREADY_CLOSED)
-                response.getOrThrow().status shouldBeIn listOf(201, 409)
-                runCount(date) shouldBe 1
-                runRow(date)["status"] shouldBe "COMPLETED"
-                invocations(date) shouldContainExactly listOf(1, 1, 1, 1)
+                oneRunWithOneCreator(date, outcome.getOrThrow(), response.getOrThrow().status)
             } finally {
                 pool.shutdownNow()
             }
         }
+
+    @Test
+    fun `a manual run that closes the date before the trigger reads it leaves the trigger not due`() =
+        scenario { date, dueAt ->
+            setClock(dueAt)
+            // A intercalação extrema da corrida acima: o POST conclui (a etapa de avanço leva a data a D+1) antes de
+            // o tick ler a data corrente; D+1 vence 24 h depois, então o tick não tem o que fazer.
+            val status = startManually(manager(), date).status
+
+            val outcome = trigger.tick()
+
+            outcome shouldBe TickOutcome.NOT_DUE
+            oneRunWithOneCreator(date, outcome, status)
+        }
+
+    /**
+     * O desfecho da corrida entre o `tick` e o `POST` da mesma [date]: uma execução, concluída, com as etapas uma vez,
+     * e um criador só (o `tick` criou, `STARTED`, se e somente se o `POST` recebeu `409`). O `tick` pode também não
+     * ter o que fazer (`NOT_DUE`) quando o `POST` concluiu e avançou a data antes de ele ler a data corrente.
+     */
+    private fun oneRunWithOneCreator(
+        date: LocalDate,
+        outcome: TickOutcome,
+        status: Int,
+    ) = withClue("tick $outcome, HTTP $status") {
+        outcome shouldBeIn
+            listOf(TickOutcome.STARTED, TickOutcome.RESUMED, TickOutcome.ALREADY_CLOSED, TickOutcome.NOT_DUE)
+        status shouldBeIn listOf(201, 409)
+        (outcome == TickOutcome.STARTED) shouldBe (status == 409)
+        runCount(date) shouldBe 1
+        runRow(date)["status"] shouldBe "COMPLETED"
+        invocations(date) shouldContainExactly listOf(1, 1, 1, 1)
+    }
 
     @Test
     fun `an interrupted run outside the window waits for the manual resume`() =
