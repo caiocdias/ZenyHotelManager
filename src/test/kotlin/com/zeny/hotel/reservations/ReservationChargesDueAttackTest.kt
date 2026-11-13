@@ -96,8 +96,10 @@ class ReservationChargesDueAttackTest(
             val due = reservationsApi.chargesDue(ReservationId(id), today.plusDays(1))!!.charges
 
             val fees = due.filter { it.kind == NightChargeKind.TOURISM_FEE }
-            fees.map { it.date } shouldBe listOf(today, today.plusDays(1))
+            fees.map { it.date } shouldBe listOf(today.plusDays(1))
             fees.forEach { it.amount.amount.toPlainString() shouldBe "9.99" }
+            val onArrival = reservationsApi.chargesDue(ReservationId(id), today)!!.charges
+            onArrival.filter { it.kind == NightChargeKind.TOURISM_FEE }.map { it.date } shouldBe listOf(today)
         }
         withTourismFee(null) {
             reservationsApi
@@ -119,7 +121,9 @@ class ReservationChargesDueAttackTest(
             val last = reservationsApi.chargesDue(ReservationId(id), today.plusDays(1))!!.charges
 
             far.map { it.date }.distinct() shouldBe listOf(today, today.plusDays(1))
-            far.map { it.sourceReference } shouldBe last.map { it.sourceReference }
+            val nights = { charges: List<NightCharge> -> charges.filter { it.kind != NightChargeKind.TOURISM_FEE } }
+            nights(far).map { it.sourceReference } shouldBe nights(last).map { it.sourceReference }
+            far.none { it.kind == NightChargeKind.TOURISM_FEE } shouldBe true
         }
     }
 
