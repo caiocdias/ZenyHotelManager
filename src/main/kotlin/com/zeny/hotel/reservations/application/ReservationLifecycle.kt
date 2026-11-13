@@ -777,7 +777,11 @@ class ReservationLifecycle(
                 CancellationPenalties.amount(terms, reservation.nightlyRates, reservation.roomTotal),
                 reservation.penaltiesCharged,
             )
-        val posting = if (due.isPositive()) postNoShowFee(reservation, due, businessDate) else null
+        // Repetição na mesma data: o `BillingApi.post` devolve o lançamento antigo sem gravar nada. Um lançamento
+        // novo tem o valor exato do devido e foi gravado agora ou depois (`postedAt` não anterior a `now`); o antigo,
+        // não. Só o novo entra em `penaltiesCharged` e no evento, para o total bater com o razão.
+        val posted = if (due.isPositive()) postNoShowFee(reservation, due, businessDate) else null
+        val posting = posted?.takeIf { it.amount == due && !it.postedAt.isBefore(now) }
         val roomId = assignments.releaseOnNoShow(reservation, now)
         val updated =
             reservation.copy(

@@ -212,6 +212,41 @@ class ReservationNoShowTest(
     }
 
     @Test
+    fun `marking again on the same date replays the posting key and adds nothing to the charged total`(
+        scenario: Scenario,
+    ) {
+        val (type, _) = inventory.roomTypeWithRooms(1, today)
+        val plan = support.plan(listOf(type), cancellationBody = fixed("150.00"))
+        support.setPrices(plan.id, listOf(type), today, today.plusDays(10))
+        val reservation = created(type, plan.id, today, today.plusDays(1))
+        val id = reservation.id()
+        val folio = UUID.fromString(reservation["folioId"].asString())
+        var version = markNoShow(id)!!.version
+
+        // O total cobrado ficou menor que o razão (100,00 com devido 50,00; depois 0,00 com devido 150,00): a chave
+        // da data já foi lançada, então a repetição não grava nada e não soma nada.
+        listOf("100.00" to "100.00", "0.00" to "0.00").forEach { (reset, expected) ->
+            with(support.billing) { support.reactivate(id).expect(200) }
+            version = support.reservation(id)["reservation"]["version"].asLong()
+            jdbc
+                .sql("UPDATE reservations.reservation SET penalties_charged = CAST(:v AS numeric) WHERE id = :id")
+                .param("v", reset)
+                .param("id", id)
+                .update()
+
+            scenario
+                .stimulate(noShowStimulus(id))
+                .andWaitForEventOfType(ReservationMarkedNoShow::class.java)
+                .matching { it.reservationId == id && it.version > version }
+                .toArriveAndVerify { event -> event.penaltyCharged shouldBe false }
+
+            support.postings(folio) shouldHaveSize 1
+            support.reservation(id)["reservation"]["penaltiesCharged"].asString() shouldBe expected
+            version = support.reservation(id)["reservation"]["version"].asLong()
+        }
+    }
+
+    @Test
     @Timeout(30)
     fun `check-in and no-show racing on the same reservation end in exactly one of them`() {
         val stay = frontdesk.stay()
