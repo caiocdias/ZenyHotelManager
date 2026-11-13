@@ -5,7 +5,10 @@ import com.zeny.hotel.endofday.EndOfDayDateMismatchException
 import com.zeny.hotel.endofday.EndOfDayNotConfiguredException
 import com.zeny.hotel.endofday.EndOfDayPermissions
 import com.zeny.hotel.endofday.EndOfDayRunExistsException
+import com.zeny.hotel.endofday.EndOfDayRunNotFoundException
+import com.zeny.hotel.endofday.EndOfDayRunNotResumableException
 import com.zeny.hotel.endofday.domain.EndOfDayRun
+import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
@@ -68,6 +71,41 @@ class EndOfDayRunCommands(
         return create(businessDate, RunTrigger.MANUAL, actor.current().userId)
     }
 
+    /**
+     * Retoma a execução [runId] a pedido do operador. A autorização vem primeiro, antes de saber se a execução existe:
+     * a permissão `endofday.runs.execute` ou a aprovação de superior ([approvalToken]). Inexistente é
+     * [EndOfDayRunNotFoundException]; `COMPLETED`, [EndOfDayRunNotResumableException]; `FAILED` volta a `RUNNING` (e
+     * avisa o tempo real); `RUNNING` (interrompida por uma queda) é aceita sem mudança.
+     */
+    @Audited(RESUME)
+    @Transactional
+    fun resumeManually(
+        runId: EndOfDayRunId,
+        approvalToken: String?,
+    ): EndOfDayRun {
+        authorization.requireOrApproval(
+            SensitiveAction(RESUME, EndOfDayPermissions.RUNS_EXECUTE, "endofday.run:${runId.value}"),
+            approvalToken,
+        )
+        val run = runs.lockForUpdate(runId) ?: throw EndOfDayRunNotFoundException()
+        when (run.status) {
+            RunStatus.COMPLETED -> {
+                throw EndOfDayRunNotResumableException()
+            }
+
+            RunStatus.RUNNING -> {
+                audit.noChanges()
+            }
+
+            RunStatus.FAILED -> {
+                audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
+                run.resume(clock.instant().truncatedTo(ChronoUnit.MICROS))
+                publishRunChanged(runs, realtime, run)
+            }
+        }
+        return run
+    }
+
     private fun create(
         businessDate: LocalDate,
         trigger: RunTrigger,
@@ -116,5 +154,6 @@ class EndOfDayRunCommands(
 
     private companion object {
         const val START = "endofday.run.start"
+        const val RESUME = "endofday.run.resume"
     }
 }

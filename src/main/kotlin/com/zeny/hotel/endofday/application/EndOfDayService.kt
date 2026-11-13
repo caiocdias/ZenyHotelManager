@@ -1,5 +1,6 @@
 package com.zeny.hotel.endofday.application
 
+import com.zeny.hotel.endofday.EndOfDayRunInProgressException
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.endofday.domain.EndOfDayRunStep
@@ -76,6 +77,21 @@ class EndOfDayService(
         val run = commands.createManually(businessDate, approvalToken)
         engine.execute(run.id, manualWait)
         return view(run.id)
+    }
+
+    /**
+     * A retomada manual da execução [runId] ([EndOfDayRunCommands.resumeManually]: a permissão ou a aprovação de
+     * superior pelo [approvalToken] vêm antes de tudo): confirma a retomada, roda o motor esperando até
+     * `zeny.endofday.manual-wait` e devolve a execução relida no estado em que estiver. Outro executor com a trava é
+     * [EndOfDayRunInProgressException].
+     */
+    fun resumeManually(
+        runId: UUID,
+        approvalToken: String?,
+    ): EndOfDayRunView {
+        val id = commands.resumeManually(EndOfDayRunId(runId), approvalToken).id
+        if (engine.execute(id, manualWait) == EndOfDayExecution.Busy) throw EndOfDayRunInProgressException()
+        return view(id)
     }
 
     private fun view(id: EndOfDayRunId): EndOfDayRunView =

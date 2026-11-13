@@ -2,6 +2,7 @@ package com.zeny.hotel.endofday
 
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.ErrorCode
+import com.zeny.hotel.shared.NotFoundException
 import java.time.LocalDate
 import java.util.UUID
 
@@ -68,4 +69,25 @@ class EndOfDayNotConfiguredException :
     ConflictException(
         EndOfDayErrorCodes.END_OF_DAY_NOT_CONFIGURED,
         "Nenhuma etapa do fechamento do dia está registrada neste servidor.",
+    )
+
+/** 404 `END_OF_DAY_RUN_NOT_FOUND`: a execução do fechamento não existe. */
+class EndOfDayRunNotFoundException :
+    NotFoundException(
+        EndOfDayErrorCodes.END_OF_DAY_RUN_NOT_FOUND,
+        "A execução do fechamento do dia não existe.",
+    )
+
+/** 409 `END_OF_DAY_RUN_NOT_RESUMABLE`: só uma execução `FAILED` ou interrompida (`RUNNING`) pode ser retomada. */
+class EndOfDayRunNotResumableException :
+    ConflictException(
+        EndOfDayErrorCodes.END_OF_DAY_RUN_NOT_RESUMABLE,
+        "A execução do fechamento do dia já foi concluída e não há o que retomar.",
+    )
+
+/** 409 `END_OF_DAY_RUN_IN_PROGRESS`: outro executor está rodando o fechamento; acompanhe a execução. */
+class EndOfDayRunInProgressException :
+    ConflictException(
+        EndOfDayErrorCodes.END_OF_DAY_RUN_IN_PROGRESS,
+        "O fechamento do dia está em andamento em outro executor.",
     )

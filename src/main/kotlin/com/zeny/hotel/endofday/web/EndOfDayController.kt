@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
@@ -56,7 +57,10 @@ class EndOfDayController(
                 "`END_OF_DAY_RUN_EXISTS`, com `runId`, que **pode vir sem `runId`** quando outra criação da mesma " +
                 "data passou à frente ao mesmo tempo (o cliente relê a execução da data); data diferente da " +
                 "operacional corrente 409 `END_OF_DAY_DATE_MISMATCH`, com `currentBusinessDate`; nenhuma etapa " +
-                "registrada 409 `END_OF_DAY_NOT_CONFIGURED`. Publica `endofday.run` no tópico `end-of-day`.",
+                "registrada 409 `END_OF_DAY_NOT_CONFIGURED`. A repetição com a mesma `Idempotency-Key` devolve a " +
+                "resposta " +
+                "guardada (que pode ser `RUNNING`), não o estado atual; acompanhe pelo `GET …/runs/{id}` ou pelo " +
+                "tópico `end-of-day`. Publica `endofday.run` no tópico `end-of-day`.",
     )
     @ApiResponse(responseCode = "201", description = "Execução criada, no estado em que estiver.")
     fun start(
@@ -68,6 +72,31 @@ class EndOfDayController(
             .created(URI.create("/api/v1/end-of-day/runs/${run.id}"))
             .body(EndOfDayRunResponse.of(run))
     }
+
+    @PostMapping("/{id}/resume")
+    @Idempotent
+    @Operation(
+        operationId = "resumeEndOfDayRun",
+        summary = "Retomar o fechamento do dia manualmente",
+        description =
+            "Retoma a execução `FAILED` (a etapa que falhou volta a `PENDING`; as concluídas não rodam de novo) ou " +
+                "aceita a `RUNNING` interrompida por uma queda, sem mudá-la, e a roda, esperando até " +
+                "`zeny.endofday.manual-wait` (30 s por padrão). Sem corpo e sem `If-Match`: a trava do fechamento e " +
+                "o `END_OF_DAY_RUN_NOT_RESUMABLE` já cobrem a corrida. A resposta traz a execução **no estado em " +
+                "que estiver**: `COMPLETED`, `FAILED` ou `RUNNING` (o fechamento continua). A repetição com a mesma " +
+                "`Idempotency-Key` devolve a resposta guardada (que pode ser `RUNNING`), não o estado atual; " +
+                "acompanhe pelo `GET …/runs/{id}` ou pelo tópico `end-of-day`. Exige `Idempotency-Key` e " +
+                "`endofday.runs.execute` ou a aprovação de um superior (ação `endofday.run.resume`, recurso " +
+                "`endofday.run:<id>`); a autorização vem antes de saber se a execução existe. Recusas: execução " +
+                "inexistente 404 `END_OF_DAY_RUN_NOT_FOUND`; `COMPLETED` 409 `END_OF_DAY_RUN_NOT_RESUMABLE`; outro " +
+                "executor com a trava 409 `END_OF_DAY_RUN_IN_PROGRESS`. Publica `endofday.run` no tópico " +
+                "`end-of-day` quando a execução muda.",
+    )
+    @ApiResponse(responseCode = "200", description = "Execução retomada, no estado em que estiver.")
+    fun resume(
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+        @PathVariable id: UUID,
+    ): EndOfDayRunResponse = EndOfDayRunResponse.of(endOfDay.resumeManually(id, approvalToken))
 }
 
 @Schema(description = "O fechamento manual de uma data.")
