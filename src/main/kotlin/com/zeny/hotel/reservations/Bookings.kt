@@ -238,8 +238,9 @@ data class ReservationSummary(
     /** O cancelamento corrente (M4 E08); só numa reserva cancelada. */
     val cancellation: ReservationCancellation? = null,
     /**
-     * O total das multas de cancelamento já lançadas na conta desta reserva (M4 E08): um cancelamento depois de uma
-     * reativação lança só o que falta para a multa da política, nunca a multa de novo.
+     * O total das multas de cancelamento e de no-show já lançadas na conta desta reserva (M4 E08, M6 E11): um
+     * cancelamento ou um no-show depois de uma reativação lança só o que falta para a multa da política, nunca a multa
+     * de novo.
      */
     val penaltiesCharged: Money = Money.ZERO,
     /** A garantia registrada na confirmação da pré-reserva (M4 E09); nula na reserva que nunca foi pré-reserva. */

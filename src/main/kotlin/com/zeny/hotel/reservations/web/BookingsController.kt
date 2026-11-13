@@ -444,8 +444,8 @@ data class ReservationResponse(
     val cancellation: CancellationResponse?,
     @field:Schema(
         description =
-            "O total das multas de cancelamento já lançadas na conta desta reserva (um cancelamento depois de uma " +
-                "reativação lança só o que falta para a multa da política).",
+            "O total das multas de cancelamento e de no-show já lançadas na conta desta reserva (um cancelamento ou " +
+                "um no-show depois de uma reativação lança só o que falta para a multa da política).",
     )
     val penaltiesCharged: Money,
     @field:Schema(

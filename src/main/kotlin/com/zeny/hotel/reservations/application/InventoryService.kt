@@ -266,6 +266,8 @@ class ReservationsApiService(
         cancellation: ReservationCancellationRequest,
     ): ReservationSummary = lifecycle.cancelAuthorized(id, cancellation)
 
+    override fun markNoShow(id: ReservationId): ReservationSummary? = lifecycle.markNoShowAuthorized(id)
+
     override fun confirmReservation(
         id: ReservationId,
         method: GuaranteeMethod,

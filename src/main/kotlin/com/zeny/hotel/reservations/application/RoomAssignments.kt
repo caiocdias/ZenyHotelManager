@@ -339,6 +339,13 @@ class RoomAssignments(
         store.active(reservation.id)?.let { release(it, RoomAssignmentEndReason.RESERVATION_CANCELLED, now) }
     }
 
+    /** O no-show do fechamento solta a UH alocada (`RESERVATION_NO_SHOW`) e devolve o id dela (nulo sem alocação). */
+    fun releaseOnNoShow(
+        reservation: ReservationSummary,
+        now: Instant,
+    ): RoomId? =
+        store.active(reservation.id)?.also { release(it, RoomAssignmentEndReason.RESERVATION_NO_SHOW, now) }?.roomId
+
     /**
      * As UHs que a reserva pode receber (RF-RES-04, RF-UH-05): as ativas do tipo da reserva, sem OOO em nenhuma noite e
      * sem outra reserva alocada em parte do período, na ordem de [RoomSuggestions] (OOS por último, depois as

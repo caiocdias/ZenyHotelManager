@@ -47,6 +47,21 @@ interface ReservationsApi {
     ): ReservationSummary
 
     /**
+     * Marca como no-show a reserva confirmada que não chegou (M6 E11; RF-RES-07, RN-15, SPEC §8.4
+     * `Confirmed → NoShow`). **Só o fechamento do dia chama**: na transação de quem chama (ou numa própria), auditada
+     * `reservations.reservation.no-show` em nome do ator corrente ou do sistema, **sem permissão**. Travada a reserva,
+     * se já não é `CONFIRMED` ou se a chegada é depois da data operacional corrente (um check-in ou um cancelamento
+     * confirmados antes da trava a tiram daqui), nada muda e devolve `null`, nunca `409`. Senão: as unidades das noites
+     * a partir de `max(chegada, data operacional)` voltam ao inventário ou ao bloqueio; a multa é a da política de
+     * cancelamento **copiada na reserva**, sem prazo, descontado o já cobrado (`penaltiesCharged`), lançada na conta da
+     * reserva (`BillingApi.post`, código `NO_SHOW_FEE`, origem `END_OF_DAY`, `sourceReference`
+     * `reservations.reservation:<id>:<data operacional>:no-show`), sem isenção automática; a UH alocada é solta
+     * (`RESERVATION_NO_SHOW`); a reserva vira `NO_SHOW`, com o histórico e `ReservationMarkedNoShow` pelo outbox, tudo
+     * na mesma transação.
+     */
+    fun markNoShow(id: ReservationId): ReservationSummary?
+
+    /**
      * Confirma a pré-reserva com a garantia [method] (M4 E09; RF-RES-08 no recorte manual), na transação de quem chama
      * (ou numa própria), auditada `reservations.reservation.confirm` em nome do ator corrente ou do sistema, com as
      * mesmas regras de `POST /api/v1/reservations/{id}/confirm`, **menos a permissão** (quem chama já se autorizou: a
