@@ -79,7 +79,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H7 | Exportação XLSX com biblioteca leve (ex.: fastexcel ou Apache POI) declarada no *version catalog*; os PDFs são renderizados por `printing` (M5): `reporting` monta os dados e chama `printing`, como todo módulo dono de documento. | Troca local ao `reporting`. | E09 |
 | H8 | Avisos de pendência do fechamento (RF-NOT-01) são enviados por `endofday` chamando `notifications` (push e painel) para quem tem permissão de acompanhar o fechamento, além do andamento no SSE e do endpoint de pendências. | Ajuste de destinatários é configuração. | E10 |
 | H9 | Q-14 (turndown) e Q-15 (cortesia e uso da casa) seguem os padrões da SPEC §10: turndown como tipo de limpeza desativado; cortesia conta na ocupação e não no ADR, uso da casa não conta em nenhum dos dois. | Ajuste de configuração e do cálculo de `DailyStatistics`. | E01, E09 |
-| H10 | **Decidida pela opção recomendada pelo `arquiteto`, 2026-11-12 (sincronização):** o fechamento age sobre o hotel inteiro (no-show, diárias, UHs Sujas) e avança a data operacional, e no banco compartilhado dos testes isso lançaria diárias e no-shows nas reservas de outros testes e mudaria a data de todos. Por isso, os testes que rodam o fechamento com as etapas reais (E11, E13, E14 e o gate) usam um **caminho próprio**: um banco ou contexto de teste isolado só para eles, criado na E10 junto do apoio de testes do fechamento. Os demais testes continuam sem avançar a data (como o `MilestoneM5EndToEndTest`). O mecanismo exato fica com o plano da E10. | Sem o isolamento, os testes do fechamento ficam intermitentes e quebram testes de outros módulos. Alternativa descartada: rodar o fechamento no banco compartilhado só sobre as reservas do próprio teste, que exigiria um filtro de teste no código de produção. | E10, E11, E13, E14, E12 |
+| H10 | **Decidida pela opção recomendada pelo `arquiteto`, 2026-11-12 (sincronização):** o fechamento age sobre o hotel inteiro (no-show, diárias, UHs Sujas) e avança a data operacional, e no banco compartilhado dos testes isso lançaria diárias e no-shows nas reservas de outros testes e mudaria a data de todos. Por isso, os testes que rodam o fechamento com as etapas reais (E11, E13, E14 e o gate) usam um **caminho próprio**: um banco ou contexto de teste isolado só para eles, criado na E10 junto do apoio de testes do fechamento. Os demais testes continuam sem avançar a data (como o `MilestoneM5EndToEndTest`). O mecanismo exato fica com o plano da E10. **Mecanismo definido na E10 (2026-11-13):** banco próprio `zeny_endofday` no mesmo container de testes, pela anotação `@EndOfDayIntegrationTest` (`testsupport/EndOfDayIntegrationTest.kt`); cada teste termina com a data corrente sem execução ou `COMPLETED` (`EndOfDayTestRuns.settle()`) e afirma só sobre os próprios dados. | Sem o isolamento, os testes do fechamento ficam intermitentes e quebram testes de outros módulos. Alternativa descartada: rodar o fechamento no banco compartilhado só sobre as reservas do próprio teste, que exigiria um filtro de teste no código de produção. | E10, E11, E13, E14, E12 |
 | H11 | **Confirmada no código em 2026-11-12:** o `fnrh` guarda os domínios da FNRH com rótulo (`FnrhDomainValue(code, label)`, `FnrhDomainCatalog.values`), semeados por migração desde o primeiro dia (`fnrh/V2026_11_04_1030__create_fnrh_domain_values.sql`, inclusive `TRAVEL_REASONS` e `TRANSPORT_MODES`) e trocados pelo `refresh`. A ficha (`frontdesk/application/RegistrationCardService.kt` e `templates/frontdesk/registration-card.*`) mostra os códigos crus com "(código FNRH)". | Se o catálogo não tiver o código, a ficha mostra o código cru, como hoje. | E15 |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
@@ -175,7 +175,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E10 | Motor do fechamento do dia | #em-andamento | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
+| E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
 | E11 | Etapas financeiras e operacionais do fechamento | #pendente | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
 | E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
@@ -220,7 +220,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E10 — Motor do fechamento do dia — #em-andamento
+## E10 — Motor do fechamento do dia — #concluida
 
 **Objetivo:** criar o módulo `endofday` com o motor do fechamento (RF-FEC-01, RF-FEC-03, RN-21, ARCHITECTURE §13): `EndOfDayRun` com etapas persistidas, execução ordenada, retomada da etapa pendente, uma execução por data e nunca em paralelo, disparo automático no horário configurado em `hotel` (fuso do hotel) e manual com step-up.
 
@@ -240,16 +240,16 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Execução com etapas falsas percorre todas na ordem e registra início, fim e resultado de cada uma.
-- [ ] Falha forçada na terceira etapa deixa a execução retomável; `POST …/resume` continua da terceira sem reexecutar as duas primeiras (contador no teste).
-- [ ] Dois disparos simultâneos para a mesma data resultam em uma única execução.
-- [ ] Nova execução para data já fechada → `409` com `code` estável.
-- [ ] `POST /api/v1/end-of-day/runs` sem permissão → `403` `APPROVAL_REQUIRED`; com aprovação → executa e audita solicitante e aprovador.
-- [ ] O gatilho automático calcula o horário no fuso do hotel (teste com relógio fixo e fuso diferente de UTC).
-- [ ] Andamento publicado no SSE.
-- [ ] Uma `EndOfDayIssue` registrada gera notificação de pendência do fechamento via `notifications` para quem tem a permissão de acompanhar o fechamento (RF-NOT-01).
-- [ ] A duração e a falha do fechamento aparecem em `/actuator/prometheus`, e a regra de alerta está em `docker/prometheus/alerts.yaml`; a entrega a uma pessoa é da M8 E18.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Execução com etapas falsas percorre todas na ordem e registra início, fim e resultado de cada uma.
+- [x] Falha forçada na terceira etapa deixa a execução retomável; `POST …/resume` continua da terceira sem reexecutar as duas primeiras (contador no teste).
+- [x] Dois disparos simultâneos para a mesma data resultam em uma única execução.
+- [x] Nova execução para data já fechada → `409` com `code` estável.
+- [x] `POST /api/v1/end-of-day/runs` sem permissão → `403` `APPROVAL_REQUIRED`; com aprovação → executa e audita solicitante e aprovador.
+- [x] O gatilho automático calcula o horário no fuso do hotel (teste com relógio fixo e fuso diferente de UTC).
+- [x] Andamento publicado no SSE.
+- [x] Uma `EndOfDayIssue` registrada gera notificação de pendência do fechamento via `notifications` para quem tem a permissão de acompanhar o fechamento (RF-NOT-01).
+- [x] A duração e a falha do fechamento aparecem em `/actuator/prometheus`, e a regra de alerta está em `docker/prometheus/alerts.yaml`; a entrega a uma pessoa é da M8 E18.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -268,12 +268,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-12-m6-operacao-fechamento-e10.md`, 14 tarefas, todas `Risco: alto`, executadas em série (máquina de 14 GB). Revisão de arquitetura: aprovada na rodada 2 (`revisor-arquitetura`, opus; rodadas 0 e 1 bloqueadas com 12 e 4 Importantes, todos corrigidos no plano).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `7ae1a3b` (plano) a `8b986e7`, sobre `b23958e` da `main`; cada tarefa com desenvolvedor → testador → verificação mecânica → `revisor-seguranca`; três tarefas tiveram teste vermelho do testador corrigido no código (Tasks 9 e 11: data/instante fora do alcance do PostgreSQL davam 500) e quatro tiveram uma rodada de correção pela revisão (Tasks 4, 5, 12 e a onda final).
+- Revisão final: `revisor-seguranca` (opus) sobre `b23958e..0399709` — aprovado com ressalvas, 0 Critical; onda única de correção (`f17e89a` tira do git um relatório de processo e ignora `.superpowers/`; `8b986e7` prova pela API, sem etapas, o `409 END_OF_DAY_NOT_CONFIGURED` e o `NO_STEPS` do gatilho), re-revisão limpa. Scanner `osv-scanner` 2.7.0 nos três lockfiles: 0 Critical/High; 5 Medium/Low pré-existentes (lockfiles iguais aos da `main`). `check_test_integrity.py --base b23958e`: 6 apontamentos `DEV_TESTE_DO_TESTADOR`, todos autorizados por ruling e julgados justificados. oasdiff: nenhuma mudança `ERR` em `/api/v1`.
+- Critérios verificados: (1) ordem e registro — `EndOfDayEngineTest`; (2) falha na 3ª e retomada sem reexecutar — `EndOfDayEngineTest`, `EndOfDayResumeApiTest` (contadores `1,1,2,1`); (3) disparos simultâneos — `EndOfDayRunsApiTest`, `EndOfDayTriggerTest`, `EndOfDayRunTransitionsTest`; (4) data fechada → `409 END_OF_DAY_ALREADY_CLOSED` — `EndOfDayRunsApiTest`; (5) `403 APPROVAL_REQUIRED` e trilha com solicitante e aprovador — `EndOfDayRunsApiTest`, `EndOfDayResumeApiTest`; (6) horário no fuso do hotel — `EndOfDayScheduleTest` (Manaus, Tóquio, horário de verão) e `EndOfDayTriggerTest`; (7) SSE — `EndOfDayProgressTest`; (8) notificação de pendência — `EndOfDayIssuesTest`; (9) métricas em `/actuator/prometheus` e regras `ZenyEndOfDayFailed`, `ZenyEndOfDayNotRun`, `ZenyEndOfDayMetricsUnavailable` — `EndOfDayMetricsTest`, `promtool` 8 regras OK; (10) build, testes e contrato — gate abaixo.
+- Gate: `./gradlew build` em `35b7d00` → BUILD SUCCESSFUL, 3604 testes, 0 falhas; gate final no HEAD integrado (`8b986e7`, só documentação depois dele) → BUILD SUCCESSFUL in 23m 34s, 3606 testes, 0 falhas (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi`, `koverVerify`).
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis): (a) unicidade total por data (`run_business_date_uk`) com reconciliação das etapas na retomada, mais estrita que "única por data de execução concluída" do escopo; (b) `POST /runs` `201` síncrono com espera limitada (`manual-wait` 30 s) e a execução no estado em que estiver, em vez de `202` assíncrono — contrato público; (c) janela de 24 h do automático, fora dela só manual com aviso (protege RN-03/RN-15 e a FNRH da E14); (d) horário devido: antes de 12:00 → madrugada seguinte, 12:00 ou depois → o próprio dia; (e) `FAILED` só pela retomada manual, sem novas tentativas automáticas; (f) trocar o fuso ou o `endOfDayTime` recalcula o horário devido e pode reabrir a janela de uma data atrasada; (g) H10: banco de teste próprio `zeny_endofday` no mesmo container. Transversais encontradas fora da etapa: `rollbackOn` global do Spring (exceção checked confirma a transação em outros casos de uso); o Jackson aceita número e data-hora em campos `format: date`; `PageCursor.instant` sem faixa em 9 consultas de outros módulos (provável 500 com cursor de instante extremo); o ShedLock com o banco fora loga a mensagem do JDBC.
+- Notas para a próxima etapa (E11, obrigatórias no plano dela): o contrato de etapa é o KDoc de `EndOfDayStepHandler` (idempotência pela data, item em `REQUIRES_NEW`, posições de 100 em 100, nomes estáveis, nada de dado pessoal na `message`, que a Recepção e o Financeiro leem); o `tick()` espera o motor por até `lock-at-most-for` e o agendador do Spring tem uma thread por padrão (decidir pool ou espera curta); `resumeManually` trava a linha sem `lock_timeout`; trocar a captura larga de `IllegalStateException` do `fail` no motor por um tipo próprio; teste de unidade do keep-alive antes de etapas longas (E13); decidir se as pendências levantadas pelas etapas ganham trilha própria; agrupar avisos por execução e etapa (uma notificação por pendência por usuário hoje); rever `EndOfDayTestConfiguration` (etapas falsas 10–40) e o `ModularityTest` do `endofday` (exige igualdade exata das dependências); o banco isolado acumula execuções de outros testes e a data só avança (afirmar só sobre os próprios dados); a próxima migração precisa de versão posterior a `V2026_11_12_1001`. Captura do brain: `00 Inbox/2026-11-13 - ZenyHotelManager - atualização m6-operacao-fechamento E10 - 1e4f709b.md`.
 
 ---
 
