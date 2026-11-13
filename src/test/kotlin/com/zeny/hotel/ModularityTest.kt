@@ -417,7 +417,7 @@ class ModularityTest {
         // ocupação pela RoomsApi), guests (a identificação sem número e o alerta de restrição pela GuestsApi), billing
         // (a conta e a caução pela BillingApi) e files (o anexo da comprovação do menor pela FilesApi); M5 E03: rates,
         // só os tipos públicos que a ReservationsApi usa (o id do plano do walk-in e o tipo de garantia da política
-        // copiada) e, na E04, os do pacote da noite (PackageId e PackageCharge), nunca a RatesApi;
+        // copiada), nunca a RatesApi (as cobranças do check-out, desde a M6 E11, vêm pela regra do reservations);
         // M5 E06: staff, o setor e o responsável do recado, só pela StaffApi (e os tipos dela); M5 E11: printing, só a
         // PrintingApi (e os tipos dela), para os documentos e a impressão; nunca fnrh (camada
         // acima) nem iam.
@@ -449,9 +449,8 @@ class ModularityTest {
             setOf(
                 "com.zeny.hotel.rates.RatePlanId",
                 "com.zeny.hotel.rates.GuaranteeType",
-                // M5 E04: as cobranças do check-out leem os pacotes da noite congelada (tipos públicos).
-                "com.zeny.hotel.rates.PackageId",
-                "com.zeny.hotel.rates.PackageCharge",
+                // Desde a M6 E11 as cobranças do check-out vêm pela regra do reservations (NightCharge): sem PackageId
+                // nem PackageCharge.
             )
         frontdesk
             .getDirectDependencies(modules)
