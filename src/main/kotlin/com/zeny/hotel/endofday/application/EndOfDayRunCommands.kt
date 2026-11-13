@@ -9,6 +9,8 @@ import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
+import com.zeny.hotel.endofday.infrastructure.MAX_STORABLE_DATE
+import com.zeny.hotel.endofday.infrastructure.MIN_STORABLE_DATE
 import com.zeny.hotel.endofday.infrastructure.RUN_BUSINESS_DATE_UK
 import com.zeny.hotel.endofday.infrastructure.violatesUnique
 import com.zeny.hotel.hotel.HotelApi
@@ -101,7 +103,12 @@ class EndOfDayRunCommands(
         if (registry.slots.isEmpty()) throw EndOfDayNotConfiguredException()
     }
 
+    /**
+     * Uma data fora do alcance do banco ([MIN_STORABLE_DATE] a [MAX_STORABLE_DATE]) não tem execução e não é
+     * consultada (a consulta falharia com um 500); cai na recusa seguinte, a da data não corrente.
+     */
     private fun checkNoRun(businessDate: LocalDate) {
+        if (businessDate !in MIN_STORABLE_DATE..MAX_STORABLE_DATE) return
         val run = runs.findByBusinessDate(businessDate) ?: return
         if (run.status == RunStatus.COMPLETED) throw EndOfDayAlreadyClosedException(businessDate)
         throw EndOfDayRunExistsException(businessDate, run.id.value)

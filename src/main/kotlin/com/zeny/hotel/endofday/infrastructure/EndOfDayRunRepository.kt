@@ -42,6 +42,16 @@ interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
         lockRowForNoKeyUpdate(id.value)?.let { findById(it).orElse(null) }
 }
 
+/**
+ * A primeira data que o tipo `date` do PostgreSQL guarda (`4714-11-24 BC`, o dia juliano 0; no calendário ISO do
+ * `LocalDate`, o ano -4713). Nenhuma execução existe antes dela, e consultar uma data fora do alcance do banco falha
+ * (`date out of range`) em vez de não achar nada.
+ */
+internal val MIN_STORABLE_DATE: LocalDate = LocalDate.of(-4713, 11, 24)
+
+/** A última data que o tipo `date` do PostgreSQL guarda (`5874897-12-31`); depois dela, como em [MIN_STORABLE_DATE]. */
+internal val MAX_STORABLE_DATE: LocalDate = LocalDate.of(5_874_897, 12, 31)
+
 /** A restrição única da data operacional da execução (RN-21: uma execução por data). */
 internal const val RUN_BUSINESS_DATE_UK = "run_business_date_uk"
 

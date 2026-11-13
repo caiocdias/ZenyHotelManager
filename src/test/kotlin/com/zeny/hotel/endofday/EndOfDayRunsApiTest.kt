@@ -347,6 +347,23 @@ class EndOfDayRunsApiTest(
             runCount(hotelApi.currentBusinessDate()) shouldBe 0
         }
 
+    @Test
+    fun `a businessDate outside the range of the database date type is END_OF_DAY_DATE_MISMATCH`() =
+        settled {
+            val auth = asUser(manager().id.value)
+            val current = hotelApi.currentBusinessDate()
+
+            listOf("+5874898-01-01", "+5874897-12-31", "-4713-11-24", "-4714-11-23", "+999999999-12-31")
+                .forEach { value ->
+                    withClue(value) {
+                        start(auth, mapOf("businessDate" to value))
+                            .problem(409, "END_OF_DAY_DATE_MISMATCH")["currentBusinessDate"]
+                            .asString() shouldBe current.toString()
+                    }
+                }
+            runCount(current) shouldBe 0
+        }
+
     private companion object {
         val HELD_FOR: Duration = Duration.ofMinutes(1)
     }
