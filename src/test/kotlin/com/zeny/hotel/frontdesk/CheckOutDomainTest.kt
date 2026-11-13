@@ -7,11 +7,9 @@ import com.zeny.hotel.billing.FolioStatus
 import com.zeny.hotel.billing.FolioSummary
 import com.zeny.hotel.billing.OwnerBalance
 import com.zeny.hotel.billing.TransactionCodeId
+import com.zeny.hotel.frontdesk.domain.CheckOutCharges
 import com.zeny.hotel.frontdesk.domain.EarlyLateFeeChangedException
 import com.zeny.hotel.frontdesk.domain.EarlyLateFeeRules
-import com.zeny.hotel.frontdesk.domain.StayCharge
-import com.zeny.hotel.frontdesk.domain.StayChargeKind
-import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.frontdesk.domain.StayNotSettledException
 import com.zeny.hotel.frontdesk.domain.StayRules
 import com.zeny.hotel.frontdesk.domain.StayTransitionNotAllowedException
@@ -29,6 +27,8 @@ import com.zeny.hotel.reservations.BookingId
 import com.zeny.hotel.reservations.CancellationTerms
 import com.zeny.hotel.reservations.GuaranteeTerms
 import com.zeny.hotel.reservations.MarketSegment
+import com.zeny.hotel.reservations.NightCharge
+import com.zeny.hotel.reservations.NightChargeKind
 import com.zeny.hotel.reservations.NightlyRateSummary
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationStatus
@@ -60,34 +60,34 @@ class CheckOutDomainTest {
     fun `a day use checked out on its date charges the room without included packages and every package`() {
         val reservation = reservation(ARRIVAL, ARRIVAL, night(ARRIVAL, "300.00", "40.00", listOf(breakfast, parking)))
 
-        val charges = StayCharges.pending(reservation, ARRIVAL)
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
 
         charges shouldHaveSize 3
-        val room = charges.single { it.kind == StayChargeKind.ROOM }
+        val room = charges.single { it.kind == NightChargeKind.ROOM }
         room.amount shouldBe Money.of("260.00")
         room.transactionCodeId.shouldBeNull()
         room.sourceReference shouldBe "reservations.reservation:${reservation.id}:$ARRIVAL:room"
-        val coffee = charges.single { it.packageId == breakfast.packageId }
-        coffee.kind shouldBe StayChargeKind.PACKAGE
+        val coffee = charges.single { it.packageId == breakfast.packageId.value }
+        coffee.kind shouldBe NightChargeKind.PACKAGE
         coffee.quantity.compareTo(BigDecimal(2)) shouldBe 0
         coffee.unitPrice shouldBe Money.of("20.00")
         coffee.description shouldBe "Café da manhã"
         coffee.transactionCodeId shouldBe breakfast.transactionCodeId
         coffee.sourceReference shouldBe
             "reservations.reservation:${reservation.id}:$ARRIVAL:package:${breakfast.packageId}"
-        charges.single { it.packageId == parking.packageId }.amount shouldBe Money.of("25.00")
-        charges.map(StayCharge::amount).sum() shouldBe reservation.nightlyRates.single().amount
+        charges.single { it.packageId == parking.packageId.value }.amount shouldBe Money.of("25.00")
+        charges.map(NightCharge::amount).sum() shouldBe reservation.nightlyRates.single().amount
     }
 
     @Test
     fun `only the room and the included packages are flagged as included in the rate`() {
         val reservation = reservation(ARRIVAL, ARRIVAL, night(ARRIVAL, "300.00", "40.00", listOf(breakfast, parking)))
 
-        val charges = StayCharges.pending(reservation, ARRIVAL)
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
 
-        charges.single { it.kind == StayChargeKind.ROOM }.includedInRate shouldBe true
-        charges.single { it.packageId == breakfast.packageId }.includedInRate shouldBe true
-        charges.single { it.packageId == parking.packageId }.includedInRate shouldBe false
+        charges.single { it.kind == NightChargeKind.ROOM }.includedInRate shouldBe true
+        charges.single { it.packageId == breakfast.packageId.value }.includedInRate shouldBe true
+        charges.single { it.packageId == parking.packageId.value }.includedInRate shouldBe false
     }
 
     @Test
@@ -95,7 +95,7 @@ class CheckOutDomainTest {
         val nights = (0L..2L).map { night(ARRIVAL.plusDays(it), "300.00", "0.00", emptyList()) }
         val reservation = reservation(ARRIVAL, ARRIVAL.plusDays(3), *nights.toTypedArray())
 
-        val charges = StayCharges.pending(reservation, ARRIVAL)
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
 
         charges shouldHaveSize 1
         charges.single().sourceReference shouldBe "reservations.reservation:${reservation.id}:$ARRIVAL:room"
@@ -103,10 +103,20 @@ class CheckOutDomainTest {
     }
 
     @Test
+    fun `an overnight stay checked out on the arrival date charges no tourism fee because it becomes a day use`() {
+        val nights = (0L..2L).map { night(ARRIVAL.plusDays(it), "300.00", "0.00", emptyList()) }
+        val reservation = reservation(ARRIVAL, ARRIVAL.plusDays(3), *nights.toTypedArray())
+
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
+
+        charges.map { it.kind } shouldBe listOf(NightChargeKind.ROOM)
+    }
+
+    @Test
     fun `a stay checked out after the arrival date charges nothing`() {
         val reservation = reservation(ARRIVAL, ARRIVAL.plusDays(2), night(ARRIVAL, "300.00", "0.00", emptyList()))
 
-        StayCharges.pending(reservation, ARRIVAL.plusDays(1)).shouldBeEmpty()
+        CheckOutCharges.pending(reservation, ARRIVAL.plusDays(1)).shouldBeEmpty()
     }
 
     @Test
@@ -116,11 +126,11 @@ class CheckOutDomainTest {
         val reservation =
             reservation(ARRIVAL, ARRIVAL.plusDays(1), night(ARRIVAL, "100.00", "100.00", listOf(free, included)))
 
-        val charges = StayCharges.pending(reservation, ARRIVAL)
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
 
         charges shouldHaveSize 1
-        charges.single().kind shouldBe StayChargeKind.PACKAGE
-        charges.single().packageId shouldBe included.packageId
+        charges.single().kind shouldBe NightChargeKind.PACKAGE
+        charges.single().packageId shouldBe included.packageId.value
     }
 
     @Test
@@ -129,7 +139,7 @@ class CheckOutDomainTest {
         val pattern =
             Regex("""^reservations\.reservation:[0-9a-f-]{36}:\d{4}-\d{2}-\d{2}:(room|package:[0-9a-f-]{36})$""")
 
-        val charges = StayCharges.pending(reservation, ARRIVAL)
+        val charges = CheckOutCharges.pending(reservation, ARRIVAL)
 
         charges shouldHaveSize 3
         charges.forEach { pattern.matches(it.sourceReference) shouldBe true }

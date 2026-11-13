@@ -1,6 +1,5 @@
 package com.zeny.hotel.reservations
 
-import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
@@ -67,11 +66,22 @@ class ReservationChargesDueAttackTest(
             val summary = reservationsApi.reservation(ReservationId(id))!!
 
             val due = reservationsApi.chargesDue(ReservationId(id), today)!!.charges
-            val checkOut = StayCharges.pending(summary, today)
+            // As chaves e os valores que o check-out lançava: a hospedagem sem o incluso e cada pacote da noite.
+            val night = summary.nightlyRates.single { it.date == today }
+            val base = "reservations.reservation:$id:$today"
+            val room = Triple("$base:room", night.roomAmount - night.includedPackagesAmount, true)
+            val packages =
+                night.packages.map {
+                    Triple(
+                        "$base:package:${it.packageId}",
+                        it.unitPrice * it.quantity,
+                        it.includedInRate,
+                    )
+                }
+            val expected = (listOf(room) + packages).filterNot { it.second.isZero() }
 
-            checkOut shouldHaveSize 2
-            due.map { Triple(it.sourceReference, it.amount, it.includedInRate) } shouldBe
-                checkOut.map { Triple(it.sourceReference, it.amount, it.includedInRate) }
+            due shouldHaveSize 2
+            due.map { Triple(it.sourceReference, it.amount, it.includedInRate) } shouldBe expected
         }
     }
 

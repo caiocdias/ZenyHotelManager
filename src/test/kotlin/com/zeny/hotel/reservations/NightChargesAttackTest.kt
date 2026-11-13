@@ -3,7 +3,6 @@ package com.zeny.hotel.reservations
 import com.zeny.hotel.billing.FolioId
 import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.TransactionCodeId
-import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.rates.CancellationPenaltyType
 import com.zeny.hotel.rates.CancellationPolicyId
 import com.zeny.hotel.rates.GuaranteePolicyId
@@ -22,7 +21,6 @@ import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.sum
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldMatch
 import org.junit.jupiter.api.Test
@@ -31,8 +29,8 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * Ataque as cobrancas de uma noite congelada (M6 E11, Task 5): paridade com o check-out, arredondamento, taxa de
- * turismo, bordas de data e dados pessoais.
+ * Ataque às cobranças de uma noite congelada (M6 E11, Task 5): paridade com o check-out (valores e chaves fixos),
+ * arredondamento, taxa de turismo, bordas de data e dados pessoais.
  */
 class NightChargesAttackTest {
     private val breakfast = packageCharge("Café da manhã", true, 3, "20.00")
@@ -60,25 +58,36 @@ class NightChargesAttackTest {
                             it.date,
                         )
                     }
-            val theirs =
-                StayCharges
-                    .pending(reservation, ARRIVAL)
-                    .map {
-                        listOf(
-                            it.sourceReference,
-                            it.amount,
-                            it.quantity.toPlainString(),
-                            it.unitPrice,
-                            it.description,
-                            it.transactionCodeId,
-                            it.packageId?.value,
-                            it.includedInRate,
-                            it.date,
-                        )
-                    }
+            // Os valores e as chaves que o check-out da M5 E04 lançava (hospedagem 300 menos o café incluso de 60).
+            val base = "reservations.reservation:${reservation.id}:$ARRIVAL"
+            val expected =
+                listOf(
+                    listOf("$base:room", Money.of("240.00"), "1", Money.of("240.00"), null, null, null, true, ARRIVAL),
+                    listOf(
+                        "$base:package:${breakfast.packageId}",
+                        Money.of("60.00"),
+                        "3",
+                        Money.of("20.00"),
+                        "Café da manhã",
+                        breakfast.transactionCodeId,
+                        breakfast.packageId.value,
+                        true,
+                        ARRIVAL,
+                    ),
+                    listOf(
+                        "$base:package:${parking.packageId}",
+                        Money.of("25.00"),
+                        "1",
+                        Money.of("25.00"),
+                        "Estacionamento",
+                        parking.transactionCodeId,
+                        parking.packageId.value,
+                        false,
+                        ARRIVAL,
+                    ),
+                )
 
-            mine shouldBe theirs
-            mine shouldHaveSize 3
+            mine shouldBe expected
         }
     }
 
