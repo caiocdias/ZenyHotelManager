@@ -1,5 +1,6 @@
 package com.zeny.hotel.endofday
 
+import com.zeny.hotel.endofday.application.EndOfDayIssues
 import com.zeny.hotel.endofday.application.EndOfDayRunTransitions
 import com.zeny.hotel.endofday.application.EndOfDayStepContext
 import com.zeny.hotel.endofday.application.EndOfDayStepHandler
@@ -16,6 +17,7 @@ import com.zeny.hotel.endofday.domain.StepStatus
 import com.zeny.hotel.endofday.infrastructure.EndOfDayIssueRepository
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.hotel.HotelApi
+import com.zeny.hotel.notifications.NotificationsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
@@ -60,6 +62,7 @@ class EndOfDayRunTransitionsAttackTest(
     @Autowired private val audit: AuditContext,
     @Autowired private val clock: Clock,
     @Autowired private val beanFactory: AutowireCapableBeanFactory,
+    @Autowired private val notifications: NotificationsApi,
 ) {
     private class FakeStep(
         override val name: String,
@@ -91,7 +94,13 @@ class EndOfDayRunTransitionsAttackTest(
 
     private fun transitionsWith(vararg handlers: EndOfDayStepHandler): EndOfDayRunTransitions =
         beanFactory.initializeBean(
-            EndOfDayRunTransitions(runs, issues, EndOfDayStepRegistry(handlers.toList()), audit, clock),
+            EndOfDayRunTransitions(
+                runs,
+                EndOfDayIssues(issues, notifications, clock),
+                EndOfDayStepRegistry(handlers.toList()),
+                audit,
+                clock,
+            ),
             "endOfDayRunTransitionsAttack",
         ) as EndOfDayRunTransitions
 
@@ -371,8 +380,9 @@ class EndOfDayRunTransitionsAttackTest(
             jdbc
                 .sql(
                     "SELECT COALESCE(CAST(after_state AS text), '') FROM audit.audit_entry " +
-                        "WHERE entity_type = 'endofday.run-issue'",
-                ).query(String::class.java)
+                        "WHERE entity_type = 'endofday.run-issue' AND CAST(after_state AS text) LIKE :run",
+                ).param("run", "%${run.id.value}%")
+                .query(String::class.java)
                 .list()
         val everything = rows.joinToString("\n") { "${it.before}${it.after}" } + issueStates.joinToString("\n")
         everything shouldNotContain "Fulano"

@@ -7,7 +7,6 @@ import com.zeny.hotel.endofday.domain.EndOfDayRunStep
 import com.zeny.hotel.endofday.domain.RunStatus
 import com.zeny.hotel.endofday.domain.StepStart
 import com.zeny.hotel.endofday.domain.StepStatus
-import com.zeny.hotel.endofday.infrastructure.EndOfDayIssueRepository
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
@@ -28,7 +27,7 @@ import java.time.temporal.ChronoUnit
 @Component
 class EndOfDayRunTransitions(
     private val runs: EndOfDayRunRepository,
-    private val issues: EndOfDayIssueRepository,
+    private val issues: EndOfDayIssues,
     private val registry: EndOfDayStepRegistry,
     private val audit: AuditContext,
     private val clock: Clock,
@@ -49,7 +48,7 @@ class EndOfDayRunTransitions(
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
         val now = now()
         val result = run.beginNext(registry.slots, now)
-        result.skipped.forEach { open(run, it, STEP_UNREGISTERED, it, UNREGISTERED_MESSAGE, now) }
+        result.skipped.forEach { open(run, it, STEP_UNREGISTERED, it, UNREGISTERED_MESSAGE) }
         return result.started
     }
 
@@ -74,7 +73,14 @@ class EndOfDayRunTransitions(
             return false
         }
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
-        val sink = EndOfDayIssueSink { kind, reference, message -> save(run, stepName, kind, reference, message) }
+        val sink =
+            EndOfDayIssueSink {
+                kind,
+                reference,
+                message,
+                ->
+                issues.raise(run.id, run.businessDate, stepName, kind, reference, message)
+            }
         val outcome = work(EndOfDayStepContext(run.id, run.businessDate, sink))
         run.completeStep(stepName, outcome.result, now())
         return true
@@ -108,7 +114,7 @@ class EndOfDayRunTransitions(
         val now = now()
         val code = reason.take(EndOfDayRunStep.RESULT_LENGTH)
         run.failStep(stepName, code, now)
-        open(run, stepName, STEP_FAILED, stepName, code, now)
+        open(run, stepName, STEP_FAILED, stepName, code)
         return true
     }
 
@@ -122,20 +128,9 @@ class EndOfDayRunTransitions(
         kind: String,
         reference: String,
         message: String,
-        now: Instant,
     ) {
-        val issue = issues.save(EndOfDayIssue.open(run.id, stepName, kind, reference, message, now))
+        val issue = issues.raise(run.id, run.businessDate, stepName, kind, reference, message)
         audit.created(EndOfDayAudit.RUN_ISSUE, issue.id) { issue.auditState() }
-    }
-
-    private fun save(
-        run: EndOfDayRun,
-        stepName: String,
-        kind: String,
-        reference: String?,
-        message: String,
-    ) {
-        issues.save(EndOfDayIssue.open(run.id, stepName, kind, reference, message, now()))
     }
 
     private fun now(): Instant = clock.instant().truncatedTo(ChronoUnit.MICROS)

@@ -172,9 +172,10 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1: o módulo declara exatamente shared, hotel e notifications; as dependências reais ficam
-        // contidas nesse conjunto (hotel e notifications ganham usos nas Tasks 4 a 6 da E10).
-        (dependencies - allowed) shouldBe emptyList()
+        // ARCHITECTURE §3.1: o módulo declara exatamente shared, hotel e notifications. As dependências reais são
+        // shared e notifications; o hotel só ganha uso na etapa de avanço da data (E11), então até lá a contenção
+        // vale só para ele (Task 6 da E10).
+        dependencies.toSet() shouldBe allowed - "hotel"
         EndOfDayModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies

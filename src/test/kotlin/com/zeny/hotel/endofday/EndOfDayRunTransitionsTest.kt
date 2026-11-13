@@ -1,5 +1,6 @@
 package com.zeny.hotel.endofday
 
+import com.zeny.hotel.endofday.application.EndOfDayIssues
 import com.zeny.hotel.endofday.application.EndOfDayRunTransitions
 import com.zeny.hotel.endofday.application.EndOfDayStepContext
 import com.zeny.hotel.endofday.application.EndOfDayStepHandler
@@ -16,6 +17,7 @@ import com.zeny.hotel.endofday.domain.StepStatus
 import com.zeny.hotel.endofday.infrastructure.EndOfDayIssueRepository
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.hotel.HotelApi
+import com.zeny.hotel.notifications.NotificationsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ErrorCode
@@ -62,6 +64,7 @@ class EndOfDayRunTransitionsTest(
     @Autowired private val audit: AuditContext,
     @Autowired private val clock: Clock,
     @Autowired private val beanFactory: AutowireCapableBeanFactory,
+    @Autowired private val notifications: NotificationsApi,
 ) {
     private class FakeStep(
         override val name: String,
@@ -84,7 +87,13 @@ class EndOfDayRunTransitionsTest(
 
     private fun transitionsWith(vararg handlers: EndOfDayStepHandler): EndOfDayRunTransitions =
         beanFactory.initializeBean(
-            EndOfDayRunTransitions(runs, issues, EndOfDayStepRegistry(handlers.toList()), audit, clock),
+            EndOfDayRunTransitions(
+                runs,
+                EndOfDayIssues(issues, notifications, clock),
+                EndOfDayStepRegistry(handlers.toList()),
+                audit,
+                clock,
+            ),
             "endOfDayRunTransitionsUnderTest",
         ) as EndOfDayRunTransitions
 
