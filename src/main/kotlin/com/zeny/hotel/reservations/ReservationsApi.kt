@@ -235,8 +235,12 @@ interface ReservationsApi {
      * check-out): `null` se a reserva não existe ou não está `IN_HOUSE`. Senão, as cobranças
      * ([ReservationNightCharges]) de cada noite congelada `n` com
      * `max(chegada, data operacional do check-in) <= n <= through` (no day use, a noite da chegada), em ordem de
-     * noite, com a taxa de turismo **vigente** (`HotelApi.taxSettings`). Sem conferir permissão. As chaves de
-     * lançamento (`sourceReference`) deduplicam o que já foi lançado: quem chama lança todas.
+     * noite. A taxa de turismo **vigente** (`HotelApi.taxSettings`) entra **só na noite `through`**, a que fecha: as
+     * noites anteriores (recuperadas, como a do check-in feito durante a execução do fechamento) levam só a hospedagem
+     * e os pacotes. Motivo: a chave deduplica o que foi lançado, não a noite; com a taxa nula ou zero no fechamento de
+     * uma noite, a chave da taxa dela nunca é gravada, e recalcular a noite com a taxa ligada depois a cobraria
+     * retroativamente, no valor de outra data. Sem conferir permissão. As chaves de lançamento (`sourceReference`)
+     * deduplicam o que já foi lançado: quem chama lança todas.
      *
      * Custo: cada fechamento repete o `post` das noites passadas de cada hospedada (cresce com o quadrado da estadia;
      * aceitável em 30 UHs); se ficar lento, filtrar as chaves já lançadas.

@@ -329,6 +329,36 @@ class RoomChargesStepTest(
     }
 
     @Test
+    fun `a tourism fee configured after a close is not charged to the night already closed`() {
+        withTourismFee(null) {
+            val start = hotel.currentBusinessDate()
+            val (type, rooms) = inventory.roomTypeWithRooms(1, start)
+            val plan = pricedPlan(type, start)
+            val stay = inHouse(type, plan, rooms[0], start, start.plusDays(3))
+            try {
+                statusOf(EndOfDayTestRuns.closeCurrentDate(context)) shouldBe "COMPLETED"
+                val date = hotel.currentBusinessDate()
+                date shouldBe start.plusDays(1)
+
+                withTourismFee("5.00") {
+                    val run = EndOfDayTestRuns.closeCurrentDate(context)
+
+                    statusOf(run) shouldBe "COMPLETED"
+                    val charged = lines(stay.folio).filter { it.key != null }
+                    charged.map { Triple(it.key, it.amount, it.businessDate) } shouldContainExactlyInAnyOrder
+                        listOf(
+                            Triple("reservations.reservation:${stay.id}:$start:room", "400.00", start),
+                            Triple("reservations.reservation:${stay.id}:$date:room", "400.00", date),
+                            Triple("reservations.reservation:${stay.id}:$date:tourism-fee", "10.00", date),
+                        )
+                }
+            } finally {
+                EndOfDayTestRuns.settle(context)
+            }
+        }
+    }
+
+    @Test
     fun `an overstay gets no automatic night`() {
         withTourismFee("5.00") {
             val start = hotel.currentBusinessDate()

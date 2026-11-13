@@ -321,7 +321,7 @@ class ReservationsApiService(
                 .map { it.date }
                 .filter { it >= from && it <= through }
                 .sorted()
-                .flatMap { ReservationNightCharges.of(reservation, it, fee) }
+                .flatMap { night -> ReservationNightCharges.of(reservation, night, fee.takeIf { night == through }) }
         return StayCharges(reservation.id, reservation.folioId, charges)
     }
 
