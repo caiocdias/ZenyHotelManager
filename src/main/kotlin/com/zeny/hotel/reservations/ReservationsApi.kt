@@ -239,8 +239,10 @@ interface ReservationsApi {
      * noites anteriores (recuperadas, como a do check-in feito durante a execução do fechamento) levam só a hospedagem
      * e os pacotes. Motivo: a chave deduplica o que foi lançado, não a noite; com a taxa nula ou zero no fechamento de
      * uma noite, a chave da taxa dela nunca é gravada, e recalcular a noite com a taxa ligada depois a cobraria
-     * retroativamente, no valor de outra data. Sem conferir permissão. As chaves de lançamento (`sourceReference`)
-     * deduplicam o que já foi lançado: quem chama lança todas.
+     * retroativamente, no valor de outra data. Custo aceito: a noite recuperada (anterior à que fecha) não leva taxa
+     * de turismo, inclusive depois de uma falha de item (`ROOM_CHARGE_FAILED`) recuperada no fechamento seguinte; o
+     * operador lança a taxa à mão. Sem conferir permissão. As chaves de lançamento (`sourceReference`) deduplicam o que
+     * já foi lançado: quem chama lança todas.
      *
      * Custo: cada fechamento repete o `post` das noites passadas de cada hospedada (cresce com o quadrado da estadia;
      * aceitável em 30 UHs); se ficar lento, filtrar as chaves já lançadas.

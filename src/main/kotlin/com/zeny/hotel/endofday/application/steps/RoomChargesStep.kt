@@ -13,9 +13,11 @@ import org.springframework.stereotype.Component
 /**
  * A terceira etapa do fechamento (RF-FEC-01, RF-TAR-06, RN-14): lança na conta de cada hospedada que já chegou até a
  * data que fecha ([ReservationsApi.inHouse]) as cobranças devidas até essa data ([ReservationsApi.chargesDue]): a
- * hospedagem sem os pacotes inclusos, cada pacote da noite e, fora do day use, a taxa de turismo vigente, com origem
- * `END_OF_DAY` e sem taxa de serviço no que já está na tarifa ([com.zeny.hotel.reservations.NightCharge.toNewPosting]).
- * Os códigos `ROOM_CHARGE` e `TOURISM_FEE` são resolvidos uma vez por execução da etapa.
+ * hospedagem sem os pacotes inclusos, cada pacote da noite e, fora do day use, a taxa de turismo vigente só na noite
+ * que fecha, com origem `END_OF_DAY` e sem taxa de serviço no que já está na tarifa
+ * ([com.zeny.hotel.reservations.NightCharge.toNewPosting]). A noite recuperada (anterior à que fecha) não leva taxa de
+ * turismo, inclusive depois de uma falha de item ([ISSUE_KIND]) recuperada no fechamento seguinte; o operador lança a
+ * taxa à mão. Os códigos `ROOM_CHARGE` e `TOURISM_FEE` são resolvidos uma vez por execução da etapa.
  *
  * Cada hospedada roda na transação dela ([EndOfDayItems.each]); a recusa de uma (por exemplo, conta encerrada) vira a
  * pendência [ISSUE_KIND] com o id da reserva, sem parar o fechamento. A reserva que saiu de `IN_HOUSE` depois da
