@@ -436,7 +436,7 @@ sequenceDiagram
 
 ## 10. Tempo real
 
-- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications`, via SSE.
+- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications,end-of-day`, via SSE.
 - O payload é mínimo (`type`, `id`, `version`): o cliente aplica a mudança ou rebusca o recurso.
 - Os eventos são filtrados por permissão e escopo do usuário conectado.
 - O tópico `notifications` é pessoal: não exige permissão, e cada usuário recebe só as mensagens das próprias notificações.

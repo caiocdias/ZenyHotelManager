@@ -1,5 +1,6 @@
 package com.zeny.hotel.endofday.application
 
+import com.zeny.hotel.endofday.EndOfDayRealtime
 import com.zeny.hotel.endofday.domain.EndOfDayIssue
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
@@ -11,6 +12,9 @@ import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.DomainException
+import com.zeny.hotel.shared.RealtimeMessage
+import com.zeny.hotel.shared.RealtimePublisher
+import com.zeny.hotel.shared.RealtimeTopic
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -31,6 +35,9 @@ class EndOfDayRunTransitions(
     private val registry: EndOfDayStepRegistry,
     private val audit: AuditContext,
     private val clock: Clock,
+    // Último e com padrão: os testes de transição montam esta classe com os cinco primeiros argumentos (sem canal);
+    // o Spring injeta o publicador do kernel, que sempre existe.
+    private val realtime: RealtimePublisher = NoRealtime,
 ) {
     /**
      * Reconcilia a execução com o [registry] e inicia a próxima etapa ([EndOfDayRun.beginNext]): abre uma pendência
@@ -49,6 +56,7 @@ class EndOfDayRunTransitions(
         val now = now()
         val result = run.beginNext(registry.slots, now)
         result.skipped.forEach { open(run, it, STEP_UNREGISTERED, it, UNREGISTERED_MESSAGE) }
+        publish(run)
         return result.started
     }
 
@@ -83,6 +91,7 @@ class EndOfDayRunTransitions(
             }
         val outcome = work(EndOfDayStepContext(run.id, run.businessDate, sink))
         run.completeStep(stepName, outcome.result, now())
+        publish(run)
         return true
     }
 
@@ -115,11 +124,21 @@ class EndOfDayRunTransitions(
         val code = reason.take(EndOfDayRunStep.RESULT_LENGTH)
         run.failStep(stepName, code, now)
         open(run, stepName, STEP_FAILED, stepName, code)
+        publish(run)
         return true
     }
 
     private fun locked(runId: EndOfDayRunId): EndOfDayRun =
         checkNotNull(runs.lockForUpdate(runId)) { "Execução do fechamento inexistente: ${runId.value}." }
+
+    /**
+     * Avisa o tópico `end-of-day` de que a execução mudou. Grava antes (`flush`): a versão otimista só sobe na
+     * gravação, e a mensagem leva a versão que fica no banco. Só chame depois da última alteração da execução.
+     */
+    private fun publish(run: EndOfDayRun) {
+        runs.flush()
+        realtime.publish(EndOfDayRealtime.TOPIC, RealtimeMessage(EndOfDayRealtime.RUN, run.id.value, run.version))
+    }
 
     @Suppress("LongParameterList") // os campos da pendência
     private fun open(
@@ -155,6 +174,14 @@ class EndOfDayRunTransitions(
                 error.javaClass.simpleName.ifEmpty { error.javaClass.name.substringAfterLast('.') }
             }
     }
+}
+
+/** O publicador vazio, só para quem monta [EndOfDayRunTransitions] sem o canal de tempo real. */
+private object NoRealtime : RealtimePublisher {
+    override fun publish(
+        topic: RealtimeTopic,
+        message: RealtimeMessage,
+    ) = Unit
 }
 
 /** Os códigos de auditoria do fechamento. */
