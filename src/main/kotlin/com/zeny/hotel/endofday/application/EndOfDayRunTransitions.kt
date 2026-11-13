@@ -128,14 +128,7 @@ class EndOfDayRunTransitions(
     private fun locked(runId: EndOfDayRunId): EndOfDayRun =
         checkNotNull(runs.lockForUpdate(runId)) { "Execução do fechamento inexistente: ${runId.value}." }
 
-    /**
-     * Avisa o tópico `end-of-day` de que a execução mudou. Grava antes (`flush`): a versão otimista só sobe na
-     * gravação, e a mensagem leva a versão que fica no banco. Só chame depois da última alteração da execução.
-     */
-    private fun publish(run: EndOfDayRun) {
-        runs.flush()
-        realtime.publish(EndOfDayRealtime.TOPIC, RealtimeMessage(EndOfDayRealtime.RUN, run.id.value, run.version))
-    }
+    private fun publish(run: EndOfDayRun) = publishRunChanged(runs, realtime, run)
 
     @Suppress("LongParameterList") // os campos da pendência
     private fun open(
@@ -171,6 +164,19 @@ class EndOfDayRunTransitions(
                 error.javaClass.simpleName.ifEmpty { error.javaClass.name.substringAfterLast('.') }
             }
     }
+}
+
+/**
+ * Avisa o tópico `end-of-day` de que a execução mudou. Grava antes (`flush`): a versão otimista só sobe na gravação, e
+ * a mensagem leva a versão que fica no banco. Só chame depois da última alteração da execução, dentro da transação.
+ */
+internal fun publishRunChanged(
+    runs: EndOfDayRunRepository,
+    realtime: RealtimePublisher,
+    run: EndOfDayRun,
+) {
+    runs.flush()
+    realtime.publish(EndOfDayRealtime.TOPIC, RealtimeMessage(EndOfDayRealtime.RUN, run.id.value, run.version))
 }
 
 /** Os códigos de auditoria do fechamento. */
