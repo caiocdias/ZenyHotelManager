@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.transaction.IllegalTransactionStateException
 import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.support.TransactionTemplate
 import java.sql.SQLException
@@ -177,6 +178,51 @@ class EndOfDayRunPersistenceTest(
             release.countDown()
             holder.get(LATCH_SECONDS, TimeUnit.SECONDS)
         }
+    }
+
+    @Test
+    fun `lockForUpdate outside a transaction fails before locking`() {
+        val run = saved(farDate(650))
+
+        shouldThrow<IllegalTransactionStateException> { runs.lockForUpdate(run.id) }
+        shouldThrow<IllegalTransactionStateException> { runs.lockRowForNoKeyUpdate(run.id.value) }
+    }
+
+    @Test
+    fun `the immutable run columns are never written by an update`() {
+        val date = farDate(700)
+        val run = saved(date)
+        val stored = immutableColumns(run)
+
+        tx.executeWithoutResult { _ ->
+            val loaded = runs.lockForUpdate(run.id).shouldNotBeNull()
+            overwrite(loaded, "businessDate", date.plusDays(1))
+            overwrite(loaded, "trigger", RunTrigger.MANUAL)
+            overwrite(loaded, "triggeredBy", UUID.randomUUID())
+            overwrite(loaded, "startedAt", now().plusSeconds(3600))
+            loaded.beginNext(slots, now())
+        }
+
+        immutableColumns(run) shouldBe stored
+        storedVersion(run) shouldBe 1L
+    }
+
+    private fun immutableColumns(run: EndOfDayRun): Map<String, Any?> =
+        jdbc
+            .sql("SELECT business_date, trigger, triggered_by, started_at FROM endofday.run WHERE id = :id")
+            .param("id", run.id.value)
+            .query()
+            .singleRow()
+
+    private fun overwrite(
+        run: EndOfDayRun,
+        field: String,
+        value: Any,
+    ) {
+        EndOfDayRun::class.java
+            .getDeclaredField(field)
+            .apply { isAccessible = true }
+            .set(run, value)
     }
 
     @Test

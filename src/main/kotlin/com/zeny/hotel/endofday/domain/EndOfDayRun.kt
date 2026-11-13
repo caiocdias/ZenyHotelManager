@@ -62,8 +62,9 @@ data class BeginResult(
 /**
  * A execução do fechamento de uma data operacional (SPEC RF-FEC, RN-21): uma só por data (`run_business_date_uk`), com
  * as etapas em ordem de posição. A etapa é parte do agregado: **toda transição altera [updatedAt]**, para a [version]
- * subir a cada mudança de etapa (o Hibernate não sobe a versão do pai quando só a linha da etapa muda). Se o relógio
- * não andou desde a transição anterior, [updatedAt] avança 1 µs (a precisão do `timestamptz`).
+ * subir a cada mudança de etapa (o Hibernate não sobe a versão do pai quando só a linha da etapa muda). O instante é
+ * truncado para microssegundos (a precisão do `timestamptz`) e, se não andou desde a transição anterior, [updatedAt]
+ * avança 1 µs. A data, o gatilho, quem disparou e o início nunca mudam depois de gravados (`updatable = false`).
  *
  * A reconciliação ([reconcile]) acerta as etapas com o registro do deploy corrente: etapa que saiu do registro e não
  * foi concluída vira `SKIPPED` (`UNREGISTERED`); etapa nova entra `PENDING` se vier depois da última concluída (não se
@@ -75,14 +76,14 @@ data class BeginResult(
 class EndOfDayRun private constructor(
     @Id
     val id: EndOfDayRunId,
-    @Column(name = "business_date", nullable = false)
+    @Column(name = "business_date", nullable = false, updatable = false)
     val businessDate: LocalDate,
     @Enumerated(EnumType.STRING)
-    @Column(name = "trigger", nullable = false, length = ENUM_LENGTH)
+    @Column(name = "trigger", nullable = false, updatable = false, length = ENUM_LENGTH)
     val trigger: RunTrigger,
-    @Column(name = "triggered_by")
+    @Column(name = "triggered_by", updatable = false)
     val triggeredBy: UserId?,
-    @Column(name = "started_at", nullable = false)
+    @Column(name = "started_at", nullable = false, updatable = false)
     val startedAt: Instant,
 ) {
     @Enumerated(EnumType.STRING)
@@ -121,6 +122,10 @@ class EndOfDayRun private constructor(
      * Reconcilia com o registro ([reconcile]) e inicia a primeira etapa, em ordem de posição, que não está `COMPLETED`
      * nem `SKIPPED`, com mais uma tentativa. Sem etapa restante, a execução vira `COMPLETED`. A escolha vem depois da
      * reconciliação: uma etapa nova anterior à que falhou roda antes dela, e uma etapa pulada nunca é iniciada.
+     *
+     * **Só chame sob a trava da execução** (`EndOfDayRunRepository.lockForUpdate`, na mesma transação): uma etapa
+     * `RUNNING` é reiniciada com mais uma tentativa (é a retomada depois de uma queda no meio da etapa), então duas
+     * chamadas concorrentes sem a trava rodariam a mesma etapa duas vezes.
      */
     fun beginNext(
         registered: List<StepSlot>,
@@ -208,7 +213,8 @@ class EndOfDayRun private constructor(
     }
 
     private fun touch(now: Instant) {
-        updatedAt = if (now.isAfter(updatedAt)) now else updatedAt.plus(1, ChronoUnit.MICROS)
+        val at = now.truncatedTo(ChronoUnit.MICROS)
+        updatedAt = if (at.isAfter(updatedAt)) at else updatedAt.plus(1, ChronoUnit.MICROS)
     }
 
     override fun toString(): String = "EndOfDayRun(id=$id, businessDate=$businessDate, status=$status)"
@@ -338,7 +344,7 @@ class EndOfDayRunStep private constructor(
     companion object {
         const val NAME_LENGTH = 60
         private const val STATUS_LENGTH = 20
-        private const val RESULT_LENGTH = 200
+        const val RESULT_LENGTH = 200
 
         internal fun pending(
             runId: EndOfDayRunId,
@@ -382,7 +388,7 @@ class EndOfDayIssue private constructor(
         private const val MESSAGE_LENGTH = 500
         private val KIND = Regex("[A-Z][A-Z0-9_]{0,${KIND_LENGTH - 1}}")
 
-        /** Abre a pendência, conferindo o formato do [kind] e os tamanhos. */
+        /** Abre a pendência, conferindo o formato do [kind] e os tamanhos (inclusive o do nome da etapa). */
         @Suppress("LongParameterList")
         fun open(
             runId: EndOfDayRunId,
@@ -393,6 +399,9 @@ class EndOfDayIssue private constructor(
             now: Instant,
         ): EndOfDayIssue {
             require(KIND.matches(kind)) { "O tipo da pendência deve seguir ${KIND.pattern}." }
+            require(stepName == null || stepName.length <= EndOfDayRunStep.NAME_LENGTH) {
+                "Nome de etapa longo demais."
+            }
             require(reference == null || reference.length <= REFERENCE_LENGTH) { "Referência longa demais." }
             require(message.length <= MESSAGE_LENGTH) { "Mensagem longa demais." }
             return EndOfDayIssue(UuidV7.generate(), runId, stepName, kind, reference, message, now)

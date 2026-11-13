@@ -20,6 +20,7 @@ import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /** O agregado da execução do fechamento (M6 E10, Task 3): etapas, transições e reconciliação com o registro. */
@@ -288,5 +289,24 @@ class EndOfDayRunTest {
         shouldThrow<IllegalArgumentException> { EndOfDayIssue.open(runId, null, "A".repeat(61), null, "x", t0) }
         shouldThrow<IllegalArgumentException> { EndOfDayIssue.open(runId, null, "K", "r".repeat(121), "x", t0) }
         shouldThrow<IllegalArgumentException> { EndOfDayIssue.open(runId, null, "K", null, "m".repeat(501), t0) }
+    }
+
+    @Test
+    fun `an issue refuses a step name longer than 60 characters`() {
+        val runId = run().id
+
+        EndOfDayIssue.open(runId, "n".repeat(60), "K", null, "x", t0).stepName shouldBe "n".repeat(60)
+        shouldThrow<IllegalArgumentException> { EndOfDayIssue.open(runId, "n".repeat(61), "K", null, "x", t0) }
+    }
+
+    @Test
+    fun `a transition within the same microsecond as the last one moves updatedAt by exactly one microsecond`() {
+        val run = run()
+
+        run.beginNext(slots, t0.plusNanos(500))
+
+        run.updatedAt shouldBe t0.plus(1, ChronoUnit.MICROS)
+        run.completeStep("one", "DONE", t0.plusNanos(2_700))
+        run.updatedAt shouldBe t0.plus(2, ChronoUnit.MICROS)
     }
 }
