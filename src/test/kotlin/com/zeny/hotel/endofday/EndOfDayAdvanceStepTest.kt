@@ -230,6 +230,7 @@ class EndOfDayAdvanceStepTest(
             .param("id", run.value)
             .query { rs, _ -> Triple(rs.getString("name"), rs.getString("status"), rs.getString("result")) }
             .list()
+            .filter { it.first == ADVANCE } // as outras etapas reais têm os próprios testes
 
     private fun issuesOf(run: EndOfDayRunId): List<Pair<String, String?>> =
         jdbc
