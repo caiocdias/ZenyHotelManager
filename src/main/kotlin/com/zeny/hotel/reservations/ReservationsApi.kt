@@ -195,6 +195,25 @@ interface ReservationsApi {
         from: LocalDate? = null,
         to: LocalDate? = null,
     ): InventoryRecount
+
+    /**
+     * As reservas com a chegada pendente na data [date]: confirmadas (`CONFIRMED`) com chegada até [date], por id (a
+     * pré-reserva nunca vira no-show). Sem conferir permissão e sem trava; o fechamento do dia chama com a data que
+     * fecha.
+     */
+    fun pendingArrivals(date: LocalDate): List<ReservationId>
+
+    /**
+     * As hospedadas (`IN_HOUSE`) com a saída pendente na data [date] (saída até [date]), por id. Sem conferir permissão
+     * e sem trava; o fechamento do dia chama com a data que fecha.
+     */
+    fun pendingDepartures(date: LocalDate): List<ReservationId>
+
+    /**
+     * Todas as hospedadas (`IN_HOUSE`) que já chegaram até [date] (chegada até [date]), inclusive as de saída já
+     * passada, por id. Sem conferir permissão e sem trava; o fechamento do dia chama com a data que fecha.
+     */
+    fun inHouse(date: LocalDate): List<ReservationId>
 }
 
 /**

@@ -224,6 +224,7 @@ class ReservationsApiService(
     private val blocks: RoomBlockService,
     private val assignments: RoomAssignmentService,
     private val stays: StayTransitionsService,
+    private val reservationQueries: ReservationQueryStore,
 ) : ReservationsApi {
     override fun assignRoom(
         id: ReservationId,
@@ -290,6 +291,15 @@ class ReservationsApiService(
         val period = InventoryPeriod.of(from, to)
         return days(store.rows(roomTypeId, period.from, period.to))
     }
+
+    @Transactional(readOnly = true)
+    override fun pendingArrivals(date: LocalDate): List<ReservationId> = reservationQueries.pendingArrivalIds(date)
+
+    @Transactional(readOnly = true)
+    override fun pendingDepartures(date: LocalDate): List<ReservationId> = reservationQueries.pendingDepartureIds(date)
+
+    @Transactional(readOnly = true)
+    override fun inHouse(date: LocalDate): List<ReservationId> = reservationQueries.inHouseIds(date)
 
     override fun recountInventory(
         from: LocalDate?,
