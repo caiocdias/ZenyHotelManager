@@ -258,7 +258,7 @@ class NightChargesAttackTest {
         ReservationNightCharges.of(reservation, ARRIVAL, fee).forEach {
             it.sourceReference shouldMatch
                 Regex("reservations\\.reservation:$uuid:\\d{4}-\\d{2}-\\d{2}:(room|package:$uuid|tourism-fee)")
-            (it.description ?: "") shouldMatch Regex("|Taxa de turismo|Café da manhã|Estacionamento")
+            it.description.orEmpty() shouldMatch Regex("|Taxa de turismo|Café da manhã|Estacionamento")
         }
     }
 
