@@ -9,7 +9,10 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeSameInstanceAs
 import org.junit.jupiter.api.Test
 
@@ -47,16 +50,24 @@ class EndOfDayStepRegistryTest {
 
     @Test
     fun `refuses a repeated name`() {
-        shouldThrow<IllegalStateException> {
-            EndOfDayStepRegistry(listOf(Step("fake-one", 100), Step("fake-one", 200)))
-        }
+        val error =
+            shouldThrow<IllegalStateException> {
+                EndOfDayStepRegistry(listOf(Step("fake-one", 100), Step("fake-two", 150), Step("fake-one", 200)))
+            }
+
+        error.message.shouldNotBeNull() shouldContain "fake-one"
+        error.message.shouldNotBeNull() shouldNotContain "fake-two"
     }
 
     @Test
     fun `refuses a repeated position`() {
-        shouldThrow<IllegalStateException> {
-            EndOfDayStepRegistry(listOf(Step("fake-one", 100), Step("fake-two", 100)))
-        }
+        val error =
+            shouldThrow<IllegalStateException> {
+                EndOfDayStepRegistry(listOf(Step("fake-one", 100), Step("fake-two", 250), Step("fake-three", 100)))
+            }
+
+        error.message.shouldNotBeNull() shouldContain "100"
+        error.message.shouldNotBeNull() shouldNotContain "250"
     }
 
     @Test

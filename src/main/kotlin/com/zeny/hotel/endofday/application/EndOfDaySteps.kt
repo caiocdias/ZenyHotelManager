@@ -13,8 +13,8 @@ import java.time.LocalDate
  *
  * - **Transação:** [execute] roda dentro da transação que marca a etapa concluída
  *   ([EndOfDayRunTransitions.complete]), com a linha da execução (`endofday.run`) travada por ela. Uma exceção que
- *   escapa de [execute] falha a etapa e desfaz tudo o que ela fez nessa transação, inclusive as pendências e os avisos
- *   levantados nela.
+ *   escapa de [execute] (inclusive *checked*) falha a etapa e desfaz tudo o que ela fez nessa transação, inclusive as
+ *   pendências e os avisos levantados nela.
  * - **Idempotência:** [execute] pode rodar de novo para a mesma data (uma retomada depois de falha ou de queda repete
  *   a etapa que não chegou a concluir). Precisa ser idempotente, com a chave pela **data**
  *   ([EndOfDayStepContext.businessDate]), **nunca** pelo `runId`.
@@ -22,7 +22,12 @@ import java.time.LocalDate
  *   `@Transactional` próprio, nunca por `this.`), idempotente pela chave natural do item; a falha do item vira
  *   pendência ([EndOfDayStepContext.issues]) e não derruba a etapa. A transação do item **nunca altera a linha da
  *   execução** (`endofday.run`), que a transação da etapa mantém travada: a thread esperaria por ela mesma. Inserir
- *   pendência pode (a trava é `FOR NO KEY UPDATE`).
+ *   pendência pode (a trava é `FOR NO KEY UPDATE`). A pendência da falha de um item é levantada **na transação da
+ *   etapa**, depois que a do item desfez: levantada dentro da transação do item, ela some junto com ele.
+ * - **Não capture a exceção de um bean `@Transactional` que participa da transação da etapa** (propagação
+ *   `REQUIRED`, o padrão): a exceção que sai dele já marcou a transação da etapa como *rollback-only*, e o `complete`
+ *   estoura com `UnexpectedRollbackException` no commit. Trabalho que pode falhar e virar pendência roda em
+ *   `REQUIRES_NEW`.
  * - **Efeito fora do banco** (arquivo no S3, na E13): também idempotente, pela data; o rollback não o desfaz.
  * - **Nome estável:** [name] é um código (`[a-z][a-z0-9-]{0,59}`), gravado em cada execução. Renomear ou remover uma
  *   etapa já publicada a faz ser pulada (`UNREGISTERED`) nas execuções abertas; renomear ou remover a etapa de avanço
@@ -94,12 +99,18 @@ class EndOfDayStepRegistry(
             check(NAME.matches(it.name)) { "Nome de etapa do fechamento fora do padrão ${NAME.pattern}: '${it.name}'." }
             check(it.position > 0) { "A posição da etapa ${it.name} deve ser positiva." }
         }
-        check(byName.size == steps.size) { "Nome de etapa do fechamento repetido." }
-        check(steps.map { it.position }.toSet().size == steps.size) { "Posição de etapa do fechamento repetida." }
+        val names = repeated(steps.map { it.name })
+        check(names.isEmpty()) { "Nome de etapa do fechamento repetido: ${names.joinToString()}." }
+        val positions = repeated(steps.map { it.position })
+        check(positions.isEmpty()) { "Posição de etapa do fechamento repetida: ${positions.joinToString()}." }
     }
 
     /** A etapa registrada com o [name], ou nula. */
     fun handlerOrNull(name: String): EndOfDayStepHandler? = byName[name]
+
+    /** Os valores que aparecem mais de uma vez em [values], cada um uma vez. */
+    private fun <T> repeated(values: List<T>): List<T> =
+        values.filterIndexed { index, value -> values.indexOf(value) != index }.distinct()
 
     private companion object {
         val NAME = Regex("[a-z][a-z0-9-]{0,${EndOfDayRunStep.NAME_LENGTH - 1}}")

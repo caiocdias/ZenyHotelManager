@@ -33,6 +33,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.support.TransactionTemplate
+import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -227,7 +228,7 @@ class EndOfDayRunTransitionsTest(
         transitions.begin(run.id)
         val error = BusinessRuleException(ErrorCode("TEST_RULE_BROKEN"), "Hóspede Fulano de Tal sem documento")
 
-        transitions.fail(run.id, "fake-one", EndOfDayRunTransitions.reasonOf(error))
+        transitions.fail(run.id, "fake-one", 1, EndOfDayRunTransitions.reasonOf(error)) shouldBe true
 
         inspect(run.id) {
             status shouldBe RunStatus.FAILED
@@ -255,7 +256,7 @@ class EndOfDayRunTransitionsTest(
         val transitions = transitionsWith(one, two)
         transitions.begin(run.id)
 
-        transitions.fail(run.id, "fake-one", "R".repeat(LONG_REASON))
+        transitions.fail(run.id, "fake-one", 1, "R".repeat(LONG_REASON)) shouldBe true
 
         inspect(run.id) {
             status shouldBe RunStatus.FAILED
@@ -302,6 +303,55 @@ class EndOfDayRunTransitionsTest(
     }
 
     @Test
+    fun `a checked exception from the work undoes the complete like any other`() {
+        val run = saved(farDate(660))
+        val transitions = transitionsWith(one, two)
+        transitions.begin(run.id)
+        val audited = auditActionsOf(run.id)
+
+        shouldThrow<IOException> {
+            transitions.complete(run.id, "fake-one", 1) {
+                it.issues.raise("TEST_PENDING", "item-1", "Item pendente.")
+                throw IOException("x")
+            }
+        }
+
+        issuesOf(run.id).shouldBeEmpty()
+        auditActionsOf(run.id) shouldContainExactly audited
+        inspect(run.id) {
+            status shouldBe RunStatus.RUNNING
+            steps.first().status shouldBe StepStatus.RUNNING
+            steps.first().attempts shouldBe 1
+        }
+        transitions.complete(run.id, "fake-one", 1) { EndOfDayStepOutcome.DONE } shouldBe true
+        inspect(run.id) { steps.first().status shouldBe StepStatus.COMPLETED }
+    }
+
+    @Test
+    fun `a fail with the attempts of an executor that was overtaken does nothing and returns false`() {
+        val run = saved(farDate(670))
+        val transitions = transitionsWith(one, two)
+        transitions.begin(run.id) shouldBe StepStart("fake-one", 1)
+        shouldThrow<IllegalStateException> { transitions.complete(run.id, "fake-one", 1) { error("queda") } }
+        transitions.begin(run.id) shouldBe StepStart("fake-one", 2)
+        val version = versionOf(run.id)
+        val audited = auditActionsOf(run.id)
+
+        transitions.fail(run.id, "fake-one", 1, "TEST_RULE_BROKEN") shouldBe false
+
+        versionOf(run.id) shouldBe version
+        auditActionsOf(run.id) shouldContainExactly audited
+        issuesOf(run.id).shouldBeEmpty()
+        inspect(run.id) {
+            status shouldBe RunStatus.RUNNING
+            steps.first().status shouldBe StepStatus.RUNNING
+            steps.first().attempts shouldBe 2
+        }
+        transitions.complete(run.id, "fake-one", 2) { EndOfDayStepOutcome.DONE } shouldBe true
+        inspect(run.id) { steps.first().status shouldBe StepStatus.COMPLETED }
+    }
+
+    @Test
     fun `the transitions are audited`() {
         val run = saved(farDate(700))
         val transitions = transitionsWith(one, two)
@@ -309,7 +359,7 @@ class EndOfDayRunTransitionsTest(
         transitions.begin(run.id)
         transitions.complete(run.id, "fake-one", 1) { EndOfDayStepOutcome.DONE }
         transitions.begin(run.id)
-        transitions.fail(run.id, "fake-two", "TEST_RULE_BROKEN")
+        transitions.fail(run.id, "fake-two", 1, "TEST_RULE_BROKEN")
 
         val entries =
             jdbc
@@ -355,6 +405,14 @@ class EndOfDayRunTransitionsTest(
         issuesOf(run.id).map { Triple(it.kind, it.stepName, it.reference) } shouldContainExactly
             listOf(Triple(EndOfDayRunTransitions.STEP_UNREGISTERED, "fake-gone", "fake-gone"))
     }
+
+    private fun auditActionsOf(id: EndOfDayRunId): List<String> =
+        jdbc
+            .sql("SELECT action FROM audit.audit_entry WHERE entity_id = :id ORDER BY occurred_at, id")
+            .param("id", id.value.toString())
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
 
     private fun auditTextOf(id: EndOfDayRunId): String =
         jdbc

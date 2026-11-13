@@ -22,6 +22,8 @@ import java.time.temporal.ChronoUnit
  * As transições da execução do fechamento (M6 E10), cada uma na transação dela e auditada. Chamadas da thread do motor
  * (sem contexto de segurança), ficam na trilha com o ator sistema. Toda transição trava a execução
  * ([EndOfDayRunRepository.lockForUpdate]) antes de lê-la, então duas transições da mesma execução nunca se cruzam.
+ * Qualquer exceção desfaz a transição, inclusive uma *checked* (`rollbackFor = Throwable`): o Kotlin deixa o trabalho
+ * de uma etapa lançar `IOException` sem declarar, e o padrão do Spring confirmaria a transação nesse caso.
  */
 @Component
 class EndOfDayRunTransitions(
@@ -37,7 +39,7 @@ class EndOfDayRunTransitions(
      * terminou (`COMPLETED`, agora ou antes).
      */
     @Audited(EndOfDayAudit.BEGIN_STEP)
-    @Transactional
+    @Transactional(rollbackFor = [Throwable::class])
     fun begin(runId: EndOfDayRunId): StepStart? {
         val run = locked(runId)
         if (run.status == RunStatus.COMPLETED) {
@@ -58,7 +60,7 @@ class EndOfDayRunTransitions(
      * tudo, inclusive as pendências levantadas por ele.
      */
     @Audited(EndOfDayAudit.COMPLETE_STEP)
-    @Transactional
+    @Transactional(rollbackFor = [Throwable::class])
     fun complete(
         runId: EndOfDayRunId,
         stepName: String,
@@ -79,23 +81,35 @@ class EndOfDayRunTransitions(
     }
 
     /**
-     * A etapa [stepName] falhou pelo [reason] (um código: veja [reasonOf]): etapa e execução `FAILED` e uma pendência
-     * [STEP_FAILED] com a referência na etapa e o código como mensagem. Um [reason] longo é cortado no tamanho do
-     * resultado da etapa, para a falha nunca falhar por causa dele.
+     * A tentativa [attempts] da etapa [stepName] falhou pelo [reason] (um código: veja [reasonOf]): etapa e execução
+     * `FAILED` e uma pendência [STEP_FAILED] com a referência na etapa e o código como mensagem; devolve `true`. Um
+     * [reason] longo é cortado no tamanho do resultado da etapa, para a falha nunca falhar por causa dele.
+     *
+     * Se a etapa está `RUNNING` noutra tentativa (outro executor a reiniciou depois de uma trava vencida), devolve
+     * `false` sem efeito nem pendência: a falha é de uma tentativa que já não vale. Etapa desconhecida, que não está
+     * `RUNNING` (concluída por outro executor, por exemplo) ou execução fora de `RUNNING` são recusadas pelo agregado
+     * (exceção; a transação é desfeita sem efeito).
      */
     @Audited(EndOfDayAudit.FAIL_STEP)
-    @Transactional
+    @Transactional(rollbackFor = [Throwable::class])
     fun fail(
         runId: EndOfDayRunId,
         stepName: String,
+        attempts: Int,
         reason: String,
-    ) {
+    ): Boolean {
         val run = locked(runId)
+        val step = run.steps.firstOrNull { it.name == stepName }
+        if (run.status == RunStatus.RUNNING && step?.status == StepStatus.RUNNING && step.attempts != attempts) {
+            audit.noChanges()
+            return false
+        }
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
         val now = now()
         val code = reason.take(EndOfDayRunStep.RESULT_LENGTH)
         run.failStep(stepName, code, now)
         open(run, stepName, STEP_FAILED, stepName, code, now)
+        return true
     }
 
     private fun locked(runId: EndOfDayRunId): EndOfDayRun =

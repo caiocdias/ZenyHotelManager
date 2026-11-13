@@ -156,7 +156,7 @@ class EndOfDayRunTransitionsAttackTest(
         val run = saved(farDate(200))
         val transitions = transitionsWith(one, two)
         transitions.begin(run.id)
-        transitions.fail(run.id, "atk-one", "TEST_BROKEN")
+        transitions.fail(run.id, "atk-one", 1, "TEST_BROKEN")
         val version = versionOf(run.id)
         val issueCount = issuesOf(run.id).size
 
@@ -181,7 +181,7 @@ class EndOfDayRunTransitionsAttackTest(
         transitions.complete(run.id, "atk-two", 0, work) shouldBe false
         transitions.complete(run.id, "atk-two", 1, work) shouldBe false
         transitions.complete(run.id, "atk-nope", 1, work) shouldBe false
-        transitions.fail(run.id, "atk-one", "TEST_BROKEN")
+        transitions.fail(run.id, "atk-one", 1, "TEST_BROKEN")
         transitions.complete(run.id, "atk-one", 1, work) shouldBe false
 
         calls.get() shouldBe 0
@@ -261,7 +261,7 @@ class EndOfDayRunTransitionsAttackTest(
         val failFuture =
             CompletableFuture.supplyAsync {
                 go.await(LATCH_SECONDS, TimeUnit.SECONDS)
-                runCatching { transitions.fail(run.id, started.name, "TEST_BROKEN") }
+                runCatching { transitions.fail(run.id, started.name, started.attempts, "TEST_BROKEN") }
             }
         go.countDown()
         val completed = completeFuture.get(LATCH_SECONDS * 2, TimeUnit.SECONDS)
@@ -388,10 +388,10 @@ class EndOfDayRunTransitionsAttackTest(
         transitions.complete(run.id, "atk-one", 1) { EndOfDayStepOutcome.DONE }
         val version = versionOf(run.id)
 
-        shouldThrow<IllegalArgumentException> { transitions.fail(run.id, "atk-nope", "TEST_BROKEN") }
-        shouldThrow<IllegalStateException> { transitions.fail(run.id, "atk-one", "TEST_BROKEN") }
-        shouldThrow<IllegalStateException> { transitions.fail(run.id, "atk-two", "TEST_BROKEN") }
-        shouldThrow<IllegalStateException> { transitions.fail(EndOfDayRunId.new(), "atk-one", "TEST_BROKEN") }
+        shouldThrow<IllegalArgumentException> { transitions.fail(run.id, "atk-nope", 1, "TEST_BROKEN") }
+        shouldThrow<IllegalStateException> { transitions.fail(run.id, "atk-one", 1, "TEST_BROKEN") }
+        shouldThrow<IllegalStateException> { transitions.fail(run.id, "atk-two", 0, "TEST_BROKEN") }
+        shouldThrow<IllegalStateException> { transitions.fail(EndOfDayRunId.new(), "atk-one", 1, "TEST_BROKEN") }
 
         issuesOf(run.id).shouldBeEmpty()
         versionOf(run.id) shouldBe version
@@ -406,8 +406,8 @@ class EndOfDayRunTransitionsAttackTest(
         transitions.begin(whole.id)
         transitions.begin(cut.id)
 
-        transitions.fail(whole.id, "atk-one", "A".repeat(EXACT))
-        transitions.fail(cut.id, "atk-one", "B".repeat(EXACT + 1))
+        transitions.fail(whole.id, "atk-one", 1, "A".repeat(EXACT))
+        transitions.fail(cut.id, "atk-one", 1, "B".repeat(EXACT + 1))
 
         issuesOf(whole.id).single().message shouldBe "A".repeat(EXACT)
         issuesOf(cut.id).single().message shouldBe "B".repeat(EXACT)
