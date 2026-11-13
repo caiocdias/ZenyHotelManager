@@ -30,11 +30,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * Como toda execução completa avança a data operacional do banco isolado, cada teste fecha a data corrente e deixa a
  * seguinte sem execução (`EndOfDayTestRuns.settle`).
  *
- * **Revisar na E11:** quando as etapas reais forem registradas (posições de 100 em 100), este contexto passa a ter as
- * reais e as falsas juntas, e as reais agem sobre todo o banco isolado (nota do handoff).
+ * As etapas reais (E11) ficam de fora ([EndOfDayProductionStepsExcluded]): aqui o registro tem só as falsas. As reais
+ * têm o contexto delas, [EndOfDayRealStepsTestConfiguration].
  */
 @TestConfiguration(proxyBeanMethods = false)
-@Import(MutableClockConfiguration::class, IamTestConfiguration::class)
+@Import(MutableClockConfiguration::class, IamTestConfiguration::class, EndOfDayProductionStepsExcluded::class)
 class EndOfDayTestConfiguration {
     @Bean
     fun fakeItemWork(): FakeItemWork = FakeItemWork()

@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory
+import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.support.TransactionTemplate
 import java.io.IOException
@@ -50,11 +51,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * As transições auditadas da execução do fechamento (M6 E10, Task 4), no banco isolado: as execuções ficam 60 anos à
  * frente da data operacional, que nenhum outro teste usa, e a data corrente não é tocada.
  *
- * O contexto não tem etapas registradas (as etapas falsas são da Task 5, noutro contexto). Cada teste monta as
+ * O contexto não tem etapas registradas (sem as reais, [EndOfDayProductionStepsExcluded]). Cada teste monta as
  * transições com o próprio registro e as passa pelos pós-processadores do contexto ([AutowireCapableBeanFactory]
  * `initializeBean`), que aplicam a transação e a auditoria como no bean da aplicação.
  */
 @EndOfDayIntegrationTest
+@Import(EndOfDayProductionStepsExcluded::class)
 @Suppress("LongParameterList") // os repositórios e os apoios de transação, JDBC, auditoria e relógio
 class EndOfDayRunTransitionsTest(
     @Autowired private val runs: EndOfDayRunRepository,

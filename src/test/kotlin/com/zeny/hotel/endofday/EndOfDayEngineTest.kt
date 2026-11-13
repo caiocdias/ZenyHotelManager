@@ -155,6 +155,11 @@ class EndOfDayEngineTest(
     }
 
     @Test
+    fun `the context of the fake steps registers only the fake steps`() {
+        registry.slots.map { it.name } shouldContainExactly STEPS
+    }
+
+    @Test
     fun `runs all steps in order and records start, finish and result of each`() {
         val run = created()
         settled {

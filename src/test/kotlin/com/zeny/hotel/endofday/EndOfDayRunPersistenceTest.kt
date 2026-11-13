@@ -19,6 +19,7 @@ import io.kotest.matchers.string.shouldContain
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Import
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -41,6 +42,7 @@ import javax.sql.DataSource
  * operacional, que nenhum outro teste usa, e a data corrente não é tocada.
  */
 @EndOfDayIntegrationTest
+@Import(EndOfDayProductionStepsExcluded::class)
 @Suppress("LongParameterList") // os repositórios e os apoios de transação, JDBC e relógio
 class EndOfDayRunPersistenceTest(
     @Autowired private val runs: EndOfDayRunRepository,

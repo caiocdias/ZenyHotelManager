@@ -18,6 +18,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Import
 import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.jdbc.core.simple.JdbcClient
@@ -34,6 +35,7 @@ import java.util.UUID
  * operacional, com deslocamentos de 1000 a 1999 dias (os testes do desenvolvedor usam 100 a 600).
  */
 @EndOfDayIntegrationTest
+@Import(EndOfDayProductionStepsExcluded::class)
 @Suppress("LargeClass", "TooManyFunctions") // um teste por restrição do banco
 class EndOfDayRunPersistenceAttackTest(
     @Autowired private val runs: EndOfDayRunRepository,
