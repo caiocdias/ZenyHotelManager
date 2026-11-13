@@ -8,10 +8,16 @@ import org.springframework.modulith.PackageInfo
  * negócio de uma data operacional em ordem, uma execução por data (RN-21), cada etapa idempotente, com acompanhamento
  * das execuções, etapas e pendências e a retomada manual. Depende de `shared` (o kernel e a porta de autorização), de
  * `hotel` (a data operacional, pela `HotelApi`) e de `notifications` (o aviso das pendências, que o `endofday` chama:
- * `notifications` nunca escuta evento de negócio); nunca de `files`, e só usa a API pública da raiz de cada módulo.
+ * `notifications` nunca escuta evento de negócio); e, com as etapas reais do fechamento (M6 E11), de `reservations`
+ * (no-show, saídas pendentes, liberação de bloqueios e vencimento de provisórias), `billing` (diárias, pacotes e taxa
+ * de turismo lançadas pela API de lançamento, e as pré-autorizações de cartão) e `rooms` (UHs ocupadas ficam sujas).
+ * Nunca de `files`, `rates` nem `frontdesk`, e só usa a API pública da raiz de cada módulo.
  * Só a etapa de avanço da E11 chama `HotelApi.advanceBusinessDate`; "data fechada" deriva da execução `COMPLETED` da
  * data.
  */
 @PackageInfo
-@ApplicationModule(displayName = "End of day", allowedDependencies = ["shared", "hotel", "notifications"])
+@ApplicationModule(
+    displayName = "End of day",
+    allowedDependencies = ["shared", "hotel", "notifications", "reservations", "billing", "rooms"],
+)
 class EndOfDayModule
