@@ -287,7 +287,7 @@ Teste (apoio): `endofday/EndOfDayTestConfiguration.kt`, `EndOfDayTestRuns.kt`, `
 
 **Interfaces:**
 - Produces:
-  - `AdvanceBusinessDateStep`: `name = "advance-business-date"`, `position = 1000`, `execute` = `hotel.advanceBusinessDate(context.businessDate)` → `DONE`. KDoc: última etapa, nome proibido de mudar; o avanço espera os lançamentos em curso (Task 7).
+  - `AdvanceBusinessDateStep`: `name = "advance-business-date"`, `position = 1000`, `execute` = `SET LOCAL statement_timeout = '30s'` e `SET LOCAL lock_timeout = '10s'` (pelo `JdbcClient`, na transação da etapa) e depois `hotel.advanceBusinessDate(context.businessDate)` → `DONE`; esgotado o prazo, a exceção falha a etapa, que fica retomável (`STEP_FAILED`). KDoc: última etapa, nome proibido de mudar; o avanço espera os lançamentos em curso (Task 7), e o prazo evita esperar sem fim atrás de um lançamento preso ou de travas `FOR SHARE` sobrepostas (o `lock_timeout` vale por tentativa; o `statement_timeout` limita o total).
 - Apoio de teste:
   - `EndOfDayProductionStepsExcluded` (`@TestConfiguration`): um `BeanDefinitionRegistryPostProcessor` (bean `static`/`@JvmStatic`) que remove as definições cujo `beanClassName` começa com `com.zeny.hotel.endofday.application.steps.`.
   - `EndOfDayRealStepsTestConfiguration` (`@TestConfiguration`): importa `MutableClockConfiguration`, `IamTestConfiguration` e `InventoryTestConfiguration` e declara o `BillingPostProbe`; sem etapas falsas.
@@ -296,6 +296,7 @@ Teste (apoio): `endofday/EndOfDayTestConfiguration.kt`, `EndOfDayTestRuns.kt`, `
 
 - [ ] **Step 1: Testes que falham:**
   - `EndOfDayAdvanceStepTest` (contexto real): o registro termina em `advance-business-date` (1000) e não tem `fake-*`; `closeCurrentDate` → `COMPLETED`, data `D+1`, uma trilha `hotel.business-date.advance`; o `BusinessDateAdvanced` gera as rotinas de checklist de `D+1` (uma rotina criada pelo teste ganha execução em `D+1`, esperada com prazo).
+  - `the advance gives up instead of waiting forever`: (a) uma transação segura `lockBusinessDate()` além do prazo → a etapa `advance-business-date` falha (`FAILED`, pendência `STEP_FAILED`), a data continua `D`; solta e retoma → `COMPLETED`; (b) uma sequência de transações curtas sobrepostas segurando `FOR SHARE` por mais de 30 s no total → mesma falha, sem esperar sem fim (`@Timeout(90)`).
   - No contexto das falsas, o registro tem só `fake-one`…`fake-advance` (asserção nova no `EndOfDayItemsTest` ou no `EndOfDayStepRegistryTest`).
 - [ ] **Step 2: Ver falhar:** `./gradlew test --tests 'com.zeny.hotel.endofday.EndOfDayAdvanceStepTest'`.
 - [ ] **Step 3: Implementar.**
