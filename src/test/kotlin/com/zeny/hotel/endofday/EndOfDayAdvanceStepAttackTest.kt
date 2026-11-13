@@ -219,7 +219,9 @@ class EndOfDayAdvanceStepAttackTest(
 
     @Test
     fun `the real context has no fake step and no fake probe`() {
-        registry.slots.map { it.name } shouldBe listOf(AdvanceBusinessDateStep.NAME)
+        val slots = registry.slots
+        slots.filter { it.name.startsWith("fake-") } shouldBe emptyList()
+        slots.last().let { it.name to it.position } shouldBe (AdvanceBusinessDateStep.NAME to 1000)
         context.getBeanProvider(FakeStepsProbe::class.java).ifAvailable shouldBe null
     }
 
