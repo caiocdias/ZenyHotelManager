@@ -172,10 +172,9 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1: o módulo declara exatamente shared, hotel, notifications, reservations, billing e rooms
-        // (as etapas reais da E11). A declaração é exata; as dependências reais cabem nela (as de reservations, billing
-        // e rooms entram com as etapas reais, Task 10).
-        (dependencies.toSet() - allowed) shouldBe emptySet()
+        // ARCHITECTURE §3.1: o módulo declara e usa exatamente shared, hotel, notifications, reservations, billing e
+        // rooms (reservations, billing e rooms pelas etapas reais da M6 E11).
+        dependencies.toSet() shouldBe allowed
         EndOfDayModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
