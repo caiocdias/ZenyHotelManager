@@ -90,7 +90,7 @@ interface ReservationsApi {
      * chama (ou numa própria), auditada `reservations.reservation.expire` com o ator sistema, **sem permissão**. Trava
      * a reserva e reconfere: se ainda é pré-reserva vencida, cancela com o motivo `EXPIRED`, sem multa e devolvendo o
      * inventário, e devolve `true`; se já não é (o job, uma confirmação ou um cancelamento chegaram antes), nada muda e
-     * devolve `false`, nunca `409`.
+     * devolve `false`, nunca `409`. Id inexistente: `404 RESERVATION_NOT_FOUND`.
      */
     fun expireProvisional(id: ReservationId): Boolean
 

@@ -63,12 +63,9 @@ class EndOfDayIssues(
     ) {
         raised.groupBy({ it.first }, { it.second }).forEach { (kind, references) ->
             val text =
-                if (references.size ==
-                    1
-                ) {
-                    references.single() ?: NO_REFERENCE
-                } else {
-                    "${references.size} pendência(s)"
+                when (references.size) {
+                    1 -> references.single() ?: NO_REFERENCE
+                    else -> "${references.size} pendência(s)"
                 }
             notice(businessDate, kind, text)
         }

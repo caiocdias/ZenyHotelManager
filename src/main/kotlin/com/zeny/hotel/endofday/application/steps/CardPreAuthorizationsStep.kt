@@ -6,9 +6,10 @@ import com.zeny.hotel.endofday.application.EndOfDayStepOutcome
 import org.springframework.stereotype.Component
 
 /**
- * A sexta etapa do fechamento (RF-FEC-01): renovar as pré-autorizações de cartão que vencem. Até o M7 não há
- * pré-autorização, então a etapa sempre termina [EndOfDayStepOutcome.NOT_APPLICABLE]. A renovação é do M7, que a
- * implementa aqui com `BillingApi.cardPreAuthorizationsExpiring`.
+ * A sexta etapa do fechamento (RF-FEC-01): renovar as pré-autorizações de cartão que vencem. A pré-autorização
+ * existe desde o M5 (E02), mas a **renovação** só chega no M7; até lá a etapa sempre termina
+ * [EndOfDayStepOutcome.NOT_APPLICABLE]. O M7 implementa a renovação aqui
+ * com `BillingApi.cardPreAuthorizationsExpiring`.
  *
  * Idempotente pela data: não tem efeito.
  */

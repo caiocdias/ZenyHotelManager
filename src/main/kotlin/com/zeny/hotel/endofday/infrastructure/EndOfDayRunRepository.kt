@@ -55,8 +55,9 @@ interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
      * Trava a execução até o fim da transação e a carrega. A trava é `FOR NO KEY UPDATE`, não `FOR UPDATE`: o `INSERT`
      * de uma pendência (`run_issue`, com FK para `run`) por outra transação (`REQUIRES_NEW`, o trabalho por item de
      * uma etapa) pega `FOR KEY SHARE` na linha da execução, que `FOR UPDATE` bloquearia — e a thread esperaria por ela
-     * mesma, sem o PostgreSQL detectar o impasse. Chame antes de qualquer outra carga da execução na transação, senão
-     * a carga devolve a instância já em memória. Fora de uma transação, falha com `IllegalTransactionStateException`
+     * mesma, sem o PostgreSQL detectar o impasse. Todo escritor de `run_step` trava a execução antes (senão um
+     * `55P03` tardio na retomada vira 500). Chame antes de qualquer outra carga da execução na transação, senão a carga
+     * devolve a instância já em memória. Fora de uma transação, falha com `IllegalTransactionStateException`
      * antes de travar: sem transação, a trava acabaria no fim do comando e não protegeria nada.
      */
     @Transactional(propagation = Propagation.MANDATORY)

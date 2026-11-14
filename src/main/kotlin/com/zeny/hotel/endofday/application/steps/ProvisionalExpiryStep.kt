@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component
  * ([ReservationsApi.dueProvisionals]), cancelando-a como `EXPIRED`, sem multa e devolvendo o inventário
  * ([ReservationsApi.expireProvisional]). Convive com o `ProvisionalExpiryJob`, que usa o mesmo critério e o mesmo caso
  * de uso: a reserva que o job expirou antes (ou que uma confirmação tirou daqui) é pulada sem pendência, porque a
- * expiração reconfere sob a trava. Cada reserva roda na transação dela ([EndOfDayItems.each]), e a recusa de uma vira a
- * pendência [ISSUE_KIND] com o id da reserva, sem parar o fechamento.
+ * expiração reconfere sob a trava. Expira até 1000 por execução ([ReservationsApi.dueProvisionals]); o resto fica para
+ * o `ProvisionalExpiryJob` ou para o próximo fechamento. Cada reserva roda na transação dela ([EndOfDayItems.each]), e
+ * a recusa de uma vira a pendência [ISSUE_KIND] com o id da reserva, sem parar o fechamento.
  *
  * Idempotente pela data: a expirada deixa de ser pré-reserva vencida. Sem pré-reserva vencida, a etapa é
  * [EndOfDayStepOutcome.NOT_APPLICABLE].

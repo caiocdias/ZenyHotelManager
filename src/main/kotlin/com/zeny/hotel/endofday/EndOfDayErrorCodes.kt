@@ -89,5 +89,5 @@ class EndOfDayRunNotResumableException :
 class EndOfDayRunInProgressException :
     ConflictException(
         EndOfDayErrorCodes.END_OF_DAY_RUN_IN_PROGRESS,
-        "O fechamento do dia está em andamento em outro executor.",
+        "O fechamento do dia está em andamento; acompanhe a execução.",
     )

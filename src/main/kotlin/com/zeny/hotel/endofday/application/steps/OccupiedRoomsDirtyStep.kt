@@ -15,7 +15,9 @@ import org.springframework.stereotype.Component
  * governança limpar a de hóspede em estada. Os itens são as UHs ativas Ocupadas e não Sujas lidas no início; cada uma
  * roda na transação dela ([EndOfDayItems.each]) e a chamada [RoomsApi.markDirty] (origem
  * [RoomStatusSource.END_OF_DAY]) trava a UH e reconfere o status, então uma UH vaga e suja entre a leitura e o item
- * (check-out) não dá erro nem pendência. A recusa de uma UH vira a pendência [ISSUE_KIND] com o id dela.
+ * (check-out) não dá erro nem pendência. A reconferência do `rooms` é da governança (o status da UH), não da
+ * ocupação: uma UH desocupada e limpa na janela entre a leitura e o item fica Suja, o que é conservador. A recusa de
+ * uma UH vira a pendência [ISSUE_KIND] com o id dela.
  *
  * Idempotente pela data: a UH já Suja deixa de ser item, e marcar de novo não muda nada. O fechamento não chama a
  * governança: ela escuta `BusinessDateAdvanced`.

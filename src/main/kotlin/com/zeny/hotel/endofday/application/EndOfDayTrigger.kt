@@ -31,10 +31,13 @@ enum class TickOutcome {
     /** Nenhuma etapa registrada: nada a rodar. */
     NO_STEPS,
 
-    /** Criou a execução da data e a rodou. */
+    /** Criou a execução da data e a disparou no motor (pode não ter terminado). */
     STARTED,
 
-    /** Rodou a execução interrompida (`RUNNING`) da data. */
+    /**
+     * Disparou de novo a execução `RUNNING` da data (interrompida ou ainda em curso). Durante uma execução longa o
+     * log do job mostra `RESUMED` a cada rodada.
+     */
     RESUMED,
 
     /** A execução da data falhou e espera a retomada manual. */

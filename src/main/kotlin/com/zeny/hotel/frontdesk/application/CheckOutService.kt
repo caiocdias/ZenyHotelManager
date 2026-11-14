@@ -156,7 +156,11 @@ class FrontdeskCheckOutService(
             throw ReservationChangedException()
         }
 
-    /** Lança a cobrança da noite da chegada com a chave dela (H14): já lançada, a `BillingApi` devolve a existente. */
+    /**
+     * Lança a cobrança da noite da chegada com a chave dela (H14): já lançada, a `BillingApi` devolve a existente. No
+     * check-out (day use) a taxa de turismo vem nula: só a hospedagem ([NightChargeKind.ROOM]) é cobrada, então o
+     * `check` do código recusa qualquer outro tipo como erro de programação.
+     */
     private fun post(
         folioId: FolioId,
         charge: NightCharge,
