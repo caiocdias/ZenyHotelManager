@@ -487,7 +487,8 @@ class EndOfDayTriggerAttackTest(
                     .lock(LockConfiguration(ClockProvider.now(), EndOfDayEngine.LOCK_NAME, HELD_FOR, Duration.ZERO))
                     .orElseThrow()
             try {
-                trigger.tick() shouldBe TickOutcome.BUSY
+                // Espera longa: o BUSY não depende de a trava ser tentada dentro do PT1S do gatilho do contexto.
+                triggerWith().tick() shouldBe TickOutcome.BUSY
 
                 runRow(date)["status"] shouldBe "RUNNING"
                 runRow(date)["trigger"] shouldBe "AUTOMATIC"
