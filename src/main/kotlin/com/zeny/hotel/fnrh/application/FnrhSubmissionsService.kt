@@ -30,6 +30,7 @@ enum class FnrhSubmissionOperationView {
     CHECK_IN,
     UNDO_CHECK_IN,
     CHECK_OUT,
+    NO_SHOW,
 }
 
 /** A situação de uma submissão, como a API a mostra. */
@@ -47,6 +48,7 @@ enum class FnrhSubmissionFailureView {
     INTERNAL_ERROR,
     REMOTE_CANCELLED,
     NO_REMOTE_OPERATION,
+    REMOTE_NO_SHOW,
 }
 
 /** Um erro de validação local de um hóspede, como a API o mostra: campo e código, nunca o valor. */

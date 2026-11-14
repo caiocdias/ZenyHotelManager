@@ -245,11 +245,14 @@ class FnrhReportViewsAttackTest(
 
     @Test
     fun `the migration comment names every published column, operation and status and what stays out`() {
-        val migration =
-            checkNotNull(
-                javaClass.classLoader.getResource("db/migration/fnrh/V2026_11_10_1100__create_fnrh_report_views.sql"),
-            ).readText()
-        val comment = migration.lines().takeWhile { it.startsWith("--") }.joinToString("\n")
+        // O contrato da view vive no cabeçalho das duas migrações: a original e a que acrescentou o no-show (D-E14-6).
+        val comment =
+            listOf("V2026_11_10_1100__create_fnrh_report_views.sql", "V2026_11_14_1000__add_fnrh_no_show.sql")
+                .joinToString("\n") { name ->
+                    val resource = checkNotNull(javaClass.classLoader.getResource("db/migration/fnrh/$name"))
+                    val migration = resource.readText()
+                    migration.lines().takeWhile { it.startsWith("--") }.joinToString("\n")
+                }
         listOf(
             "submission_id",
             "reservation_id",

@@ -33,6 +33,9 @@ enum class FnrhOperation(
     CHECK_IN(3),
     UNDO_CHECK_IN(4),
     CHECK_OUT(5),
+
+    /** O no-show em lote da reserva (D-E14-1): o último na ordem causal. */
+    NO_SHOW(6),
 }
 
 /** `FAILED` e `INVALID` seguram a fila da reserva até o `retry` ou o `dismiss` (D-E08-3). */
@@ -61,6 +64,9 @@ enum class FnrhSubmissionFailure(
 
     /** A API não tem a operação (desfazer check-in já enviado, D-E08-8). */
     NO_REMOTE_OPERATION(false),
+
+    /** A reserva remota está em no-show e a API não a reativa (D-E14-4). */
+    REMOTE_NO_SHOW(false),
 }
 
 /** Um erro de validação local de um hóspede: o campo e o código, **nunca o valor** (D-E08-10). */
