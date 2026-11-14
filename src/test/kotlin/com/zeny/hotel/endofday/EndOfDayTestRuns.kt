@@ -21,10 +21,10 @@ object EndOfDayTestRuns {
 
     /**
      * Cumpre a regra do banco isolado: deixa a data operacional corrente sem execução ou com execução `COMPLETED`.
-     * Zera os comandos do [FakeStepsProbe] e da [BillingPostProbe] (as que o contexto tiver) e, enquanto a execução da
-     * data corrente não terminar, retoma a `FAILED` (`resume` + `execute`) ou executa a `RUNNING`. Como a execução
-     * completa avança a data, o normal é terminar com a data seguinte sem execução. Use no `finally` de todo teste que
-     * cria execução, depois de soltar qualquer trava que o teste segure.
+     * Zera os comandos do [FakeStepsProbe], da [BillingPostProbe] e da [RoomsMarkProbe] (as que o contexto tiver) e,
+     * enquanto a execução da data corrente não terminar, retoma a `FAILED` (`resume` + `execute`) ou executa a
+     * `RUNNING`. Como a execução completa avança a data, o normal é terminar com a data seguinte sem execução. Use no
+     * `finally` de todo teste que cria execução, depois de soltar qualquer trava que o teste segure.
      */
     fun settle(context: ApplicationContext) {
         val hotel = context.getBean(HotelApi::class.java)
@@ -34,6 +34,7 @@ object EndOfDayTestRuns {
         val clock = context.getBean(Clock::class.java)
         context.getBeanProvider(FakeStepsProbe::class.java).ifAvailable { it.reset() }
         context.getBeanProvider(BillingPostProbe::class.java).ifAvailable { it.reset() }
+        context.getBeanProvider(RoomsMarkProbe::class.java).ifAvailable { it.reset() }
         repeat(MAX_ROUNDS) {
             val run = runs.findByBusinessDate(hotel.currentBusinessDate()) ?: return
             when (run.status) {
