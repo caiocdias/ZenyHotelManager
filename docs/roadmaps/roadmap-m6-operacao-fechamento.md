@@ -180,7 +180,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
 | E11 | Etapas financeiras e operacionais do fechamento | #concluida | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
-| E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
+| E14 | No-show na FNRH | #em-andamento | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
 **Manutenção herdada do M5**
 
@@ -398,7 +398,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E14 — No-show na FNRH — #pendente
+## E14 — No-show na FNRH — #em-andamento
 
 **Objetivo:** enviar à FNRH o no-show publicado pelo fechamento, pela fila de submissões do M5 E08, com a operação nova na porta `FnrhGateway` e no adaptador Serpro.
 
