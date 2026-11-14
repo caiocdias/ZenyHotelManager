@@ -187,7 +187,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
-| E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
+| E16 | Dívidas de teste herdadas do M5 | #em-andamento | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
 **Manutenção transversal**
@@ -523,7 +523,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Entregue:
   - porta `com.zeny.hotel.frontdesk.RegistrationCardLabels` (`travelReason`, `transportMode`; `null` fora do catálogo), implementada por `fnrh/application/FnrhRegistrationCardLabels` sobre o catálogo `fnrh.domain_value`, sem cache, sem Serpro e sem trilha;
   - aresta `fnrh` → `frontdesk` só pela porta: `FnrhModule` com `frontdesk` em `allowedDependencies`, `ModularityTest` exigindo os cinco módulos e que os tipos do `frontdesk` usados pelo `fnrh` sejam exatamente `{RegistrationCardLabels}`; o `frontdesk` continua sem o `fnrh`; ARCHITECTURE §3.1 (linha do `fnrh` e exemplos de inversão);
-  - a ficha (PDF e ESC/POS) mostra o rótulo, ou `<código> (código FNRH)` fora do catálogo; o texto é montado no serviço e os templates só o mostram;
+  - a ficha (PDF e ESC/POS) mostra o rótulo, ou o código seguido de "(código FNRH)" fora do catálogo; o texto é montado no serviço e os templates só o mostram;
   - descrição de `frontdesk.stays.checkin`: "Fazer o check-in de uma reserva confirmada (com a caução opcional) e abrir a ficha de registro (PDF e impressão)"; código, sensibilidade, escopos, modelos e concessões iguais;
   - descrição do `GET /api/v1/reservations/{id}/registration-card/pdf` no contrato e README ("Documentos impressos"); KDoc do `FrontdeskModule` com a porta.
 - Revisão final: `revisor-seguranca` (opus) sobre `dc52ff8..c842f2a`, "Ready to merge: Yes", 0 Critical e 0 Importante de código.
@@ -552,7 +552,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E16 — Dívidas de teste herdadas do M5 — #pendente
+## E16 — Dívidas de teste herdadas do M5 — #em-andamento
 
 **Objetivo:** pagar as duas dívidas de teste que o gate do M5 passou ao M6: o teste de índices das listas por situação, que ficou mais fraco na M5 E01 (pendência Média), e a extensão de compatibilidade `FnrhSubmissionDismissCompat.kt`, duplicada em dois pacotes de teste desde a M5 E08.
 
