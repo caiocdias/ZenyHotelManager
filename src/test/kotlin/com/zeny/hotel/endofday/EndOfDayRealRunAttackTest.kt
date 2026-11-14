@@ -57,6 +57,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -94,8 +95,13 @@ class EndOfDayRealRunAttackTest(
      * `hotel.business_day` em `FOR UPDATE` e a data nova ainda não confirmada. Desarmada (o normal), não faz nada.
      */
     @Component
-    class AdvanceGate {
+    class AdvanceGate(
+        private val jdbc: JdbcClient,
+    ) {
         private val armed = AtomicReference<Pair<CountDownLatch, CountDownLatch>?>()
+
+        /** O pid da sessão (do banco) da etapa de avanço segurada; zero antes de o portão ser alcançado. */
+        val pid = AtomicInteger()
 
         /** Arma uma vez: o próximo avanço conta [entered] e espera [release] abrir (no máximo 30 s). */
         fun arm(
@@ -114,6 +120,8 @@ class EndOfDayRealRunAttackTest(
             @Suppress("UNUSED_PARAMETER") event: BusinessDateAdvanced,
         ) {
             val (entered, release) = armed.getAndSet(null) ?: return
+            // Na transação da etapa: a conexão dela é a que segura a linha da data em FOR UPDATE.
+            pid.set(jdbc.sql("SELECT pg_backend_pid()").query(Int::class.java).single())
             entered.countDown()
             release.await(HOLD_SECONDS, TimeUnit.SECONDS)
         }
@@ -145,9 +153,12 @@ class EndOfDayRealRunAttackTest(
         val pool = Executors.newFixedThreadPool(2)
         try {
             val running = pool.submit<EndOfDayRunId> { EndOfDayTestRuns.closeCurrentDate(context) }
+            // O prazo do portão conta a partir da etapa de avanço `RUNNING`, não do disparo: as etapas anteriores
+            // rodam sobre tudo o que o banco isolado acumulou e não podem comer o prazo da espera.
+            awaitAdvanceRunning(date, running)
             withClue(
                 "o avanço não chegou a mudar a data",
-            ) { entered.await(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true }
+            ) { entered.await(LOCK_WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true }
 
             // B pede a data com o avanço já segurando a linha em FOR UPDATE e a data nova sem commit.
             val manual =
@@ -158,7 +169,8 @@ class EndOfDayRealRunAttackTest(
                         },
                     )
                 }
-            awaitLockWaiter("%business_day%share%", manual)
+            // B espera a trava da própria sessão do avanço (pg_blocking_pids), com a tabela da data já travada.
+            awaitBlockedBy(gate.pid.get(), manual, BUSINESS_DAY)
             manual.isDone shouldBe false
             lines(folio.value).shouldBeEmpty()
 
@@ -202,16 +214,27 @@ class EndOfDayRealRunAttackTest(
         assign(id, room)
         frontdesk.Stay(type, typeRooms, plan.id).ready(room)
         val hold = CountDownLatch(1)
-        // O item do no-show trava a reserva e para antes de lançar a multa, com a transação dele aberta.
-        probe.holdOn(FolioId(folio), hold)
+        val itemPid = AtomicInteger()
+        val itemHeld = CountDownLatch(1)
+        // O item do no-show trava a reserva e para antes de lançar a multa, com a transação dele aberta; guarda o pid
+        // da sessão do item (a sonda roda na transação dele).
+        probe.holdOn(FolioId(folio), hold) {
+            itemPid.set(backendPid())
+            itemHeld.countDown()
+        }
         val pool = Executors.newFixedThreadPool(2)
         try {
             val running = pool.submit<EndOfDayRunId> { EndOfDayTestRuns.closeCurrentDate(context) }
             awaitRowLocked(id)
+            withClue("o item do no-show não chegou à sonda") {
+                itemHeld.await(WAIT_SECONDS, TimeUnit.SECONDS) shouldBe true
+            }
+            withClue("antes do check-in, ninguém espera o item") { blockedBy(itemPid.get(), null) shouldBe 0 }
 
             val checkIn = pool.submit<MockHttpServletResponse> { frontdesk.checkIn(id, holder).raw }
-            awaitLockWaiter("%", checkIn)
-            // O check-in esbarra na trava do item: a corrida é real, não um check-in depois do no-show.
+            awaitBlockedBy(itemPid.get(), checkIn, null)
+            // O check-in esbarra na trava do item (a sessão dele espera a do item): a corrida é real, não um check-in
+            // depois do no-show.
             checkIn.isDone shouldBe false
             support.status(id) shouldBe "CONFIRMED"
             hold.countDown()
@@ -424,31 +447,71 @@ class EndOfDayRealRunAttackTest(
     }
 
     /**
-     * Espera, com prazo, alguma outra sessão esperar uma trava com o comando que casa com [query] (`ILIKE`). Se a
-     * [pending] terminar antes de esperar, segue: as conferências do teste dizem se o desfecho é válido.
+     * Espera, com prazo (desde a chamada), alguma sessão esperar uma trava segura pela sessão [holder]
+     * (`pg_blocking_pids`) e, com [relation], já ter travado essa tabela. Se a [pending] terminar antes de esperar,
+     * segue: as conferências do teste (`isDone`) dizem que ela não esperou.
      */
-    private fun awaitLockWaiter(
-        query: String,
+    private fun awaitBlockedBy(
+        holder: Int,
         pending: Future<*>,
+        relation: String?,
     ) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
-        while (!pending.isDone && lockWaiters(query) == 0) {
-            check(System.nanoTime() < deadline) { "Nenhuma sessão chegou a esperar a trava ($query)" }
+        check(holder != 0) { "O pid da sessão que segura a trava não foi lido" }
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LOCK_WAIT_SECONDS)
+        while (!pending.isDone && blockedBy(holder, relation) == 0) {
+            check(System.nanoTime() < deadline) { "Nenhuma sessão chegou a esperar a trava da sessão $holder" }
             Thread.sleep(POLL_MILLIS)
         }
     }
 
-    private fun lockWaiters(query: String): Int =
-        jdbc
+    /** Quantas sessões deste banco esperam a sessão [holder] (`pg_blocking_pids`), com [relation] travada se dada. */
+    private fun blockedBy(
+        holder: Int,
+        relation: String?,
+    ): Int {
+        val locked =
+            relation?.let {
+                " AND EXISTS (SELECT 1 FROM pg_locks l " +
+                    "WHERE l.pid = a.pid AND l.relation = CAST(:relation AS regclass))"
+            }
+        return jdbc
             .sql(
-                """
-                SELECT count(*) FROM pg_stat_activity
-                WHERE datname = current_database() AND pid <> pg_backend_pid()
-                  AND wait_event_type = 'Lock' AND query ILIKE :query
-                """.trimIndent(),
-            ).param("query", query)
+                "SELECT count(*) FROM pg_stat_activity a WHERE a.datname = current_database() " +
+                    "AND :holder = ANY (pg_blocking_pids(a.pid))" + locked.orEmpty(),
+            ).param("holder", holder)
+            .let { if (relation != null) it.param("relation", relation) else it }
             .query(Int::class.java)
             .single()
+    }
+
+    private fun backendPid(): Int = jdbc.sql("SELECT pg_backend_pid()").query(Int::class.java).single()
+
+    /**
+     * Espera a etapa `advance-business-date` da execução de [date] ficar `RUNNING`, com prazo contado do disparo e
+     * folgado (as etapas anteriores agem sobre tudo o que o banco isolado acumulou). Falha logo se a execução terminar
+     * antes.
+     */
+    private fun awaitAdvanceRunning(
+        date: LocalDate,
+        running: Future<*>,
+    ) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(ADVANCE_REACH_SECONDS)
+        while (advanceStatusOn(date) != "RUNNING") {
+            check(!running.isDone) { "A execução terminou sem a etapa de avanço ficar RUNNING" }
+            check(System.nanoTime() < deadline) { "A etapa de avanço não começou em $ADVANCE_REACH_SECONDS s" }
+            Thread.sleep(POLL_MILLIS)
+        }
+    }
+
+    private fun advanceStatusOn(date: LocalDate): String? =
+        jdbc
+            .sql(
+                "SELECT s.status FROM endofday.run_step s JOIN endofday.run r ON r.id = s.run_id " +
+                    "WHERE r.business_date = :date AND s.name = 'advance-business-date'",
+            ).param("date", date)
+            .query(String::class.java)
+            .optional()
+            .orElse(null)
 
     /** Espera, com prazo, outra transação travar a linha da reserva [id] (`FOR UPDATE NOWAIT` recusado). */
     private fun awaitRowLocked(id: UUID) {
@@ -560,6 +623,9 @@ class EndOfDayRealRunAttackTest(
         const val PRICED_DAYS = 10L
         const val WAIT_SECONDS = 30L
         const val HOLD_SECONDS = 30L
+        const val ADVANCE_REACH_SECONDS = 40L
+        const val LOCK_WAIT_SECONDS = 15L
+        const val BUSINESS_DAY = "hotel.business_day"
         const val POLL_MILLIS = 20L
         const val LOCK_NOT_AVAILABLE = "55P03"
     }

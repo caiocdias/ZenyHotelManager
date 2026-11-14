@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  */
 class BillingPostProbe : BeanPostProcessor {
     private val failures: MutableSet<FolioId> = ConcurrentHashMap.newKeySet()
-    private val holds = ConcurrentHashMap<FolioId, CountDownLatch>()
+    private val holds = ConcurrentHashMap<FolioId, Pair<CountDownLatch, () -> Unit>>()
 
     /**
      * Todo `post` na conta [folioId] lança `IllegalStateException` antes de lançar: não é `DomainException`, então
@@ -27,12 +27,16 @@ class BillingPostProbe : BeanPostProcessor {
         failures += folioId
     }
 
-    /** Todo `post` na conta [folioId] espera o [gate] abrir (no máximo [HOLD_LIMIT]) antes de lançar. */
+    /**
+     * Todo `post` na conta [folioId] espera o [gate] abrir (no máximo [HOLD_LIMIT]) antes de lançar. Antes de esperar,
+     * roda [onHold] na thread (e na transação) de quem lança: por exemplo, para o teste ler o pid da sessão segurada.
+     */
     fun holdOn(
         folioId: FolioId,
         gate: CountDownLatch,
+        onHold: () -> Unit = {},
     ) {
-        holds[folioId] = gate
+        holds[folioId] = gate to onHold
     }
 
     /** Desarma tudo (o `EndOfDayTestRuns.settle` o chama). */
@@ -47,7 +51,10 @@ class BillingPostProbe : BeanPostProcessor {
     ): Any = if (bean is BillingApi) ProbedBillingApi(bean, this) else bean
 
     internal fun beforePost(folioId: FolioId) {
-        holds[folioId]?.await(HOLD_LIMIT.toMillis(), TimeUnit.MILLISECONDS)
+        holds[folioId]?.let { (gate, onHold) ->
+            onHold()
+            gate.await(HOLD_LIMIT.toMillis(), TimeUnit.MILLISECONDS)
+        }
         check(folioId !in failures) { "Falha forçada pelo teste" }
     }
 
