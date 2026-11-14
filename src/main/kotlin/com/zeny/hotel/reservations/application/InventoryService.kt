@@ -229,6 +229,7 @@ class ReservationsApiService(
     private val stays: StayTransitionsService,
     private val reservationQueries: ReservationQueryStore,
     private val hotel: HotelApi,
+    private val provisionalExpiry: ProvisionalExpiry,
 ) : ReservationsApi {
     override fun assignRoom(
         id: ReservationId,
@@ -276,6 +277,10 @@ class ReservationsApiService(
         id: ReservationId,
         method: GuaranteeMethod,
     ): ReservationSummary = lifecycle.confirmAuthorized(id, method)
+
+    override fun dueProvisionals(): List<ReservationId> = provisionalExpiry.dueIds(DUE_PROVISIONALS_LIMIT)
+
+    override fun expireProvisional(id: ReservationId): Boolean = provisionalExpiry.expire(id)
 
     override fun pendingGuarantees(
         from: Instant?,
@@ -329,6 +334,10 @@ class ReservationsApiService(
         from: LocalDate?,
         to: LocalDate?,
     ): InventoryRecount = recalculation.recount(from, to)
+
+    private companion object {
+        const val DUE_PROVISIONALS_LIMIT = 1000
+    }
 }
 
 @Configuration(proxyBeanMethods = false)

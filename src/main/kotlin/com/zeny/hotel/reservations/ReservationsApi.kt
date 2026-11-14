@@ -79,6 +79,22 @@ interface ReservationsApi {
     ): ReservationSummary
 
     /**
+     * As pré-reservas vencidas (M6 E11; RN-23): a validade igual ou anterior a agora (`Clock`), pela validade e pelo
+     * id, até 1000, lidas sem trava. É o mesmo critério do `ProvisionalExpiryJob`; o fechamento do dia expira cada uma
+     * por [expireProvisional]. Sem permissão.
+     */
+    fun dueProvisionals(): List<ReservationId>
+
+    /**
+     * Expira a pré-reserva [id] (M6 E11; RN-23), o mesmo caso de uso do `ProvisionalExpiryJob`: na transação de quem
+     * chama (ou numa própria), auditada `reservations.reservation.expire` com o ator sistema, **sem permissão**. Trava
+     * a reserva e reconfere: se ainda é pré-reserva vencida, cancela com o motivo `EXPIRED`, sem multa e devolvendo o
+     * inventário, e devolve `true`; se já não é (o job, uma confirmação ou um cancelamento chegaram antes), nada muda e
+     * devolve `false`, nunca `409`.
+     */
+    fun expireProvisional(id: ReservationId): Boolean
+
+    /**
      * As garantias pendentes (pré-reservas e reservas confirmadas sem garantia) com o vencimento de [from] (inclusive;
      * nulo = sem início, inclusive as já vencidas) a [to] (exclusive), da que vence primeiro à última, com o depósito
      * exigido e o recebido (M4 E09; o painel do fechamento, M6). Até 1000. Não confere permissão.
