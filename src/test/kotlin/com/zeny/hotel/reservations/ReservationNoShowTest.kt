@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.ApplicationEventPublisher
+import org.springframework.context.ApplicationListener
+import org.springframework.context.ConfigurableApplicationContext
 import org.springframework.context.annotation.Import
 import org.springframework.http.HttpMethod.POST
 import org.springframework.http.HttpMethod.PUT
@@ -28,10 +30,12 @@ import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.function.BiConsumer
+import java.util.function.Consumer
 
 /**
  * O no-show do fechamento (M6 E11, RF-RES-07, RN-15): `ReservationsApi.markNoShow` lança a multa da política copiada
@@ -50,6 +54,7 @@ class ReservationNoShowTest(
     @Autowired roomsApi: RoomsApi,
     @Autowired private val reservationsApi: ReservationsApi,
     @Autowired private val transactions: TransactionTemplate,
+    @Autowired private val context: ConfigurableApplicationContext,
     @Autowired mockMvc: MockMvc,
     @Autowired jsonMapper: JsonMapper,
 ) {
@@ -72,17 +77,30 @@ class ReservationNoShowTest(
         assign(id, rooms.single())
         // A política muda depois: vale a copiada (150,00).
         editPolicy(plan.cancellationPolicy, fixed("300.00"))
+        // Conta toda publicação do evento desta reserva (síncrono, no publicador): o cenário só espera a primeira.
+        val published = CopyOnWriteArrayList<ReservationMarkedNoShow>()
+        val counter =
+            ApplicationListener.forPayload(
+                Consumer<ReservationMarkedNoShow> { if (it.reservationId == id) published += it },
+            )
+        context.addApplicationListener(counter)
 
-        scenario
-            .stimulate(noShowStimulus(id))
-            .andWaitForEventOfType(ReservationMarkedNoShow::class.java)
-            .matching { it.reservationId == id }
-            .toArriveAndVerify { event ->
-                event.roomId shouldBe rooms.single()
-                event.penaltyCharged shouldBe true
-                event.businessDate shouldBe today
-                event.arrival shouldBe today
-            }
+        try {
+            scenario
+                .stimulate(noShowStimulus(id))
+                .andWaitForEventOfType(ReservationMarkedNoShow::class.java)
+                .matching { it.reservationId == id }
+                .toArriveAndVerify { event ->
+                    event.roomId shouldBe rooms.single()
+                    event.penaltyCharged shouldBe true
+                    event.businessDate shouldBe today
+                    event.arrival shouldBe today
+                }
+        } finally {
+            context.removeApplicationListener(counter)
+        }
+
+        published shouldHaveSize 1
 
         support.status(id) shouldBe "NO_SHOW"
         val postings = support.postings(folio)
