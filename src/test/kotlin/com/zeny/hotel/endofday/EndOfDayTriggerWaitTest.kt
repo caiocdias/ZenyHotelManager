@@ -67,7 +67,8 @@ class EndOfDayTriggerWaitTest(
             trigger.tick() shouldBe TickOutcome.STARTED
             val elapsed = Duration.ofNanos(System.nanoTime() - begin)
 
-            withClue("o tick esperou $elapsed") { elapsed shouldBeLessThan Duration.ofSeconds(3) }
+            // Bem abaixo dos 30 s do RED (o tick que esperava a execução inteira) e folgado para máquina carregada.
+            withClue("o tick esperou $elapsed") { elapsed shouldBeLessThan Duration.ofSeconds(10) }
             status(date) shouldBe "RUNNING"
 
             trigger.tick() shouldBeIn listOf(TickOutcome.BUSY, TickOutcome.RESUMED)

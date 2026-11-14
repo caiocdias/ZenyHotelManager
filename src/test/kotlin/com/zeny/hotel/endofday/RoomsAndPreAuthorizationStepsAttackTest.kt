@@ -18,6 +18,7 @@ import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
@@ -36,6 +37,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -104,16 +106,18 @@ class RoomsAndPreAuthorizationStepsAttackTest(
         val booked = readyToLeave(stay)
         val room = RoomId(stay.room)
         val checkout = AtomicReference<Future<MockHttpServletResponse>>()
+        val waited = AtomicBoolean()
         probe.beforeMarkDirty { api, id ->
             if (id == room) {
                 api.markDirty(id, RoomStatusSource.END_OF_DAY) // trava a UH na transação do item
                 checkout.set(pool.submit(Callable { checkOut(booked.id) }))
-                Thread.sleep(HOLD_MILLIS) // o check-out enfileira na trava da UH
+                waited.set(awaitBlockedByItem(checkout.get())) // o check-out enfileira na trava do item
             }
         }
         try {
             val run = EndOfDayTestRuns.closeCurrentDate(context)
 
+            withClue("o check-out não chegou a esperar a trava do item") { waited.get() shouldBe true }
             val response = checkout.get().get(HOOK_LIMIT, TimeUnit.SECONDS)
             with(billing) { response.expect(200) }
             runStatus(run) shouldBe "COMPLETED"
@@ -158,16 +162,18 @@ class RoomsAndPreAuthorizationStepsAttackTest(
         val room = occupiedClean()
         val pool = Executors.newCachedThreadPool()
         val cleaning = AtomicReference<Future<*>>()
+        val waited = AtomicBoolean()
         probe.beforeMarkDirty { api, id ->
             if (id == room) {
                 api.markDirty(id, RoomStatusSource.END_OF_DAY)
                 cleaning.set(pool.submit { rooms.markClean(room, false, RoomStatusSource.MANUAL) })
-                Thread.sleep(HOLD_MILLIS)
+                waited.set(awaitBlockedByItem(cleaning.get()))
             }
         }
         try {
             val run = EndOfDayTestRuns.closeCurrentDate(context)
 
+            withClue("a governança não chegou a esperar a trava do item") { waited.get() shouldBe true }
             cleaning.get().get(HOOK_LIMIT, TimeUnit.SECONDS)
             issues(run, room) shouldBe 0
             rooms.status(room)!!.housekeepingStatus shouldBe HousekeepingStatus.CLEAN
@@ -315,6 +321,30 @@ class RoomsAndPreAuthorizationStepsAttackTest(
         return booked
     }
 
+    /**
+     * Roda no gancho da sonda, na thread e na transação do item (a que travou a UH): espera, com prazo, alguma sessão
+     * esperar a trava da sessão do item (`pg_blocking_pids`) e diz se esperou. Devolve `false` se a [pending] terminar
+     * antes (não esperou) ou o prazo vencer; o teste afirma depois, fora do item.
+     */
+    private fun awaitBlockedByItem(pending: Future<*>): Boolean {
+        val item = jdbc.sql("SELECT pg_backend_pid()").query(Int::class.java).single()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(HOOK_LIMIT)
+        while (blockedBy(item) == 0) {
+            if (pending.isDone || System.nanoTime() >= deadline) return false
+            Thread.sleep(POLL_MILLIS)
+        }
+        return true
+    }
+
+    private fun blockedBy(holder: Int): Int =
+        jdbc
+            .sql(
+                "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() " +
+                    "AND :holder = ANY (pg_blocking_pids(pid))",
+            ).param("holder", holder)
+            .query(Int::class.java)
+            .single()
+
     private fun checkOut(id: UUID): MockHttpServletResponse =
         billing.call(POST, "/api/v1/reservations/$id/check-out", iam.asAdmin(), null, UuidV7.generate().toString())
 
@@ -403,6 +433,6 @@ class RoomsAndPreAuthorizationStepsAttackTest(
 
     private companion object {
         const val HOOK_LIMIT = 30L
-        const val HOLD_MILLIS = 1500L
+        const val POLL_MILLIS = 20L
     }
 }
