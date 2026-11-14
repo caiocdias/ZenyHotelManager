@@ -23,6 +23,7 @@ import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.domain.StepSlot
 import com.zeny.hotel.endofday.domain.StepStatus
 import com.zeny.hotel.endofday.infrastructure.EndOfDayIssueRepository
+import com.zeny.hotel.endofday.infrastructure.EndOfDayRunMetrics
 import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.shared.UserId
@@ -41,9 +42,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import net.javacrumbs.shedlock.core.ClockProvider
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockProvider
+import net.javacrumbs.shedlock.core.LockingTaskExecutor
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -63,6 +68,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.ExecutorService
 
 /**
  * O motor do fechamento (M6 E10, Task 5) no banco isolado, com as etapas falsas do [EndOfDayTestConfiguration]: cada
@@ -72,7 +78,7 @@ import java.time.temporal.ChronoUnit
  */
 @EndOfDayIntegrationTest
 @Import(EndOfDayTestConfiguration::class)
-@Suppress("LongParameterList") // o motor, os repositórios e os apoios de transação, JDBC, trava e relógio
+@Suppress("LongParameterList") // o motor, as transições, os repositórios, as métricas e os apoios do contexto
 class EndOfDayEngineTest(
     @Autowired private val engine: EndOfDayEngine,
     @Autowired private val registry: EndOfDayStepRegistry,
@@ -84,6 +90,8 @@ class EndOfDayEngineTest(
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val lockProvider: LockProvider,
     @Autowired private val clock: Clock,
+    @Autowired private val transitions: EndOfDayRunTransitions,
+    @Autowired private val metrics: EndOfDayRunMetrics,
     @Autowired private val context: ApplicationContext,
 ) {
     @BeforeEach
@@ -438,6 +446,43 @@ class EndOfDayEngineTest(
 
             events.filter { it.level == Level.WARN } shouldHaveSize 1
             events.filter { it.level == Level.ERROR }.shouldBeEmpty()
+        }
+    }
+
+    @Test
+    fun `an unexpected IllegalStateException while recording a failure is not mistaken for a lost race`() {
+        val marker = "Falha ao gravar a falha ${UuidV7.generate()}"
+        probe.failNext(TWO, 1)
+        val run = created()
+        val real = transitions
+        val broken =
+            mockk<EndOfDayRunTransitions> {
+                every { begin(run.id) } answers { real.begin(run.id) }
+                every { complete(run.id, any(), any(), any()) } answers {
+                    real.complete(run.id, secondArg(), thirdArg(), arg(3))
+                }
+                every { fail(run.id, any(), any(), any()) } throws IllegalStateException(marker)
+            }
+        val failingToRecord =
+            EndOfDayEngine(
+                runs,
+                broken,
+                registry,
+                context.getBean("endOfDayLockingTaskExecutor", LockingTaskExecutor::class.java),
+                context.getBean("endOfDayExecutor", ExecutorService::class.java),
+                HELD_FOR,
+                metrics,
+            )
+        settled {
+            val error = shouldThrow<IllegalStateException> { failingToRecord.execute(run.id, WAIT) }
+
+            error.message shouldBe marker
+            verify(exactly = 1) { broken.fail(run.id, TWO, 1, "IllegalStateException") }
+            issuesOf(run.id).shouldBeEmpty()
+            inspect(run.id) {
+                status shouldBe RunStatus.RUNNING
+                step(TWO).status shouldBe StepStatus.RUNNING
+            }
         }
     }
 

@@ -48,7 +48,8 @@ sealed interface EndOfDayExecution {
  * O executor tem uma thread só: um segundo [execute] no mesmo processo espera na fila (e encontra a execução já
  * terminada) em vez de receber [EndOfDayExecution.Busy]. `Busy` vem só de outro processo segurando a trava, ou de
  * outro executor que passou à frente depois de uma trava vencida (a transição devolve que a etapa já não está na
- * tentativa deste executor).
+ * tentativa deste executor, ou o `fail` lança [StepAttemptLostException]). Qualquer outra exceção ao gravar a falha
+ * escapa como as falhas fora das etapas (fica no log pela classe) e deixa a execução como estava.
  */
 @Component
 @Suppress("LongParameterList") // as portas do motor, o prazo da trava e as métricas
@@ -164,8 +165,8 @@ class EndOfDayEngine(
         val recorded =
             try {
                 transitions.fail(runId, start.name, start.attempts, reason)
-            } catch (_: IllegalStateException) {
-                false // outro executor já concluiu ou falhou a etapa
+            } catch (_: StepAttemptLostException) {
+                false // outro executor já concluiu ou falhou a etapa; qualquer outra exceção escapa
             }
         if (!recorded) return lostRace(runId, start)
         metrics.failure()

@@ -5,6 +5,7 @@ import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.endofday.domain.RunStatus
 import org.postgresql.util.PSQLException
+import org.springframework.dao.DataAccessException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
@@ -61,6 +62,16 @@ interface EndOfDayRunRepository : JpaRepository<EndOfDayRun, UUID> {
     @Transactional(propagation = Propagation.MANDATORY)
     fun lockForUpdate(id: EndOfDayRunId): EndOfDayRun? =
         lockRowForNoKeyUpdate(id.value)?.let { findById(it).orElse(null) }
+
+    /**
+     * Limita cada espera por trava, até o fim da transação, a [timeout] (no formato do PostgreSQL, como `5s`): é o
+     * `SET LOCAL lock_timeout`, por `set_config(…, true)`, que aceita o valor como parâmetro. Esgotado o prazo, o
+     * comando que esperava falha com `55P03` ([isLockTimeout]). Fora de uma transação, falha antes de consultar (o
+     * limite acabaria no fim do comando).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    @Query("SELECT set_config('lock_timeout', :timeout, true)", nativeQuery = true)
+    fun limitLockWait(timeout: String): String
 }
 
 /**
@@ -77,6 +88,17 @@ internal val MAX_STORABLE_DATE: LocalDate = LocalDate.of(5_874_897, 12, 31)
 internal const val RUN_BUSINESS_DATE_UK = "run_business_date_uk"
 
 private const val UNIQUE_VIOLATION = "23505"
+
+private const val LOCK_NOT_AVAILABLE = "55P03"
+
+/**
+ * A falha é a espera por trava esgotada (`55P03`, `lock_not_available`, do `lock_timeout` de
+ * [EndOfDayRunRepository.limitLockWait]), reconhecida pelo estado SQL na cadeia de causas, nunca pelo texto.
+ */
+internal fun DataAccessException.isLockTimeout(): Boolean =
+    generateSequence<Throwable>(this) { it.cause }
+        .filterIsInstance<PSQLException>()
+        .any { it.sqlState == LOCK_NOT_AVAILABLE }
 
 /**
  * A violação é de unicidade (`23505`) na restrição [constraint], reconhecida pelo campo `constraint` do erro do

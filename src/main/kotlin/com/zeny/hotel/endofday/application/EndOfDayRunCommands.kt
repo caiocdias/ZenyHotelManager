@@ -5,6 +5,7 @@ import com.zeny.hotel.endofday.EndOfDayDateMismatchException
 import com.zeny.hotel.endofday.EndOfDayNotConfiguredException
 import com.zeny.hotel.endofday.EndOfDayPermissions
 import com.zeny.hotel.endofday.EndOfDayRunExistsException
+import com.zeny.hotel.endofday.EndOfDayRunInProgressException
 import com.zeny.hotel.endofday.EndOfDayRunNotFoundException
 import com.zeny.hotel.endofday.EndOfDayRunNotResumableException
 import com.zeny.hotel.endofday.domain.EndOfDayRun
@@ -15,6 +16,7 @@ import com.zeny.hotel.endofday.infrastructure.EndOfDayRunRepository
 import com.zeny.hotel.endofday.infrastructure.MAX_STORABLE_DATE
 import com.zeny.hotel.endofday.infrastructure.MIN_STORABLE_DATE
 import com.zeny.hotel.endofday.infrastructure.RUN_BUSINESS_DATE_UK
+import com.zeny.hotel.endofday.infrastructure.isLockTimeout
 import com.zeny.hotel.endofday.infrastructure.violatesUnique
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.shared.AuditContext
@@ -25,6 +27,7 @@ import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.shared.SensitiveAction
 import com.zeny.hotel.shared.UserId
 import org.springframework.dao.DataIntegrityViolationException
+import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -76,6 +79,10 @@ class EndOfDayRunCommands(
      * a permissão `endofday.runs.execute` ou a aprovação de superior ([approvalToken]). Inexistente é
      * [EndOfDayRunNotFoundException]; `COMPLETED`, [EndOfDayRunNotResumableException]; `FAILED` volta a `RUNNING` (e
      * avisa o tempo real); `RUNNING` (interrompida por uma queda) é aceita sem mudança.
+     *
+     * Não espera a etapa em curso: o motor segura a linha da execução durante cada etapa, então a trava espera no
+     * máximo [RESUME_LOCK_TIMEOUT] (`lock_timeout` da transação) e, esgotado o prazo, a retomada é
+     * [EndOfDayRunInProgressException].
      */
     @Audited(RESUME)
     @Transactional
@@ -87,7 +94,7 @@ class EndOfDayRunCommands(
             SensitiveAction(RESUME, EndOfDayPermissions.RUNS_EXECUTE, "endofday.run:${runId.value}"),
             approvalToken,
         )
-        val run = runs.lockForUpdate(runId) ?: throw EndOfDayRunNotFoundException()
+        val run = lockWithoutWaitingForTheStep(runId) ?: throw EndOfDayRunNotFoundException()
         when (run.status) {
             RunStatus.COMPLETED -> {
                 throw EndOfDayRunNotResumableException()
@@ -104,6 +111,16 @@ class EndOfDayRunCommands(
             }
         }
         return run
+    }
+
+    private fun lockWithoutWaitingForTheStep(runId: EndOfDayRunId): EndOfDayRun? {
+        runs.limitLockWait(RESUME_LOCK_TIMEOUT)
+        return try {
+            runs.lockForUpdate(runId)
+        } catch (e: PessimisticLockingFailureException) {
+            if (!e.isLockTimeout()) throw e
+            throw EndOfDayRunInProgressException()
+        }
     }
 
     private fun create(
@@ -155,5 +172,8 @@ class EndOfDayRunCommands(
     private companion object {
         const val START = "endofday.run.start"
         const val RESUME = "endofday.run.resume"
+
+        /** O máximo que a retomada espera pela trava da execução: mais que isso, uma etapa a segura. */
+        const val RESUME_LOCK_TIMEOUT = "5s"
     }
 }
