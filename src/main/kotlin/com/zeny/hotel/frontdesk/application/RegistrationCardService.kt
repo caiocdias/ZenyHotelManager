@@ -66,9 +66,10 @@ class RegistrationCardPdf(
 /**
  * A ficha de registro da hospedagem (RF-REC, M5 E11; D-E11-11): a estadia e, por hóspede, o nome (o social, se
  * houver), a nacionalidade, o nascimento, o endereço, os documentos **mascarados** e o motivo de viagem e o meio de
- * transporte pelo rótulo do catálogo da FNRH (o código com "(código FNRH)" se fora dele; D-E15-3), com a linha de assinatura. Só lê a `GuestsApi.identification` (nunca `fnrhData`): o número inteiro do
- * documento e os dados de RN-19 (raça/cor, deficiência) não chegam ao modelo. Exige `frontdesk.stays.checkin` antes de
- * tudo (D-E11-10). O [pdf] é leitura; o [print] é o caso de uso auditado, só com ids.
+ * transporte pelo rótulo do catálogo da FNRH (o código com "(código FNRH)" se fora dele; D-E15-3), com a linha de
+ * assinatura. Só lê a `GuestsApi.identification` (nunca `fnrhData`): o número inteiro do documento e os dados de
+ * RN-19 (raça/cor, deficiência) não chegam ao modelo. Exige `frontdesk.stays.checkin` antes de tudo (D-E11-10).
+ * O [pdf] é leitura; o [print] é o caso de uso auditado, só com ids.
  */
 @Service
 @Suppress("LongParameterList") // as portas que o documento lê
