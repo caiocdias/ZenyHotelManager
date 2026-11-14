@@ -282,16 +282,31 @@ class EndOfDayQueriesApiAttackTest(
             val before = pagesOf("/api/v1/end-of-day/runs", auth, 100).flatten()
             (before.size >= 2) shouldBe true
 
+            // O banco isolado pode ter execuções de data futura (de outros testes): a nova só some das páginas
+            // seguintes se for mais recente que a primeira da lista (a ordem é por data decrescente).
+            val newest = get("/api/v1/end-of-day/runs/${before.first()}", auth).body(200)["businessDate"].asString()
             var injected = ""
+            var injectedDate = ""
             val pages =
                 pagesOf("/api/v1/end-of-day/runs", auth, 1) { n ->
-                    if (n == 1) injected = failedRunId()
+                    if (n == 1) {
+                        injectedDate = hotelApi.currentBusinessDate().toString()
+                        injected = failedRunId()
+                    }
                 }.flatten()
 
             pages.distinct() shouldContainExactly pages
-            withClue("a nova é mais recente que o cursor: não entra nas páginas seguintes e nada some") {
-                (injected in pages) shouldBe false
-                pages shouldContainExactly before
+            withClue("a nova não repete uma página e nada do que já havia some, na mesma ordem") {
+                pages.filter { it != injected } shouldContainExactly before
+            }
+            if (injectedDate > newest) {
+                withClue("a nova é mais recente que o cursor: não entra nas páginas seguintes") {
+                    (injected in pages) shouldBe false
+                }
+            } else {
+                withClue("a nova é mais antiga que o cursor: entra uma vez, depois de todas as mais recentes") {
+                    pages.count { it == injected } shouldBe 1
+                }
             }
         }
 
