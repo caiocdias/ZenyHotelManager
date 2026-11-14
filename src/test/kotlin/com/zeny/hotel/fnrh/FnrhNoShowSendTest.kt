@@ -240,6 +240,28 @@ class FnrhNoShowSendTest(
     }
 
     @Test
+    fun `a no-show of a reservation reactivated before sending makes no call`() {
+        val id = arrivingToday()
+        val remote = remoteId()
+        iam.enableFnrh()
+        FnrhTestServer.stubRegisterReservation_v2_4(remote)
+        sender.send(id).sent shouldBe 1
+        val noShow = noShow(id)
+        support.reactivate(id).also { with(support.billing) { it.expect(200) } }
+        val update = awaitSubmission(id, FnrhOperation.UPDATE_RESERVATION)
+        FnrhTestServer.stubMarkNoShow_v2_4(remote)
+        FnrhTestServer.stubUpdateReservation_v2_4(remote)
+
+        sender.send(id) shouldBe FnrhSendRun(sent = 2, postponed = 0, failed = 0, invalid = 0)
+
+        requests("POST", "/reservas/$remote/noshow").shouldBeEmpty()
+        requests("PUT", "/reservas/$remote") shouldHaveSize 1
+        row(noShow).status shouldBe FnrhSubmissionStatus.SENT
+        row(update.id).status shouldBe FnrhSubmissionStatus.SENT
+        remoteIds.reservation(id, FnrhEnvironment.HOMOLOGATION).shouldNotBeNull().noShow shouldBe false
+    }
+
+    @Test
     fun `cancel after a remote no-show makes no call`() {
         val id = reservation()
         val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)

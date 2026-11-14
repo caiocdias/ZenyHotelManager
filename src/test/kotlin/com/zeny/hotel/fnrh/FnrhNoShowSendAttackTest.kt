@@ -433,30 +433,35 @@ class FnrhNoShowSendAttackTest(
     // --- Estado atual da reserva no passo do no-show ---------------------------------------------------------------
 
     /**
-     * Documenta o comportamento atual (D-E14-3 não olha a situação local da reserva, como o `cancel` da E08): o no-show
-     * que ainda não saiu (Serpro fora) quando a reserva é reativada sai mesmo assim, e a alteração da reativação fica
-     * `FAILED` `REMOTE_NO_SHOW`. Apontado no relatório como decisão: pelo estado atual (D-E08-9), a reserva já
-     * reativada aqui poderia não ir a no-show no Serpro.
+     * Pelo estado atual (D-E08-9; guarda de D-E14-3, ruling da Task 4): o no-show que ainda não saiu (Serpro fora)
+     * quando a reserva é reativada não sai mais (o no-show remoto é irreversível), e a alteração da reativação segue
+     * normal, com o `PUT` na remota não no-show.
      */
     @Test
-    fun `a no-show still pending when the reservation is reactivated is sent anyway and the update then fails`() {
+    fun `a no-show still pending when the reservation is reactivated is not sent and the update goes through`() {
         val (id, remote) = registeredArrivingToday()
         val noShow = noShow(id)
         FnrhTestServer.stub("/reservas/$remote/noshow", 503)
         sender.send(id).postponed shouldBe 1
         val update = reactivate(id)
         checkNotNull(reservationsApi.reservation(ReservationId(id))).status shouldBe ReservationStatus.CONFIRMED
+        // Esquece o pedido recusado antes da reativação: daqui em diante, nenhum `POST …/noshow`.
+        FnrhTestServer.reset()
         FnrhTestServer.stubMarkNoShow_v2_4(remote)
         FnrhTestServer.stubUpdateReservation_v2_4(remote)
         advance(Duration.ofMinutes(1))
 
-        sender.send(id) shouldBe FnrhSendRun(sent = 1, postponed = 0, failed = 1, invalid = 0)
+        sender.send(id) shouldBe FnrhSendRun(sent = 2, postponed = 0, failed = 0, invalid = 0)
 
-        requests("POST", "/reservas/$remote/noshow") shouldHaveSize 2
-        requests("PUT", "/reservas/$remote").shouldBeEmpty()
+        requests("POST", "/reservas/$remote/noshow").shouldBeEmpty()
+        requests("PUT", "/reservas/$remote") shouldHaveSize 1
         row(noShow).status shouldBe FnrhSubmissionStatus.SENT
-        row(update).lastFailure shouldBe FnrhSubmissionFailure.REMOTE_NO_SHOW
-        stored(id).noShow shouldBe true
+        row(update).also {
+            it.status shouldBe FnrhSubmissionStatus.SENT
+            it.lastFailure.shouldBeNull()
+        }
+        stored(id).noShow shouldBe false
+        closedColumns(id) shouldBe (false to false)
     }
 
     // --- Fora de alcance (D-E14-4): o check-in sobre uma remota no-show -------------------------------------------

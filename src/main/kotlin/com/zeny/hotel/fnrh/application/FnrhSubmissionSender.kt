@@ -266,15 +266,18 @@ class FnrhReservationSteps(
     }
 
     /**
-     * O no-show pela remota (D-E14-3), pelo mesmo caminho do cancelamento: sem id remoto guardado, concilia se há
-     * escrita em curso na reserva. Sem id remoto (a reserva no-show não é registrada), ou com a remota já cancelada ou
-     * no-show, nada a enviar; senão `POST /reservas/{id}/noshow` e guarda, mantendo o link. Como o cancelamento, não
-     * cria recurso e é repetido no `retry`.
+     * O no-show pela remota (D-E14-3), pelo estado atual (D-E08-9): a reserva que já não é no-show aqui (reativada
+     * antes do envio) não vai a no-show no Serpro, que não o desfaz: nada a enviar, sem chamada nem conciliação. Senão,
+     * pelo mesmo caminho do cancelamento: sem id remoto guardado, concilia se há escrita em curso na reserva. Sem id
+     * remoto (a reserva no-show não é registrada), ou com a remota já cancelada ou no-show, nada a enviar; senão
+     * `POST /reservas/{id}/noshow` e guarda, mantendo o link. Como o cancelamento, não cria recurso e é repetido no
+     * `retry`.
      */
     fun noShow(
         submission: FnrhSubmission,
         connection: FnrhConnection,
     ): FnrhStepOutcome {
+        if (sync.reservationOf(submission).status != ReservationStatus.NO_SHOW) return FnrhStepOutcome.Sent
         val remote = storedOrReconciled(submission, connection)
         if (remote != null && !remote.closed) {
             gateway.markNoShow(remote.remoteId, submission.id.toString())
