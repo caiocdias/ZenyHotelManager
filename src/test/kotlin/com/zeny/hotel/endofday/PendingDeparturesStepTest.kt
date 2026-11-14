@@ -69,8 +69,9 @@ class PendingDeparturesStepTest(
             support.status(today.id) shouldBe "IN_HOUSE"
             support.status(overdue.id) shouldBe "IN_HOUSE"
             occupiedAssignments(listOf(today.id, overdue.id)) shouldBe 2
-            val expected = listOf("PENDING_DEPARTURE: ${today.id}", "PENDING_DEPARTURE: ${overdue.id}")
-            noticeBodies(reader.id.value).filter { it in expected } shouldContainExactlyInAnyOrder expected
+            // um aviso por tipo, com a contagem (as duas desta data e as que o banco isolado já tinha)
+            val expected = "PENDING_DEPARTURE: ${departureIssues(run)} pendência(s)"
+            noticeBodies(reader.id.value).filter { it.startsWith("PENDING_DEPARTURE:") } shouldBe listOf(expected)
             noticeBodies(outsider.id.value) shouldBe emptyList()
         } finally {
             EndOfDayTestRuns.settle(context)
@@ -94,6 +95,13 @@ class PendingDeparturesStepTest(
             ).param("id", userId)
             .query { rs, _ -> rs.getString("body") }
             .list()
+
+    private fun departureIssues(run: EndOfDayRunId): Int =
+        jdbc
+            .sql("SELECT count(*) FROM endofday.run_issue WHERE run_id = :id AND kind = 'PENDING_DEPARTURE'")
+            .param("id", run.value)
+            .query(Int::class.java)
+            .single()
 
     private fun stepOf(run: EndOfDayRunId): Pair<String, String?> =
         jdbc

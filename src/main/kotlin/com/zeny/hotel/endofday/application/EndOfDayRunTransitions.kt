@@ -61,7 +61,8 @@ class EndOfDayRunTransitions(
      * Roda o [work] da etapa [stepName] e a conclui com o resultado dele, na mesma transação. Antes, confere que a
      * etapa ainda está `RUNNING` com a mesma tentativa ([attempts]); se não está (outro executor passou à frente depois
      * de uma trava vencida), devolve `false` sem chamar o [work] e sem efeito. Uma exceção do [work] escapa e desfaz
-     * tudo, inclusive as pendências levantadas por ele.
+     * tudo, inclusive as pendências levantadas por ele. Os avisos delas saem agrupados por tipo
+     * ([EndOfDayIssues.notifyGrouped]), depois do [work], na mesma transação.
      */
     @Audited(EndOfDayAudit.COMPLETE_STEP)
     @Transactional(rollbackFor = [Throwable::class])
@@ -78,15 +79,18 @@ class EndOfDayRunTransitions(
             return false
         }
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
+        val raised = mutableListOf<Pair<String, String?>>()
         val sink =
             EndOfDayIssueSink {
                 kind,
                 reference,
                 message,
                 ->
-                issues.raise(run.id, run.businessDate, stepName, kind, reference, message)
+                issues.record(run.id, stepName, kind, reference, message)
+                raised += kind to reference
             }
         val outcome = work(EndOfDayStepContext(run.id, run.businessDate, sink))
+        issues.notifyGrouped(run.businessDate, raised)
         run.completeStep(stepName, outcome.result, now())
         publish(run)
         return true
