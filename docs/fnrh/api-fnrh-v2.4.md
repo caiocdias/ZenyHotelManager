@@ -68,5 +68,5 @@ Levantamento feito em 2026-11-04 (M5 E07, hipótese H6). A fonte é o "Documento
 - Documento aceito: só CPF ou passaporte. Um menor brasileiro só com RG **não** é aceito: precisa de CPF (nota B2 da E02).
 - O cancelamento só é aceito com a reserva em `CRIADA`; depois do check-in, não há cancelamento.
 - Não há desfazer check-in na API; o que fazer com `GuestCheckInUndone` fica para a E08.
-- O no-show existe (individual e em lote); o envio dele fica para o M6 (H15).
+- O no-show existe (individual e em lote). O M6 E14 o envia pelo **lote da reserva**, `POST /reservas/{reserva_id}/noshow` (D-E14-1): a reserva tem um único estado no Serpro, e o `fnrh` não guarda hóspede de reserva que nunca teve check-in. O individual (`PATCH /hospedes/{id}/no-show`) fica fora da porta. A E09 confirma o caminho `/noshow` e o comportamento do lote.
 - O link de pré-check-in volta em `POST /reservas` e em `POST /hospedagem/registrar` (RF-FNRH-04).

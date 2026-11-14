@@ -1692,7 +1692,7 @@ No fim, preencha "Evidências e handoff" de E03 (snapshot, arquivos alterados, d
 
 **Dependências:** E08, E16.
 
-**Escopo:** configuração das credenciais de homologação pela API de configuração da E07 (ou variável de ambiente, conforme a E07 decidir; nunca no repositório); roteiro de homologação em `docs/` (a criar) com os casos executados e os IDs remotos obtidos; ajustes no adaptador e nos stubs WireMock para refletir o comportamento real.
+**Escopo:** configuração das credenciais de homologação pela API de configuração da E07 (ou variável de ambiente, conforme a E07 decidir; nunca no repositório); roteiro de homologação em `docs/` (a criar) com os casos executados e os IDs remotos obtidos; ajustes no adaptador e nos stubs WireMock para refletir o comportamento real. Para o no-show em lote `POST /reservas/{id}/noshow` (M6 E14, D-E14-1), a homologação confirma: o código de resposta numa reserva sem hóspedes; a situação da reserva depois do lote (`GET /reservas?codigo_reserva=…`); a resposta à repetição numa reserva já `NOSHOW`; e o lote numa reserva com hóspede `CHECKIN_REALIZADO` (check-in desfeito).
 
 **Fora de escopo:** credenciais de produção e operação real.
 
