@@ -46,8 +46,8 @@ import java.util.UUID
 class RegistrationCardLabelsApiTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
-    @Autowired private val hotelApi: HotelApi,
-    @Autowired private val roomsApi: RoomsApi,
+    @Autowired hotelApi: HotelApi,
+    @Autowired roomsApi: RoomsApi,
     @Autowired private val mockMvc: MockMvc,
     @Autowired jsonMapper: JsonMapper,
     @Autowired private val agents: PrintAgentsService,
@@ -148,7 +148,7 @@ class RegistrationCardLabelsApiTest(
         return booked.id
     }
 
-    /** Troca o rótulo de [code] em `TRAVEL_REASONS` por [label] durante [block] e devolve o original (banco compartilhado). */
+    /** Troca o rótulo de [code] em `TRAVEL_REASONS` por [label] durante [block] e devolve o original (banco comum). */
     private fun withLabel(
         code: String,
         label: String,
