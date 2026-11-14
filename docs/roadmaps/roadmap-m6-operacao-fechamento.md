@@ -179,7 +179,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
-| E11 | Etapas financeiras e operacionais do fechamento | #em-andamento | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
+| E11 | Etapas financeiras e operacionais do fechamento | #concluida | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
 | E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
 **Manutenção herdada do M5**
@@ -288,7 +288,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E11 — Etapas financeiras e operacionais do fechamento — #em-andamento
+## E11 — Etapas financeiras e operacionais do fechamento — #concluida
 
 **Objetivo:** implementar no motor de E10, na ordem de RF-FEC-02, as etapas que não dependem de `reporting`: no-show com multa pela política copiada na reserva (RN-15), alerta de saídas pendentes, lançamento de diárias, pacotes e taxas, liberação de bloqueios vencidos (RN-16), expiração de pré-reservas (RN-23), renovação de pré-autorizações (não aplicável até M7), UHs ocupadas → Sujo (RN-09) e avanço da data operacional via `hotel` (que publica `BusinessDateAdvanced`).
 
@@ -358,7 +358,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - **Integridade:** `check_test_integrity.py --base 57eb5fa` deu exit 1, com apontamentos todos julgados justificados pela revisora: 4 `SEM_SOUL` em commits só de plano e roadmap do orquestrador anterior; 2 `DEV_TESTE_DO_TESTADOR` em `ea3424d`, por ruling da Task 6; e `ASSERCAO_REMOVIDA` no renome `StayCharges` → `CheckOutCharges`, com a asserção mantida. Com `--base 790749a` (onda): exit 0.
   - **oasdiff:** sem `ERR` em `/api/v1` (o contrato só ganhou `NO_SHOW` e `RESERVATION_NO_SHOW` em `x-extensible-enum`).
   - **Gate:** ver a linha seguinte.
-- Gate: GATE_PENDENTE
+- Gate: `./gradlew build` em `a9a9b39` → BUILD SUCCESSFUL in 27m 56s, 3877 testes, 0 falhas, 0 ignorados (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`). O primeiro gate, em `6bd8073`, falhou num só teste (`EndOfDayIsolationTest`: o invariante da E10 exigia propriedades iguais nas duas anotações de teste, e a Task 17 pôs a espera curta do gatilho só no `@EndOfDayIntegrationTest`). O invariante passou a ser exato, "as de integração mais só a espera curta" (`a9a9b39`), com re-revisão limpa. Antes disso, um gate tinha sido morto pelo sistema por falta de memória.
 - Critérios verificados:
   - (1) No-show com a multa copiada e a UH solta no mesmo commit: `ReservationNoShowTest`, `NoShowStepTest`, `EndOfDayRealRunTest`.
   - (2) Saída pendente: `PendingDeparturesStepTest`, `EndOfDayRealRunAttackTest` (uma pendência por fechamento, sem check-out).
