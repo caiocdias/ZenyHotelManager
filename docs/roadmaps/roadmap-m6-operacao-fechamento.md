@@ -548,7 +548,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - Para a E16 (neste lote): o comentário do `ModularityTest` do `fnrh` ainda diz "Nunca iam, frontdesk…" logo acima de "M6 E15: frontdesk, só pela porta"; o KDoc e o nome de um teste de `RegistrationCardApiTest` ainda falam em "códigos FNRH".
   - Dívidas menores: marcas bidi e zero-width cruas em literais de teste (`RegistrationCardLabelsApiTest`, `FnrhRegistrationCardLabelsAttackTest`, e o padrão anterior em `printing`), melhor como escapes; SQL interpolado com constantes nos apoios de teste; contagem exata de códigos semeados no ataque da porta; apoios duplicados entre os dois testes da permissão.
   - O check-in recusa códigos de motivo e meio com caracteres fora de letras, dígitos, `_`, `.` e `-` (achado do testador): caracteres especiais só chegam à ficha pelo rótulo do catálogo, que o `refresh` também filtra.
-- Captura do brain: (preenchida no fechamento).
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E15 - c139da21.md`.
 
 ---
 
