@@ -9,6 +9,7 @@ import com.zeny.hotel.fnrh.domain.FnrhDomain
 import com.zeny.hotel.fnrh.domain.FnrhRemoteId
 import com.zeny.hotel.shared.Cpf
 import com.zeny.hotel.testsupport.FnrhTestServer
+import com.zeny.hotel.testsupport.messagesOf
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -132,7 +133,7 @@ class SerproFnrhGatewayRequestBuildTest {
 
         shouldThrow<FnrhGatewayException> { gateway.checkOut(FnrhRemoteId("hos-SECRETID"), Instant.EPOCH, "corr-t") }
 
-        val log = output.all
+        val log = messagesOf(output.all)
         log shouldContain "ResourceAccessException"
         listOf("SECRETID", "localhost", "/checkout", "1970", FnrhTestServer.PASSWORD).forEach {
             log shouldNotContain it
