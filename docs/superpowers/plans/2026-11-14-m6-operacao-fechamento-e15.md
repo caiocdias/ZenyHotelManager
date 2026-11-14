@@ -4,7 +4,7 @@
 
 **Goal:** a ficha de registro (PDF e ESC/POS) mostra o motivo de viagem e o meio de transporte pelo rótulo do catálogo de domínios da FNRH, por uma porta do `frontdesk` implementada pelo `fnrh`; a permissão `frontdesk.stays.checkin` passa a dizer que abre a ficha.
 
-**Architecture:** inversão por porta (decisão do usuário, M5 D-E11-11): a porta `RegistrationCardLabels` fica na raiz do `frontdesk`, que continua sem importar o `fnrh`; o `fnrh` a implementa lendo `FnrhDomainCatalog` (só leitura, sem Serpro, sem trilha) e ganha a aresta `fnrh` → `frontdesk`, restrita à porta por uma regra ArchUnit no `ModularityTest` e registrada na ARCHITECTURE §3.1. É o mesmo padrão da porta `FolioOwnerDescriber` (`billing`, implementada pelo `reservations`, M5 D-E11-12).
+**Architecture:** inversão por porta (decisão do usuário, M5 D-E11-11): a porta `RegistrationCardLabels` fica na raiz do `frontdesk`, que continua sem importar o `fnrh`; o `fnrh` a implementa lendo `FnrhDomainCatalog` (só leitura, sem Serpro, sem trilha) e ganha a aresta `fnrh` → `frontdesk`, restrita à porta pela igualdade dos `targetType` no `ModularityTest` e registrada na ARCHITECTURE §3.1. É o mesmo padrão da porta `FolioOwnerDescriber` (`billing`, implementada pelo `reservations`, M5 D-E11-12).
 
 **Tech Stack:** Kotlin 2.4, Spring Boot 4.1, Spring Modulith 2.1 (`ModularityTest`), ArchUnit, Thymeleaf (templates do `printing`), PostgreSQL 18 (Testcontainers).
 
@@ -15,7 +15,7 @@
 - **D-E15-1 — Porta:** `com.zeny.hotel.frontdesk.RegistrationCardLabels` (arquivo `frontdesk/RegistrationCardLabels.kt`), interface com `fun travelReason(code: String): String?` e `fun transportMode(code: String): String?`: o rótulo do catálogo, ou `null` se o código não está nele. KDoc: porta da ficha (D-E11-11), implementada pelo `fnrh`; exatamente uma implementação no contexto; só leitura.
 - **D-E15-2 — Implementação:** `com.zeny.hotel.fnrh.application.FnrhRegistrationCardLabels` (`@Component`), por `FnrhDomainCatalog.values(FnrhDomain.TRAVEL_REASONS | TRANSPORT_MODES)` e busca do código exato (maiúsculas contam, como em `contains`). Sem cache: lê o catálogo a cada ficha (são até 30 UHs e um punhado de hóspedes; o `refresh` aparece na ficha seguinte, critério 3). Sem trilha, sem Serpro.
 - **D-E15-3 — Ficha:** o `RegistrationCardService` monta no modelo o texto final de cada campo: o rótulo, ou `"<código> (código FNRH)"` quando a porta devolve `null` (código fora do catálogo). Os templates `registration-card.xhtml` e `.txt` deixam de acrescentar `(código FNRH)` e mostram o texto do modelo. Código nulo continua sem a linha.
-- **D-E15-4 — Grafo:** `FnrhModule.allowedDependencies` passa a `shared, guests, reservations, notifications, frontdesk`; o `ModularityTest` do `fnrh` exige exatamente esses cinco, o comentário "nunca … frontdesk" passa a "do `frontdesk`, só a porta dos rótulos (M6 E15)", e uma regra ArchUnit nova afirma que nenhuma classe de `..fnrh..` depende de classe de `..frontdesk..` além de `RegistrationCardLabels`. O teste do `frontdesk` continua sem `fnrh`. A restrição "só a porta" segue o precedente do próprio `ModularityTest` (`frontdesk` → `rates`/`staff`): igualdade de conjunto sobre os `targetType` das dependências diretas do `fnrh` dentro de `com.zeny.hotel.frontdesk.`, que deve ser exatamente `{RegistrationCardLabels}` (prova o "só" e o "usa"). Descartada a named interface do Spring Modulith (`@NamedInterface`): o repositório não a usa e ela mudaria o modelo de API pública do `frontdesk` por uma aresta. A tabela da ARCHITECTURE §3.1 ganha a aresta (linha do `fnrh`: "`frontdesk` (só a porta `RegistrationCardLabels`, M6 E15)") e a lista de exemplos de inversão da §3.1 ganha `RegistrationCardLabels` ao lado de `FolioOwnerDescriber`. A divergência anterior da §3.1 (lista `hotel` no `fnrh`, que o código não declara) não é corrigida aqui: fica com o `arquiteto`.
+- **D-E15-4 — Grafo:** `FnrhModule.allowedDependencies` passa a `shared, guests, reservations, notifications, frontdesk`; o `ModularityTest` do `fnrh` exige exatamente esses cinco, o comentário "nunca … frontdesk" passa a "do `frontdesk`, só a porta dos rótulos (M6 E15)", e um teste novo restringe a aresta à porta (abaixo). O teste do `frontdesk` continua sem `fnrh`. A restrição "só a porta" segue o precedente do próprio `ModularityTest` (`frontdesk` → `rates`/`staff`): igualdade de conjunto sobre os `targetType` das dependências diretas do `fnrh` dentro de `com.zeny.hotel.frontdesk.`, que deve ser exatamente `{RegistrationCardLabels}` (prova o "só" e o "usa"). Descartada a named interface do Spring Modulith (`@NamedInterface`): o repositório não a usa e ela mudaria o modelo de API pública do `frontdesk` por uma aresta. A tabela da ARCHITECTURE §3.1 ganha a aresta (linha do `fnrh`: "`frontdesk` (só a porta `RegistrationCardLabels`, M6 E15)") e a lista de exemplos de inversão da §3.1 ganha `RegistrationCardLabels` ao lado de `FolioOwnerDescriber`. A divergência anterior da §3.1 (lista `hotel` no `fnrh`, que o código não declara) não é corrigida aqui: fica com o `arquiteto`.
 - **D-E15-5 — Descrição da permissão:** `"Fazer o check-in de uma reserva confirmada (com a caução opcional) e abrir a ficha de registro (PDF e impressão)"`. Código, sensibilidade, escopos, modelos de role e concessões não mudam.
 - **D-E15-6 — Teste existente que fixa o código cru:** `RegistrationCardApiTest` afirma `"AUTOMOVEL (código FNRH)"` (linha ~128; a ~144 é `LAZER`, que continua), e `AUTOMOVEL` está no catálogo semeado (`Automóvel`). A asserção passa a `"Automóvel"` e a ausência de `"AUTOMOVEL (código FNRH)"`; `"LAZER (código FNRH)"` continua (o código semeado é `LAZER_FERIAS`, então `LAZER` é fora do catálogo e cobre o critério 2). Ruling do orquestrador: autorizado ao desenvolvedor na Task 2; as asserções de RN-19 e de documento mascarado não mudam.
 
@@ -49,7 +49,7 @@ Estimativa: 35 min · Depende de: nenhuma · Risco: alto (fronteira de módulo)
 - Create: `src/main/kotlin/com/zeny/hotel/frontdesk/RegistrationCardLabels.kt`
 - Create: `src/main/kotlin/com/zeny/hotel/fnrh/application/FnrhRegistrationCardLabels.kt`
 - Modify: `src/main/kotlin/com/zeny/hotel/fnrh/FnrhModule.kt` (`allowedDependencies` e KDoc)
-- Modify (teste): `src/test/kotlin/com/zeny/hotel/ModularityTest.kt` (teste do `fnrh` e regra ArchUnit da porta)
+- Modify (teste): `src/test/kotlin/com/zeny/hotel/ModularityTest.kt` (teste do `fnrh` e restrição da aresta à porta pelos `targetType`)
 - Modify (doc): `docs/ARCHITECTURE.md` §3.1 (linha do `fnrh` e a lista de exemplos de inversão)
 - Test: `src/test/kotlin/com/zeny/hotel/fnrh/FnrhRegistrationCardLabelsTest.kt` (`@IntegrationTest`)
 
@@ -72,7 +72,6 @@ Estimativa: 30 min · Depende de: Task 1 · Risco: alto (núcleo da etapa; docum
 - Modify: `src/main/kotlin/com/zeny/hotel/frontdesk/application/RegistrationCardService.kt` (injeta `RegistrationCardLabels`; `guestModel` monta o texto de D-E15-3; KDoc da classe)
 - Modify: `src/main/resources/templates/frontdesk/registration-card.xhtml`
 - Modify: `src/main/resources/templates/frontdesk/registration-card.txt`
-- Modify (só KDoc): `src/main/kotlin/com/zeny/hotel/frontdesk/FrontdeskModule.kt` (a API pública passa a listar a porta `RegistrationCardLabels`; "nunca `fnrh`" cita a inversão)
 - Modify (teste, D-E15-6): `src/test/kotlin/com/zeny/hotel/frontdesk/RegistrationCardApiTest.kt`
 - Test: `src/test/kotlin/com/zeny/hotel/frontdesk/RegistrationCardLabelsApiTest.kt` (`@IntegrationTest`, no modelo de `RegistrationCardApiTest`; extrai o texto do PDF com `PdfText`)
 
@@ -96,13 +95,14 @@ Estimativa: 30 min · Depende de: Task 2 · Risco: alto (autorização)
 
 **Files:**
 - Modify: `src/main/kotlin/com/zeny/hotel/frontdesk/FrontdeskPermissions.kt` (descrição de D-E15-5; KDoc de `STAYS_CHECK_IN`)
+- Modify (só KDoc): `src/main/kotlin/com/zeny/hotel/frontdesk/FrontdeskModule.kt` (a API pública passa a listar a porta `RegistrationCardLabels`; "nunca `fnrh`" cita a inversão)
 - Modify: `src/main/kotlin/com/zeny/hotel/frontdesk/web/RegistrationCardController.kt` (descrição do `@Operation` do PDF, D-E15-7)
 - Modify (gerado): `api/openapi.yaml`
 - Modify: `README.md` (seção "Documentos impressos": a ficha mostra o rótulo do motivo de viagem e do meio de transporte, ou o código com "(código FNRH)" quando fora do catálogo, em vez de "os códigos FNRH como guardados"; a permissão descrita como a que abre a ficha)
 - Test: `src/test/kotlin/com/zeny/hotel/frontdesk/FrontdeskCheckInPermissionDescriptionTest.kt` (`@IntegrationTest`)
 
 - [ ] **Step 1: Testes que falham:**
-  - `the contract describes the card with the labels`: a descrição do `GET …/registration-card/pdf` no `api/openapi.yaml` cita o rótulo do catálogo e não diz mais "códigos FNRH guardados".
+  - `the contract describes the card with the labels`: a descrição do `GET …/registration-card/pdf` no `api/openapi.yaml` cita o rótulo do catálogo e não diz mais "códigos FNRH guardados" (procure a `description` da operação onde o springdoc a grava, que pode vir antes do `operationId`; o recorte de `RegistrationCardApiTest` ~242-247 começa no `operationId`).
   - `the permission catalog describes the registration card`: `GET /api/v1/permissions` traz `frontdesk.stays.checkin` com a descrição de D-E15-5, `sensitive = false` e os mesmos escopos de antes.
   - `the role templates and grants do not change`: tire um retrato das concessões de `frontdesk.stays.checkin` por role (modelos e roles) antes da sincronização com a descrição nova e compare com o de depois (iguais); `MANAGER` e `RECEPTIONIST` a concedem; a role de sistema Administrador, que recebe todas as permissões (`ensureFullGrant`), é tratada à parte.
   - `a description change keeps open sessions and grants`: com um token de recepcionista obtido antes, rode `PermissionCatalogSynchronizer.synchronize(declarações)` com a **lista inteira** de `ModulePermissions` do contexto, só com o `frontdesk` trocado por uma cópia com a descrição antiga (passar só o `frontdesk` tornaria obsoletas todas as outras permissões do banco compartilhado), e depois `synchronize()` (a descrição nova): o resultado da segunda traz `frontdesk.stays.checkin` em `updated`, e o token antigo continua abrindo `GET /api/v1/reservations/{id}/registration-card/pdf` (`200`), com as concessões da role iguais. O `synchronize()` das declarações reais fica num `finally` (precedente: `iam/AuthorizationTest.kt` ~125-153).
@@ -121,3 +121,8 @@ Estimativa: 30 min · Depende de: Task 2 · Risco: alto (autorização)
 
 - D-E15-7: o critério 7 lido como "sem mudança estrutural"; o `arquiteto` ajusta o texto.
 - A ARCHITECTURE §3.1 lista `hotel` entre as dependências do `fnrh` (previstas), mas o `FnrhModule.kt` não o declara; ponto para o `arquiteto` decidir se é previsão ou divergência.
+
+## Revisão de arquitetura
+
+- Veredito: **aprovado com notas**, rodada 1 (`revisor-arquitetura`, opus). Rodada 0 bloqueada com 1 Importante (a descrição do endpoint da ficha no contrato ficaria falsa), corrigido pela D-E15-7.
+- Notas Menores aplicadas: N1 (restos da "regra ArchUnit" trocados pela igualdade de `targetType`) e N2 (o KDoc do `FrontdeskModule` foi para a Task 3, e a Task 2 volta a 3 arquivos de produção). Menores da rodada 0 (M1 a M10) tratados no plano.
