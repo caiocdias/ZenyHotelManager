@@ -2,6 +2,7 @@ package com.zeny.hotel.frontdesk.application
 
 import com.zeny.hotel.frontdesk.FrontdeskErrorCodes
 import com.zeny.hotel.frontdesk.FrontdeskPermissions
+import com.zeny.hotel.frontdesk.RegistrationCardLabels
 import com.zeny.hotel.guests.GuestsApi
 import com.zeny.hotel.guests.MaskedGuestDocument
 import com.zeny.hotel.printing.DocumentFormat
@@ -64,8 +65,8 @@ class RegistrationCardPdf(
 
 /**
  * A ficha de registro da hospedagem (RF-REC, M5 E11; D-E11-11): a estadia e, por hóspede, o nome (o social, se
- * houver), a nacionalidade, o nascimento, o endereço, os documentos **mascarados** e os códigos FNRH de motivo e meio
- * de transporte, com a linha de assinatura. Só lê a `GuestsApi.identification` (nunca `fnrhData`): o número inteiro do
+ * houver), a nacionalidade, o nascimento, o endereço, os documentos **mascarados** e o motivo de viagem e o meio de
+ * transporte pelo rótulo do catálogo da FNRH (o código com "(código FNRH)" se fora dele; D-E15-3), com a linha de assinatura. Só lê a `GuestsApi.identification` (nunca `fnrhData`): o número inteiro do
  * documento e os dados de RN-19 (raça/cor, deficiência) não chegam ao modelo. Exige `frontdesk.stays.checkin` antes de
  * tudo (D-E11-10). O [pdf] é leitura; o [print] é o caso de uso auditado, só com ids.
  */
@@ -76,6 +77,7 @@ class RegistrationCardService(
     private val rooms: RoomsApi,
     private val guests: GuestsApi,
     private val printing: PrintingApi,
+    private val labels: RegistrationCardLabels,
     private val authorization: Authorization,
     private val audit: AuditContext,
 ) {
@@ -144,8 +146,8 @@ class RegistrationCardService(
             "birthDate" to identification?.birthDate,
             "address" to identification?.address?.let(::addressText),
             "documents" to identification?.documents.orEmpty().map(::documentModel),
-            "travelReason" to stayGuest.travelReason,
-            "transportMode" to stayGuest.transportMode,
+            "travelReason" to stayGuest.travelReason?.let { labels.travelReason(it) ?: "$it (código FNRH)" },
+            "transportMode" to stayGuest.transportMode?.let { labels.transportMode(it) ?: "$it (código FNRH)" },
         )
     }
 

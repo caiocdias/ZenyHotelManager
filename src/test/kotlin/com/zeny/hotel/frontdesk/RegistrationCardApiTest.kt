@@ -125,7 +125,8 @@ class RegistrationCardApiTest(
         text shouldContain "Rua das Acácias"
         text shouldContain "***${scenario.cpf.takeLast(4)}"
         text shouldContain "LAZER (código FNRH)"
-        text shouldContain "AUTOMOVEL (código FNRH)"
+        text shouldContain "Automóvel"
+        text shouldNotContain "AUTOMOVEL (código FNRH)"
         text shouldContain "Assinatura"
         forbidden(scenario).forEach { text shouldNotContain it }
     }
