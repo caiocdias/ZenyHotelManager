@@ -180,7 +180,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
 | E11 | Etapas financeiras e operacionais do fechamento | #concluida | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
-| E14 | No-show na FNRH | #em-andamento | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
+| E14 | No-show na FNRH | #concluida | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
 **Manutenção herdada do M5**
 
@@ -398,7 +398,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E14 — No-show na FNRH — #em-andamento
+## E14 — No-show na FNRH — #concluida
 
 **Objetivo:** enviar à FNRH o no-show publicado pelo fechamento, pela fila de submissões do M5 E08, com a operação nova na porta `FnrhGateway` e no adaptador Serpro.
 
@@ -412,11 +412,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O no-show gera uma única `FnrhSubmission`; o evento reentregue não duplica.
-- [ ] A submissão segue a ordem por reserva e só sai depois do registro da reserva.
-- [ ] O caminho escolhido (`/no-show` ou `/noshow`) e o motivo da escolha ficam no handoff e na lista do que a M5 E09 confirma; se a E09 já tiver fechado, o roteiro dela é reexecutado para o no-show, ou fica a pendência que o gate de inauguração (M8 E13) cobra.
-- [ ] Com o Serpro fora do ar, o fechamento conclui e a submissão fica pendente.
-- [ ] Build, testes, verificação do contrato e oasdiff sem `ERR` passam.
+- [x] O no-show gera uma única `FnrhSubmission`; o evento reentregue não duplica.
+- [x] A submissão segue a ordem por reserva e só sai depois do registro da reserva.
+- [x] O caminho escolhido (`/no-show` ou `/noshow`) e o motivo da escolha ficam no handoff e na lista do que a M5 E09 confirma; se a E09 já tiver fechado, o roteiro dela é reexecutado para o no-show, ou fica a pendência que o gate de inauguração (M8 E13) cobra.
+- [x] Com o Serpro fora do ar, o fechamento conclui e a submissão fica pendente.
+- [x] Build, testes, verificação do contrato e oasdiff sem `ERR` passam.
 
 **Validação obrigatória:**
 
@@ -435,12 +435,41 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e14.md`, 6 tarefas, as 5 de código `Risco: alto`. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 2 Importantes: testes existentes que fixam a lista de operações e a nota do contrato da view, e a Task 1 grande demais; ambos corrigidos).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `31b9f10` (início) a `1b4a0bb`, sobre `3eeef98` da `main`. Cada tarefa passou por desenvolvedor → testador (as de risco alto) → verificação mecânica → `revisor-seguranca`. A Task 4 teve uma rodada de correção: a revisão achou que um `NO_SHOW` pendente saía mesmo depois da reativação da reserva, e o passo passou a agir pelo estado atual (`398d88a`, ruling registrada no plano em `e109fd0`).
+- Entregue:
+  - porta `FnrhGateway.markNoShow` → `POST /reservas/{reserva_id}/noshow` (lote, da reserva, sem corpo; a resposta não é lida);
+  - `FnrhOperation.NO_SHOW` (posto 6), gravada pelo listener de `ReservationMarkedNoShow` com a chave `no-show:v<versão>`;
+  - estado remoto `fnrh.remote_reservation.no_show`, nunca junto de `cancelled` (`remote_reservation_closed_ck`);
+  - `UPDATE` de remota no-show com a reserva ativa aqui → `FAILED REMOTE_NO_SHOW` com alerta; `CANCEL` de remota no-show → sem chamada; no-show de reserva que não está mais `NO_SHOW` aqui → `SENT` sem chamada;
+  - migração `fnrh/V2026_11_14_1000__add_fnrh_no_show.sql` (CHECKs com `NO_SHOW` e `REMOTE_NO_SHOW`, coluna e nota do contrato da `fnrh.report_submissions`); contrato com `NO_SHOW` e `REMOTE_NO_SHOW` em `x-extensible-enum`;
+  - SPEC §8.2.17, README ("Envio à FNRH"), `docs/fnrh/api-fnrh-v2.4.md` e a lista da M5 E09.
+- **Caminho escolhido (critério 3):** o no-show em lote da reserva, `POST /reservas/{reserva_id}/noshow`, e não um dos individuais (`/no-show` ou `/noshow`). O critério formulava a escolha entre os dois individuais; este é um terceiro caminho. Motivo: a reserva é registrada sem hóspedes e os hóspedes só entram no check-in (D-E07-2), então uma reserva no-show não tem `hospede_id` remoto; o caminho da reserva só precisa do id que já guardamos, é o único sem divergência no PDF e alcança os hóspedes de pré-check-in. A M5 E09 ainda está `#bloqueada`, e a lista dela ganhou o que a homologação confirma: o código de resposta numa reserva sem hóspedes, a situação da reserva depois do lote, a resposta à repetição numa reserva já `NOSHOW` e o lote numa reserva com hóspede `CHECKIN_REALIZADO` (check-in desfeito).
+- Revisão final: `revisor-seguranca` (opus) sobre `3eeef98..1b4a0bb`, "With fixes", 0 Critical e nenhum Importante de código; os dois Importantes são decisões para o usuário (abaixo) e o resto foi documentação, feita neste fechamento.
+- Verificação:
+  - **Gate:** `./gradlew build` em `1b4a0bb` → BUILD SUCCESSFUL in 23m 19s, 3962 testes, 0 falhas, 0 ignorados (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`). O gate anterior, em `6ad73ab`, falhou num teste pré-existente do M5 (`SerproFnrhGatewayRound3Test`): ele procurava `"100"` em toda a saída, e o PID da JVM de testes (`3010000`) contém `"100"`. O testador passou a procurar os valores só na mensagem do log (`1b4a0bb`, helper `testsupport/LogMessages.kt`).
+  - **oasdiff:** `.github/scripts/check-api-breaking.sh main` → nenhuma mudança `ERR` em `/api/v1`.
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles (426 + 74 + 0 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes; lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base 3eeef98` → exit 1, dois apontamentos julgados justificados pela revisão final: `DEV_TESTE_DO_TESTADOR` em `398d88a` (o teste do testador que caracterizava o envio depois da reativação foi invertido pela ruling da guarda) e `ASSERCAO_REMOVIDA` em `FnrhSubmissionTest` (postos `0..5` → `0..6`, D-E14-7).
+- Critérios verificados:
+  - (1) Uma única submissão e reentrega sem duplicar: `FnrhNoShowListenerTest`, `FnrhNoShowListenerAttackTest` (reentrega depois de `SENT`, `FAILED` e `DISMISSED`; 8 threads).
+  - (2) Ordem por reserva, só depois do registro: `FnrhNoShowSendTest`, `FnrhNoShowQueueAttackTest`, `EndOfDayFnrhNoShowAttackTest`.
+  - (3) Caminho e motivo: item acima, D-E14-1 do plano, `docs/fnrh/api-fnrh-v2.4.md` e a lista da M5 E09.
+  - (4) Serpro fora do ar: `EndOfDayFnrhNoShowTest` (fechamento real `COMPLETED`, submissão `PENDING` com `attempts = 1` e `SERVER_ERROR`) e `EndOfDayFnrhNoShowAttackTest` (credenciais recusadas).
+  - (5) Build, testes, contrato e oasdiff: gate e oasdiff acima.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** Caminho em lote da reserva (acima). Alternativa: o individual, que exigiria registrar hóspedes sem check-in.
+  - **(b)** O passo não envia o no-show de reserva que não está mais `NO_SHOW` aqui (reativada antes do envio), pelo estado atual (D-E08-9), porque o no-show remoto não se desfaz. Resíduo: uma reativação entre a leitura e o `POST` ainda envia o no-show; o `UPDATE` seguinte fica `FAILED REMOTE_NO_SHOW` com alerta.
+  - **(c)** O `POST …/noshow` é repetido no `retry` depois de `UNKNOWN_OUTCOME`, como o cancelamento da E08. Uma repetição recusada fica `FAILED` com alerta e a remota local continua sem `noShow`; depois do `dismiss`, um `UPDATE` de reativação faria o `PUT` numa reserva `NOSHOW`.
+  - **(d)** `CHECK_IN` e `CHECK_OUT` sobre uma remota no-show (ou cancelada, já na E08) não têm guarda local: depois de reativação, `dismiss` e check-in, o envio cadastra a pessoa e recebe `4xx` (`FAILED` com alerta). Recomendação: numa manutenção do `fnrh`, `remote.closed` → `FailedLocally(REMOTE_CANCELLED | REMOTE_NO_SHOW)` sem chamada.
+  - **(e)** Lacuna anterior na E08, achada pela revisão final: um `CANCEL_RESERVATION` pendente sai mesmo depois da reativação, e a remota é cancelada sem volta com a reserva ativa aqui. Recomendação: a mesma guarda pelo estado local (`status != CANCELLED` → sem chamada), numa etapa de manutenção do `fnrh` criada pelo `arquiteto` (a E16 é só de teste).
+- Notas para a próxima etapa:
+  - Para o `arquiteto`: o critério 3 desta etapa e o critério de aceite da M5 E09 ("o no-show, se o M6 já o publicar") pedem ajuste de texto; a ARCHITECTURE §3.1 lista `hotel` entre as dependências do `fnrh`, mas o `FnrhModule.kt` não o declara.
+  - Para a E16: o helper `messagesOf` (`testsupport/LogMessages.kt`) só entende o log de console; com o log em ECS JSON (contextos com o profile `prod` na mesma JVM), uma linha inteira, com `pid` e `@timestamp`, ainda pode bater num valor curto. Capturar pelo appender do logger ou ler o campo `message` do JSON.
+  - Dívidas de teste menores (revisões por tarefa): `FnrhRemoteId("")` é aceito por todas as operações (pré-existente; sugerido `require(isNotBlank())`); algumas asserções contam o `FnrhTestServer` inteiro em vez dos pedidos da própria reserva; provas de ausência com `await().during(1s)`; `FnrhAlertTestBase.submit` não limpa as linhas.
+  - O teste do fechamento com a FNRH (`EndOfDayFnrhNoShowTest`) sobe um contexto Spring a mais no banco isolado; os no-shows dos outros testes do fechamento agora também gravam `NO_SHOW` (inofensivo com a FNRH desligada).
+  - A próxima migração precisa de versão posterior a `V2026_11_14_1000`.
+- Captura do brain: (preenchida no fechamento).
 
 ---
 

@@ -202,3 +202,4 @@ Estimativa: 20 min · Depende de: Task 5 · Risco: normal
 - Veredito: **aprovado com notas**, rodada 1 (`revisor-arquitetura`, opus). Rodada 0 bloqueada com 2 Importantes (I-1: testes existentes que fixam a lista de operações e a nota do contrato da view; I-2: dividir a Task 1), ambos corrigidos.
 - Nota Menor aplicada: N-1, o nome real do teste de convenção de migrações (`com.zeny.hotel.persistence.*`) na Task 1.
 - Menores da rodada 0 (M-1 a M-7) tratados no plano ou levados à seção "Para o handoff".
+- Alteração depois da aprovação: D-E14-3, 1º item (guarda pela situação local do no-show), acrescentado por ruling do orquestrador na revisão da Task 4 (commit `e109fd0`), depois da rodada 1.
