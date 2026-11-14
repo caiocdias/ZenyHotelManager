@@ -394,6 +394,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - na revisão final, os advisories pré-existentes de `opentelemetry-api` (≥ 1.67.0) e `commons-lang3` (≥ 3.18.0) ficaram para uma manutenção de dependências.
   - A próxima migração precisa de versão posterior a `V2026_11_13_1000`.
   - Máquina de 14 GB: um Gradle por vez nesta máquina e no DesktopFront.
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E11 - df23f14d.md`.
 
 ---
 
