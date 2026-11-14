@@ -65,7 +65,7 @@ Estimativa: 20 min · Depende de: nenhuma · Risco: alto (persistência)
   - `the new migration header documents the view contract`: o cabeçalho de comentário da `V2026_11_14_1000` contém `report_submissions`, `NO_SHOW` e `REMOTE_NO_SHOW`.
 - [ ] **Step 2:** `./gradlew test --tests 'com.zeny.hotel.fnrh.FnrhNoShowMigrationTest'` → vermelho.
 - [ ] **Step 3: Implementar** a migração conforme D-E14-6: `DROP CONSTRAINT`/`ADD CONSTRAINT` de `submission_operation_ck` (as 6 operações atuais + `'NO_SHOW'`) e de `submission_last_failure_ck` (os 10 códigos atuais da `V2026_11_10_1000` + `'REMOTE_NO_SHOW'`), a coluna `no_show` e o `remote_reservation_closed_ck`. Cabeçalho em pt-BR: M6 E14, D-E14-2/4/5/6 e a nota do contrato da `fnrh.report_submissions` (`operation` inclui `NO_SHOW`; `last_failure` inclui `REMOTE_NO_SHOW`; a definição da view não muda).
-- [ ] **Step 4:** `./gradlew test --tests 'com.zeny.hotel.fnrh.*'` → verde (inclui `MigrationConventionTest` se estiver no pacote raiz: rode também `--tests 'com.zeny.hotel.MigrationConventionTest'` ou o nome real dele).
+- [ ] **Step 4:** `./gradlew test --tests 'com.zeny.hotel.fnrh.*'` → verde e `./gradlew test --tests 'com.zeny.hotel.persistence.*'` → verde (`MigrationConventionTest`, `DatabaseMigrationsTest`).
 - [ ] **Step 5: Commit** `feat(fnrh): migração do no-show (operação, falha e estado remoto)` com `Soul: desenvolvedor`.
 
 ### Task 2: Operação `NO_SHOW` e falha `REMOTE_NO_SHOW` no código e no contrato
@@ -195,3 +195,9 @@ Estimativa: 20 min · Depende de: Task 5 · Risco: normal
 - D-E14-1 escolhe um terceiro caminho, fora da formulação "`/no-show` ou `/noshow`" do critério de aceite; o `arquiteto` ajusta o texto.
 - D-E14-3 (repetição recusada deixa `noShow = false`; check-in desfeito e depois no-show) e D-E14-4 (`CHECK_IN`/`CHECK_OUT` sobre remota no-show) vão para as notas e "Decisões para o usuário".
 - Divergência anterior: ARCHITECTURE §3.1 lista `hotel` nas dependências do `fnrh`, mas o `FnrhModule.kt` não o declara; correção do documento com o `arquiteto`.
+
+## Revisão de arquitetura
+
+- Veredito: **aprovado com notas**, rodada 1 (`revisor-arquitetura`, opus). Rodada 0 bloqueada com 2 Importantes (I-1: testes existentes que fixam a lista de operações e a nota do contrato da view; I-2: dividir a Task 1), ambos corrigidos.
+- Nota Menor aplicada: N-1, o nome real do teste de convenção de migrações (`com.zeny.hotel.persistence.*`) na Task 1.
+- Menores da rodada 0 (M-1 a M-7) tratados no plano ou levados à seção "Para o handoff".
