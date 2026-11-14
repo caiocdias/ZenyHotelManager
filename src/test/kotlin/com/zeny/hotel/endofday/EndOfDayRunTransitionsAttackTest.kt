@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory
+import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
@@ -53,6 +54,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * falhas de `fail`. Banco isolado; datas 61 anos à frente da data operacional (o teste do desenvolvedor usa 60).
  */
 @EndOfDayIntegrationTest
+@Import(EndOfDayProductionStepsExcluded::class)
 @Suppress("LongParameterList", "LargeClass")
 class EndOfDayRunTransitionsAttackTest(
     @Autowired private val runs: EndOfDayRunRepository,

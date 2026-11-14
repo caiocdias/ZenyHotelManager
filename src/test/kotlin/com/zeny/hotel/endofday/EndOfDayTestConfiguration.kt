@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.time.Duration
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -30,11 +31,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * Como toda execução completa avança a data operacional do banco isolado, cada teste fecha a data corrente e deixa a
  * seguinte sem execução (`EndOfDayTestRuns.settle`).
  *
- * **Revisar na E11:** quando as etapas reais forem registradas (posições de 100 em 100), este contexto passa a ter as
- * reais e as falsas juntas, e as reais agem sobre todo o banco isolado (nota do handoff).
+ * As etapas reais (E11) ficam de fora ([EndOfDayProductionStepsExcluded]): aqui o registro tem só as falsas. As reais
+ * têm o contexto delas, [EndOfDayRealStepsTestConfiguration].
  */
 @TestConfiguration(proxyBeanMethods = false)
-@Import(MutableClockConfiguration::class, IamTestConfiguration::class)
+@Import(MutableClockConfiguration::class, IamTestConfiguration::class, EndOfDayProductionStepsExcluded::class)
 class EndOfDayTestConfiguration {
     @Bean
     fun fakeItemWork(): FakeItemWork = FakeItemWork()
@@ -88,6 +89,7 @@ class FakeStepsProbe(
     private val calls = ConcurrentHashMap<Pair<String, LocalDate>, AtomicInteger>()
     private val failures = ConcurrentHashMap<String, AtomicInteger>()
     private val issueKinds = ConcurrentHashMap<String, String>()
+    private val issuePlans = ConcurrentHashMap<String, MutableList<Pair<String, Int>>>()
     private val itemPlans = ConcurrentHashMap<String, ItemPlan>()
     private val pauses = ConcurrentHashMap<String, Duration>()
     private val gates = ConcurrentHashMap<String, CountDownLatch>()
@@ -118,6 +120,18 @@ class FakeStepsProbe(
         kind: String,
     ) {
         issueKinds[step] = kind
+    }
+
+    /**
+     * A etapa [step] levanta [count] pendências [kind] (referências `<etapa>-<n>`) na transação dela; chamadas
+     * repetidas somam tipos.
+     */
+    fun raiseIssuesOn(
+        step: String,
+        kind: String,
+        count: Int,
+    ) {
+        issuePlans.computeIfAbsent(step) { CopyOnWriteArrayList() }.add(kind to count)
     }
 
     /**
@@ -165,6 +179,7 @@ class FakeStepsProbe(
         calls.clear()
         failures.clear()
         issueKinds.clear()
+        issuePlans.clear()
         itemPlans.clear()
         pauses.clear()
         gates.clear()
@@ -179,6 +194,9 @@ class FakeStepsProbe(
         pauses[step]?.let { Thread.sleep(it) }
         gates[step]?.await(GATE_LIMIT.toMillis(), TimeUnit.MILLISECONDS)
         issueKinds[step]?.let { context.issues.raise(it, step, "Pendência de teste.") }
+        issuePlans[step]?.forEach { (kind, count) ->
+            (1..count).forEach { context.issues.raise(kind, "$step-$it", "Pendência de teste.") }
+        }
         itemPlans[step]?.let { plan -> (1..plan.items).forEach { process(context, it, it == plan.failingItem) } }
         check((failures[step]?.getAndDecrement() ?: 0) <= 0) { "Falha de teste na etapa $step." }
         errors.remove(step)?.let { throw it }

@@ -38,6 +38,7 @@ import java.sql.DriverManager
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
         PRINTING_MAINTENANCE_DEFERRED,
+        END_OF_DAY_TRIGGER_SHORT_WAIT,
     ],
 )
 @ActiveProfiles("local")
@@ -52,6 +53,12 @@ import java.sql.DriverManager
     ],
 )
 annotation class EndOfDayIntegrationTest
+
+/**
+ * O gatilho automático espera o motor só 1 s (M6 E11, Task 17) em vez dos 5 s de produção: os testes que dependem do
+ * desfecho esperam o motor terminar (`EndOfDayTestRuns.awaitEngine`).
+ */
+const val END_OF_DAY_TRIGGER_SHORT_WAIT = "zeny.endofday.trigger.wait=PT1S"
 
 /**
  * O banco do fechamento do dia: criado uma vez por JVM no container compartilhado. Os papéis são do cluster, então o

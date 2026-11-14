@@ -333,7 +333,7 @@ class CashierShiftService(
                 )
         CashierShift.requireActive(cashPoint)
         if (store.openShiftOf(operator) != null) throw alreadyOpen()
-        val businessDate = hotel.currentBusinessDate()
+        val businessDate = hotel.lockBusinessDate()
         val shift =
             CashierShift.open(
                 numbers.next(SHIFT_NUMBER, businessDate.year),
@@ -364,7 +364,7 @@ class CashierShiftService(
                 type,
                 amount,
                 reason,
-                hotel.currentBusinessDate(),
+                hotel.lockBusinessDate(),
                 now(),
                 currentActor.current().userId,
             )
@@ -395,7 +395,7 @@ class CashierShiftService(
         // O esperado com o fundo de troco, os movimentos e os pagamentos do turno (os reembolsos tiram; E08), lidos
         // com o turno travado: nenhum recebimento entra no meio.
         val expectation = ShiftExpectation.of(shift.openingFloat, ledger.movementsOf(id), payments.shiftTotals(id))
-        val closedOn = hotel.currentBusinessDate()
+        val closedOn = hotel.lockBusinessDate()
         val result = shift.close(declared, expectation, closedOn, now())
         closing = result
         store.flush()

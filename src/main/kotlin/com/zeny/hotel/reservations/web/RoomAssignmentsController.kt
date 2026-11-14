@@ -80,8 +80,8 @@ data class RoomAssignmentResponse(
     @field:Schema(
         description =
             "Por que deixou de valer: `UNASSIGNED`, `REALLOCATED`, `RESERVATION_CANCELLED`, `RESERVATION_CHANGED`, " +
-                "`CHECKED_OUT` (o check-out) ou `ROOM_MOVED` (a troca de UH do hospedado); " +
-                "nulo na ativa. $EXTENSIBLE",
+                "`CHECKED_OUT` (o check-out), `ROOM_MOVED` (a troca de UH do hospedado) ou " +
+                "`RESERVATION_NO_SHOW` (o no-show do fechamento do dia); nulo na ativa. $EXTENSIBLE",
     )
     val releaseReason: RoomAssignmentEndReason?,
 ) {

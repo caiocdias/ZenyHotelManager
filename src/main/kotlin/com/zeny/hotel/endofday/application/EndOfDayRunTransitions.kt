@@ -61,7 +61,8 @@ class EndOfDayRunTransitions(
      * Roda o [work] da etapa [stepName] e a conclui com o resultado dele, na mesma transação. Antes, confere que a
      * etapa ainda está `RUNNING` com a mesma tentativa ([attempts]); se não está (outro executor passou à frente depois
      * de uma trava vencida), devolve `false` sem chamar o [work] e sem efeito. Uma exceção do [work] escapa e desfaz
-     * tudo, inclusive as pendências levantadas por ele.
+     * tudo, inclusive as pendências levantadas por ele. Os avisos delas saem agrupados por tipo
+     * ([EndOfDayIssues.notifyGrouped]), depois do [work], na mesma transação.
      */
     @Audited(EndOfDayAudit.COMPLETE_STEP)
     @Transactional(rollbackFor = [Throwable::class])
@@ -78,15 +79,18 @@ class EndOfDayRunTransitions(
             return false
         }
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
+        val raised = mutableListOf<Pair<String, String?>>()
         val sink =
             EndOfDayIssueSink {
                 kind,
                 reference,
                 message,
                 ->
-                issues.raise(run.id, run.businessDate, stepName, kind, reference, message)
+                issues.record(run.id, stepName, kind, reference, message)
+                raised += kind to reference
             }
         val outcome = work(EndOfDayStepContext(run.id, run.businessDate, sink))
+        issues.notifyGrouped(run.businessDate, raised)
         run.completeStep(stepName, outcome.result, now())
         publish(run)
         return true
@@ -98,9 +102,10 @@ class EndOfDayRunTransitions(
      * [reason] longo é cortado no tamanho do resultado da etapa, para a falha nunca falhar por causa dele.
      *
      * Se a etapa está `RUNNING` noutra tentativa (outro executor a reiniciou depois de uma trava vencida), devolve
-     * `false` sem efeito nem pendência: a falha é de uma tentativa que já não vale. Etapa desconhecida, que não está
-     * `RUNNING` (concluída por outro executor, por exemplo) ou execução fora de `RUNNING` são recusadas pelo agregado
-     * (exceção; a transação é desfeita sem efeito).
+     * `false` sem efeito nem pendência: a falha é de uma tentativa que já não vale. Se a etapa já não está `RUNNING`
+     * (concluída ou falhada por outro executor, por exemplo) ou a execução saiu de `RUNNING`, lança
+     * [StepAttemptLostException]: a corrida perdida, que o motor trata como a de cima. Etapa desconhecida e execução
+     * inexistente são recusadas com outra exceção, que não é corrida. Em toda recusa a transação é desfeita sem efeito.
      */
     @Audited(EndOfDayAudit.FAIL_STEP)
     @Transactional(rollbackFor = [Throwable::class])
@@ -112,9 +117,14 @@ class EndOfDayRunTransitions(
     ): Boolean {
         val run = locked(runId)
         val step = run.steps.firstOrNull { it.name == stepName }
-        if (run.status == RunStatus.RUNNING && step?.status == StepStatus.RUNNING && step.attempts != attempts) {
-            audit.noChanges()
-            return false
+        if (step != null) {
+            if (run.status != RunStatus.RUNNING || step.status != StepStatus.RUNNING) {
+                throw StepAttemptLostException(stepName)
+            }
+            if (step.attempts != attempts) {
+                audit.noChanges()
+                return false
+            }
         }
         audit.track(EndOfDayAudit.RUN, run.id) { run.auditState() }
         val now = now()
@@ -165,6 +175,15 @@ class EndOfDayRunTransitions(
             }
     }
 }
+
+/**
+ * A etapa [stepName] já não está na tentativa de quem quis falhá-la: outro executor a concluiu ou falhou (ou a
+ * execução saiu de `RUNNING`) depois de uma trava vencida. Lançada só por [EndOfDayRunTransitions.fail]; o motor a
+ * trata como corrida perdida. Qualquer outra `IllegalStateException` do `fail` é erro e escapa.
+ */
+internal class StepAttemptLostException(
+    stepName: String,
+) : IllegalStateException("A etapa $stepName já não está na tentativa deste executor.")
 
 /**
  * Avisa o tópico `end-of-day` de que a execução mudou. Grava antes (`flush`): a versão otimista só sobe na gravação, e

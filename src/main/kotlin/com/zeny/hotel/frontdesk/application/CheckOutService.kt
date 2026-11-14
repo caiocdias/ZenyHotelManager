@@ -12,14 +12,15 @@ import com.zeny.hotel.billing.PostingSummary
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKey
 import com.zeny.hotel.frontdesk.FrontdeskPermissions
+import com.zeny.hotel.frontdesk.domain.CheckOutCharges
 import com.zeny.hotel.frontdesk.domain.EarlyLateFeeRules
 import com.zeny.hotel.frontdesk.domain.EarlyLateQuotes
 import com.zeny.hotel.frontdesk.domain.ReservationChangedException
-import com.zeny.hotel.frontdesk.domain.StayCharge
-import com.zeny.hotel.frontdesk.domain.StayCharges
 import com.zeny.hotel.frontdesk.domain.StayNotSettledException
 import com.zeny.hotel.frontdesk.domain.StayRules
 import com.zeny.hotel.hotel.HotelApi
+import com.zeny.hotel.reservations.NightCharge
+import com.zeny.hotel.reservations.NightChargeKind
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
@@ -30,7 +31,6 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.Money
-import com.zeny.hotel.shared.Percent
 import com.zeny.hotel.shared.StaleVersionException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -62,7 +62,7 @@ data class CheckOutOutcome(
  *
  * **Ordem** (e das travas, decisão D1): a permissão; a reserva lida sem trava (inexistente `404`; só uma hospedada,
  * `409 RESERVATION_TRANSITION_NOT_ALLOWED`); a data operacional (RN-01); as cobranças pendentes da noite da chegada
- * ([StayCharges.pending], só no day use ou no pernoite que sai no dia em que chegou) e o late aceito pela política
+ * ([CheckOutCharges.pending], só no day use ou no pernoite que sai no dia em que chegou) e o late aceito pela política
  * **vigente** no fuso do hotel ([EarlyLateFeeRules.acceptedFee]: `422 EARLY_LATE_NOT_OFFERED`,
  * `409 EARLY_LATE_FEE_CHANGED`), calculados sobre a reserva lida **antes** da transição e recusados antes de qualquer
  * escrita; a transição (`ReservationsApi.checkOut`, que **trava a reserva**, confere com ela travada a versão lida,
@@ -99,7 +99,7 @@ class FrontdeskCheckOutService(
         StayRules.requireCheckOut(reservation)
         val roomId = checkNotNull(reservation.roomAssignment) { "Hospedada sem UH alocada" }.roomId
         val businessDate = hotel.currentBusinessDate()
-        val pending = StayCharges.pending(reservation, businessDate)
+        val pending = CheckOutCharges.pending(reservation, businessDate)
         val lateFee =
             EarlyLateFeeRules.acceptedFee(
                 EarlyLateQuotes.late(hotel.policy(), reservation.departure, hotel.timezone()),
@@ -156,24 +156,23 @@ class FrontdeskCheckOutService(
             throw ReservationChangedException()
         }
 
-    /** Lança a cobrança da noite da chegada com a chave dela (H14): já lançada, a `BillingApi` devolve a existente. */
+    /**
+     * Lança a cobrança da noite da chegada com a chave dela (H14): já lançada, a `BillingApi` devolve a existente. No
+     * check-out (day use) a taxa de turismo vem nula: só a hospedagem ([NightChargeKind.ROOM]) é cobrada, então o
+     * `check` do código recusa qualquer outro tipo como erro de programação.
+     */
     private fun post(
         folioId: FolioId,
-        charge: StayCharge,
+        charge: NightCharge,
         roomCharge: TransactionCodeId,
     ): PostingSummary =
         billing.post(
             folioId,
-            NewPosting(
-                transactionCodeId = charge.transactionCodeId ?: roomCharge,
-                unitPrice = charge.unitPrice,
-                quantity = charge.quantity,
-                description = charge.description,
-                source = PostingSource.END_OF_DAY,
-                // Os pacotes inclusos já estão na tarifa cotada: a taxa de serviço do código não os acresce (RN-11).
-                serviceChargeRate = if (charge.includedInRate) Percent.ZERO else null,
-                sourceReference = charge.sourceReference,
-            ),
+            charge.toNewPosting {
+                // Só a hospedagem não traz o código; a taxa de turismo não se cobra no check-out (day use).
+                check(it == NightChargeKind.ROOM) { "Cobrança $it sem código no check-out" }
+                roomCharge
+            },
         )
 
     /**

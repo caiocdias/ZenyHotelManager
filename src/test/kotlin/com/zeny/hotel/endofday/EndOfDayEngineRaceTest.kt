@@ -7,6 +7,7 @@ import com.zeny.hotel.endofday.application.EndOfDayStepContext
 import com.zeny.hotel.endofday.application.EndOfDayStepHandler
 import com.zeny.hotel.endofday.application.EndOfDayStepOutcome
 import com.zeny.hotel.endofday.application.EndOfDayStepRegistry
+import com.zeny.hotel.endofday.application.StepAttemptLostException
 import com.zeny.hotel.endofday.domain.EndOfDayRun
 import com.zeny.hotel.endofday.domain.RunTrigger
 import com.zeny.hotel.endofday.domain.StepSlot
@@ -83,7 +84,7 @@ class EndOfDayEngineRaceTest {
     @Test
     fun `a failure whose step another executor already finished is Busy, not an error`() {
         every { transitions.complete(run.id, STEP, 1, any()) } throws IllegalArgumentException("Fulano")
-        every { transitions.fail(run.id, STEP, 1, any()) } throws IllegalStateException("A etapa não está RUNNING")
+        every { transitions.fail(run.id, STEP, 1, any()) } throws StepAttemptLostException(STEP)
 
         engine.execute(run.id, WAIT) shouldBe EndOfDayExecution.Busy
 

@@ -29,11 +29,12 @@ import java.util.UUID
 
 /**
  * O que a `main` faz entre a E10 e a E11 (registro de etapas vazio), na configuração de produção: o contexto **não**
- * importa o `EndOfDayTestConfiguration`, então nenhuma etapa (falsa ou real) está registrada. Só o relógio mutável e o
- * apoio de usuários do `iam`, que não registram etapas. Banco isolado.
+ * importa o `EndOfDayTestConfiguration` e tira as etapas reais ([EndOfDayProductionStepsExcluded]), então nenhuma etapa
+ * (falsa ou real) está registrada. Só o relógio mutável e o apoio de usuários do `iam`, que não registram etapas. Banco
+ * isolado.
  */
 @EndOfDayIntegrationTest
-@Import(MutableClockConfiguration::class, IamTestConfiguration::class)
+@Import(MutableClockConfiguration::class, IamTestConfiguration::class, EndOfDayProductionStepsExcluded::class)
 @Suppress("LongParameterList") // os apoios do contexto
 class EndOfDayNoStepsProductionTest(
     @Autowired private val mockMvc: MockMvc,

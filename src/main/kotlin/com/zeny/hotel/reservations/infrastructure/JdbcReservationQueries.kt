@@ -182,6 +182,17 @@ object ReservationQuerySql {
         )
     }
 
+    /** Os ids, por id, das reservas em [status] com [column] até `:date` (usa o índice parcial da situação). */
+    fun idsUpTo(
+        status: ReservationStatus,
+        column: String,
+    ): String =
+        """
+        SELECT r.id FROM reservations.reservation r
+        WHERE r.status IN (${statusList(listOf(status))}) AND r.$column <= :date
+        ORDER BY r.id
+        """.trimIndent()
+
     private fun array(values: Collection<Any>): String = values.joinToString(",", "{", "}")
 
     /**
@@ -224,6 +235,25 @@ class JdbcReservationQueries(
                 )
             }.list()
     }
+
+    override fun pendingArrivalIds(date: LocalDate): List<ReservationId> =
+        ids(ReservationQuerySql.idsUpTo(ReservationStatus.CONFIRMED, "arrival"), date)
+
+    override fun pendingDepartureIds(date: LocalDate): List<ReservationId> =
+        ids(ReservationQuerySql.idsUpTo(ReservationStatus.IN_HOUSE, "departure"), date)
+
+    override fun inHouseIds(date: LocalDate): List<ReservationId> =
+        ids(ReservationQuerySql.idsUpTo(ReservationStatus.IN_HOUSE, "arrival"), date)
+
+    private fun ids(
+        sql: String,
+        date: LocalDate,
+    ): List<ReservationId> =
+        jdbc
+            .sql(sql)
+            .param("date", date)
+            .query { rs, _ -> ReservationId(rs.uuid("id")) }
+            .list()
 
     private fun rows(query: ReservationQuery): List<ReservationListRow> =
         jdbc

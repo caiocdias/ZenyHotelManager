@@ -18,6 +18,10 @@ import org.springframework.test.context.ContextConfiguration
  * e de expurgo do outbox, o expurgo de anexos órfãos, a rotação de chaves dos documentos de hóspede, o horizonte do
  * inventário e a expiração das pré-reservas, para que os testes os disparem quando quiserem. Para autenticar uma
  * requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
+ *
+ * Os contextos `@IntegrationTest` compartilhados registram as etapas reais do fechamento do dia, inertes só pelo
+ * `initial-delay PT24H` do job: nenhum teste no banco compartilhado pode disparar o fechamento
+ * (`POST /api/v1/end-of-day/runs`).
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)

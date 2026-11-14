@@ -17,12 +17,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * A API pública do `hotel` ([HotelApi]) para os outros módulos: leituras sem checar permissão e o
+ * A API pública do `hotel` ([HotelApi]) para os outros módulos: leituras sem checar permissão, a data
+ * operacional travada para quem lança (`FOR SHARE`, na transação de escrita de quem chama) e o
  * avanço da data operacional, que trava a linha da data (`SELECT … FOR UPDATE`), avança exatamente
  * um dia a partir da data esperada e publica [BusinessDateAdvanced] pelo [ApplicationEventPublisher]
  * dentro da transação: o Event Publication Registry (outbox) o grava no mesmo commit, e rollback
@@ -42,6 +44,14 @@ class HotelApiService(
 
     @Transactional(readOnly = true)
     override fun currentBusinessDate(): LocalDate = (store.businessDay() ?: notInitialized()).current
+
+    override fun lockBusinessDate(): LocalDate {
+        check(
+            TransactionSynchronizationManager.isActualTransactionActive() &&
+                !TransactionSynchronizationManager.isCurrentTransactionReadOnly(),
+        ) { "A data operacional só é travada dentro da transação de escrita de quem chama" }
+        return store.lockBusinessDate() ?: notInitialized()
+    }
 
     @Transactional(readOnly = true)
     override fun profile(): CurrentHotelProfile? =

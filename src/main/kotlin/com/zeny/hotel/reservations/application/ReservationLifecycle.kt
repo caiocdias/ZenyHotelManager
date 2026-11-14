@@ -39,6 +39,7 @@ import com.zeny.hotel.reservations.ReservationHistoryEntry
 import com.zeny.hotel.reservations.ReservationHistoryId
 import com.zeny.hotel.reservations.ReservationHistoryKind
 import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationMarkedNoShow
 import com.zeny.hotel.reservations.ReservationReactivated
 import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
@@ -752,6 +753,82 @@ class ReservationLifecycle(
         return outcome as? SensitiveAuthorization.ByApproval
     }
 
+    // --- No-show (M6 E11) -----------------------------------------------------------------------------------------
+
+    /**
+     * Marca como no-show a reserva confirmada cuja chegada já é da data operacional ou anterior (RF-RES-07, RN-15):
+     * travada, se já não é confirmada ou a chegada é futura (um check-in ou cancelamento confirmados antes da trava a
+     * tiram daqui), nada muda e devolve `null`. A multa é a da política **copiada** na reserva, sem prazo e sem
+     * isenção, descontado o já cobrado; a chave de origem a lança uma vez por data (RN-21).
+     */
+    fun markNoShow(id: ReservationId): ReservationSummary? {
+        requireWriteTransaction()
+        val reservation = locked(id)
+        val businessDate = hotel.currentBusinessDate()
+        if (reservation.status != ReservationStatus.CONFIRMED || reservation.arrival.isAfter(businessDate)) {
+            audit.noChanges()
+            return null
+        }
+        val now = now()
+        inventory.apply(blockUnits.onCancellation(reservation, businessDate, now))
+        val terms = reservation.cancellationTerms
+        val due =
+            CancellationPenalties.due(
+                CancellationPenalties.amount(terms, reservation.nightlyRates, reservation.roomTotal),
+                reservation.penaltiesCharged,
+            )
+        // Repetição na mesma data: o `BillingApi.post` devolve o lançamento antigo sem gravar nada. Um lançamento
+        // novo tem o valor exato do devido e foi gravado agora ou depois (`postedAt` não anterior a `now`); o antigo,
+        // não. Só o novo entra em `penaltiesCharged` e no evento, para o total bater com o razão.
+        val posted = if (due.isPositive()) postNoShowFee(reservation, due, businessDate) else null
+        val posting = posted?.takeIf { it.amount == due && !it.postedAt.isBefore(now) }
+        val roomId = assignments.releaseOnNoShow(reservation, now)
+        val updated =
+            reservation.copy(
+                status = ReservationStatus.NO_SHOW,
+                roomAssignment = null,
+                provisionalUntil = null,
+                penaltiesCharged = reservation.penaltiesCharged + (posting?.amount ?: Money.ZERO),
+                version = reservation.version + 1,
+            )
+        store.update(updated, now, replaceNights = false)
+        record(ReservationHistoryKind.NO_SHOW, reservation, updated, listOf("status"), null, now)
+        events.publishEvent(
+            ReservationMarkedNoShow(
+                reservationId = updated.id.value,
+                bookingId = updated.bookingId.value,
+                roomTypeId = updated.roomTypeId.value,
+                roomId = roomId?.value,
+                arrival = updated.arrival,
+                departure = updated.departure,
+                dayUse = updated.dayUse,
+                businessDate = businessDate,
+                penaltyCharged = posting != null,
+                performedBy = actor()?.value,
+                version = updated.version,
+                markedAt = now,
+            ),
+        )
+        return updated
+    }
+
+    /** A multa de no-show na conta da reserva: `NO_SHOW_FEE`, origem `END_OF_DAY`, uma vez por data (RN-21). */
+    private fun postNoShowFee(
+        reservation: ReservationSummary,
+        due: Money,
+        businessDate: LocalDate,
+    ) = billing.post(
+        reservation.folioId,
+        NewPosting(
+            transactionCodeId = billing.transactionCode(TransactionCodeKey.NO_SHOW_FEE).id,
+            unitPrice = due,
+            quantity = BigDecimal.ONE,
+            description = "Multa de no-show da reserva ${reservation.code}",
+            source = PostingSource.END_OF_DAY,
+            sourceReference = "${ReservationsAudit.RESERVATION}:${reservation.id}:$businessDate:no-show",
+        ),
+    )
+
     // --- Reativação -----------------------------------------------------------------------------------------------
 
     fun reactivate(
@@ -965,6 +1042,11 @@ class ReservationLifecycleService(
         id: ReservationId,
         method: GuaranteeMethod,
     ): ReservationSummary = lifecycle.confirm(id, method)
+
+    /** O no-show pela `ReservationsApi`, sem permissão: só o fechamento do dia chama. */
+    @Audited(ReservationsAudit.NO_SHOW_RESERVATION)
+    @Transactional
+    fun markNoShowAuthorized(id: ReservationId): ReservationSummary? = lifecycle.markNoShow(id)
 
     @Audited(ReservationsAudit.REACTIVATE_RESERVATION)
     @Transactional

@@ -18,12 +18,12 @@ import java.time.LocalDate
  * - **Idempotência:** [execute] pode rodar de novo para a mesma data (uma retomada depois de falha ou de queda repete
  *   a etapa que não chegou a concluir). Precisa ser idempotente, com a chave pela **data**
  *   ([EndOfDayStepContext.businessDate]), **nunca** pelo `runId`.
- * - **Trabalho por item que tolera falha:** cada item roda na transação dele (`REQUIRES_NEW`, por outro bean com
- *   `@Transactional` próprio, nunca por `this.`), idempotente pela chave natural do item; a falha do item vira
- *   pendência ([EndOfDayStepContext.issues]) e não derruba a etapa. A transação do item **nunca altera a linha da
- *   execução** (`endofday.run`), que a transação da etapa mantém travada: a thread esperaria por ela mesma. Inserir
- *   pendência pode (a trava é `FOR NO KEY UPDATE`). A pendência da falha de um item é levantada **na transação da
- *   etapa**, depois que a do item desfez: levantada dentro da transação do item, ela some junto com ele.
+ * - **Trabalho por item que tolera falha:** cada item roda na transação dele (`REQUIRES_NEW`, pelo [EndOfDayItems],
+ *   que abre a transação por `TransactionTemplate`, nunca por `this.`), idempotente pela chave natural do item; a falha
+ *   do item vira pendência ([EndOfDayStepContext.issues]) e não derruba a etapa. A transação do item **nunca altera a
+ *   linha da execução** (`endofday.run`), que a transação da etapa mantém travada: a thread esperaria por ela mesma.
+ *   Inserir pendência pode (a trava é `FOR NO KEY UPDATE`). A pendência da falha de um item é levantada **na
+ *   transação da etapa**, depois que a do item desfez: levantada dentro da transação do item, ela some junto com ele.
  * - **Não capture a exceção de um bean `@Transactional` que participa da transação da etapa** (propagação
  *   `REQUIRED`, o padrão): a exceção que sai dele já marcou a transação da etapa como *rollback-only*, e o `complete`
  *   estoura com `UnexpectedRollbackException` no commit. Trabalho que pode falhar e virar pendência roda em

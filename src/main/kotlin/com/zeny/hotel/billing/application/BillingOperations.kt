@@ -212,8 +212,13 @@ class BillingOperations(
         return true
     }
 
-    /** A data operacional (RN-01), o instante do relógio e o ator corrente (nulo = o sistema). */
-    fun stamp(): PostingStamp = PostingStamp(hotel.currentBusinessDate(), now(), currentActor.currentOrNull()?.userId)
+    /**
+     * A data operacional (RN-01), o instante do relógio e o ator corrente (nulo = o sistema). A data vem de
+     * [HotelApi.lockBusinessDate] (RF-FEC-05, M6 E11): fica travada em `FOR SHARE` até o commit de quem carimba, então
+     * o avanço da data espera o lançamento, o pagamento, a devolução, a transferência, a caução, a reabertura ou o
+     * encerramento em curso, e nenhum deles cai numa data já fechada. Exige a transação de escrita de quem chama.
+     */
+    fun stamp(): PostingStamp = PostingStamp(hotel.lockBusinessDate(), now(), currentActor.currentOrNull()?.userId)
 
     fun view(folio: Folio): FolioView = folio.view(ledger.balances(listOf(folio.id))[folio.id] ?: Money.ZERO)
 

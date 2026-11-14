@@ -24,7 +24,13 @@ class EndOfDayTriggerDeferralTest(
 ) {
     @Test
     fun `the trigger configuration is bound and validated at boot`() {
-        properties shouldBe EndOfDayTriggerProperties(Duration.ofMinutes(1), Duration.ofHours(24), Duration.ofHours(24))
+        properties shouldBe
+            EndOfDayTriggerProperties(
+                Duration.ofMinutes(1),
+                Duration.ofHours(24),
+                Duration.ofHours(24),
+                Duration.ofSeconds(5),
+            )
     }
 
     @Test

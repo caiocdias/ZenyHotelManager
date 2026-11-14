@@ -26,6 +26,26 @@ interface HotelApi {
     fun currentBusinessDate(): LocalDate
 
     /**
+     * A data operacional corrente **travada contra o avanço** até o fim da transação de quem chama (RF-FEC-05): quem
+     * carimba um lançamento, pagamento, devolução, transferência, caução, reabertura ou encerramento de conta do
+     * `billing`, e quem abre, movimenta (sangria, suprimento) ou fecha um turno de caixa, lê a data por aqui.
+     *
+     * Lê a linha de `hotel.business_day` por consulta escalar nativa com `FOR SHARE`, nunca pela entidade: uma entidade
+     * já carregada nesta transação (por [currentBusinessDate], por exemplo) traria a data lida antes do avanço.
+     *
+     * Protocolo: o avanço ([advanceBusinessDate], `FOR UPDATE`) espera todas as travas `FOR SHARE` em curso, e quem
+     * trava depois do avanço confirmado lê a data nova. Não há ciclo de espera: o avanço só trava `hotel.business_day`
+     * (e a linha da execução do fechamento, que nenhum lançamento trava), e as travas `FOR SHARE` são compatíveis entre
+     * si, qualquer que seja a ordem conta → data ou data → conta de quem lança.
+     *
+     * Não abre transação: exige a transação de escrita de quem chama, porque a trava só vale até o commit dela. Fora de
+     * transação, ou numa só de leitura, falha com [IllegalStateException] (erro de programação). Exige o isolamento
+     * READ COMMITTED (o padrão): em REPEATABLE READ o `FOR SHARE` pode falhar com `40001` se o avanço confirmou depois
+     * do início da transação.
+     */
+    fun lockBusinessDate(): LocalDate
+
+    /**
      * Os dados cadastrais com o id do hotel (RF-CFG-01), ou `null` enquanto o hotel não foi
      * configurado. O id é o dono do vínculo do logotipo no módulo `files`.
      */

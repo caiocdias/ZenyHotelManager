@@ -5,6 +5,7 @@ import com.zeny.hotel.hotel.domain.Hotel
 import com.zeny.hotel.hotel.domain.HotelOperations
 import com.zeny.hotel.hotel.domain.HotelPolicy
 import com.zeny.hotel.hotel.domain.HotelTaxes
+import java.time.LocalDate
 
 /**
  * As partes da configuração do hotel único, cada uma uma linha só (o banco garante): na transação
@@ -23,6 +24,12 @@ interface HotelStore {
 
     /** A data operacional travada para escrita (`SELECT … FOR UPDATE`) até o fim da transação. */
     fun businessDayForUpdate(): BusinessDay?
+
+    /**
+     * A data operacional lida do banco por consulta escalar (nunca da entidade na sessão) com a linha travada em
+     * `FOR SHARE` até o fim da transação corrente, ou `null` antes de o hotel existir.
+     */
+    fun lockBusinessDate(): LocalDate?
 
     /** Grava o hotel novo e as partes da configuração dele. */
     fun add(

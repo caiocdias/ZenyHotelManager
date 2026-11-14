@@ -289,7 +289,7 @@ class EndOfDayIssuesAttackTest(
     }
 
     @Test
-    fun `item issues committed in their own transactions notify once each and match the stored issues`() {
+    fun `item issues committed in their own transactions stay stored but a failing step notifies only its failure`() {
         val reader = follower()
         probe.itemsOn(TWO, 3, 2)
         probe.failNext(TWO, 1)
@@ -302,7 +302,8 @@ class EndOfDayIssuesAttackTest(
             // item-1 e item-3 ficam (REQUIRES_NEW); item-2 (na transação da etapa) é desfeito com ela
             stored shouldContainExactlyInAnyOrder
                 listOf("TEST_ITEM: item-1", "TEST_ITEM: item-3", "${EndOfDayRunTransitions.STEP_FAILED}: $TWO")
-            bodiesOf(reader) shouldContainExactlyInAnyOrder stored
+            // a etapa falhou: ela não avisa as pendências dela (contrato de etapa), só o STEP_FAILED, um por ocorrência
+            bodiesOf(reader) shouldContainExactly listOf("${EndOfDayRunTransitions.STEP_FAILED}: $TWO")
         } finally {
             EndOfDayTestRuns.settle(context)
         }

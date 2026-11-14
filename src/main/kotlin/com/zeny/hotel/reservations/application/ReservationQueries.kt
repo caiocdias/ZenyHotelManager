@@ -176,6 +176,15 @@ interface ReservationQueryStore {
      * até [limit].
      */
     fun depositGuaranteed(limit: Int): List<DepositGuaranteedRow>
+
+    /** Os ids das confirmadas (`CONFIRMED`) com chegada até [date], por id (as chegadas pendentes do fechamento). */
+    fun pendingArrivalIds(date: LocalDate): List<ReservationId>
+
+    /** Os ids das hospedadas (`IN_HOUSE`) com saída até [date], por id (as saídas pendentes do fechamento). */
+    fun pendingDepartureIds(date: LocalDate): List<ReservationId>
+
+    /** Os ids das hospedadas (`IN_HOUSE`) com chegada até [date], por id, inclusive as de saída já passada. */
+    fun inHouseIds(date: LocalDate): List<ReservationId>
 }
 
 /**

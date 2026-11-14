@@ -55,11 +55,16 @@ class EndOfDayIsolationTest(
         }
     }
 
+    /**
+     * A única diferença permitida é a espera curta do gatilho (M6 E11, Task 17): só os testes do banco isolado rodam o
+     * gatilho até o motor, então só eles precisam que o `tick()` volte em 1 s.
+     */
     @Test
-    fun `both integration annotations carry the same test properties`() {
+    fun `the end-of-day annotation carries the integration test properties plus only the short trigger wait`() {
         fun propertiesOf(annotated: Class<*>) = annotated.getAnnotation(SpringBootTest::class.java).properties.toList()
 
-        propertiesOf(EndOfDayIntegrationTest::class.java) shouldBe propertiesOf(IntegrationTest::class.java)
+        propertiesOf(EndOfDayIntegrationTest::class.java) shouldBe
+            propertiesOf(IntegrationTest::class.java) + END_OF_DAY_TRIGGER_SHORT_WAIT
     }
 
     /**

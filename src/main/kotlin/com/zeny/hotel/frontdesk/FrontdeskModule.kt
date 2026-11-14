@@ -20,10 +20,11 @@ import org.springframework.modulith.PackageInfo
  * `billing` (a conta da reserva, a caução, os lançamentos, o saldo e o encerramento, só pela `BillingApi`), `files` (o
  * anexo da comprovação do menor, só pela `FilesApi`) e, desde a E03, `rates` (só os tipos públicos que a
  * `ReservationsApi` usa: o id do plano do walk-in, `RatePlanId`, e o tipo de garantia da política copiada,
- * `GuaranteeType`; desde a E04, o pacote da noite da chegada, `PackageId` e `PackageCharge`; nenhuma chamada à
- * `RatesApi`); desde a E06, `staff` (o setor e o responsável do recado, só pela `StaffApi`: `DepartmentId`,
- * `DepartmentSummary` e `EmployeeSummary`); nunca `fnrh` (camada acima: ele reage aos eventos de `reservations`) nem
- * `iam`; desde a E11, `printing` (a ficha de registro em PDF e ESC/POS, só a `PrintingApi` e os tipos dela).
+ * `GuaranteeType`; nenhuma chamada à `RatesApi`; desde a M6 E11 as cobranças do check-out vêm pela regra
+ * do `reservations`, sem `PackageId` nem `PackageCharge`); desde a E06, `staff` (o setor e o responsável do
+ * recado, só pela `StaffApi`: `DepartmentId`, `DepartmentSummary` e `EmployeeSummary`); nunca `fnrh` (camada acima: ele
+ * reage aos eventos de `reservations`) nem `iam`; desde a E11, `printing` (a ficha de registro em PDF e ESC/POS, só a
+ * `PrintingApi` e os tipos dela).
  *
  * A raiz do pacote é a API pública: as permissões ([FrontdeskPermissions]) e os códigos de erro
  * ([FrontdeskErrorCodes]).

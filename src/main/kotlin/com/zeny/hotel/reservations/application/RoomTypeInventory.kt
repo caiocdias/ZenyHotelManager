@@ -42,6 +42,7 @@ internal object ReservationsAudit {
     const val REACTIVATE_RESERVATION = "reservations.reservation.reactivate"
     const val CONFIRM_RESERVATION = "reservations.reservation.confirm"
     const val EXPIRE_RESERVATION = "reservations.reservation.expire"
+    const val NO_SHOW_RESERVATION = "reservations.reservation.no-show"
     const val CHECK_IN = "reservations.reservation.check-in"
     const val UNDO_CHECK_IN = "reservations.reservation.undo-check-in"
     const val CHECK_OUT = "reservations.reservation.check-out"

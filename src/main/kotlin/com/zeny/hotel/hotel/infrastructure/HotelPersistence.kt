@@ -13,7 +13,9 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
+import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
+import java.time.LocalDate
 import java.util.UUID
 
 interface HotelJpaRepository : JpaRepository<Hotel, UUID>
@@ -39,6 +41,7 @@ class JpaHotelStore(
     private val taxes: HotelTaxesJpaRepository,
     private val operations: HotelOperationsJpaRepository,
     private val businessDays: BusinessDayJpaRepository,
+    private val jdbc: JdbcClient,
 ) : HotelStore {
     override fun hotel(): Hotel? = hotels.findAll().singleOrNull()
 
@@ -51,6 +54,14 @@ class JpaHotelStore(
     override fun businessDay(): BusinessDay? = businessDays.findAll().singleOrNull()
 
     override fun businessDayForUpdate(): BusinessDay? = businessDays.findAllForUpdate().singleOrNull()
+
+    // Pelo JdbcClient, na conexão da transação JPA corrente: lê a linha do banco, não a entidade já na sessão.
+    override fun lockBusinessDate(): LocalDate? =
+        jdbc
+            .sql("SELECT business_date FROM hotel.business_day FOR SHARE")
+            .query(LocalDate::class.java)
+            .optional()
+            .orElse(null)
 
     override fun add(
         hotel: Hotel,

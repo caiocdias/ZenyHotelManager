@@ -12,6 +12,8 @@ import com.zeny.hotel.reservations.NewRoomBlock
 import com.zeny.hotel.reservations.PendingGuarantee
 import com.zeny.hotel.reservations.ReservationCancellationRequest
 import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationNightCharges
+import com.zeny.hotel.reservations.ReservationStatus
 import com.zeny.hotel.reservations.ReservationSummary
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsErrorCodes
@@ -20,6 +22,7 @@ import com.zeny.hotel.reservations.RoomAssignmentReason
 import com.zeny.hotel.reservations.RoomBlockId
 import com.zeny.hotel.reservations.RoomBlockSummary
 import com.zeny.hotel.reservations.RoomMove
+import com.zeny.hotel.reservations.StayCharges
 import com.zeny.hotel.reservations.domain.InventoryCounters
 import com.zeny.hotel.reservations.domain.InventoryKey
 import com.zeny.hotel.reservations.domain.InventoryOutOfHorizonException
@@ -224,6 +227,9 @@ class ReservationsApiService(
     private val blocks: RoomBlockService,
     private val assignments: RoomAssignmentService,
     private val stays: StayTransitionsService,
+    private val reservationQueries: ReservationQueryStore,
+    private val hotel: HotelApi,
+    private val provisionalExpiry: ProvisionalExpiry,
 ) : ReservationsApi {
     override fun assignRoom(
         id: ReservationId,
@@ -265,10 +271,16 @@ class ReservationsApiService(
         cancellation: ReservationCancellationRequest,
     ): ReservationSummary = lifecycle.cancelAuthorized(id, cancellation)
 
+    override fun markNoShow(id: ReservationId): ReservationSummary? = lifecycle.markNoShowAuthorized(id)
+
     override fun confirmReservation(
         id: ReservationId,
         method: GuaranteeMethod,
     ): ReservationSummary = lifecycle.confirmAuthorized(id, method)
+
+    override fun dueProvisionals(): List<ReservationId> = provisionalExpiry.dueIds(DUE_PROVISIONALS_LIMIT)
+
+    override fun expireProvisional(id: ReservationId): Boolean = provisionalExpiry.expire(id)
 
     override fun pendingGuarantees(
         from: Instant?,
@@ -291,10 +303,41 @@ class ReservationsApiService(
         return days(store.rows(roomTypeId, period.from, period.to))
     }
 
+    @Transactional(readOnly = true)
+    override fun pendingArrivals(date: LocalDate): List<ReservationId> = reservationQueries.pendingArrivalIds(date)
+
+    @Transactional(readOnly = true)
+    override fun pendingDepartures(date: LocalDate): List<ReservationId> = reservationQueries.pendingDepartureIds(date)
+
+    @Transactional(readOnly = true)
+    override fun inHouse(date: LocalDate): List<ReservationId> = reservationQueries.inHouseIds(date)
+
+    @Transactional(readOnly = true)
+    override fun chargesDue(
+        id: ReservationId,
+        through: LocalDate,
+    ): StayCharges? {
+        val reservation =
+            bookingStore.reservation(id)?.takeIf { it.status == ReservationStatus.IN_HOUSE } ?: return null
+        val from = maxOf(reservation.arrival, reservation.checkIn?.businessDate ?: reservation.arrival)
+        val fee = hotel.taxSettings().tourismFeePerPersonNight
+        val charges =
+            reservation.nightlyRates
+                .map { it.date }
+                .filter { it >= from && it <= through }
+                .sorted()
+                .flatMap { night -> ReservationNightCharges.of(reservation, night, fee.takeIf { night == through }) }
+        return StayCharges(reservation.id, reservation.folioId, charges)
+    }
+
     override fun recountInventory(
         from: LocalDate?,
         to: LocalDate?,
     ): InventoryRecount = recalculation.recount(from, to)
+
+    private companion object {
+        const val DUE_PROVISIONALS_LIMIT = 1000
+    }
 }
 
 @Configuration(proxyBeanMethods = false)

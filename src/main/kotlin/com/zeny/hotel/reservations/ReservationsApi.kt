@@ -47,6 +47,21 @@ interface ReservationsApi {
     ): ReservationSummary
 
     /**
+     * Marca como no-show a reserva confirmada que não chegou (M6 E11; RF-RES-07, RN-15, SPEC §8.4
+     * `Confirmed → NoShow`). **Só o fechamento do dia chama**: na transação de quem chama (ou numa própria), auditada
+     * `reservations.reservation.no-show` em nome do ator corrente ou do sistema, **sem permissão**. Travada a reserva,
+     * se já não é `CONFIRMED` ou se a chegada é depois da data operacional corrente (um check-in ou um cancelamento
+     * confirmados antes da trava a tiram daqui), nada muda e devolve `null`, nunca `409`. Senão: as unidades das noites
+     * a partir de `max(chegada, data operacional)` voltam ao inventário ou ao bloqueio; a multa é a da política de
+     * cancelamento **copiada na reserva**, sem prazo, descontado o já cobrado (`penaltiesCharged`), lançada na conta da
+     * reserva (`BillingApi.post`, código `NO_SHOW_FEE`, origem `END_OF_DAY`, `sourceReference`
+     * `reservations.reservation:<id>:<data operacional>:no-show`), sem isenção automática; a UH alocada é solta
+     * (`RESERVATION_NO_SHOW`); a reserva vira `NO_SHOW`, com o histórico e `ReservationMarkedNoShow` pelo outbox, tudo
+     * na mesma transação.
+     */
+    fun markNoShow(id: ReservationId): ReservationSummary?
+
+    /**
      * Confirma a pré-reserva com a garantia [method] (M4 E09; RF-RES-08 no recorte manual), na transação de quem chama
      * (ou numa própria), auditada `reservations.reservation.confirm` em nome do ator corrente ou do sistema, com as
      * mesmas regras de `POST /api/v1/reservations/{id}/confirm`, **menos a permissão** (quem chama já se autorizou: a
@@ -62,6 +77,22 @@ interface ReservationsApi {
         id: ReservationId,
         method: GuaranteeMethod,
     ): ReservationSummary
+
+    /**
+     * As pré-reservas vencidas (M6 E11; RN-23): a validade igual ou anterior a agora (`Clock`), pela validade e pelo
+     * id, até 1000, lidas sem trava. É o mesmo critério do `ProvisionalExpiryJob`; o fechamento do dia expira cada uma
+     * por [expireProvisional]. Sem permissão.
+     */
+    fun dueProvisionals(): List<ReservationId>
+
+    /**
+     * Expira a pré-reserva [id] (M6 E11; RN-23), o mesmo caso de uso do `ProvisionalExpiryJob`: na transação de quem
+     * chama (ou numa própria), auditada `reservations.reservation.expire` com o ator sistema, **sem permissão**. Trava
+     * a reserva e reconfere: se ainda é pré-reserva vencida, cancela com o motivo `EXPIRED`, sem multa e devolvendo o
+     * inventário, e devolve `true`; se já não é (o job, uma confirmação ou um cancelamento chegaram antes), nada muda e
+     * devolve `false`, nunca `409`. Id inexistente: `404 RESERVATION_NOT_FOUND`.
+     */
+    fun expireProvisional(id: ReservationId): Boolean
 
     /**
      * As garantias pendentes (pré-reservas e reservas confirmadas sem garantia) com o vencimento de [from] (inclusive;
@@ -195,6 +226,47 @@ interface ReservationsApi {
         from: LocalDate? = null,
         to: LocalDate? = null,
     ): InventoryRecount
+
+    /**
+     * As reservas com a chegada pendente na data [date]: confirmadas (`CONFIRMED`) com chegada até [date], por id (a
+     * pré-reserva nunca vira no-show). Sem conferir permissão e sem trava; o fechamento do dia chama com a data que
+     * fecha.
+     */
+    fun pendingArrivals(date: LocalDate): List<ReservationId>
+
+    /**
+     * As hospedadas (`IN_HOUSE`) com a saída pendente na data [date] (saída até [date]), por id. Sem conferir permissão
+     * e sem trava; o fechamento do dia chama com a data que fecha.
+     */
+    fun pendingDepartures(date: LocalDate): List<ReservationId>
+
+    /**
+     * Todas as hospedadas (`IN_HOUSE`) que já chegaram até [date] (chegada até [date]), inclusive as de saída já
+     * passada, por id. Sem conferir permissão e sem trava; o fechamento do dia chama com a data que fecha.
+     */
+    fun inHouse(date: LocalDate): List<ReservationId>
+
+    /**
+     * As cobranças devidas da hospedada [id] até [through] (M6 E11; a regra única do fechamento do dia e do
+     * check-out): `null` se a reserva não existe ou não está `IN_HOUSE`. Senão, as cobranças
+     * ([ReservationNightCharges]) de cada noite congelada `n` com
+     * `max(chegada, data operacional do check-in) <= n <= through` (no day use, a noite da chegada), em ordem de
+     * noite. A taxa de turismo **vigente** (`HotelApi.taxSettings`) entra **só na noite `through`**, a que fecha: as
+     * noites anteriores (recuperadas, como a do check-in feito durante a execução do fechamento) levam só a hospedagem
+     * e os pacotes. Motivo: a chave deduplica o que foi lançado, não a noite; com a taxa nula ou zero no fechamento de
+     * uma noite, a chave da taxa dela nunca é gravada, e recalcular a noite com a taxa ligada depois a cobraria
+     * retroativamente, no valor de outra data. Custo aceito: a noite recuperada (anterior à que fecha) não leva taxa
+     * de turismo, inclusive depois de uma falha de item (`ROOM_CHARGE_FAILED`) recuperada no fechamento seguinte; o
+     * operador lança a taxa à mão. Sem conferir permissão. As chaves de lançamento (`sourceReference`) deduplicam o que
+     * já foi lançado: quem chama lança todas.
+     *
+     * Custo: cada fechamento repete o `post` das noites passadas de cada hospedada (cresce com o quadrado da estadia;
+     * aceitável em 30 UHs); se ficar lento, filtrar as chaves já lançadas.
+     */
+    fun chargesDue(
+        id: ReservationId,
+        through: LocalDate,
+    ): StayCharges?
 }
 
 /**

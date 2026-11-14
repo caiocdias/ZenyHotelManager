@@ -60,8 +60,20 @@ class ProvisionalExpiry(
         val failed: Int,
     )
 
+    /**
+     * Os ids das pré-reservas vencidas agora (o mesmo critério da varredura: validade igual ou anterior a agora, pela
+     * validade e pelo id), até [limit]; lidos sem trava, para o fechamento do dia expirar cada uma ([expire]).
+     */
+    @Transactional(readOnly = true)
+    fun dueIds(limit: Int): List<ReservationId> = store.dueProvisionals(now(), null, limit).map { it.second }
+
+    /** Expira a pré-reserva [id] na transação de quem chama; `false` se já não é pré-reserva vencida. */
+    fun expire(id: ReservationId): Boolean = expiry.expire(id)
+
+    private fun now(): Instant = clock.instant().truncatedTo(ChronoUnit.MICROS)
+
     fun expireDue(): Run {
-        val now = clock.instant().truncatedTo(ChronoUnit.MICROS)
+        val now = now()
         var expired = 0
         var failed = 0
         var after: Pair<Instant, ReservationId>? = null
