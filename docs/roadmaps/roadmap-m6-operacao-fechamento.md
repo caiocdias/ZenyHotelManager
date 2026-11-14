@@ -308,16 +308,16 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Só a reserva confirmada com chegada pendente vira `NO_SHOW`, com a multa da política copiada nela (RN-15), e a UH alocada é solta no mesmo commit.
-- [ ] Saída pendente gera `EndOfDayIssue` e o check-out não é feito automaticamente.
-- [ ] Diárias, pacotes e taxas das reservas hospedadas são lançados uma única vez por reserva e data, mesmo com a etapa repetida, e o lançamento do check-out e o do fechamento na mesma data não duplicam (teste com os dois caminhos).
-- [ ] Pacotes inclusos saem à parte da hospedagem, no código de cada um, sem taxa de serviço, como no check-out (decisão M5 E04 a).
-- [ ] Falha forçada no meio do lançamento de diárias e retomada não duplicam nenhum lançamento.
-- [ ] Bloqueios vencidos devolvem as UHs não utilizadas ao inventário; pré-reservas vencidas são expiradas.
-- [ ] UHs ocupadas passam a Sujo; a etapa de pré-autorizações registra "não aplicável".
-- [ ] A data operacional avança só depois de todas as etapas anteriores concluídas, e o evento publicado gera as rotinas de checklist do novo dia (teste).
-- [ ] Lançamento depois do avanço cai na data nova, e nenhum lançamento fica numa data fechada, com o caminho concorrente testado (RF-FEC-05).
-- [ ] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
+- [x] Só a reserva confirmada com chegada pendente vira `NO_SHOW`, com a multa da política copiada nela (RN-15), e a UH alocada é solta no mesmo commit.
+- [x] Saída pendente gera `EndOfDayIssue` e o check-out não é feito automaticamente.
+- [x] Diárias, pacotes e taxas das reservas hospedadas são lançados uma única vez por reserva e data, mesmo com a etapa repetida, e o lançamento do check-out e o do fechamento na mesma data não duplicam (teste com os dois caminhos).
+- [x] Pacotes inclusos saem à parte da hospedagem, no código de cada um, sem taxa de serviço, como no check-out (decisão M5 E04 a).
+- [x] Falha forçada no meio do lançamento de diárias e retomada não duplicam nenhum lançamento.
+- [x] Bloqueios vencidos devolvem as UHs não utilizadas ao inventário; pré-reservas vencidas são expiradas.
+- [x] UHs ocupadas passam a Sujo; a etapa de pré-autorizações registra "não aplicável".
+- [x] A data operacional avança só depois de todas as etapas anteriores concluídas, e o evento publicado gera as rotinas de checklist do novo dia (teste).
+- [x] Lançamento depois do avanço cai na data nova, e nenhum lançamento fica numa data fechada, com o caminho concorrente testado (RF-FEC-05).
+- [x] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
 
 **Validação obrigatória:**
 
@@ -338,14 +338,62 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- **Estado (2026-11-13): em andamento, parada a pedido do usuário no meio do lote.** Tasks 1 a 13 do plano completas e revisadas; Tasks 14 a 20 pendentes. Retomar pelo ledger do superpowers (`.superpowers/sdd/2026-11-13-m6-operacao-fechamento-e11/progress.md` no worktree `roadmap-m6-operacao-fechamento`, ignorado pelo git) e pelo `git log`: a próxima é a Task 14 com BASE `73de821`.
-- Plano: `docs/superpowers/plans/2026-11-13-m6-operacao-fechamento-e11.md`, 20 tarefas em série. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 5 Importantes, todos corrigidos).
-- Commits até agora: branch `roadmap/m6-operacao-fechamento`, `3787f93` (início) a `73de821`, sobre `57eb5fa` da `main`. Entregue: consultas por data, situação e caso de uso de no-show, regra única das cobranças da estadia (usada também pelo check-out), data operacional travada para quem lança (`HotelApi.lockBusinessDate`, `FOR SHARE`, ARCHITECTURE §11), `EndOfDayItems`, contextos de teste das etapas reais e as etapas `no-show` (100), `pending-departures` (200), `room-charges` (300) e `advance-business-date` (1000, com `statement_timeout` de 30 s e `lock_timeout` de 10 s).
-- Falta: Tasks 14 (`block-release`), 15 (`provisional-expiry`), 16 (`card-pre-authorizations` e `occupied-rooms-dirty`), 17 (gatilho só dispara e volta, H12), 18 (tipo próprio no `fail` e retomada com `lock_timeout`), 19 (avisos agrupados; ajustar o texto fixado em `PendingDeparturesStepTest`) e 20 (ponta a ponta, igualdade exata no `ModularityTest` do `endofday`); depois testador de etapa, scanner, gate (`./gradlew build`, ainda não rodado nesta etapa), revisão final, captura do brain e integração. **Não integrar na `main` antes disso:** com as etapas reais parciais, o fechamento automático avançaria a data sem liberar bloqueios, expirar pré-reservas nem sujar as UHs.
-- Revisão final: —
-- Critérios verificados até agora (testes por tarefa, suíte inteira pendente): (1) no-show com a multa copiada e a UH solta no mesmo commit; (2) saída pendente vira pendência, sem check-out; (3) e (4) diárias, pacotes e taxas uma vez por reserva e noite, inclusos sem taxa de serviço, check-out e fechamento na mesma data sem duplicar; (5) falha no meio das diárias e retomada sem duplicar; (8) e (9) em parte: o avanço é a última etapa e gera as rotinas de checklist, e o lançamento concorrente com o avanço nunca cai em data fechada (Tasks 7 e 8). Pendentes: (6), (7), (10) e o ponta a ponta.
-- Decisões para o usuário (tomadas pela opção recomendada, revisáveis; nenhuma é de arquitetura): (a) multa de no-show = penalidade da política de cancelamento copiada na reserva, sem prazo e sem isenção automática (isentar = estorno depois); (b) a recusa da multa (conta encerrada, `MULTA-NOSHOW` desativado) bloqueia o no-show inteiro, que vira pendência a cada fechamento; (c) taxa de turismo = valor vigente × (adultos + crianças), por noite, nunca no day use, e só na noite que o fechamento fecha. Custo aceito: noites recuperadas ficam sem a taxa (check-in feito durante a execução, ou item que falhou e foi recuperado no fechamento seguinte), e o operador a lança à mão. Alternativa: guardar a taxa vigente por fechamento; (d) o fechamento recupera as noites a partir da data do check-in. Resíduo: check-in durante a execução seguido de check-out antecipado antes do próximo fechamento deixa a noite sem lançamento; (e) hóspede além da saída não ganha diária automática, só a pendência; (f) os movimentos de caixa (sangria, suprimento, fechamento do turno) ainda leem a data sem trava. A revisora recomendou travá-los também (uma linha cada); ficou para a onda de correção final; (g) a detecção de no-show repetido na mesma data supõe relógio monotônico (avaliar sinal explícito de replay no `BillingApi.post`).
-- Notas para a retomada: a máquina divide memória com o Gradle do ZenyHotelManager-DesktopFront (a suíte inteira chegou a ser morta por falta de memória), então os agentes rodam só os pacotes tocados e a suíte inteira fica para o gate. Os Minors adiados de cada tarefa estão no ledger para a revisão final.
+- Plano: `docs/superpowers/plans/2026-11-13-m6-operacao-fechamento-e11.md`, 20 tarefas em série, com duas execuções (lote parado a pedido do usuário depois da Task 13 e retomado em 2026-11-13/14). Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 5 Importantes, todos corrigidos).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `3787f93` (início) a `6bd8073`, sobre `57eb5fa` da `main`. Cada tarefa passou por desenvolvedor → testador (as de risco alto) → verificação mecânica → `revisor-seguranca`. Na retomada, a revisão de duas tarefas teve achado. A Task 17 teve uma rodada de correção: um teste exigia `BUSY` exato com a espera curta do contexto. A Task 19 teve uma ruling: o teste de um testador da E10 esperava aviso das pendências gravadas em `REQUIRES_NEW` por uma etapa que falha; o brief e o contrato de etapa dizem que não há aviso, e o teste foi reescrito pelo testador.
+- Entregue:
+  - `reservations`: consultas por data, transição, evento e caso de uso de no-show, a regra única das cobranças da estadia (usada também pelo check-out do `frontdesk`), `dueProvisionals` e `expireProvisional`.
+  - `hotel`: `lockBusinessDate` (`FOR SHARE`), usado pelo `billing` ao carimbar todo lançamento, o encerramento de conta e, desde a onda final, a abertura, os movimentos e o fechamento de caixa (ARCHITECTURE §11).
+  - `EndOfDayItems` e as 8 etapas: `no-show` 100, `pending-departures` 200, `room-charges` 300, `block-release` 400, `provisional-expiry` 500, `card-pre-authorizations` 600 (`NOT_APPLICABLE` até o M7), `occupied-rooms-dirty` 700 e `advance-business-date` 1000 (com `statement_timeout` de 30 s e `lock_timeout` de 10 s).
+  - Motor e gatilho: o gatilho só dispara o motor e volta (`zeny.endofday.trigger.wait`, padrão `PT5S`, até `PT1M`; H12); `StepAttemptLostException` no `fail`; retomada manual com `lock_timeout` de 5 s, que responde `409 END_OF_DAY_RUN_IN_PROGRESS` e desfaz tudo, inclusive o uso do token de aprovação; avisos de pendência agrupados por etapa e tipo.
+  - Testes no banco isolado `zeny_endofday` (H10).
+- Revisão final: `revisor-seguranca` (opus) sobre `57eb5fa..790749a`, "With fixes", 0 Critical de código.
+  - O Critical de processo era a falta do gate. A revisão foi feita com evidência por pacote, porque o primeiro `./gradlew build` foi morto pelo sistema por falta de memória, com o Gradle do DesktopFront rodando ao mesmo tempo.
+  - Os Importantes eram: o caixa sem a trava da data, o handoff desatualizado e duas sondas de espera frouxas nos testes ponta a ponta.
+  - Onda única de correção:
+    - `3abf960` (desenvolvedor): o caixa trava a data, mais KDocs;
+    - `9eecc75..6bd8073` (testador): `CashierDateLockTest` (vermelho em `790749a`, verde com `3abf960`), esperas provadas por `pg_blocking_pids` com o prazo contado a partir do avanço `RUNNING`, testes "waits" com sondagem e no-show com exatamente um evento.
+  - Re-revisão da onda: aprovada, sem quebra nova.
+- Verificação:
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles (426 + 74 + 0 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes (`commons-lang3` só no buildscript, `logback-core`, `opentelemetry-api`). Os lockfiles e o catálogo não mudaram. `scan source -r .` no worktree responde "No package sources found", por isso o `-L`.
+  - **Integridade:** `check_test_integrity.py --base 57eb5fa` deu exit 1, com apontamentos todos julgados justificados pela revisora: 4 `SEM_SOUL` em commits só de plano e roadmap do orquestrador anterior; 2 `DEV_TESTE_DO_TESTADOR` em `ea3424d`, por ruling da Task 6; e `ASSERCAO_REMOVIDA` no renome `StayCharges` → `CheckOutCharges`, com a asserção mantida. Com `--base 790749a` (onda): exit 0.
+  - **oasdiff:** sem `ERR` em `/api/v1` (o contrato só ganhou `NO_SHOW` e `RESERVATION_NO_SHOW` em `x-extensible-enum`).
+  - **Gate:** ver a linha seguinte.
+- Gate: GATE_PENDENTE
+- Critérios verificados:
+  - (1) No-show com a multa copiada e a UH solta no mesmo commit: `ReservationNoShowTest`, `NoShowStepTest`, `EndOfDayRealRunTest`.
+  - (2) Saída pendente: `PendingDeparturesStepTest`, `EndOfDayRealRunAttackTest` (uma pendência por fechamento, sem check-out).
+  - (3) e (4) Diárias, pacotes e taxa uma vez por reserva e noite; inclusos sem taxa de serviço; check-out e fechamento na mesma data: `RoomChargesStepTest`, `NightChargesTest`.
+  - (5) Falha no meio das diárias e retomada: `RoomChargesStepTest`, `EndOfDayRealRunTest`.
+  - (6) Bloqueios e pré-reservas: `BlockReleaseStepTest`, `ProvisionalExpiryStepTest`, `EndOfDayStageGapsTest`.
+  - (7) UHs ocupadas a Sujo e pré-autorizações "não aplicável": `RoomsAndPreAuthorizationStepsTest`.
+  - (8) Avanço por último e rotinas de checklist do novo dia: `EndOfDayAdvanceStepTest`, `EndOfDayRealRunTest`.
+  - (9) RF-FEC-05 com o caminho concorrente: `BusinessDateLockTest`, os testes de trava do `billing` das Tasks 7 e 8, `CashierDateLockTest`, `EndOfDayRealRunTest` e `EndOfDayRealRunAttackTest`.
+  - (10) `ModularityTest` com igualdade exata no uso real do `endofday`; build e contrato: gate acima.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** A multa de no-show é a penalidade da política de cancelamento copiada na reserva, sem prazo e sem isenção automática. Para isentar, faz-se o estorno depois.
+  - **(b)** A recusa da multa (conta encerrada ou `MULTA-NOSHOW` desativado) bloqueia o no-show inteiro, e a reserva vira pendência a cada fechamento. A UH e o inventário ficam presos nas noites seguintes até alguém agir. O mesmo vale para `ROOM_CHARGE_FAILED` por código desativado. Alternativa apontada pela revisão final: marcar o no-show e soltar a UH, com a falha da multa como pendência própria e lançamento manual.
+  - **(c)** Taxa de turismo = valor vigente × (adultos + crianças), por noite, nunca no day use, e só na noite que o fechamento fecha. Custo aceito: as noites recuperadas ficam sem a taxa (check-in feito durante a execução, ou item que falhou e foi recuperado no fechamento seguinte), e o operador a lança à mão. Alternativa: guardar a taxa vigente por fechamento.
+  - **(d)** O fechamento recupera as noites a partir da data do check-in. Resíduo: um check-in durante a execução seguido de check-out antecipado antes do próximo fechamento deixa a noite sem lançamento.
+  - **(e)** Hóspede além da saída não ganha diária automática, só a pendência.
+  - **(f)** Caixa: **corrigido na onda final**. A abertura, os movimentos e o fechamento de turno travam a data como os lançamentos.
+  - **(h)** O `409` da retomada quando o ShedLock dá `Busy` (trava com outro processo) gasta o token de aprovação e confirma a retomada; o `409` do `lock_timeout` desfaz tudo e não gasta o token. Esse comportamento vem da E10.
+  - **(i)** O avanço que esgota o prazo (30 s/10 s) fica `FAILED` até a retomada manual, e o hotel segue operando na data antiga até lá.
+  - **(j)** Uma etapa que falha não avisa as pendências que gravou em `REQUIRES_NEW`. Elas ficam visíveis no `GET` de pendências, e só o `STEP_FAILED` é avisado (as etapas reais levantam pendência na transação da etapa).
+- Notas para a próxima etapa (E14 e E13):
+  - A E14 escuta `ReservationMarkedNoShow` (evento pelo outbox, sem dado pessoal).
+  - A E13 encaixa `daily-statistics` (800) e `end-of-day-reports` (900) antes do avanço. O teste da corrida conta o prazo a partir do avanço `RUNNING`; com etapas longas, confira o *keep-alive* do motor antes (teste de unidade pedido na E10).
+  - O relatório de pendências da RF-FEC-04 (contas com saldo, caixas abertos, FNRH, notas, ARI) fica com a E09/E13, pelas views `report_*`.
+  - **Notas técnicas:**
+    - (g) a detecção de no-show repetido na mesma data supõe relógio monotônico; avaliar um sinal explícito de "criado ou existente" no `BillingApi.post`, o que muda o contrato do `billing`;
+    - a fila do executor do motor não tem limite (um pedido por rodada enquanto uma etapa está presa, todos sem efeito); sugestão: não reenfileirar enquanto houver `Future` pendente do mesmo `runId`;
+    - `ReservationsApi.markNoShow`, `releaseUnused` e `expireProvisional` não conferem permissão; sugestão: regra ArchUnit "só o `endofday` chama";
+    - os contextos `@IntegrationTest` compartilhados registram as etapas reais, inertes só pelo `initial-delay PT24H`; nenhum teste no banco compartilhado pode disparar o fechamento;
+    - `provisional-expiry` processa até 1000 por execução;
+    - os KDocs de `EndOfDayErrorCodes` (constante e exceção de `END_OF_DAY_RUN_IN_PROGRESS`) ainda dizem "outro executor";
+    - o `EndOfDayModule` justifica `billing` também pelas pré-autorizações (só no M7);
+    - na revisão final, os advisories pré-existentes de `opentelemetry-api` (≥ 1.67.0) e `commons-lang3` (≥ 3.18.0) ficaram para uma manutenção de dependências.
+  - A próxima migração precisa de versão posterior a `V2026_11_13_1000`.
+  - Máquina de 14 GB: um Gradle por vez nesta máquina e no DesktopFront.
 
 ---
 
