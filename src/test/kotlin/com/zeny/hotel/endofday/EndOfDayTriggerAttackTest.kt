@@ -337,6 +337,7 @@ class EndOfDayTriggerAttackTest(
             setClock(manausDueAt(date).plus(Duration.ofHours(24)).minusNanos(1_000))
 
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
 
             runRow(date)["status"] shouldBe "COMPLETED"
             runRow(date)["trigger"] shouldBe "AUTOMATIC"
@@ -349,6 +350,7 @@ class EndOfDayTriggerAttackTest(
             setClock(manausDueAt(date).plus(Duration.ofHours(23)))
 
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
             trigger.tick() shouldBe TickOutcome.NOT_DUE
 
             runRow(date)["status"] shouldBe "COMPLETED"
@@ -370,6 +372,7 @@ class EndOfDayTriggerAttackTest(
             trigger.tick() shouldBe TickOutcome.OUTSIDE_WINDOW
             closeManually(user, date.plusDays(1))
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
             trigger.tick() shouldBe TickOutcome.NOT_DUE
 
             noticesOf(reader) shouldContainExactly
@@ -391,6 +394,7 @@ class EndOfDayTriggerAttackTest(
 
             setClock(dueAt)
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
             runRow(date)["status"] shouldBe "COMPLETED"
         }
 
@@ -401,6 +405,7 @@ class EndOfDayTriggerAttackTest(
             setClock(dueAt)
             probe.failNext(THREE, 1)
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
             val failed = runRow(date)
             failed["status"] shouldBe "FAILED"
             val calls = invocations(date)
@@ -492,6 +497,7 @@ class EndOfDayTriggerAttackTest(
             }
 
             trigger.tick() shouldBe TickOutcome.RESUMED
+            EndOfDayTestRuns.awaitEngine(context)
 
             runCount(date) shouldBe 1
             runRow(date)["status"] shouldBe "COMPLETED"
@@ -507,6 +513,7 @@ class EndOfDayTriggerAttackTest(
                 setClock(manausDueAt(date))
 
                 val (a, b) = together({ trigger.tick() }, { trigger.tick() })
+                EndOfDayTestRuns.awaitEngine(context)
 
                 val outcomes = listOf(a.getOrThrow(), b.getOrThrow())
                 withClue("rodada $round: $outcomes") {
@@ -537,6 +544,7 @@ class EndOfDayTriggerAttackTest(
                 setClock(manausDueAt(date))
 
                 val (tick, manual) = together({ trigger.tick() }, { startManually(user, date) })
+                EndOfDayTestRuns.awaitEngine(context)
 
                 val outcome = tick.getOrThrow()
                 val status = manual.getOrThrow().status
@@ -604,6 +612,7 @@ class EndOfDayTriggerAttackTest(
             }
 
             job.triggerEndOfDay()
+            EndOfDayTestRuns.awaitEngine(context)
 
             runRow(date)["status"] shouldBe "COMPLETED"
             runRow(date)["trigger"] shouldBe "AUTOMATIC"

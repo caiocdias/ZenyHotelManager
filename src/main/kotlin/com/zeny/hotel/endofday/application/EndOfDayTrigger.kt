@@ -60,19 +60,25 @@ enum class TickOutcome {
  *   fechamento fica para o operador. Uma vez por data e processo, `WARN` e o aviso `END_OF_DAY_PENDING` a quem
  *   acompanha o fechamento (`endofday.runs.read`), só com a data e o código: a ação é executar
  *   o fechamento ou retomar a execução que falhou ou foi interrompida.
- * - Sem execução da data: cria a execução ([EndOfDayRunCommands.createAutomatic]) e a roda ([TickOutcome.STARTED]).
- *   Perdeu a corrida da criação (`END_OF_DAY_RUN_EXISTS`, `END_OF_DAY_ALREADY_CLOSED` ou `END_OF_DAY_DATE_MISMATCH`):
- *   relê a execução e segue pelo estado dela.
- * - Execução `RUNNING` (interrompida por uma queda): roda-a de novo; o motor não reexecuta etapa concluída
- *   ([TickOutcome.RESUMED]). `FAILED`: espera a retomada manual ([TickOutcome.WAITING_MANUAL_RESUME]), porque a falha
- *   já avisou (pendência e alerta) e quem corrige retoma. `COMPLETED`: [TickOutcome.ALREADY_CLOSED].
+ * - Sem execução da data: cria a execução ([EndOfDayRunCommands.createAutomatic]) e a dispara no motor
+ *   ([TickOutcome.STARTED]). Perdeu a corrida da criação (`END_OF_DAY_RUN_EXISTS`, `END_OF_DAY_ALREADY_CLOSED` ou
+ *   `END_OF_DAY_DATE_MISMATCH`): relê a execução e segue pelo estado dela.
+ * - Execução `RUNNING` (interrompida por uma queda, ou ainda em curso no motor): dispara-a de novo; o motor não
+ *   reexecuta etapa concluída ([TickOutcome.RESUMED]). `FAILED`: espera a retomada manual
+ *   ([TickOutcome.WAITING_MANUAL_RESUME]), porque a falha já avisou (pendência e alerta) e quem corrige retoma.
+ *   `COMPLETED`: [TickOutcome.ALREADY_CLOSED].
  * - O motor com a trava em outro executor: [TickOutcome.BUSY].
  *
- * Espera a execução até o fim (no máximo `zeny.endofday.lock-at-most-for`; passou disso, o motor continua sozinho). Sem
- * transação própria: a criação confirma a dela antes de o motor, em outra thread, ler a execução.
+ * Só dispara o motor e volta (M6 E11, decisão do usuário): espera a execução no máximo `zeny.endofday.trigger.wait`
+ * (5 s) e, passado isso, devolve [TickOutcome.STARTED] ou [TickOutcome.RESUMED] com o motor seguindo na thread dele,
+ * sob a trava `end-of-day-run`. Assim a rodada não prende a thread do agendador do Spring, que é a mesma dos demais
+ * jobs. A rodada seguinte acha a execução `RUNNING` e a dispara de novo sem duplicar nada: no mesmo processo, o pedido
+ * espera na fila da thread única do motor e encontra a execução já terminada; em outro processo, a trava a recusa
+ * ([TickOutcome.BUSY]). Um [TickOutcome.STARTED] ou [TickOutcome.RESUMED], portanto, não diz que a execução terminou.
+ * Sem transação própria: a criação confirma a dela antes de o motor, em outra thread, ler a execução.
  */
 @Component
-@Suppress("LongParameterList") // as portas do gatilho e os dois prazos
+@Suppress("LongParameterList") // as portas do gatilho, a janela e a espera do motor
 class EndOfDayTrigger(
     private val hotel: HotelApi,
     private val runs: EndOfDayRunRepository,
@@ -82,7 +88,7 @@ class EndOfDayTrigger(
     private val notifications: NotificationsApi,
     private val clock: Clock,
     @Value("\${zeny.endofday.trigger.catch-up-window}") private val catchUpWindow: Duration,
-    @Value("\${zeny.endofday.lock-at-most-for}") private val waitAtMost: Duration,
+    @Value("\${zeny.endofday.trigger.wait}") private val waitAtMost: Duration,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -121,7 +127,10 @@ class EndOfDayTrigger(
             RunStatus.RUNNING -> executed(run, TickOutcome.RESUMED)
         }
 
-    /** Roda a [run] pelo motor, esperando até o fim: [done], ou [TickOutcome.BUSY] se outro executor tem a trava. */
+    /**
+     * Dispara a [run] no motor e espera no máximo `zeny.endofday.trigger.wait`: [done] se ela terminou ou segue em
+     * curso no motor ([EndOfDayExecution.StillRunning]), ou [TickOutcome.BUSY] se outro executor tem a trava.
+     */
     private fun executed(
         run: EndOfDayRun,
         done: TickOutcome,

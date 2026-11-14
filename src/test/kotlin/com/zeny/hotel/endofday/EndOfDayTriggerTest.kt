@@ -261,6 +261,7 @@ class EndOfDayTriggerTest(
             setClock(dueAt)
 
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
 
             val run = runRow(date)
             run["status"] shouldBe "COMPLETED"
@@ -277,6 +278,7 @@ class EndOfDayTriggerTest(
             setClock(dueAt)
 
             trigger.tick() shouldBe TickOutcome.RESUMED
+            EndOfDayTestRuns.awaitEngine(context)
 
             val run = runRow(date)
             run["id"] shouldBe id.value
@@ -290,6 +292,7 @@ class EndOfDayTriggerTest(
             setClock(dueAt)
             probe.failNext(THREE, 1)
             trigger.tick() shouldBe TickOutcome.STARTED
+            EndOfDayTestRuns.awaitEngine(context)
             val failed = runRow(date)
             failed["status"] shouldBe "FAILED"
             val calls = invocations(date)
@@ -349,6 +352,7 @@ class EndOfDayTriggerTest(
                 // As duas terminam antes de qualquer asserção: o settle não pode correr com uma delas em curso.
                 val outcome = runCatching { tick.get(60, TimeUnit.SECONDS) }
                 val response = runCatching { manual.get(60, TimeUnit.SECONDS) }
+                EndOfDayTestRuns.awaitEngine(context)
 
                 oneRunWithOneCreator(date, outcome.getOrThrow(), response.getOrThrow().status)
             } finally {

@@ -10,6 +10,8 @@ import org.springframework.context.ApplicationContext
 import org.springframework.transaction.support.TransactionTemplate
 import java.time.Clock
 import java.time.Duration
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Apoio dos testes do fechamento no banco isolado, nos contextos das etapas falsas ([EndOfDayTestConfiguration]) e das
@@ -18,6 +20,7 @@ import java.time.Duration
 object EndOfDayTestRuns {
     private const val MAX_ROUNDS = 10
     private val WAIT: Duration = Duration.ofSeconds(60)
+    private const val ENGINE_EXECUTOR = "endOfDayExecutor"
 
     /**
      * Cumpre a regra do banco isolado: deixa a data operacional corrente sem execução ou com execução `COMPLETED`.
@@ -53,6 +56,17 @@ object EndOfDayTestRuns {
             }
         }
         error("A execução da data corrente não terminou depois de $MAX_ROUNDS rodadas.")
+    }
+
+    /**
+     * Espera o motor terminar tudo o que já recebeu, no máximo 60 s: a thread única do motor (`endOfDayExecutor`) é uma
+     * fila, então uma tarefa vazia posta nela só roda depois das anteriores. Use depois de um gatilho que voltou com a
+     * execução ainda em curso (ele espera só `zeny.endofday.trigger.wait`, `PT1S` no banco isolado), antes das
+     * asserções sobre o desfecho dela.
+     */
+    fun awaitEngine(context: ApplicationContext) {
+        val engine = context.getBean(ENGINE_EXECUTOR, ExecutorService::class.java)
+        engine.submit {}.get(WAIT.toNanos(), TimeUnit.NANOSECONDS)
     }
 
     /**
