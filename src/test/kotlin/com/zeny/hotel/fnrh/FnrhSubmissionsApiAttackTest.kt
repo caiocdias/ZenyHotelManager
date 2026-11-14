@@ -1,5 +1,6 @@
 package com.zeny.hotel.fnrh
 
+import com.zeny.hotel.fnrh.FnrhEnvironment.HOMOLOGATION
 import com.zeny.hotel.fnrh.application.FnrhRemoteIds
 import com.zeny.hotel.fnrh.application.FnrhRemoteReservation
 import com.zeny.hotel.fnrh.application.FnrhSubmissionSender
@@ -248,7 +249,7 @@ class FnrhSubmissionsApiAttackTest(
             val checkIn = awaitSubmission(reservation, FnrhOperation.CHECK_IN).id
             val link = "https://precheckin.example.test/acesso/${UUID.randomUUID()}"
             ids.saveReservation(
-                FnrhRemoteReservation(reservation, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId("r-1"), link, false),
+                FnrhRemoteReservation(reservation, HOMOLOGATION, FnrhRemoteId("r-1"), link, false, noShow = false),
                 register,
             )
             force(register, FnrhSubmissionStatus.SENT)

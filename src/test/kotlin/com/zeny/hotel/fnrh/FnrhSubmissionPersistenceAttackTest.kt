@@ -81,7 +81,7 @@ class FnrhSubmissionPersistenceAttackTest(
         reservation: UUID,
         link: String? = null,
         env: FnrhEnvironment = FnrhEnvironment.HOMOLOGATION,
-    ) = FnrhRemoteReservation(reservation, env, FnrhRemoteId("res"), link, false)
+    ) = FnrhRemoteReservation(reservation, env, FnrhRemoteId("res"), link, false, false)
 
     private fun guestIds(
         reservation: UUID,

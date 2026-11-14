@@ -219,7 +219,7 @@ class JdbcFnrhRemoteIds(
     ): FnrhRemoteReservation? =
         jdbc
             .sql(
-                "SELECT remote_id, precheckin_link, cancelled FROM fnrh.remote_reservation " +
+                "SELECT remote_id, precheckin_link, cancelled, no_show FROM fnrh.remote_reservation " +
                     "WHERE reservation_id = :reservationId AND environment = :environment",
             ).param("reservationId", reservationId)
             .param("environment", env.name)
@@ -230,6 +230,7 @@ class JdbcFnrhRemoteIds(
                     FnrhRemoteId(rs.getString("remote_id")),
                     rs.getString("precheckin_link")?.let(cipher::decrypt),
                     rs.getBoolean("cancelled"),
+                    rs.getBoolean("no_show"),
                 )
             }.optional()
             .orElse(null)
@@ -243,17 +244,19 @@ class JdbcFnrhRemoteIds(
             jdbc
                 .sql(
                     """
-                    INSERT INTO fnrh.remote_reservation (reservation_id, environment, remote_id, precheckin_link, cancelled)
-                    VALUES (:reservationId, :environment, :remoteId, :link, :cancelled)
+                    INSERT INTO fnrh.remote_reservation
+                        (reservation_id, environment, remote_id, precheckin_link, cancelled, no_show)
+                    VALUES (:reservationId, :environment, :remoteId, :link, :cancelled, :noShow)
                     ON CONFLICT (reservation_id, environment) DO UPDATE
                     SET remote_id = EXCLUDED.remote_id, precheckin_link = EXCLUDED.precheckin_link,
-                        cancelled = EXCLUDED.cancelled
+                        cancelled = EXCLUDED.cancelled, no_show = EXCLUDED.no_show
                     """.trimIndent(),
                 ).param("reservationId", r.reservationId)
                 .param("environment", r.environment.name)
                 .param("remoteId", r.remoteId.value)
                 .param("link", link)
                 .param("cancelled", r.cancelled)
+                .param("noShow", r.noShow)
                 .update()
             clearInFlight(submissionId)
         }

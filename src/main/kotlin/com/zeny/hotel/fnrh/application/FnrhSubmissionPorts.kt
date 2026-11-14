@@ -64,17 +64,24 @@ interface FnrhSubmissionStore {
     fun countByStatus(): Map<FnrhSubmissionStatus, Long>
 }
 
-/** O id da reserva no Serpro. O [toString] não mostra o link de pré-check-in (URL de acesso a dados pessoais). */
+/**
+ * O id da reserva no Serpro. A remota é cancelada ou no-show, nunca as duas (D-E14-6): a API não desfaz nenhuma das
+ * duas. O [toString] não mostra o link de pré-check-in (URL de acesso a dados pessoais).
+ */
 data class FnrhRemoteReservation(
     val reservationId: UUID,
     val environment: FnrhEnvironment,
     val remoteId: FnrhRemoteId,
     val precheckinLink: String?,
     val cancelled: Boolean,
+    val noShow: Boolean,
 ) {
+    /** Cancelada ou no-show no Serpro: a API não reativa nem cancela de novo. */
+    val closed: Boolean get() = cancelled || noShow
+
     override fun toString(): String =
         "FnrhRemoteReservation(reservationId=$reservationId, environment=$environment, remoteId=$remoteId, " +
-            "cancelled=$cancelled)"
+            "cancelled=$cancelled, noShow=$noShow)"
 }
 
 /** Os ids da pessoa e do hóspede no Serpro para um hóspede da reserva. */

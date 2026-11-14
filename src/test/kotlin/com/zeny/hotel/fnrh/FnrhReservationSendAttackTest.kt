@@ -422,7 +422,14 @@ class FnrhReservationSendAttackTest(
         val (id, register) = pendingRegister()
         iam.enableFnrh()
         remoteIds.saveReservation(
-            FnrhRemoteReservation(id, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId(remoteId()), null, cancelled = true),
+            FnrhRemoteReservation(
+                id,
+                FnrhEnvironment.HOMOLOGATION,
+                FnrhRemoteId(remoteId()),
+                null,
+                cancelled = true,
+                noShow = false,
+            ),
             register.id,
         )
         cancel(id)

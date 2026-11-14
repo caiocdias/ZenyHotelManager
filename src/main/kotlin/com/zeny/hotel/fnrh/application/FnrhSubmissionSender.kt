@@ -128,6 +128,7 @@ class FnrhReservationSync(
                 registered.reservationId,
                 registered.precheckinLink,
                 cancelled = false,
+                noShow = false,
             ),
             submission.id,
         )
@@ -176,7 +177,14 @@ class FnrhReservationSync(
         val found = gateway.findReservationByCode(reservation.code.toString(), submission.id.toString())
         found?.let {
             remoteIds.saveReservation(
-                FnrhRemoteReservation(reservation.id.value, connection.environment, it, null, cancelled = false),
+                FnrhRemoteReservation(
+                    reservation.id.value,
+                    connection.environment,
+                    it,
+                    null,
+                    cancelled = false,
+                    noShow = false,
+                ),
                 submission.id,
             )
         }
@@ -188,7 +196,7 @@ class FnrhReservationSync(
     }
 }
 
-/** Os passos das operações da reserva: registro, alteração e cancelamento (D-E08-9). */
+/** Os passos das operações da reserva: registro, alteração, cancelamento e no-show (D-E08-9, D-E14-3). */
 @Component
 class FnrhReservationSteps(
     private val sync: FnrhReservationSync,
@@ -205,9 +213,9 @@ class FnrhReservationSteps(
     }
 
     /**
-     * A remota cancelada não reativa: com a reserva ativa aqui (reativada), falha com `REMOTE_CANCELLED`; cancelada ou
-     * no-show aqui também, nada a enviar. Sem id remoto, faz o que o registro faria (sem o `PUT`); senão, `PUT` com os
-     * dados atuais.
+     * A remota cancelada ou no-show não reativa (a API não desfaz nenhuma das duas; D-E14-4): com a reserva ativa aqui
+     * (reativada), falha com `REMOTE_CANCELLED` ou `REMOTE_NO_SHOW`; cancelada ou no-show aqui também, nada a enviar.
+     * Sem id remoto, faz o que o registro faria (sem o `PUT`); senão, `PUT` com os dados atuais.
      */
     fun update(
         submission: FnrhSubmission,
@@ -215,33 +223,72 @@ class FnrhReservationSteps(
     ): FnrhStepOutcome {
         val reservation = sync.reservationOf(submission)
         val remote = remoteIds.reservation(reservation.id.value, connection.environment)
-        when {
-            remote?.cancelled == true && reservation.status in NOT_REGISTERED -> Unit
-            remote?.cancelled == true -> return FnrhStepOutcome.FailedLocally(FnrhSubmissionFailure.REMOTE_CANCELLED)
-            remote == null -> registerIfValid(submission, reservation, connection)
-            else -> gateway.updateReservation(remote.remoteId, sync.data(reservation), submission.id.toString())
+        return when {
+            remote?.closed == true && reservation.status in NOT_REGISTERED -> {
+                FnrhStepOutcome.Sent
+            }
+
+            remote?.cancelled == true -> {
+                FnrhStepOutcome.FailedLocally(FnrhSubmissionFailure.REMOTE_CANCELLED)
+            }
+
+            remote?.noShow == true -> {
+                FnrhStepOutcome.FailedLocally(FnrhSubmissionFailure.REMOTE_NO_SHOW)
+            }
+
+            remote == null -> {
+                registerIfValid(submission, reservation, connection)
+                FnrhStepOutcome.Sent
+            }
+
+            else -> {
+                gateway.updateReservation(remote.remoteId, sync.data(reservation), submission.id.toString())
+                FnrhStepOutcome.Sent
+            }
         }
-        return FnrhStepOutcome.Sent
     }
 
     /**
      * Sem id remoto guardado, concilia se há escrita em curso na reserva (um `REGISTER` incerto que falhou ou foi
-     * encerrado): achada no Serpro, cancela. Sem id remoto (ou com a remota já cancelada), nada a cancelar; senão
-     * cancela e guarda, mantendo o link.
+     * encerrado): achada no Serpro, cancela. Sem id remoto, ou com a remota já cancelada ou no-show (a API não cancela
+     * um no-show; D-E14-4), nada a cancelar; senão cancela e guarda, mantendo o link.
      */
     fun cancel(
         submission: FnrhSubmission,
         connection: FnrhConnection,
     ): FnrhStepOutcome {
-        val remote =
-            remoteIds.reservation(submission.reservationId, connection.environment)
-                ?: reconciled(submission, connection)
-        if (remote != null && !remote.cancelled) {
+        val remote = storedOrReconciled(submission, connection)
+        if (remote != null && !remote.closed) {
             gateway.cancelReservation(remote.remoteId, submission.id.toString())
             remoteIds.saveReservation(remote.copy(cancelled = true), submission.id)
         }
         return FnrhStepOutcome.Sent
     }
+
+    /**
+     * O no-show pela remota (D-E14-3), pelo mesmo caminho do cancelamento: sem id remoto guardado, concilia se há
+     * escrita em curso na reserva. Sem id remoto (a reserva no-show não é registrada), ou com a remota já cancelada ou
+     * no-show, nada a enviar; senão `POST /reservas/{id}/noshow` e guarda, mantendo o link. Como o cancelamento, não
+     * cria recurso e é repetido no `retry`.
+     */
+    fun noShow(
+        submission: FnrhSubmission,
+        connection: FnrhConnection,
+    ): FnrhStepOutcome {
+        val remote = storedOrReconciled(submission, connection)
+        if (remote != null && !remote.closed) {
+            gateway.markNoShow(remote.remoteId, submission.id.toString())
+            remoteIds.saveReservation(remote.copy(noShow = true), submission.id)
+        }
+        return FnrhStepOutcome.Sent
+    }
+
+    /** A remota guardada ou, sem ela, a conciliada (ver [reconciled]). */
+    private fun storedOrReconciled(
+        submission: FnrhSubmission,
+        connection: FnrhConnection,
+    ): FnrhRemoteReservation? =
+        remoteIds.reservation(submission.reservationId, connection.environment) ?: reconciled(submission, connection)
 
     /** A reserva remota achada pela conciliação (só com a escrita em curso), relida com o estado gravado. */
     private fun reconciled(
@@ -287,6 +334,7 @@ class FnrhOperationSteps(
             FnrhOperation.CHECK_IN to checkInStep,
             FnrhOperation.UNDO_CHECK_IN to FnrhOperationStep(checkOutSteps::undoCheckIn),
             FnrhOperation.CHECK_OUT to FnrhOperationStep(checkOutSteps::checkOut),
+            FnrhOperation.NO_SHOW to FnrhOperationStep(reservationSteps::noShow),
         )
 
     operator fun get(operation: FnrhOperation): FnrhOperationStep? = steps[operation]

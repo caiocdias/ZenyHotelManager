@@ -348,7 +348,7 @@ class FnrhSubmissionPersistenceTest(
         reservation: UUID,
         link: String? = null,
         cancelled: Boolean = false,
-    ) = FnrhRemoteReservation(reservation, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId("res-1"), link, cancelled)
+    ) = FnrhRemoteReservation(reservation, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId("res-1"), link, cancelled, false)
 
     private fun remoteGuest(
         reservation: UUID,
