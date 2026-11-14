@@ -186,7 +186,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #pendente | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
+| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #em-andamento | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
 | E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
@@ -469,11 +469,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - Dívidas de teste menores (revisões por tarefa): `FnrhRemoteId("")` é aceito por todas as operações (pré-existente; sugerido `require(isNotBlank())`); algumas asserções contam o `FnrhTestServer` inteiro em vez dos pedidos da própria reserva; provas de ausência com `await().during(1s)`; `FnrhAlertTestBase.submit` não limpa as linhas.
   - O teste do fechamento com a FNRH (`EndOfDayFnrhNoShowTest`) sobe um contexto Spring a mais no banco isolado; os no-shows dos outros testes do fechamento agora também gravam `NO_SHOW` (inofensivo com a FNRH desligada).
   - A próxima migração precisa de versão posterior a `V2026_11_14_1000`.
-- Captura do brain: (preenchida no fechamento).
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E14 - 998156dc.md`.
 
 ---
 
-## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #pendente
+## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #em-andamento
 
 **Objetivo:** a ficha de registro passa a mostrar o motivo de viagem e o meio de transporte de cada hóspede pelo rótulo legível dos domínios da FNRH, no lugar do código cru, e a permissão `frontdesk.stays.checkin` passa a dizer que também abre a ficha. Atende às decisões que o usuário tomou em 2026-11-12, ao revisar a M5 E11 (decisões (f) e (g) do lote E11 de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`; D-E11-10 e D-E11-11).
 
