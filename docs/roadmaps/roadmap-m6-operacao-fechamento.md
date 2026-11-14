@@ -186,7 +186,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #em-andamento | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
+| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
 | E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
@@ -473,7 +473,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #em-andamento
+## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #concluida
 
 **Objetivo:** a ficha de registro passa a mostrar o motivo de viagem e o meio de transporte de cada hóspede pelo rótulo legível dos domínios da FNRH, no lugar do código cru, e a permissão `frontdesk.stays.checkin` passa a dizer que também abre a ficha. Atende às decisões que o usuário tomou em 2026-11-12, ao revisar a M5 E11 (decisões (f) e (g) do lote E11 de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`; D-E11-10 e D-E11-11).
 
@@ -493,13 +493,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O PDF e o ESC/POS da ficha de um hóspede com códigos do catálogo semeado mostram o rótulo do motivo de viagem e o do meio de transporte, sem "(código FNRH)" (o teste extrai o texto).
-- [ ] Um código fora do catálogo sai cru, com "(código FNRH)", e a ficha é gerada sem erro (teste).
-- [ ] Um rótulo trocado no catálogo (como faz o `refresh` dos domínios) aparece na ficha seguinte (teste).
-- [ ] `ModularityTest`: o `fnrh` depende exatamente de `shared`, `guests`, `reservations`, `notifications` e `frontdesk`, e do `frontdesk` usa só a porta; o `frontdesk` continua sem depender do `fnrh`; a tabela da ARCHITECTURE §3.1 lista a aresta nova.
-- [ ] `GET /api/v1/permissions` devolve a descrição nova de `frontdesk.stays.checkin`, com código, modelos de role e concessões iguais aos de antes (teste).
-- [ ] A ficha continua sem dado de RN-19 e sem número inteiro de documento (os testes da M5 E11 passam sem mudança de asserção).
-- [ ] `api/openapi.yaml` não muda, e o `README.md` descreve a ficha com os rótulos.
+- [x] O PDF e o ESC/POS da ficha de um hóspede com códigos do catálogo semeado mostram o rótulo do motivo de viagem e o do meio de transporte, sem "(código FNRH)" (o teste extrai o texto).
+- [x] Um código fora do catálogo sai cru, com "(código FNRH)", e a ficha é gerada sem erro (teste).
+- [x] Um rótulo trocado no catálogo (como faz o `refresh` dos domínios) aparece na ficha seguinte (teste).
+- [x] `ModularityTest`: o `fnrh` depende exatamente de `shared`, `guests`, `reservations`, `notifications` e `frontdesk`, e do `frontdesk` usa só a porta; o `frontdesk` continua sem depender do `fnrh`; a tabela da ARCHITECTURE §3.1 lista a aresta nova.
+- [x] `GET /api/v1/permissions` devolve a descrição nova de `frontdesk.stays.checkin`, com código, modelos de role e concessões iguais aos de antes (teste).
+- [x] A ficha continua sem dado de RN-19 e sem número inteiro de documento (os testes da M5 E11 passam sem mudança de asserção).
+- [x] `api/openapi.yaml` não muda, e o `README.md` descreve a ficha com os rótulos.
 
 **Validação obrigatória:**
 
@@ -518,12 +518,37 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e15.md`, 3 tarefas `Risco: alto`. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 1 Importante: a descrição do endpoint da ficha no contrato ficaria falsa, corrigido pela D-E15-7).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `dc52ff8` (início) a `c842f2a`. Cada tarefa passou por desenvolvedor → testador → verificação mecânica → `revisor-seguranca`. A Task 2 teve duas rodadas de correção: o `detektTest` do teste novo (achado do testador, `8fbab68`) e uma linha de KDoc com mais de 120 colunas (achada na revisão e refluída dentro do commit da Task 3, `f74657d`).
+- Entregue:
+  - porta `com.zeny.hotel.frontdesk.RegistrationCardLabels` (`travelReason`, `transportMode`; `null` fora do catálogo), implementada por `fnrh/application/FnrhRegistrationCardLabels` sobre o catálogo `fnrh.domain_value`, sem cache, sem Serpro e sem trilha;
+  - aresta `fnrh` → `frontdesk` só pela porta: `FnrhModule` com `frontdesk` em `allowedDependencies`, `ModularityTest` exigindo os cinco módulos e que os tipos do `frontdesk` usados pelo `fnrh` sejam exatamente `{RegistrationCardLabels}`; o `frontdesk` continua sem o `fnrh`; ARCHITECTURE §3.1 (linha do `fnrh` e exemplos de inversão);
+  - a ficha (PDF e ESC/POS) mostra o rótulo, ou `<código> (código FNRH)` fora do catálogo; o texto é montado no serviço e os templates só o mostram;
+  - descrição de `frontdesk.stays.checkin`: "Fazer o check-in de uma reserva confirmada (com a caução opcional) e abrir a ficha de registro (PDF e impressão)"; código, sensibilidade, escopos, modelos e concessões iguais;
+  - descrição do `GET /api/v1/reservations/{id}/registration-card/pdf` no contrato e README ("Documentos impressos"); KDoc do `FrontdeskModule` com a porta.
+- Revisão final: `revisor-seguranca` (opus) sobre `dc52ff8..c842f2a`, "Ready to merge: Yes", 0 Critical e 0 Importante de código.
+- Verificação:
+  - **Gate:** `./gradlew build` em `c842f2a` → BUILD SUCCESSFUL in 19m 36s, 3998 testes, 0 falhas, 0 ignorados.
+  - **oasdiff:** `.github/scripts/check-api-breaking.sh main` → nenhuma mudança `ERR` em `/api/v1`; o diff do `api/openapi.yaml` da E15 é só a descrição da operação da ficha.
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles: 0 Critical/High, 2 Medium e 3 Low pré-existentes; lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base dc52ff8` → exit 0, sem apontamentos. A única asserção existente alterada (`RegistrationCardApiTest`, `AUTOMOVEL (código FNRH)` → `Automóvel` mais a negativa) foi julgada justificada pela revisão final (D-E15-6).
+- Critérios verificados:
+  - (1) Rótulos no PDF e no ESC/POS: `RegistrationCardLabelsApiTest`, `RegistrationCardApiTest`.
+  - (2) Código fora do catálogo, cru com "(código FNRH)": `RegistrationCardLabelsApiTest`, `RegistrationCardLabelsAttackApiTest`, `RegistrationCardApiTest` (`LAZER`).
+  - (3) Rótulo trocado aparece na ficha seguinte: `FnrhRegistrationCardLabelsTest`, `RegistrationCardLabelsApiTest`.
+  - (4) Grafo: `ModularityTest` (dependências exatas do `fnrh`, restrição à porta, `frontdesk` sem `fnrh`) e ARCHITECTURE §3.1.
+  - (5) Descrição nova em `GET /api/v1/permissions`, com código, modelos e concessões iguais e sessões abertas válidas: `FrontdeskCheckInPermissionDescriptionTest`, `FrontdeskCheckInPermissionAttackTest`.
+  - (6) Sem RN-19 e sem documento inteiro: os testes da M5 E11 sem mudança dessas asserções e `RegistrationCardLabelsAttackApiTest`.
+  - (7) README com os rótulos; contrato: ver a decisão (a).
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** O critério 7 dizia que o `api/openapi.yaml` não muda, mas a descrição do endpoint da ficha no contrato afirmava "os códigos FNRH guardados". A descrição foi atualizada e o contrato regenerado (D-E15-7): o critério foi lido como "sem mudança estrutural nem breaking change". Alternativa: manter o contrato descrevendo um comportamento que não existe mais.
+  - **(b)** A porta lê o catálogo a cada ficha, sem cache (D-E15-2): o `refresh` aparece na ficha seguinte; custo de duas consultas pequenas por hóspede.
+- Notas para a próxima etapa:
+  - Para o `arquiteto`: ajustar o texto do critério 7 desta etapa (D-E15-7); a ARCHITECTURE §3.1 lista `hotel` entre as dependências do `fnrh`, que o `FnrhModule` não declara (previsão ou divergência).
+  - Para a E16 (neste lote): o comentário do `ModularityTest` do `fnrh` ainda diz "Nunca iam, frontdesk…" logo acima de "M6 E15: frontdesk, só pela porta"; o KDoc e o nome de um teste de `RegistrationCardApiTest` ainda falam em "códigos FNRH".
+  - Dívidas menores: marcas bidi e zero-width cruas em literais de teste (`RegistrationCardLabelsApiTest`, `FnrhRegistrationCardLabelsAttackTest`, e o padrão anterior em `printing`), melhor como escapes; SQL interpolado com constantes nos apoios de teste; contagem exata de códigos semeados no ataque da porta; apoios duplicados entre os dois testes da permissão.
+  - O check-in recusa códigos de motivo e meio com caracteres fora de letras, dígitos, `_`, `.` e `-` (achado do testador): caracteres especiais só chegam à ficha pelo rótulo do catálogo, que o `refresh` também filtra.
+- Captura do brain: (preenchida no fechamento).
 
 ---
 
