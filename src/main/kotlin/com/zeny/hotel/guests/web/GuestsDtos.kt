@@ -287,9 +287,9 @@ data class GuestResponse(
     val gender: Gender?,
     @field:Schema(
         description =
-            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil, " +
-                "inclusive nas das escritas (criação, alteração, restrição e mesclagem). Nula com qualquer " +
-                "outro gênero.",
+            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil; " +
+                "nas escritas de restrição e mesclagem, só com `guests.profiles.read` (sem ela, a resposta é " +
+                "`GuestWriteSummaryResponse`). Nula com qualquer outro gênero.",
     )
     val genderDescription: String?,
     val email: String?,
@@ -393,6 +393,7 @@ data class MergeGuestRequest(
             "o motivo da restrição. A versão vai no `ETag`.",
 )
 data class GuestWriteSummaryResponse(
+    @field:Schema(description = "O perfil escrito; no `merge`, o sobrevivente.")
     val id: UUID,
     @field:Schema(description = "Se o perfil está na lista de restrição.")
     val restricted: Boolean,

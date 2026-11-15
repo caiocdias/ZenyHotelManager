@@ -613,7 +613,10 @@ class GuestGenderDescriptionApiTest(
         field shouldContain "type: string"
         field shouldContain "nullable: true"
         field shouldContain "dado pessoal"
-        field shouldContain "inclusive nas das escritas"
+        field shouldContain "GuestWriteSummaryResponse"
+        field shouldContain "guests.profiles.read"
+        val normalized = field.replace(Regex("\\\\\\n\\s*(\\\\ )?"), "")
+        normalized shouldNotContain "inclusive nas das escritas"
         field.contains("example") shouldBe false
         lines
             .filter { it.matches(Regex("^    \\w*(Summary|Identification)\\w*:$")) }

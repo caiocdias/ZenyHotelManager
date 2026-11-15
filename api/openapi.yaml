@@ -19512,9 +19512,9 @@ components:
         genderDescription:
           type: string
           description: "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado\
-            \ cifrado. Vem em toda resposta de perfil, inclusive nas das escritas\
-            \ (criação, alteração, restrição e mesclagem). Nula com qualquer outro\
-            \ gênero."
+            \ cifrado. Vem em toda resposta de perfil; nas escritas de restrição e\
+            \ mesclagem, só com `guests.profiles.read` (sem ela, a resposta é `GuestWriteSummaryResponse`).\
+            \ Nula com qualquer outro gênero."
           nullable: true
         hasSensitiveData:
           type: boolean
@@ -19631,6 +19631,7 @@ components:
         id:
           type: string
           format: uuid
+          description: "O perfil escrito; no `merge`, o sobrevivente."
         restricted:
           type: boolean
           description: Se o perfil está na lista de restrição.

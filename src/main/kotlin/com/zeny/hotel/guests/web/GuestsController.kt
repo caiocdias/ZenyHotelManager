@@ -54,7 +54,8 @@ private const val MASKED =
 /**
  * Perfis de hóspedes (RF-HOS-01, 02 e 04): cadastro com os campos da FNRH, documentos com o número cifrado e
  * mascarado nas respostas (H9), dados sensíveis da FNRH só gravados (RN-19), lista de restrição e busca por
- * nome, e-mail e documento (pelo índice cego, H8). Perfis nunca são apagados.
+ * nome, e-mail e documento (pelo índice cego, H8). Perfis nunca são apagados. `restrict`, `lift-restriction` e
+ * `merge` devolvem o perfil inteiro só a quem tem `guests.profiles.read`; sem ela, o resumo mínimo.
  */
 @ApiV1Controller
 @RequestMapping("/guests")

@@ -314,7 +314,10 @@ data class GuestView(
     val nationality: String?,
     val birthDate: LocalDate?,
     val gender: Gender?,
-    /** Descrição do gênero `OTHER`, decifrada: dado pessoal, presente em toda resposta de perfil, até nas escritas. */
+    /**
+     * Descrição do gênero `OTHER`, decifrada: dado pessoal, presente em toda resposta de perfil; nas escritas de
+     * restrição e mesclagem, só com `guests.profiles.read`.
+     */
     val genderDescription: String?,
     val email: String?,
     val phone: String?,
