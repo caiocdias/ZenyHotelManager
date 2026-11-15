@@ -615,7 +615,7 @@ class GuestGenderDescriptionApiTest(
         field shouldContain "dado pessoal"
         field shouldContain "GuestWriteSummaryResponse"
         field shouldContain "guests.profiles.read"
-        val normalized = field.replace(Regex("\\\\\\n\\s*(\\\\ )?"), "")
+        val normalized = yamlScalarText(field)
         normalized shouldNotContain "inclusive nas das escritas"
         field.contains("example") shouldBe false
         lines
@@ -768,3 +768,9 @@ class GuestGenderDescriptionApiTest(
             .joinToString("\n")
     }
 }
+
+/**
+ * Decodifica o texto de um escalar YAML entre aspas duplas como o gerador o parte: tira a continuação de linha
+ * (`\` no fim da linha, a quebra e o recuo) e troca `\ ` (espaço escapado) por espaço.
+ */
+internal fun yamlScalarText(block: String): String = block.replace(Regex("\\\\\\n\\s*"), "").replace("\\ ", " ")
