@@ -613,7 +613,10 @@ class GuestGenderDescriptionApiTest(
         field shouldContain "type: string"
         field shouldContain "nullable: true"
         field shouldContain "dado pessoal"
-        field shouldContain "inclusive nas das escritas"
+        val normalized = yamlScalarText(field)
+        normalized shouldContain "GuestWriteSummaryResponse"
+        normalized shouldContain "guests.profiles.read"
+        normalized shouldNotContain "inclusive nas das escritas"
         field.contains("example") shouldBe false
         lines
             .filter { it.matches(Regex("^    \\w*(Summary|Identification)\\w*:$")) }
@@ -742,26 +745,32 @@ class GuestGenderDescriptionApiTest(
             .query(String::class.java)
             .list()
             .joinToString("\n")
-
-    private fun schemaBlock(
-        lines: List<String>,
-        name: String,
-    ): List<String> {
-        val start = lines.indexOfFirst { it == "    $name:" }
-        withClue("esquema $name") { (start >= 0) shouldBe true }
-        val rest = lines.drop(start + 1)
-        return rest.takeWhile { it.isBlank() || it.startsWith("      ") }
-    }
-
-    private fun propertyBlock(
-        schema: List<String>,
-        property: String,
-    ): String {
-        val start = schema.indexOfFirst { it == "        $property:" }
-        withClue("propriedade $property") { (start >= 0) shouldBe true }
-        return schema
-            .drop(start + 1)
-            .takeWhile { it.startsWith("          ") }
-            .joinToString("\n")
-    }
 }
+
+internal fun schemaBlock(
+    lines: List<String>,
+    name: String,
+): List<String> {
+    val start = lines.indexOfFirst { it == "    $name:" }
+    withClue("esquema $name") { (start >= 0) shouldBe true }
+    val rest = lines.drop(start + 1)
+    return rest.takeWhile { it.isBlank() || it.startsWith("      ") }
+}
+
+internal fun propertyBlock(
+    schema: List<String>,
+    property: String,
+): String {
+    val start = schema.indexOfFirst { it == "        $property:" }
+    withClue("propriedade $property") { (start >= 0) shouldBe true }
+    return schema
+        .drop(start + 1)
+        .takeWhile { it.startsWith("          ") }
+        .joinToString("\n")
+}
+
+/**
+ * Decodifica o texto de um escalar YAML entre aspas duplas como o gerador o parte: tira a continuação de linha
+ * (`\` no fim da linha, a quebra e o recuo) e troca `\ ` (espaço escapado) por espaço.
+ */
+internal fun yamlScalarText(block: String): String = block.replace(Regex("\\\\\\n\\s*"), "").replace("\\ ", " ")

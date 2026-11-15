@@ -6122,7 +6122,9 @@ paths:
     post:
       description: "Exige `guests.restrictions.manage`. Fora da lista, não muda nada.\
         \ Num perfil mesclado: 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente);\
-        \ num anonimizado, 409 `GUEST_ANONYMIZED`."
+        \ num anonimizado, 409 `GUEST_ANONYMIZED`. Com `guests.profiles.read`, devolve\
+        \ o perfil inteiro (`GuestResponse`); sem ela, só `GuestWriteSummaryResponse`\
+        \ (o id e se está na lista de restrição); a versão vai no `ETag`."
       operationId: liftGuestRestriction
       parameters:
       - in: path
@@ -6136,8 +6138,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuestResponse"
-          description: OK
+                oneOf:
+                - $ref: "#/components/schemas/GuestResponse"
+                - $ref: "#/components/schemas/GuestWriteSummaryResponse"
+          description: "O perfil inteiro (`GuestResponse`) com `guests.profiles.read`;\
+            \ sem ela, o resumo."
         default:
           content:
             application/problem+json:
@@ -6155,7 +6160,10 @@ paths:
         \ (ausente: 428; versão diferente: 412) do sobrevivente. O mesmo perfil: 409\
         \ `GUEST_MERGE_SAME_PROFILE`; algum já mesclado: 409 `GUEST_ALREADY_MERGED`;\
         \ documento do mesmo tipo e país com números diferentes: 409 `GUEST_MERGE_DOCUMENT_CONFLICT`\
-        \ (retire o errado antes); inexistente: 404 `GUEST_NOT_FOUND`. Devolve o sobrevivente."
+        \ (retire o errado antes); inexistente: 404 `GUEST_NOT_FOUND`. Devolve o sobrevivente.\
+        \ Com `guests.profiles.read`, devolve o perfil inteiro (`GuestResponse`);\
+        \ sem ela, só `GuestWriteSummaryResponse` (o id e se está na lista de restriç\
+        ão); a versão vai no `ETag`."
       operationId: mergeGuests
       parameters:
       - in: path
@@ -6180,8 +6188,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuestResponse"
-          description: OK
+                oneOf:
+                - $ref: "#/components/schemas/GuestResponse"
+                - $ref: "#/components/schemas/GuestWriteSummaryResponse"
+          description: "O perfil inteiro (`GuestResponse`) com `guests.profiles.read`;\
+            \ sem ela, o resumo."
         default:
           content:
             application/problem+json:
@@ -6196,7 +6207,9 @@ paths:
       description: "Com o motivo, que gera alerta na reserva e no check-in (RF-HOS-04);\
         \ de novo, troca o motivo. Exige `guests.restrictions.manage`. Num perfil\
         \ mesclado: 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado,\
-        \ 409 `GUEST_ANONYMIZED`."
+        \ 409 `GUEST_ANONYMIZED`. Com `guests.profiles.read`, devolve o perfil inteiro\
+        \ (`GuestResponse`); sem ela, só `GuestWriteSummaryResponse` (o id e se está\
+        \ na lista de restrição); a versão vai no `ETag`."
       operationId: restrictGuest
       parameters:
       - in: path
@@ -6216,8 +6229,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GuestResponse"
-          description: OK
+                oneOf:
+                - $ref: "#/components/schemas/GuestResponse"
+                - $ref: "#/components/schemas/GuestWriteSummaryResponse"
+          description: "O perfil inteiro (`GuestResponse`) com `guests.profiles.read`;\
+            \ sem ela, o resumo."
         default:
           content:
             application/problem+json:
@@ -19496,9 +19512,9 @@ components:
         genderDescription:
           type: string
           description: "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado\
-            \ cifrado. Vem em toda resposta de perfil, inclusive nas das escritas\
-            \ (criação, alteração, restrição e mesclagem). Nula com qualquer outro\
-            \ gênero."
+            \ cifrado. Vem em toda resposta de perfil; nas escritas de restrição e\
+            \ mesclagem, só com `guests.profiles.read` (sem ela, a resposta é `GuestWriteSummaryResponse`).\
+            \ Nula com qualquer outro gênero."
           nullable: true
         hasSensitiveData:
           type: boolean
@@ -19605,6 +19621,23 @@ components:
           - INDIGENOUS
           - NOT_DECLARED
           nullable: true
+    GuestWriteSummaryResponse:
+      type: object
+      description: "Corpo das escritas de restrição e mesclagem para quem não tem\
+        \ `guests.profiles.read`: só o id e se o perfil está na lista de restriçã\
+        o, sem nome, documento, contato, descrição de gênero, restrição alimentar\
+        \ nem o motivo da restrição. A versão vai no `ETag`."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "O perfil escrito; no `merge`, o sobrevivente."
+        restricted:
+          type: boolean
+          description: Se o perfil está na lista de restrição.
+      required:
+      - id
+      - restricted
     HistoryCancellationResponse:
       type: object
       description: A multa no retrato do histórico de um cancelamento.

@@ -10,6 +10,7 @@ import com.zeny.hotel.guests.domain.Guest
 import com.zeny.hotel.guests.domain.GuestConsent
 import com.zeny.hotel.guests.domain.GuestDocument
 import com.zeny.hotel.shared.Address
+import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.ModulePermissions
@@ -141,3 +142,15 @@ class GuestsPermissionsConfiguration {
     @Bean
     fun guestsFilePurposes(): ModuleFilePurposes = GuestsFilePurposes
 }
+
+/**
+ * O resultado de uma escrita de restrição ou mesclagem: o perfil só entra para quem tem `guests.profiles.read`
+ * (perguntado depois do `require` da escrita; M6 E17).
+ */
+internal fun Guest.writeResult(authorization: Authorization) =
+    GuestWriteResult(
+        id = id,
+        restricted = restricted,
+        version = checkNotNull(version),
+        profile = if (authorization.grantOrNull(GuestsPermissions.PROFILES_READ) != null) view() else null,
+    )

@@ -76,10 +76,10 @@ class GuestMergeService(
     }
 
     /**
-     * Mescla [mergedId] em [survivorId]: devolve o sobrevivente. Recusas: algum dos dois inexistente, `404
-     * GUEST_NOT_FOUND`; o mesmo perfil, `409 GUEST_MERGE_SAME_PROFILE`; algum já mesclado, `409
-     * GUEST_ALREADY_MERGED`; versão do sobrevivente diferente de [expectedVersion], `412`; documento do mesmo tipo e
-     * país com outro número, `409 GUEST_MERGE_DOCUMENT_CONFLICT`.
+     * Mescla [mergedId] em [survivorId]: devolve o resultado do sobrevivente (o perfil só com `guests.profiles.read`).
+     * Recusas: algum dos dois inexistente, `404 GUEST_NOT_FOUND`; o mesmo perfil, `409 GUEST_MERGE_SAME_PROFILE`;
+     * algum já mesclado, `409 GUEST_ALREADY_MERGED`; versão do sobrevivente diferente de [expectedVersion], `412`;
+     * documento do mesmo tipo e país com outro número, `409 GUEST_MERGE_DOCUMENT_CONFLICT`.
      */
     @Audited(GuestsAudit.MERGE_GUEST)
     @Transactional
@@ -88,7 +88,7 @@ class GuestMergeService(
         mergedId: GuestId,
         expectedVersion: Long,
         takeFromMerged: Set<GuestMergeField>,
-    ): GuestView {
+    ): GuestWriteResult {
         authorization.require(GuestsPermissions.PROFILES_MERGE)
         // O mesmo id duas vezes devolve o mesmo perfil, que o domínio recusa (GUEST_MERGE_SAME_PROFILE).
         val (survivor, merged) = store.guestsForUpdate(listOf(survivorId, mergedId)).map { it ?: throw guestNotFound() }
@@ -145,7 +145,7 @@ class GuestMergeService(
         }
         // O instante gravado no absorvido (na precisão do banco), o mesmo que a leitura devolve.
         events.publishEvent(GuestsMerged(survivor.id.value, merged.id.value, checkNotNull(merged.mergedAt)))
-        return survivor.view()
+        return survivor.writeResult(authorization)
     }
 
     /**

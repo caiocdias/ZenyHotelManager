@@ -15,6 +15,7 @@ import com.zeny.hotel.guests.application.DuplicateCandidateView
 import com.zeny.hotel.guests.application.DuplicateReason
 import com.zeny.hotel.guests.application.GuestCommand
 import com.zeny.hotel.guests.application.GuestView
+import com.zeny.hotel.guests.application.GuestWriteResult
 import com.zeny.hotel.guests.application.RevealedDocument
 import com.zeny.hotel.guests.application.SensitiveDataCommand
 import com.zeny.hotel.shared.Address
@@ -286,9 +287,9 @@ data class GuestResponse(
     val gender: Gender?,
     @field:Schema(
         description =
-            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil, " +
-                "inclusive nas das escritas (criação, alteração, restrição e mesclagem). Nula com qualquer " +
-                "outro gênero.",
+            "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil; " +
+                "nas escritas de restrição e mesclagem, só com `guests.profiles.read` (sem ela, a resposta é " +
+                "`GuestWriteSummaryResponse`). Nula com qualquer outro gênero.",
     )
     val genderDescription: String?,
     val email: String?,
@@ -383,6 +384,24 @@ data class MergeGuestRequest(
     )
     val takeFromMerged: Set<GuestMergeField> = emptySet(),
 )
+
+@Schema(
+    name = "GuestWriteSummaryResponse",
+    description =
+        "Corpo das escritas de restrição e mesclagem para quem não tem `guests.profiles.read`: só o id e se o perfil " +
+            "está na lista de restrição, sem nome, documento, contato, descrição de gênero, restrição alimentar nem " +
+            "o motivo da restrição. A versão vai no `ETag`.",
+)
+data class GuestWriteSummaryResponse(
+    @field:Schema(description = "O perfil escrito; no `merge`, o sobrevivente.")
+    val id: UUID,
+    @field:Schema(description = "Se o perfil está na lista de restrição.")
+    val restricted: Boolean,
+) {
+    companion object {
+        fun of(result: GuestWriteResult) = GuestWriteSummaryResponse(result.id.value, result.restricted)
+    }
+}
 
 @Schema(description = "Dois perfis ativos que parecem o mesmo hóspede (candidatos a duplicado).")
 data class DuplicateCandidateResponse(
