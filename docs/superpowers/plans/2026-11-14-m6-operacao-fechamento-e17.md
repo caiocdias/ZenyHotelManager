@@ -222,3 +222,12 @@ Soul: desenvolvedor"
 
 - Uma role com `guests.profiles.merge` e sem `guests.profiles.read` não obtém o `ETag` do sobrevivente pela API (`GET /guests/{id}` e `duplicate-candidates` exigem `profiles.read`): o cenário quase não existe na prática; o teste busca o `If-Match` com outro usuário.
 - Primeiro `oneOf` do contrato; o resultado da geração do SDK do front com o ogen 0.16.1 entra no handoff.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas (`revisor-arquitetura`, opus).
+- **Rodadas:** 2 (rodada 0 bloqueada com 5 Importantes: decisão do corpo no controller, `oneOf` sem registro nem teste no SDK, `additionalProperties: false`, campos do mínimo sem justificativa, teste que fixava o texto antigo; rodada 1 bloqueada com 2 Importantes novos: `GuestMergeApiTest` usando o retorno de `merge` e o risco da Task 2; rodada 2 aprovada).
+- **Notas Menores:**
+  - M-3: uma role com `guests.profiles.merge` sem `guests.profiles.read` não obtém o `ETag` do sobrevivente pela API (cenário quase inexistente).
+  - M-5: o projeto não tem diretório de ADR; as decisões ficam na ARCHITECTURE §2.
+  - M-7: na entrevista, dizer que com o ogen **todo** cliente gerado (desktop, mobile, PDV) recebe as três operações como `JsonElement`, e que a alternativa tipada é o discriminador; se o `oneOf` ficar, levar ao `arquiteto` uma linha na ARCHITECTURE §7 ("resposta que varia com a permissão: `oneOf` sem discriminador, ramos disjuntos pelo `required`, sem `additionalProperties: false`").
