@@ -699,7 +699,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - **Observação do testador, anterior à E17:** a resposta das escritas traz `updatedAt` e `restriction.since` com nanossegundos (instante em memória), e o `GET` traz microssegundos (banco).
   - **Processo:** os testes de uma etapa não devem usar laço `while pgrep -f` com um trecho de comando, porque o padrão casa com a linha de comando do próprio laço e nunca termina. Dois builds completos simultâneos (este repositório e o front) levaram a máquina de 14 GB à pressão de memória, e o Claude Code encerrou um deles: rode o gate numa janela sem outro build.
   - **Menor restante:** `yamlScalarText`, `schemaBlock` e `propertyBlock` são `internal` em `GuestGenderDescriptionApiTest.kt` e usados por outro teste. Mover para um utilitário de teste compartilhado é só organização.
-- Captura do brain: —
+- Captura do brain: `00 Inbox/2026-11-15 - ZenyHotelManager - atualização m6-operacao-fechamento E17 - cb3979d0.md`.
 
 ---
 
