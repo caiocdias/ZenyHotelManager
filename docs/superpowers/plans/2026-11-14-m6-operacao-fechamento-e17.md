@@ -4,7 +4,13 @@
 
 **Goal:** `POST /api/v1/guests/{id}/restrict`, `POST …/lift-restriction` e `POST …/merge` só devolvem o perfil inteiro (`GuestResponse`) a quem também tem `guests.profiles.read`; sem ela, devolvem um corpo mínimo sem dado pessoal, e o contrato descreve os dois corpos sem mudança `ERR` no oasdiff.
 
-**Architecture:** a escrita e a trilha não mudam: os casos de uso (`GuestService.restrict`, `GuestService.liftRestriction`, `GuestMergeService.merge`) continuam exigindo só a própria permissão e devolvendo `GuestView`. A escolha do corpo fica no `GuestsController`, que recebe `Authorization` do kernel (`shared`, sem `iam`) e pergunta `grantOrNull(GuestsPermissions.PROFILES_READ)` depois da escrita. O contrato passa a declarar, só nessas três operações, `oneOf: [GuestResponse, GuestWriteSummaryResponse]` em `200 application/json`; o esquema mínimo tem `additionalProperties: false`, o que torna os dois ramos disjuntos (o corpo inteiro não casa com o mínimo, e o mínimo não tem `fullName`, obrigatório no inteiro).
+**Architecture:** a decisão fica nos casos de uso (camada `application`, ARCHITECTURE §5 item 2 e §8.2), como o turno cego do caixa (`billing/application/CashierService.kt:435-436`, `grantOrNull(SHIFTS_REVIEW)`): `GuestService.restrict`, `GuestService.liftRestriction` e `GuestMergeService.merge` continuam exigindo só a própria permissão, gravam e auditam como hoje e, na mesma transação, perguntam `authorization.grantOrNull(GuestsPermissions.PROFILES_READ)`; devolvem um `GuestWriteResult` com o perfil (`GuestView`) só para quem lê perfis — sem a permissão, o `GuestView` nem é montado (nada é decifrado). O controller só traduz: com perfil, `GuestResponse`; sem, `GuestWriteSummaryResponse`. O contrato declara, só nessas três operações, `oneOf: [GuestResponse, GuestWriteSummaryResponse]` em `200 application/json`; os ramos são disjuntos porque o mínimo exige `restricted` (que o `GuestResponse` não tem) e o inteiro exige `fullName`.
+
+**Decisões de contrato registradas (vão à revisão humana da etapa):**
+- `oneOf` sem discriminador, o primeiro do contrato. Descartados: discriminador (exigiria propriedade nova no `GuestResponse`, que é a resposta de todas as operações de perfil); `anyOf` (os ramos não se sobrepõem, e `anyOf` diz menos ao gerador); outro status (`204`) ou outro media type (mudam o contrato de sucesso; outro media type dá `ERR`). Experimento do orquestrador com o oasdiff v1.33.0 do script: 3 `warning` `response-body-wrapped-in-one-of-original-preserved`, 0 `ERR`.
+- Sem `additionalProperties: false`: seria a única restrição do tipo no contrato, contra a evolução aditiva da §7; a disjunção vem do `required`.
+- Corpo mínimo `{id, restricted}`: `id` identifica o recurso; `restricted` é o resultado da operação (na mesclagem também, porque a restrição do absorvido passa ao sobrevivente, `Guest.kt:576-581`). `status` sai (num `200` dessas rotas é sempre `ACTIVE`: `requireActive()` e `requireMergeable`); `updatedAt` sai (sem consumidor; a versão vai no `ETag`). Acrescentar campo depois é aditivo.
+- O SDK do front (ogen 0.16.1, ADR 0007 do `ZenyHotelManager-DesktopFront`) não foi testado com `oneOf` sem discriminador: o orquestrador gera o SDK no scratchpad numa janela sem outro Gradle e leva o resultado à revisão humana; a captura do brain registra o primeiro `oneOf` do contrato.
 
 **Tech Stack:** Kotlin 2.4, Spring Boot 4.1 (Spring MVC), springdoc 3.1 (`io.swagger.v3.oas.annotations`), Jackson 3 (`tools.jackson`), Kotest matchers, `@IntegrationTest` com Testcontainers.
 
@@ -12,47 +18,52 @@
 
 ## Global Constraints
 
-- Grafo de módulos da ARCHITECTURE §3.1: `guests` depende só de `shared` e `files`; nada de `iam` no `guests` — use `com.zeny.hotel.shared.Authorization`.
+- Grafo de módulos da ARCHITECTURE §3.1: `guests` depende só de `shared` e `files`; nada de `iam` no `guests` — use `com.zeny.hotel.shared.Authorization`. Autorização na camada `application` (§8.2), nunca no `web`.
 - Toda mudança de API regenera `api/openapi.yaml` com `./gradlew updateOpenApi` na mesma mudança (nunca à mão); `./gradlew checkOpenApi` e `.github/scripts/check-api-breaking.sh` passam, sem mudança `ERR` em `/api/v1`. A API não expõe `DELETE`.
 - Código, API e nomes em inglês; KDoc, descrições do contrato, README e commits em pt-BR (D17).
-- Fora de escopo: outras rotas do `guests`; mudar permissões ou modelos de role; mudar os casos de uso, a trilha ou a migração. Sem migração.
-- A trilha das três escritas não muda (ação, `user_id`, `before_state`, `after_state`, `changedFields`).
-- Máquina de 14 GB com outra sessão ativa: um Gradle por vez, nunca `./gradlew --stop`; rode os testes da tarefa com `--tests` e o build completo uma vez no fim da tarefa.
+- Fora de escopo: outras rotas do `guests`; mudar permissões ou modelos de role; migração.
+- A trilha das três escritas não muda (ação, `user_id`, `before_state`, `after_state`, `changedFields`): o `audit.record` dos casos de uso não depende do retorno.
+- Máquina de 14 GB com outra sessão ativa: um Gradle por vez, nunca `./gradlew --stop`; rode os testes da tarefa com `--tests` e o build completo só onde o plano pede.
 
 ## Review Focus
 
-1. Corpo inteiro vazando por outro caminho: o `ETag` e o corpo de erro (`Problem`) não podem carregar dado do perfil; uma recusa (`403`, `409`, `412`, `428`) continua sendo `application/problem+json`, igual a hoje.
-2. Ramos sobrepostos no `oneOf`: um cliente que valida o corpo contra o contrato rejeita um payload que casa com os dois ramos; o mínimo precisa sair com `additionalProperties: false` e o JSON serializado precisa ter exatamente as quatro chaves (nenhuma nula omitida ou extra).
-3. `lift-restriction` sem efeito (perfil fora da lista) devolve o corpo mínimo com `restricted: false` e continua sem entrada de trilha (`audit.noChanges()`).
-4. O `springdoc` mudar outras operações ou o próprio `GuestResponse` (por exemplo, `allOf` por herança, ou o `GET /guests/{id}` passando a `oneOf`): o diff de `api/openapi.yaml` só pode tocar as três respostas, o componente novo e descrições.
+1. Corpo inteiro vazando por outro caminho: o `ETag` e o corpo de erro (`Problem`) não carregam dado do perfil; as recusas (`403`, `409`, `412`, `428`) continuam `application/problem+json`.
+2. Ramos sobrepostos no `oneOf`: o JSON do mínimo tem exatamente `id` e `restricted`; o `GuestResponse` não ganha `restricted` nem perde `fullName` do `required`.
+3. `lift-restriction` sem efeito (perfil fora da lista) devolve o mínimo com `restricted: false` e continua sem entrada de trilha (`audit.noChanges()`).
+4. O `springdoc` mudar outras operações ou o próprio `GuestResponse` (`allOf` por herança, o `GET /guests/{id}` virando `oneOf`): o diff de `api/openapi.yaml` só toca as três respostas, o componente novo e descrições.
 5. Usuário com `guests.profiles.read` e sem a permissão da escrita: `403 PERMISSION_DENIED`, sem corpo de perfil e sem escrita.
 
-Cada item tem teste na Task 1 (passos 1 e 2).
+Os cinco têm teste na Task 1.
 
 ---
 
-### Task 1: Corpo mínimo nas três escritas, contrato e documentação
+### Task 1: Corpo mínimo decidido nos casos de uso, resposta e contrato
 
 **Estimativa:** 45 min · **Depende de:** nenhuma · **Risco:** alto (contrato público e exposição de dado pessoal)
 
+Ruling do plano: são 4 arquivos de produção (acima de 3), porque a troca de retorno dos casos de uso obriga o controller e o DTO a mudarem juntos e a resposta nova obriga o contrato; qualquer corte deixa o código sem compilar ou o `checkOpenApi` vermelho. Os textos e o README ficam na Task 2.
+
 **Files:**
-- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt` (novo `GuestWriteSummaryResponse`; descrição de `GuestResponse.genderDescription`, hoje linhas 287–293, que promete a descrição "nas das escritas (criação, alteração, restrição e mesclagem)")
-- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt` (construtor; `merge` linhas 122–149; `restrict` e `liftRestriction` linhas 269–290; KDoc da classe)
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/application/GuestService.kt` (`restrict` e `liftRestriction`, linhas 252–290; `GuestWriteResult` no mesmo arquivo)
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/application/GuestMergeService.kt` (`merge`, linhas 86–~135)
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt` (novo `GuestWriteSummaryResponse`)
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt` (`merge` linhas 122–149; `restrict` e `liftRestriction` linhas 269–290)
 - Modify: `api/openapi.yaml` (gerado por `./gradlew updateOpenApi`)
-- Modify: `README.md` (seção "API", item "Hóspedes e empresas", linha 222)
-- Test: `src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt` (novo, `@IntegrationTest`; siga o estilo e os apoios de `GuestsApiTest.kt` e `GuestMergeApiTest.kt`: `IamTestSupport.createUserWith(TestGrant(definition(…), ALL))`, `asTestUser`, as consultas de trilha `auditEntries`/`auditAfter`)
+- Test: `src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt` (novo, `@IntegrationTest`; siga os apoios de `GuestsApiTest.kt` e `GuestMergeApiTest.kt`: `IamTestSupport.createUserWith(TestGrant(definition(…), ALL))`, `asTestUser`, `auditEntries`/`auditAfter`; o `/v3/api-docs` como em `FnrhSubmissionsApiAttackTest.kt:705-720`)
 
 **Interfaces:**
-- Consumes: `Authorization.grantOrNull(permission: PermissionCode): GrantedPermission?` (`shared/Authorization.kt`); `GuestsPermissions.PROFILES_READ`, `RESTRICTIONS_MANAGE`, `PROFILES_MERGE`; `GuestView` (`guests/application/GuestsPorts.kt`: `id`, `status`, `restriction`, `updatedAt`, `version`).
+- Consumes: `Authorization.grantOrNull(permission: PermissionCode): GrantedPermission?` (`shared/Authorization.kt:85`); `GuestsPermissions.PROFILES_READ`, `RESTRICTIONS_MANAGE`, `PROFILES_MERGE`; `GuestView`.
 - Produces:
-  - `data class GuestWriteSummaryResponse(val id: UUID, val status: GuestStatus, val restricted: Boolean, val updatedAt: Instant)` com `companion object { fun of(view: GuestView): GuestWriteSummaryResponse }` (`restricted = view.restriction != null`) e `@Schema(name = "GuestWriteSummaryResponse", additionalProperties = Schema.AdditionalPropertiesValue.FALSE, description = …)` (descrição em pt-BR: corpo das escritas de restrição e mesclagem para quem não tem `guests.profiles.read`; sem nome, documento, contato, descrição de gênero, restrição alimentar nem o motivo da restrição; leia o perfil com `GET /api/v1/guests/{id}` se tiver a permissão).
-  - No `GuestsController`: as três rotas passam a devolver `ResponseEntity<Any>`, por um `private fun written(view: GuestView): ResponseEntity<Any>` que mantém o `ETag` (`ETags.of(view.version)`) e escolhe `GuestResponse.of(view)` com `authorization.grantOrNull(GuestsPermissions.PROFILES_READ) != null`, senão `GuestWriteSummaryResponse.of(view)`. O `ok(view)` das demais rotas fica como está.
-  - Em cada uma das três: `@ApiResponse(responseCode = "200", description = …, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(oneOf = [GuestResponse::class, GuestWriteSummaryResponse::class]))])`. O media type tem de continuar `application/json` (trocar ou acrescentar media type é `ERR` no oasdiff). Não faça `GuestResponse` implementar interface nem herdar de nada.
+  - `data class GuestWriteResult(val id: GuestId, val restricted: Boolean, val version: Long, val profile: GuestView?)` em `GuestService.kt`, com KDoc em pt-BR: resultado das escritas de restrição e mesclagem; `profile` só para quem tem `guests.profiles.read` (decisão da M6 E17).
+  - `GuestService.restrict(id: GuestId, reason: String): GuestWriteResult`, `GuestService.liftRestriction(id: GuestId): GuestWriteResult`, `GuestMergeService.merge(survivorId, mergedId, expectedVersion, takeFromMerged): GuestWriteResult` (no merge, o resultado é do sobrevivente). `version` é a mesma que hoje vai no `ETag` (a do `GuestView` que a rota devolve hoje); `profile` é montado (`guest.view()`) só quando `authorization.grantOrNull(GuestsPermissions.PROFILES_READ) != null`, perguntado dentro do caso de uso, depois do `require` da escrita.
+  - `data class GuestWriteSummaryResponse(val id: UUID, val restricted: Boolean)` em `GuestsDtos.kt`, com `companion object { fun of(result: GuestWriteResult) }` e `@Schema(name = "GuestWriteSummaryResponse", description = …)` em pt-BR: corpo das escritas de restrição e mesclagem para quem não tem `guests.profiles.read`; sem nome, documento, contato, descrição de gênero, restrição alimentar nem o motivo da restrição; a versão vai no `ETag`.
+  - No `GuestsController`: as três rotas devolvem `ResponseEntity<Any>` por um `private fun written(result: GuestWriteResult): ResponseEntity<Any>` com `ETag` = `ETags.of(result.version)` e corpo `result.profile?.let(GuestResponse::of) ?: GuestWriteSummaryResponse.of(result)`. O controller **não** recebe `Authorization`. O `ok(view)` das demais rotas fica.
+  - Em cada uma das três: `@ApiResponse(responseCode = "200", description = …, content = [Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = Schema(oneOf = [GuestResponse::class, GuestWriteSummaryResponse::class]))])`. O media type continua `application/json` (outro media type é `ERR` no oasdiff). `GuestResponse` não implementa interface nem herda de nada. Na `description` de cada operação, acrescente: "Com `guests.profiles.read`, devolve o perfil inteiro (`GuestResponse`); sem ela, só `GuestWriteSummaryResponse` (o id e se está na lista de restrição); a versão vai no `ETag`."
 
-- [ ] **Step 1: Escreva os testes de comportamento (vermelhos)** em `GuestWriteBodyApiTest`. O perfil de teste é criado por um usuário com todas as permissões do `guests`, com `gender = OTHER`, `genderDescription`, e-mail, telefone, um documento e restrições alimentares com o consentimento `DIETARY_RESTRICTIONS`; guarde os valores (com sufixo único) para procurar no corpo cru.
+- [ ] **Step 1: Escreva os testes de comportamento (vermelhos)** em `GuestWriteBodyApiTest`. O perfil de teste é criado por um usuário com todas as permissões do `guests`, com `gender = OTHER`, `genderDescription`, e-mail, telefone, um documento e restrições alimentares com o consentimento `DIETARY_RESTRICTIONS`; nome, e-mail, telefone, descrição de gênero, restrição alimentar e motivo levam um sufixo de letras único (procure só esses textos no corpo cru; não procure dígitos de documento, que podem aparecer em UUID).
 
 ```kotlin
-private val summaryKeys = setOf("id", "status", "restricted", "updatedAt")
+private val summaryKeys = setOf("id", "restricted")
 
 @Test
 fun `restrict and lift without profiles read write the change and return only the minimal body`() {
@@ -61,12 +72,9 @@ fun `restrict and lift without profiles read write the change and return only th
     restricted.status shouldBe 200
     restricted.json.propertyNames().toSet() shouldBe summaryKeys
     restricted.json["id"].asString() shouldBe id
-    restricted.json["status"].asString() shouldBe "ACTIVE"
     restricted.json["restricted"].asBoolean() shouldBe true
     restricted.header(HttpHeaders.ETAG).shouldNotBeNull()
-    for (secret in listOf(fullName, email, phone, genderDescription, dietary, documentSuffix, reason)) {
-        restricted.raw shouldNotContain secret
-    }
+    for (secret in listOf(fullName, email, phone, genderDescription, dietary, reason)) restricted.raw shouldNotContain secret
     guestsApi.restrictionAlert(guestId).shouldNotBeNull()   // a escrita aconteceu
 
     val lifted = call(POST, "/api/v1/guests/$id/lift-restriction", asTestUser(restrictionsOnly))
@@ -77,9 +85,10 @@ fun `restrict and lift without profiles read write the change and return only th
 
 @Test
 fun `merge without profiles read merges and returns only the minimal body`() {
-    // usuário só com guests.profiles.merge; If-Match do sobrevivente
-    // 200, chaves == summaryKeys, id == sobrevivente, status ACTIVE, ETag novo != o enviado,
-    // corpo cru sem nome/e-mail/telefone/descrição de gênero/restrição alimentar de nenhum dos dois perfis;
+    // usuário só com guests.profiles.merge; If-Match do sobrevivente obtido por outro usuário
+    // (essa role não lê perfis: ver "Notas para a revisão humana")
+    // 200, chaves == summaryKeys, id == sobrevivente, restricted == a restrição herdada do absorvido (monte o absorvido
+    // restrito), ETag novo != o enviado; corpo cru sem nenhum texto pessoal dos dois perfis;
     // GET do absorvido (usuário com profiles.read) -> status MERGED e mergedInto == sobrevivente
 }
 
@@ -114,56 +123,99 @@ fun `refusals of the writes stay problems without profile data`() {
 }
 ```
 
-- [ ] **Step 2: Escreva o teste do contrato (vermelho)** no mesmo arquivo, lendo `/v3/api-docs` como `FnrhSubmissionsApiAttackTest` (linhas 705–720):
+- [ ] **Step 2: Escreva o teste do contrato (vermelho)** no mesmo arquivo:
 
 ```kotlin
 @Test
-fun `the contract describes both bodies only on the three writes`() {
-    for ((path, op) in listOf("/api/v1/guests/{id}/restrict" to "post", "/api/v1/guests/{id}/lift-restriction" to "post", "/api/v1/guests/{id}/merge" to "post")) {
-        val schema = doc["paths"][path][op]["responses"]["200"]["content"]["application/json"]["schema"]
-        schema["oneOf"].map { it["\$ref"].asString() } shouldContainExactlyInAnyOrder
+fun `the contract describes both bodies only on the three writes and keeps them disjoint`() {
+    for (path in listOf("/api/v1/guests/{id}/restrict", "/api/v1/guests/{id}/lift-restriction", "/api/v1/guests/{id}/merge")) {
+        val content = doc["paths"][path]["post"]["responses"]["200"]["content"]
+        content.propertyNames().toSet() shouldBe setOf("application/json")
+        content["application/json"]["schema"]["oneOf"].map { it["\$ref"].asString() } shouldContainExactlyInAnyOrder
             listOf("#/components/schemas/GuestResponse", "#/components/schemas/GuestWriteSummaryResponse")
-        doc["paths"][path][op]["responses"]["200"]["content"].propertyNames().toSet() shouldBe setOf("application/json")
     }
     val summary = doc["components"]["schemas"]["GuestWriteSummaryResponse"]
-    summary["additionalProperties"].asBoolean() shouldBe false
-    summary["required"].map { it.asString() }.toSet() shouldBe setOf("id", "status", "restricted", "updatedAt")
-    summary["properties"].propertyNames().toSet() shouldBe setOf("id", "status", "restricted", "updatedAt")
+    summary["properties"].propertyNames().toSet() shouldBe setOf("id", "restricted")
+    summary["required"].map { it.asString() } shouldContain "restricted"
+    val full = doc["components"]["schemas"]["GuestResponse"]
+    full["properties"].has("restricted") shouldBe false
+    full["required"].map { it.asString() } shouldContain "fullName"
+    full.has("allOf") shouldBe false
     doc["paths"]["/api/v1/guests/{id}"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]["\$ref"]
         .asString() shouldBe "#/components/schemas/GuestResponse"
-    doc["components"]["schemas"]["GuestResponse"].has("allOf") shouldBe false
 }
 ```
 
 - [ ] **Step 3: Rode e confirme o vermelho**
 
 Run: `./gradlew test --tests 'com.zeny.hotel.guests.GuestWriteBodyApiTest'`
-Expected: FAIL — os testes sem `profiles.read` recebem o perfil inteiro (chaves além das quatro, `fullName` no corpo) e o do contrato não acha `oneOf`; os de recusa e de `403` podem já passar (são guarda de regressão).
+Expected: FAIL — os testes sem `profiles.read` recebem o perfil inteiro e o do contrato não acha `oneOf`; os de recusa e de `403` podem já passar (guarda de regressão).
 
-- [ ] **Step 4: Implemente** o `GuestWriteSummaryResponse` em `GuestsDtos.kt` e o `written(view)` com as anotações `@ApiResponse` nas três rotas de `GuestsController.kt` (Interfaces acima). Atualize a `description` das três operações (acrescente: "Com `guests.profiles.read`, devolve o perfil inteiro; sem ela, só `GuestWriteSummaryResponse` (id, situação, se está na lista de restrição e a última alteração).") e o KDoc da classe; troque a descrição de `GuestResponse.genderDescription` para dizer que vem em toda resposta de perfil, e que nas escritas de restrição e mesclagem só vem com `guests.profiles.read`.
+- [ ] **Step 4: Implemente** `GuestWriteResult` e os três casos de uso, o `GuestWriteSummaryResponse`, o `written(result)` e as anotações (Interfaces acima).
 
 - [ ] **Step 5: Regenere o contrato e confira o diff**
 
 Run: `./gradlew updateOpenApi && git diff --stat api/openapi.yaml && git diff api/openapi.yaml`
-Expected: só mudam as respostas `200` de `restrictGuest`, `liftGuestRestriction` e `mergeGuests`, as descrições delas e de `genderDescription`, e entra o componente `GuestWriteSummaryResponse`. Qualquer outra mudança: corrija a anotação antes de seguir.
+Expected: só mudam as respostas `200` e as descrições de `restrictGuest`, `liftGuestRestriction` e `mergeGuests`, e entra o componente `GuestWriteSummaryResponse`. Qualquer outra mudança: corrija a anotação antes de seguir.
 
-- [ ] **Step 6: Rode os testes da tarefa e os do `guests` que tocam as rotas**
+- [ ] **Step 6: Rode os testes do `guests`, o contrato e o lint**
 
-Run: `./gradlew test --tests 'com.zeny.hotel.guests.*'`
-Expected: PASS, inclusive `GuestsApiTest` e `GuestMergeApiTest` sem mudança (eles usam usuários com `profiles.read`, e o corpo inteiro continua igual).
+Run: `./gradlew test --tests 'com.zeny.hotel.guests.*' checkOpenApi lint`
+Expected: PASS, inclusive `GuestsApiTest`, `GuestMergeApiTest` e `GuestGenderDescriptionApiTest` sem mudança (usam usuários com `profiles.read`).
 
-- [ ] **Step 7: README** — no item "Hóspedes e empresas" da seção "API" (linha 222), troque "devolvida em toda resposta de perfil, inclusive nas das escritas" por texto que diga que `restrict`, `lift-restriction` e `merge` devolvem o perfil inteiro só a quem tem `guests.profiles.read`, e, sem ela, um corpo mínimo (`id`, `status`, `restricted`, `updatedAt`); registre que é uma mudança de forma da resposta para roles customizadas sem `guests.profiles.read` (os modelos padrão não mudam).
+- [ ] **Step 7: Confira o oasdiff**
 
-- [ ] **Step 8: Verificação completa**
+Run: `.github/scripts/check-api-breaking.sh main`
+Expected: no máximo os três `warning` `response-body-wrapped-in-one-of-original-preserved` e "Nenhuma mudança incompatível (nível ERR) em /api/v1." Cole a saída no relatório.
 
-Run: `./gradlew build` e depois `.github/scripts/check-api-breaking.sh main`
-Expected: `BUILD SUCCESSFUL`; o oasdiff lista no máximo os três `warning` `response-body-wrapped-in-one-of-original-preserved` (esperados) e termina com "Nenhuma mudança incompatível (nível ERR) em /api/v1." Cole as duas saídas no relatório.
-
-- [ ] **Step 9: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt api/openapi.yaml README.md src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt
+git add src/main/kotlin/com/zeny/hotel/guests/application/GuestService.kt src/main/kotlin/com/zeny/hotel/guests/application/GuestMergeService.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt api/openapi.yaml src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt
 git commit -m "feat(guests): corpo mínimo em restrict, lift-restriction e merge sem guests.profiles.read
 
 Soul: desenvolvedor"
 ```
+
+### Task 2: Textos que prometem o perfil inteiro nas escritas, README e build completo
+
+**Estimativa:** 20 min · **Depende de:** Task 1 · **Risco:** normal (só texto de documentação e de contrato)
+
+**Files:**
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt` (descrição de `GuestResponse.genderDescription`, linhas 287–293: hoje "Vem em toda resposta de perfil, inclusive nas das escritas (criação, alteração, restrição e mesclagem)")
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/application/GuestsPorts.kt:317` (KDoc de `GuestView.genderDescription`: "presente em toda resposta de perfil, até nas escritas")
+- Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt` (KDoc da classe: uma frase sobre o corpo das escritas de restrição e mesclagem)
+- Modify: `api/openapi.yaml` (gerado)
+- Modify: `README.md` (seção "API", item "Hóspedes e empresas", linha 222)
+- Modify: `src/test/kotlin/com/zeny/hotel/guests/GuestGenderDescriptionApiTest.kt:616`
+
+**Interfaces:**
+- Consumes: `GuestWriteSummaryResponse` e o comportamento da Task 1.
+- Produces: nada novo.
+
+- [ ] **Step 1: Ajuste o teste do texto (vermelho)** — em `GuestGenderDescriptionApiTest`, teste "the contract exposes the description in profile responses only…", troque `field shouldContain "inclusive nas das escritas"` por `field shouldContain "só com `guests.profiles.read`"` e acrescente `field shouldNotContain "inclusive nas das escritas"`. Não é enfraquecer o teste: a spec da E17 manda trocar a promessa, e a asserção nova fixa a regra nova.
+
+Run: `./gradlew test --tests 'com.zeny.hotel.guests.GuestGenderDescriptionApiTest'` → FAIL no teste do contrato.
+
+- [ ] **Step 2: Troque os textos** — `genderDescription` (DTO): "Descrição do gênero `OTHER` (FNRH): dado pessoal, gravado cifrado. Vem em toda resposta de perfil; nas escritas de restrição e mesclagem, só com `guests.profiles.read` (sem ela, a resposta é `GuestWriteSummaryResponse`). Nula com qualquer outro gênero."; KDoc de `GuestView.genderDescription` no mesmo sentido; KDoc da classe `GuestsController`. Regenere: `./gradlew updateOpenApi` (o diff só toca descrições).
+
+- [ ] **Step 3: README** — no item "Hóspedes e empresas" (linha 222), troque "devolvida em toda resposta de perfil, inclusive nas das escritas" por: devolvida em toda resposta de perfil; `restrict`, `lift-restriction` e `merge` devolvem o perfil inteiro só a quem tem `guests.profiles.read` e, sem ela, um corpo mínimo (`id` e `restricted`, com a versão no `ETag`). Registre que a mudança de forma só alcança roles customizadas sem `guests.profiles.read` (os modelos padrão não mudam).
+
+- [ ] **Step 4: Build completo e oasdiff**
+
+Run: `./gradlew build` e depois `.github/scripts/check-api-breaking.sh main`
+Expected: `BUILD SUCCESSFUL`; oasdiff só com os três `warning` da Task 1 e "Nenhuma mudança incompatível (nível ERR) em /api/v1." Cole as linhas finais das duas saídas no relatório.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt src/main/kotlin/com/zeny/hotel/guests/application/GuestsPorts.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt api/openapi.yaml README.md src/test/kotlin/com/zeny/hotel/guests/GuestGenderDescriptionApiTest.kt
+git commit -m "docs(guests): textos e README do corpo mínimo das escritas de restrição e mesclagem
+
+Soul: desenvolvedor"
+```
+
+## Notas para a revisão humana
+
+- Uma role com `guests.profiles.merge` e sem `guests.profiles.read` não obtém o `ETag` do sobrevivente pela API (`GET /guests/{id}` e `duplicate-candidates` exigem `profiles.read`): o cenário quase não existe na prática; o teste busca o `If-Match` com outro usuário.
+- Primeiro `oneOf` do contrato; o resultado da geração do SDK do front com o ogen 0.16.1 entra no handoff.
