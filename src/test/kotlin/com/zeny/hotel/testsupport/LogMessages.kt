@@ -4,7 +4,7 @@ import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 
 private val CONSOLE_PREFIX = Regex("""^\S+\s+[A-Z]+\s+\d+ --- .*? : """)
-private val CONSOLE_PREFIX_ONLY = Regex("""^\S+\s+[A-Z]+\s+\d+ --- (\[[^\]]*\]\s*){0,3}""")
+private val CONSOLE_PREFIX_ONLY = Regex("""^\S+\s+[A-Z]+\s+\d+ --- (\[[^\]]*\] )?\[[^\]]*\] \[[^\],]*,[^\]]*\] ?""")
 private val LOG_MAPPER = JsonMapper.builder().build()
 
 /** Campos de ruído da linha ECS: variam por execução e não carregam conteúdo da mensagem. */
@@ -15,7 +15,8 @@ private val ECS_NOISE_TOP_LEVEL = setOf("@timestamp", "process", "ecs", "service
  * (`100`, `1990`) não podem olhar o ruído: o PID da JVM e os milissegundos do carimbo variam por execução e podem
  * conter o valor.
  *
- * - Console do Spring Boot: fica o texto depois do ` : ` do logger; sem o separador, o texto depois do prefixo.
+ * - Console do Spring Boot: fica o texto depois do ` : ` do logger; sem o separador, o texto depois do prefixo
+ *   exato (aplicação opcional, thread e correlação `[…,…]`), sem comer grupos `[..]` do texto.
  * - Linha ECS JSON do logback: saem só `@timestamp`, `process`, `ecs`, `service` e `log.level`; todos os demais
  *   valores (`message`, `log.logger`, `error.*`, MDC e pares chave-valor) ficam, para que um dado pessoal em
  *   qualquer um deles continue visível às asserções negativas.
