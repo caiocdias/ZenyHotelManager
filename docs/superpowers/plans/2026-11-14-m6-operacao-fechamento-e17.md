@@ -10,7 +10,7 @@
 - `oneOf` sem discriminador, o primeiro do contrato. Descartados: discriminador (exigiria propriedade nova no `GuestResponse`, que é a resposta de todas as operações de perfil); `anyOf` (os ramos não se sobrepõem, e `anyOf` diz menos ao gerador); outro status (`204`) ou outro media type (mudam o contrato de sucesso; outro media type dá `ERR`). Experimento do orquestrador com o oasdiff v1.33.0 do script: 3 `warning` `response-body-wrapped-in-one-of-original-preserved`, 0 `ERR`.
 - Sem `additionalProperties: false`: seria a única restrição do tipo no contrato, contra a evolução aditiva da §7; a disjunção vem do `required`.
 - Corpo mínimo `{id, restricted}`: `id` identifica o recurso; `restricted` é o resultado da operação (na mesclagem também, porque a restrição do absorvido passa ao sobrevivente, `Guest.kt:576-581`). `status` sai (num `200` dessas rotas é sempre `ACTIVE`: `requireActive()` e `requireMergeable`); `updatedAt` sai (sem consumidor; a versão vai no `ETag`). Acrescentar campo depois é aditivo.
-- O SDK do front (ogen 0.16.1, ADR 0007 do `ZenyHotelManager-DesktopFront`) não foi testado com `oneOf` sem discriminador: o orquestrador gera o SDK no scratchpad numa janela sem outro Gradle e leva o resultado à revisão humana; a captura do brain registra o primeiro `oneOf` do contrato.
+- SDK do front (ogen 0.16.1, ADR 0007 do `ZenyHotelManager-DesktopFront`): o orquestrador gerou um SDK de prova no scratchpad com o contrato alterado (`--offline`); as três operações saem como `HttpResponseTyped<JsonElement>` (sem tipo), as demais não mudam. O front não usa as três operações hoje (busca vazia no repositório dele). Ruling do orquestrador: mantém o `oneOf` (as alternativas tipadas pedem propriedade nova no `GuestResponse` de todas as operações ou dão `ERR`); vai à entrevista do fim do lote como decisão de contrato público. A captura do brain registra o primeiro `oneOf` do contrato.
 
 **Tech Stack:** Kotlin 2.4, Spring Boot 4.1 (Spring MVC), springdoc 3.1 (`io.swagger.v3.oas.annotations`), Jackson 3 (`tools.jackson`), Kotest matchers, `@IntegrationTest` com Testcontainers.
 
@@ -49,6 +49,7 @@ Ruling do plano: são 4 arquivos de produção (acima de 3), porque a troca de r
 - Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt` (novo `GuestWriteSummaryResponse`)
 - Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt` (`merge` linhas 122–149; `restrict` e `liftRestriction` linhas 269–290)
 - Modify: `api/openapi.yaml` (gerado por `./gradlew updateOpenApi`)
+- Modify: `src/test/kotlin/com/zeny/hotel/guests/GuestMergeApiTest.kt:392` (o cenário do Modulith usa o retorno de `merges.merge`, que deixa de ser `GuestView`)
 - Test: `src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt` (novo, `@IntegrationTest`; siga os apoios de `GuestsApiTest.kt` e `GuestMergeApiTest.kt`: `IamTestSupport.createUserWith(TestGrant(definition(…), ALL))`, `asTestUser`, `auditEntries`/`auditAfter`; o `/v3/api-docs` como em `FnrhSubmissionsApiAttackTest.kt:705-720`)
 
 **Interfaces:**
@@ -151,27 +152,29 @@ fun `the contract describes both bodies only on the three writes and keeps them 
 Run: `./gradlew test --tests 'com.zeny.hotel.guests.GuestWriteBodyApiTest'`
 Expected: FAIL — os testes sem `profiles.read` recebem o perfil inteiro e o do contrato não acha `oneOf`; os de recusa e de `403` podem já passar (guarda de regressão).
 
-- [ ] **Step 4: Implemente** `GuestWriteResult` e os três casos de uso, o `GuestWriteSummaryResponse`, o `written(result)` e as anotações (Interfaces acima).
+- [ ] **Step 4: Ajuste o teste que usa o retorno do caso de uso** — em `GuestMergeApiTest` (linha 392, dentro de `toArriveAndVerify { event, view -> … }`), troque `event.mergedAt shouldBe view.updatedAt` por `event.mergedAt shouldBe view.profile.shouldNotBeNull().updatedAt`. O ator é o admin, que tem `profiles.read`: a asserção continua a mesma e ainda prova que ele recebe o perfil. A chamada da linha 412 ignora o retorno e não muda.
 
-- [ ] **Step 5: Regenere o contrato e confira o diff**
+- [ ] **Step 5: Implemente** `GuestWriteResult` e os três casos de uso, o `GuestWriteSummaryResponse`, o `written(result)` e as anotações (Interfaces acima).
+
+- [ ] **Step 6: Regenere o contrato e confira o diff**
 
 Run: `./gradlew updateOpenApi && git diff --stat api/openapi.yaml && git diff api/openapi.yaml`
 Expected: só mudam as respostas `200` e as descrições de `restrictGuest`, `liftGuestRestriction` e `mergeGuests`, e entra o componente `GuestWriteSummaryResponse`. Qualquer outra mudança: corrija a anotação antes de seguir.
 
-- [ ] **Step 6: Rode os testes do `guests`, o contrato e o lint**
+- [ ] **Step 7: Rode os testes do `guests`, o contrato e o lint**
 
 Run: `./gradlew test --tests 'com.zeny.hotel.guests.*' checkOpenApi lint`
-Expected: PASS, inclusive `GuestsApiTest`, `GuestMergeApiTest` e `GuestGenderDescriptionApiTest` sem mudança (usam usuários com `profiles.read`).
+Expected: PASS, inclusive `GuestsApiTest` e `GuestGenderDescriptionApiTest` sem mudança e `GuestMergeApiTest` só com o ajuste do Step 4 (usam usuários com `profiles.read`).
 
-- [ ] **Step 7: Confira o oasdiff**
+- [ ] **Step 8: Confira o oasdiff**
 
 Run: `.github/scripts/check-api-breaking.sh main`
 Expected: no máximo os três `warning` `response-body-wrapped-in-one-of-original-preserved` e "Nenhuma mudança incompatível (nível ERR) em /api/v1." Cole a saída no relatório.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add src/main/kotlin/com/zeny/hotel/guests/application/GuestService.kt src/main/kotlin/com/zeny/hotel/guests/application/GuestMergeService.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt api/openapi.yaml src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt
+git add src/main/kotlin/com/zeny/hotel/guests/application/GuestService.kt src/main/kotlin/com/zeny/hotel/guests/application/GuestMergeService.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt src/main/kotlin/com/zeny/hotel/guests/web/GuestsController.kt api/openapi.yaml src/test/kotlin/com/zeny/hotel/guests/GuestWriteBodyApiTest.kt src/test/kotlin/com/zeny/hotel/guests/GuestMergeApiTest.kt
 git commit -m "feat(guests): corpo mínimo em restrict, lift-restriction e merge sem guests.profiles.read
 
 Soul: desenvolvedor"
@@ -179,7 +182,7 @@ Soul: desenvolvedor"
 
 ### Task 2: Textos que prometem o perfil inteiro nas escritas, README e build completo
 
-**Estimativa:** 20 min · **Depende de:** Task 1 · **Risco:** normal (só texto de documentação e de contrato)
+**Estimativa:** 20 min · **Depende de:** Task 1 · **Risco:** alto (troca a promessa de privacidade do contrato sobre a descrição de gênero e altera uma asserção de teste de privacidade)
 
 **Files:**
 - Modify: `src/main/kotlin/com/zeny/hotel/guests/web/GuestsDtos.kt` (descrição de `GuestResponse.genderDescription`, linhas 287–293: hoje "Vem em toda resposta de perfil, inclusive nas das escritas (criação, alteração, restrição e mesclagem)")
@@ -193,7 +196,7 @@ Soul: desenvolvedor"
 - Consumes: `GuestWriteSummaryResponse` e o comportamento da Task 1.
 - Produces: nada novo.
 
-- [ ] **Step 1: Ajuste o teste do texto (vermelho)** — em `GuestGenderDescriptionApiTest`, teste "the contract exposes the description in profile responses only…", troque `field shouldContain "inclusive nas das escritas"` por `field shouldContain "só com `guests.profiles.read`"` e acrescente `field shouldNotContain "inclusive nas das escritas"`. Não é enfraquecer o teste: a spec da E17 manda trocar a promessa, e a asserção nova fixa a regra nova.
+- [ ] **Step 1: Ajuste o teste do texto (vermelho)** — em `GuestGenderDescriptionApiTest`, teste "the contract exposes the description in profile responses only…", troque `field shouldContain "inclusive nas das escritas"` por asserções sobre termos sem espaço, que não se partem na quebra de linha do YAML gerado: `field shouldContain "GuestWriteSummaryResponse"` e `field shouldContain "guests.profiles.read"`. Para a negativa, normalize antes o bloco, tirando a continuação de linha do gerador (`\` no fim da linha, a quebra, a indentação e o `\ ` opcional da linha seguinte; ver `api/openapi.yaml:19498-19501`), e afirme `normalized shouldNotContain "inclusive nas das escritas"`; confira que a negativa fica vermelha com o texto antigo. Não é enfraquecer o teste: a spec da E17 manda trocar a promessa, e a asserção nova fixa a regra nova.
 
 Run: `./gradlew test --tests 'com.zeny.hotel.guests.GuestGenderDescriptionApiTest'` → FAIL no teste do contrato.
 
