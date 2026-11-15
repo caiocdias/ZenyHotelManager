@@ -188,7 +188,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
 | E16 | Dívidas de teste herdadas do M5 | #concluida | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
-| E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #em-andamento | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
+| E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #concluida | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
 **Manutenção transversal**
 
@@ -619,7 +619,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E17 — Corpo mínimo nas escritas de restrição e mesclagem do `guests` — #em-andamento
+## E17 — Corpo mínimo nas escritas de restrição e mesclagem do `guests` — #concluida
 
 **Objetivo:** fechar a lacuna do M3 apontada na M5 E15 (decisão (h), decidida pelo usuário em 2026-11-11): as respostas de `POST /api/v1/guests/{id}/restrict`, `POST …/lift-restriction` e `POST …/merge` só trazem o perfil inteiro (com a descrição de gênero e as restrições alimentares) a quem também tem `guests.profiles.read`; sem essa permissão, devolvem um corpo mínimo.
 
@@ -637,11 +637,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Com `guests.restrictions.manage` e sem `guests.profiles.read`, `restrict` e `lift-restriction` gravam a mudança e devolvem o corpo mínimo, sem nome, documento, contato, descrição de gênero nem restrição alimentar (teste com role customizada).
-- [ ] Com `guests.profiles.merge` e sem `guests.profiles.read`, `merge` mescla e devolve o corpo mínimo (teste).
-- [ ] Com as duas permissões, as três rotas devolvem o perfil inteiro, como antes (os testes atuais passam).
-- [ ] A trilha das três escritas não muda.
-- [ ] `.github/scripts/check-api-breaking.sh` sem mudança `ERR` em `/api/v1`, e o contrato descreve os dois corpos.
+- [x] Com `guests.restrictions.manage` e sem `guests.profiles.read`, `restrict` e `lift-restriction` gravam a mudança e devolvem o corpo mínimo, sem nome, documento, contato, descrição de gênero nem restrição alimentar (teste com role customizada).
+- [x] Com `guests.profiles.merge` e sem `guests.profiles.read`, `merge` mescla e devolve o corpo mínimo (teste).
+- [x] Com as duas permissões, as três rotas devolvem o perfil inteiro, como antes (os testes atuais passam).
+- [x] A trilha das três escritas não muda.
+- [x] `.github/scripts/check-api-breaking.sh` sem mudança `ERR` em `/api/v1`, e o contrato descreve os dois corpos.
 
 **Validação obrigatória:**
 
@@ -662,12 +662,44 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e17.md`, 2 tarefas, ambas `Risco: alto`. Revisão de arquitetura: aprovada com notas na rodada 2 (`revisor-arquitetura`, opus). Na rodada 0 foi bloqueada com 5 Importantes: a decisão do corpo estava no controller, o `oneOf` não tinha registro nem teste no SDK, havia `additionalProperties: false`, os campos do mínimo não tinham justificativa e um teste fixava o texto antigo. Na rodada 1 foi bloqueada com 2 Importantes: o `GuestMergeApiTest` usava o retorno de `merge`, e o risco da Task 2 estava errado.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `829c256` (início) a `bcb06f1`.
+  - Task 1: `6b1a022` (desenvolvedor) e `d3aee24` (testador, 9 testes de ataque).
+  - Task 2: `e105d7d` (desenvolvedor); `ba653d7` (testador, vermelho); a rodada de correção `f975c8b` (desenvolvedor); e `aa7c668` (testador).
+  - Onda final: `2f7f314` (testador) e `bcb06f1` (desenvolvedor, só KDoc).
+  - Cada tarefa passou por desenvolvedor → testador → verificação mecânica → `revisor-seguranca`, e as duas foram aprovadas só com Menores.
+- Entregue:
+  - **Decisão no caso de uso** (ARCHITECTURE §8.2): `GuestService.restrict`, `GuestService.liftRestriction` e `GuestMergeService.merge` devolvem `GuestWriteResult(id, restricted, version, profile: GuestView?)`. Depois do `require` da escrita, e na mesma transação, o helper `Guest.writeResult(authorization)` (`guests/application/GuestsSupport.kt`) pergunta `grantOrNull(guests.profiles.read)`. Sem a permissão, o `GuestView` nem é montado, e nada é decifrado. O controller só traduz e não recebe `Authorization`. A escrita e a trilha não mudaram (o `AuditAspect` não lê o retorno).
+  - **Corpo mínimo** `GuestWriteSummaryResponse {id, restricted}`, com a versão no `ETag`. No `merge`, os dois campos são do sobrevivente, e `restricted` inclui a restrição herdada do absorvido.
+  - **Contrato:** nas três respostas `200 application/json`, `oneOf: [GuestResponse, GuestWriteSummaryResponse]` sem discriminador. É o primeiro `oneOf` do contrato. Os ramos são disjuntos pelo `required`: o mínimo exige `restricted`, que o `GuestResponse` não tem, e o inteiro exige `fullName`. Não há `additionalProperties: false`. O `GET /guests/{id}` e o `GuestResponse` não mudaram.
+  - **Textos:** a descrição de `genderDescription`, os KDocs (`GuestView`, `GuestsController`, `liftRestriction`) e o item "Hóspedes e empresas" do `README.md` deixaram de prometer o perfil inteiro nas escritas.
+  - **Teste do texto do contrato:** `yamlScalarText` (`GuestGenderDescriptionApiTest.kt`) decodifica o escalar YAML gerado (`\` + quebra + recuo; `\ ` = espaço). O testador provou que a normalização anterior comia o espaço e deixava a asserção negativa passar à toa.
+- Revisão final: `revisor-seguranca` (opus) sobre `b42ce6f..aa7c668`, "Ready to merge: Yes", 0 Critical e 0 Importante. A onda única de correção (`2f7f314`, `bcb06f1`) tratou os Menores 1 a 4: as asserções positivas sobre o texto lógico, a do `Location`, o telefone e o KDoc. A re-revisão (sonnet) foi aprovada: 5/5 tratados, sem problema novo.
+- Verificação:
+  - **Gate:** `./gradlew build` em `bcb06f1` → BUILD SUCCESSFUL in 33m 44s, 4068 testes, 0 falhas, 0 ignorados.
+  - **oasdiff:** 0 error, 3 warning `response-body-wrapped-in-one-of-original-preserved` e "Nenhuma mudança incompatível (nível ERR) em /api/v1."
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` em `gradle.lockfile` (426 pacotes) e `buildscript-gradle.lockfile` (74). O `settings-gradle.lockfile` só tem `empty=…` e o 2.7.0 não tem extrator para ele. Resultado: 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes. Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base b42ce6f` → exit 0, sem apontamento.
+- Critérios verificados:
+  - (1) `GuestWriteBodyApiTest` "restrict and lift without profiles read write the change and return only the minimal body": role só com `guests.restrictions.manage`. Chaves exatas `{id, restricted}`, nenhum texto pessoal no corpo cru (nome, e-mail, telefone, descrição de gênero, restrição alimentar e motivo), `restrictionAlert` gravado e retirado.
+  - (2) "merge without profiles read merges and returns only the minimal body": o absorvido fica `MERGED`, com `mergedInto`.
+  - (3) "with the write permission and profiles read the three routes return the full profile", mais o ataque "the full body with profiles read is identical to the GET of the same profile" e a suíte inteira verde.
+  - (4) "the trail of the three writes is the same with either body" e "a lift on a profile outside the list returns the minimal body and writes no trail entry".
+  - (5) oasdiff acima e "the contract describes both bodies only on the three writes and keeps them disjoint".
+  - Ataques do testador: cabeçalhos e `ETag`, permissão retirada ou concedida entre chamadas, `takeFromMerged` com dado sensível, recusas 400/403/404/409/412/428 como `problem+json` sem dado de perfil.
+- Decisões para o usuário (tomadas pela opção recomendada; revisáveis):
+  - **(a) Forma do contrato, de arquitetura, vai à entrevista:** `oneOf` sem discriminador nas três respostas. SDK de prova com o ogen 0.16.1 do front: as três operações saem como `HttpResponseTyped<JsonElement>`, sem tipo, para todo cliente gerado (desktop, mobile, PDV). O front não usa essas operações hoje. A alternativa tipada é um discriminador, que pede uma propriedade nova no `GuestResponse` de todas as operações de perfil. Outro status ou outro media type dão `ERR`.
+  - **(b) Conteúdo do mínimo `{id, restricted}`:** `status` (sempre `ACTIVE` num `200`) e `updatedAt` (sem consumidor) ficaram de fora; acrescentar campo depois é aditivo. Uma role só com `guests.profiles.merge` fica sabendo se o sobrevivente está restrito, pelo UUID.
+  - **(c) Mudança de forma** só para roles customizadas sem `guests.profiles.read`; os modelos padrão não mudam. Registrado no `README.md`.
+  - **(d)** O helper `Guest.writeResult` ficou num 5º arquivo de produção, além dos 4 do plano. A revisão aceitou.
+- Notas para a próxima etapa:
+  - **Para o `arquiteto`:** se o `oneOf` ficar, registrar na ARCHITECTURE §7 a regra "resposta que varia com a permissão: `oneOf` sem discriminador, ramos disjuntos pelo `required`, sem `additionalProperties: false`" (nota M-7 da revisão do plano).
+  - **Supply chain, fora da E17:** `io.opentelemetry:opentelemetry-api` 1.62.0 está no `productionRuntimeClasspath` com o GHSA-ccrj-gw8r-854m (DoS por regex no `W3CTraceContextPropagator` lendo `tracestate`), corrigido na 1.67.0. Subir numa etapa de manutenção, ou limitar o `tracestate` no proxy.
+  - **Uso real:** uma role com `guests.profiles.merge` e sem `guests.profiles.read` não obtém o `ETag` do sobrevivente pela API (o `GET` e o `duplicate-candidates` exigem leitura).
+  - **Observação do testador, anterior à E17:** a resposta das escritas traz `updatedAt` e `restriction.since` com nanossegundos (instante em memória), e o `GET` traz microssegundos (banco).
+  - **Processo:** os testes de uma etapa não devem usar laço `while pgrep -f` com um trecho de comando, porque o padrão casa com a linha de comando do próprio laço e nunca termina. Dois builds completos simultâneos (este repositório e o front) levaram a máquina de 14 GB à pressão de memória, e o Claude Code encerrou um deles: rode o gate numa janela sem outro build.
+  - **Menor restante:** `yamlScalarText`, `schemaBlock` e `propertyBlock` são `internal` em `GuestGenderDescriptionApiTest.kt` e usados por outro teste. Mover para um utilitário de teste compartilhado é só organização.
+- Captura do brain: —
 
 ---
 
