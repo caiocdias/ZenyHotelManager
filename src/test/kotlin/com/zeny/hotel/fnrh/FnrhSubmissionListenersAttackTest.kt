@@ -502,7 +502,7 @@ class FnrhSubmissionListenersAttackTest(
         change(sent.id) { it.markSent(Instant.now()) }
         change(dismissed.id) {
             it.fail(FnrhSubmissionFailure.NO_REMOTE_OPERATION, Instant.now())
-            it.dismiss(Instant.now())
+            it.dismiss()
         }
 
         deliver(undone(r.id, 103))

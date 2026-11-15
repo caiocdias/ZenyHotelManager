@@ -143,7 +143,7 @@ class FnrhSubmissionPersistenceAttackTest(
         change(inn) { it.markInvalid(listOf(FnrhSubmissionError(UuidV7.generate(), "f", "REQUIRED")), now) }
 
         heads(r).shouldBeEmpty()
-        change(inn) { it.dismiss(now) }
+        change(inn) { it.dismiss() }
         heads(r) shouldContainExactly listOf(out)
     }
 

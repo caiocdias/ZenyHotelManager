@@ -362,7 +362,8 @@ class ModularityTest {
         val fnrh = modules.getModuleByName("fnrh").orElseThrow()
 
         // M5 E07: a integração com a FNRH do Serpro fica na camada acima de Hospedagem (ARCHITECTURE §3.1). Nunca
-        // iam, frontdesk nem tabela de outro schema; guests só pela API pública (os dados do hóspede para a ficha).
+        // iam nem tabela de outro schema; do `frontdesk`, só a porta dos rótulos (M6 E15); guests só pela API pública
+        // (os dados do hóspede para a ficha).
         // M5 E08: reservations (os eventos de reserva e de hospedagem e a ReservationsApi, que dá o código da reserva)
         // e notifications (o alerta de falha no envio, pela NotificationsApi; Task 9).
         // M6 E15: frontdesk, só pela porta RegistrationCardLabels (teste abaixo).

@@ -160,7 +160,7 @@ class FnrhReportViewsAttackTest(
             record(UuidV7.generate(), FnrhOperation.UNDO_CHECK_IN, "d").also {
                 change(it) { s ->
                     s.fail(FnrhSubmissionFailure.REMOTE_CANCELLED, now)
-                    s.dismiss(now)
+                    s.dismiss()
                 }
             }
 
@@ -213,7 +213,7 @@ class FnrhReportViewsAttackTest(
         matchesTable(id) shouldBe true
 
         change(id) { it.recordFailure(FnrhSubmissionFailure.FORBIDDEN, later, FnrhRetryPolicy()) }
-        change(id) { it.dismiss(later) }
+        change(id) { it.dismiss() }
         viewRow(id).let {
             it.status shouldBe "DISMISSED"
             it.attempts shouldBe 1
