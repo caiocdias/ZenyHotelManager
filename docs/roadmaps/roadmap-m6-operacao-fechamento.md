@@ -187,7 +187,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
-| E16 | Dívidas de teste herdadas do M5 | #em-andamento | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
+| E16 | Dívidas de teste herdadas do M5 | #concluida | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
 **Manutenção transversal**
@@ -552,7 +552,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E16 — Dívidas de teste herdadas do M5 — #em-andamento
+## E16 — Dívidas de teste herdadas do M5 — #concluida
 
 **Objetivo:** pagar as duas dívidas de teste que o gate do M5 passou ao M6: o teste de índices das listas por situação, que ficou mais fraco na M5 E01 (pendência Média), e a extensão de compatibilidade `FnrhSubmissionDismissCompat.kt`, duplicada em dois pacotes de teste desde a M5 E08.
 
@@ -569,10 +569,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O teste de índices falha quando a lista de hospedados ou a de no-shows previstos é servida por um percurso sem `Index Cond` sobre `reservation r` (provado por mutação temporária, depois desfeita) e passa com os índices atuais.
-- [ ] O teste passa em três rodadas seguidas de `./gradlew test --tests '…ReservationSearchApiTest'` (sem voltar a intermitência).
-- [ ] Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test`, e nenhum teste chama `dismiss` com instante.
-- [ ] Nenhum arquivo de `src/main` muda.
+- [x] O teste de índices falha quando a lista de hospedados ou a de no-shows previstos é servida por um percurso sem `Index Cond` sobre `reservation r` (provado por mutação temporária, depois desfeita) e passa com os índices atuais.
+- [x] O teste passa em três rodadas seguidas de `./gradlew test --tests '…ReservationSearchApiTest'` (sem voltar a intermitência).
+- [x] Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test`, e nenhum teste chama `dismiss` com instante.
+- [x] Nenhum arquivo de `src/main` muda.
 
 **Validação obrigatória:**
 
@@ -590,12 +590,32 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e16.md`, 3 tarefas (1 e 3 `Risco: alto`, 2 `normal`). Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 1 Crítico: a busca só por situação não tem `Index Cond` possível, porque nenhum índice tem `status` na chave; e 4 Importantes, todos corrigidos).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `72a5d11` (início) a `559e25f`. Só código de teste: `git diff --stat` de `src/main` vazio. Cada tarefa passou por desenvolvedor → testador (as de risco alto) → verificação mecânica → `revisor-seguranca`. As Tasks 1 e 3 tiveram uma rodada de correção cada, pelos testes vermelhos do testador (o apoio de leitura do plano contava `Index Cond` de `InitPlan`/`SubPlan` e lia só o primeiro ramo do bitmap; o prefixo do console comia texto entre colchetes); os testes do testador não foram mudados.
+- Entregue:
+  - **Teste de índices:** nas listas por situação (hospedados e no-shows previstos, nas duas datas) e na busca só por situação, `reservation r` precisa ser lida por um índice com condição útil: `Index Cond` no próprio nó (ou no `Bitmap Index Scan` filho; `BitmapAnd` com um ramo útil, `BitmapOr` com todos), ou um índice parcial cujo predicado cita `status`. Apoio em `src/test/kotlin/com/zeny/hotel/reservations/ReservationPlanAssertions.kt`. O `ANALYZE` ficou; o filtro "period" segue com os dois índices (decisão E05 (f) do M5).
+  - **Guarda dos índices parciais:** um teste novo, numa só conexão do dono com `lock_timeout` de 2 s e sempre em `ROLLBACK`, derruba os índices de data e exige o parcial da situação (`reservation_in_house_idx`, `reservation_confirmed_arrival_idx`), com `Index Cond` nas listas com data.
+  - **Dismiss:** as duas cópias de `FnrhSubmissionDismissCompat.kt` saíram; os testes usam `FnrhSubmission.dismiss()`.
+  - **Escopo acrescentado por ruling:** os textos de teste da E15 (comentário do `ModularityTest` do `fnrh`; KDoc e nome de um teste de `RegistrationCardApiTest`), do handoff da E15; e o `messagesOf` (`testsupport/LogMessages.kt`) lendo a linha ECS JSON do logback e tirando só `@timestamp`, `process`, `ecs`, `service` e `log.level`, do handoff e da revisão final da E14.
+- Revisão final: `revisor-seguranca` (opus) sobre `72a5d11..559e25f`, "Ready to merge: Yes", 0 Critical e 0 Importante.
+- Verificação:
+  - **Gate:** `./gradlew build` em `559e25f` → BUILD SUCCESSFUL in 21m 25s, 4049 testes, 0 falhas, 0 ignorados.
+  - **oasdiff:** sem `ERR` em `/api/v1`. **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles: 0 Critical/High, 2 Medium e 3 Low pré-existentes.
+  - **Integridade:** `check_test_integrity.py --base 72a5d11` → exit 1, todos julgados justificados pela revisão final: três `ASSERCAO_REMOVIDA` no `ReservationSearchApiTest` (o `shouldUseOneOf` das listas por situação trocado pelo apoio novo e pela guarda, mais fortes no conjunto); dois `ASSERCAO_REMOVIDA` no `FnrhSubmissionTransitionsTest` (só o argumento ignorado de `dismiss` saiu); e `SEM_SOUL` em `6689f13`, commit do testador (só `LogMessagesAttackTest.kt`) cujo `Soul: testador` ficou colado ao corpo da mensagem, sem linha em branco, e por isso não é lido como trailer; o histórico não foi reescrito.
+- Critérios verificados:
+  - (1) Mutação: com a consulta de no-shows previstos trocada para data e situação não indexáveis, o plano `Index Scan using reservation_arrival_idx on reservation r` só com `Filter` — que passava no teste antigo — fica vermelho; derrubar `reservation_in_house_idx` dentro da guarda também fica vermelho. Mutações desfeitas.
+  - (2) Três rodadas seguidas do `ReservationSearchApiTest` verdes, e uma cópia temporária rodada depois do `StayTransitionsApiTest`, com a ordem conferida pelos carimbos do relatório XML (00:07:21.206Z → 00:07:21.219Z), apagada antes do commit; mais o gate.
+  - (3) Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test` e nenhuma chamada de `dismiss` com instante (a extensão não existe mais, e a compilação passa).
+  - (4) Nenhum arquivo de `src/main` mudou.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** "Condição útil" inclui o índice parcial da situação sem `Index Cond` (a busca só por situação não tem data, e nenhum índice tem `status` na chave). Se o projeto quiser `Index Cond` também nela, precisa de índice com `status` na chave (mudança de produção).
+  - **(b)** A guarda dos parciais faz DDL numa transação desfeita, a cada build, no banco compartilhado dos testes: um `ACCESS EXCLUSIVE` de milissegundos, com `lock_timeout` de 2 s (falha rápida, nunca build preso).
+  - **(c)** Escopo acrescentado (textos da E15 e `messagesOf` em ECS), com origem nos handoffs da E14 e da E15.
+- Notas para a próxima etapa:
+  - **Observabilidade (para o `arquiteto` e a nota de observabilidade do brain):** em `prod`, uma chave de MDC chamada `service` ou `process` (ou com esses prefixos e ponto) faz o escritor ECS do Spring Boot falhar, e a linha de log some (achado do testador). As chaves de hoje (`userId`, `deviceSessionId`, `traceId`, `spanId`) não colidem. Recomendação: registrar a regra "chave de MDC nunca usa raiz reservada do ECS" e, numa etapa que possa mexer em `src/main`, um teste que suba o log `prod` com cada constante de MDC.
+  - **Log dos testes:** os testes que sobem o profile `prod` (`ProductionProfileApiTest` e dois do `LogMessagesAttackTest`) reinicializam o logback da JVM inteira (ECS e `root: INFO`) até o próximo contexto; uma asserção negativa sobre linha DEBUG pode passar à toa, conforme a ordem. Sugestão: restaurar a configuração de log no fim desses testes ou isolá-los num fork.
+  - **Dívidas menores de teste:** o teste "a BOM before the brace…" de `LogMessagesAttackTest` não tem o BOM no literal (use o escape `\uFEFF`); `messagesOf` trata qualquer objeto JSON como ECS, aceita tokens depois do JSON e chave duplicada (só tratar como ECS com `ecs.version` ou `@timestamp` no topo; ligar `FAIL_ON_TRAILING_TOKENS` e `STRICT_DUPLICATE_DETECTION`); as asserções negativas do teste do MDC `service`/`process` passam também sem linha logada; a guarda dos parciais olha só o primeiro ramo do bitmap, descarta ramo desconhecido num `BitmapOr` e lê a data operacional pelo pool da aplicação enquanto segura a trava (seguro hoje, porque lê só o schema `hotel`); o `LIKE '%status%'` do catálogo é largo; um `Index Cond` parametrizado pela junção conta como útil.
+- Captura do brain: (preenchida no fechamento).
 
 ---
 
