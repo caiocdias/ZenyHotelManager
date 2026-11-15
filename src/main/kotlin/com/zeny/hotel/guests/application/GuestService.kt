@@ -282,6 +282,7 @@ class GuestService(
         return guest.writeResult(authorization)
     }
 
+    /** Retira da lista de restrição (sem efeito fora dela); o perfil só volta com `guests.profiles.read`. */
     @Audited(GuestsAudit.LIFT_RESTRICTION)
     @Transactional
     fun liftRestriction(id: GuestId): GuestWriteResult {

@@ -77,10 +77,9 @@ class GuestMergeService(
 
     /**
      * Mescla [mergedId] em [survivorId]: devolve o resultado do sobrevivente (o perfil só com `guests.profiles.read`).
-     * Recusas: algum dos dois inexistente, `404
-     * GUEST_NOT_FOUND`; o mesmo perfil, `409 GUEST_MERGE_SAME_PROFILE`; algum já mesclado, `409
-     * GUEST_ALREADY_MERGED`; versão do sobrevivente diferente de [expectedVersion], `412`; documento do mesmo tipo e
-     * país com outro número, `409 GUEST_MERGE_DOCUMENT_CONFLICT`.
+     * Recusas: algum dos dois inexistente, `404 GUEST_NOT_FOUND`; o mesmo perfil, `409 GUEST_MERGE_SAME_PROFILE`;
+     * algum já mesclado, `409 GUEST_ALREADY_MERGED`; versão do sobrevivente diferente de [expectedVersion], `412`;
+     * documento do mesmo tipo e país com outro número, `409 GUEST_MERGE_DOCUMENT_CONFLICT`.
      */
     @Audited(GuestsAudit.MERGE_GUEST)
     @Transactional
