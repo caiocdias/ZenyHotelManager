@@ -32,6 +32,17 @@ import java.time.Clock
 import java.time.Instant
 
 /**
+ * Resultado das escritas de restrição e mesclagem: o [id], se o perfil está na lista de restrição, a [version] (a do
+ * `ETag`) e o [profile] inteiro só para quem tem `guests.profiles.read` (decisão da M6 E17); sem ela, é `null`.
+ */
+data class GuestWriteResult(
+    val id: GuestId,
+    val restricted: Boolean,
+    val version: Long,
+    val profile: GuestView?,
+)
+
+/**
  * Perfis de hóspedes (RF-HOS-01, 02 e 04, RN-19, H8 a H10 do M3). Consultar exige `guests.profiles.read`;
  * cadastrar e corrigir (perfil, documentos e dados sensíveis da FNRH), `guests.profiles.manage`; revelar o número
  * de um documento, `guests.documents.reveal`; a lista de restrição, `guests.restrictions.manage`.
@@ -248,13 +259,15 @@ class GuestService(
         return guest.view()
     }
 
-    /** Inclui na lista de restrição, ou troca o motivo (RF-HOS-04). */
+    /**
+     * Inclui na lista de restrição, ou troca o motivo (RF-HOS-04). O perfil só volta com `guests.profiles.read`.
+     */
     @Audited(GuestsAudit.RESTRICT_GUEST)
     @Transactional
     fun restrict(
         id: GuestId,
         reason: String,
-    ): GuestView {
+    ): GuestWriteResult {
         authorization.require(GuestsPermissions.RESTRICTIONS_MANAGE)
         val guest = find(id)
         val before = guest.auditState()
@@ -266,12 +279,12 @@ class GuestService(
         } else {
             audit.noChanges()
         }
-        return guest.view()
+        return guest.writeResult(authorization)
     }
 
     @Audited(GuestsAudit.LIFT_RESTRICTION)
     @Transactional
-    fun liftRestriction(id: GuestId): GuestView {
+    fun liftRestriction(id: GuestId): GuestWriteResult {
         authorization.require(GuestsPermissions.RESTRICTIONS_MANAGE)
         val guest = find(id)
         val before = guest.auditState()
@@ -286,7 +299,7 @@ class GuestService(
         } else {
             audit.noChanges()
         }
-        return guest.view()
+        return guest.writeResult(authorization)
     }
 
     /** Grava o documento cifrado, com o índice cego da chave ativa e o sufixo da máscara. */

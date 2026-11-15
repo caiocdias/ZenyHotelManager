@@ -15,6 +15,7 @@ import com.zeny.hotel.guests.application.DuplicateCandidateView
 import com.zeny.hotel.guests.application.DuplicateReason
 import com.zeny.hotel.guests.application.GuestCommand
 import com.zeny.hotel.guests.application.GuestView
+import com.zeny.hotel.guests.application.GuestWriteResult
 import com.zeny.hotel.guests.application.RevealedDocument
 import com.zeny.hotel.guests.application.SensitiveDataCommand
 import com.zeny.hotel.shared.Address
@@ -383,6 +384,23 @@ data class MergeGuestRequest(
     )
     val takeFromMerged: Set<GuestMergeField> = emptySet(),
 )
+
+@Schema(
+    name = "GuestWriteSummaryResponse",
+    description =
+        "Corpo das escritas de restrição e mesclagem para quem não tem `guests.profiles.read`: só o id e se o perfil " +
+            "está na lista de restrição, sem nome, documento, contato, descrição de gênero, restrição alimentar nem " +
+            "o motivo da restrição. A versão vai no `ETag`.",
+)
+data class GuestWriteSummaryResponse(
+    val id: UUID,
+    @field:Schema(description = "Se o perfil está na lista de restrição.")
+    val restricted: Boolean,
+) {
+    companion object {
+        fun of(result: GuestWriteResult) = GuestWriteSummaryResponse(result.id.value, result.restricted)
+    }
+}
 
 @Schema(description = "Dois perfis ativos que parecem o mesmo hóspede (candidatos a duplicado).")
 data class DuplicateCandidateResponse(

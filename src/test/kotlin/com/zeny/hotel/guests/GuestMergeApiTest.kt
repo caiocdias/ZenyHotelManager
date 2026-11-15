@@ -389,7 +389,7 @@ class GuestMergeApiTest(
             .matching { it.mergedId == merged }
             .toArriveAndVerify { event, view ->
                 event.survivorId shouldBe survivor
-                event.mergedAt shouldBe view.updatedAt
+                event.mergedAt shouldBe view.profile.shouldNotBeNull().updatedAt
             }
         await().atMost(Duration.ofSeconds(TIMEOUT_SECONDS)).until {
             GuestsMergedEvents.received.any { it.mergedId == merged }

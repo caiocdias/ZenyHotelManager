@@ -7,18 +7,22 @@ import com.zeny.hotel.guests.application.GuestFilter
 import com.zeny.hotel.guests.application.GuestMergeService
 import com.zeny.hotel.guests.application.GuestService
 import com.zeny.hotel.guests.application.GuestView
+import com.zeny.hotel.guests.application.GuestWriteResult
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.PageParams
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
 import org.springframework.http.CacheControl
 import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -40,6 +44,10 @@ private const val MERGED =
     "Num perfil mesclado: 409 `GUEST_ALREADY_MERGED` (altere o sobrevivente); num anonimizado, 409 `GUEST_ANONYMIZED`."
 private const val DATA_SUBJECT_REQUEST =
     "Pedido do titular (RF-HOS-07): a trilha registra a correção com a origem `DATA_SUBJECT_REQUEST`."
+private const val WRITE_BODY =
+    "Com `guests.profiles.read`, devolve o perfil inteiro (`GuestResponse`); sem ela, só `GuestWriteSummaryResponse` " +
+        "(o id e se está na lista de restrição); a versão vai no `ETag`."
+private const val WRITE_RESPONSE = "O perfil inteiro (`GuestResponse`) com `guests.profiles.read`; sem ela, o resumo."
 private const val MASKED =
     "Os documentos vêm mascarados (só os últimos caracteres) e os dados sensíveis da FNRH nunca vêm."
 
@@ -130,14 +138,25 @@ class GuestsController(
                 "`GUEST_MERGE_SAME_PROFILE`; algum já mesclado: 409 `GUEST_ALREADY_MERGED`; documento do mesmo " +
                 "tipo e " +
                 "país com números diferentes: 409 `GUEST_MERGE_DOCUMENT_CONFLICT` (retire o errado antes); " +
-                "inexistente: 404 `GUEST_NOT_FOUND`. Devolve o sobrevivente.",
+                "inexistente: 404 `GUEST_NOT_FOUND`. Devolve o sobrevivente. $WRITE_BODY",
+    )
+    @ApiResponse(
+        responseCode = "200",
+        description = WRITE_RESPONSE,
+        content =
+            [
+                Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(oneOf = [GuestResponse::class, GuestWriteSummaryResponse::class]),
+                ),
+            ],
     )
     fun merge(
         @PathVariable id: UUID,
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
         @Valid @RequestBody request: MergeGuestRequest,
-    ): ResponseEntity<GuestResponse> =
-        ok(
+    ): ResponseEntity<Any> =
+        written(
             merges.merge(
                 GuestId(id),
                 GuestId(checkNotNull(request.mergedGuestId)),
@@ -272,22 +291,50 @@ class GuestsController(
         summary = "Incluir na lista de restrição",
         description =
             "Com o motivo, que gera alerta na reserva e no check-in (RF-HOS-04); de novo, troca o motivo. Exige " +
-                "`guests.restrictions.manage`. $MERGED",
+                "`guests.restrictions.manage`. $MERGED $WRITE_BODY",
+    )
+    @ApiResponse(
+        responseCode = "200",
+        description = WRITE_RESPONSE,
+        content =
+            [
+                Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(oneOf = [GuestResponse::class, GuestWriteSummaryResponse::class]),
+                ),
+            ],
     )
     fun restrict(
         @PathVariable id: UUID,
         @Valid @RequestBody request: RestrictGuestRequest,
-    ): ResponseEntity<GuestResponse> = ok(guests.restrict(GuestId(id), checkNotNull(request.reason)))
+    ): ResponseEntity<Any> = written(guests.restrict(GuestId(id), checkNotNull(request.reason)))
 
     @PostMapping("/{id}/lift-restriction")
     @Operation(
         operationId = "liftGuestRestriction",
         summary = "Retirar da lista de restrição",
-        description = "Exige `guests.restrictions.manage`. Fora da lista, não muda nada. $MERGED",
+        description = "Exige `guests.restrictions.manage`. Fora da lista, não muda nada. $MERGED $WRITE_BODY",
+    )
+    @ApiResponse(
+        responseCode = "200",
+        description = WRITE_RESPONSE,
+        content =
+            [
+                Content(
+                    mediaType = MediaType.APPLICATION_JSON_VALUE,
+                    schema = Schema(oneOf = [GuestResponse::class, GuestWriteSummaryResponse::class]),
+                ),
+            ],
     )
     fun liftRestriction(
         @PathVariable id: UUID,
-    ): ResponseEntity<GuestResponse> = ok(guests.liftRestriction(GuestId(id)))
+    ): ResponseEntity<Any> = written(guests.liftRestriction(GuestId(id)))
+
+    private fun written(result: GuestWriteResult): ResponseEntity<Any> =
+        ResponseEntity
+            .ok()
+            .eTag(ETags.of(result.version))
+            .body(result.profile?.let(GuestResponse::of) ?: GuestWriteSummaryResponse.of(result))
 
     private fun ok(view: GuestView) = ResponseEntity.ok().eTag(ETags.of(view.version)).body(GuestResponse.of(view))
 }
