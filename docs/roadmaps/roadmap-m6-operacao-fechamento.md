@@ -188,7 +188,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
 | E16 | Dívidas de teste herdadas do M5 | #concluida | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
-| E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
+| E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #em-andamento | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
 **Manutenção transversal**
 
@@ -619,7 +619,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E17 — Corpo mínimo nas escritas de restrição e mesclagem do `guests` — #pendente
+## E17 — Corpo mínimo nas escritas de restrição e mesclagem do `guests` — #em-andamento
 
 **Objetivo:** fechar a lacuna do M3 apontada na M5 E15 (decisão (h), decidida pelo usuário em 2026-11-11): as respostas de `POST /api/v1/guests/{id}/restrict`, `POST …/lift-restriction` e `POST …/merge` só trazem o perfil inteiro (com a descrição de gênero e as restrições alimentares) a quem também tem `guests.profiles.read`; sem essa permissão, devolvem um corpo mínimo.
 
