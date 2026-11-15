@@ -358,23 +358,39 @@ class ModularityTest {
     }
 
     @Test
-    fun `fnrh depends only on shared, guests, reservations and notifications`() {
+    fun `fnrh depends only on shared, guests, reservations, notifications and frontdesk`() {
         val fnrh = modules.getModuleByName("fnrh").orElseThrow()
 
         // M5 E07: a integração com a FNRH do Serpro fica na camada acima de Hospedagem (ARCHITECTURE §3.1). Nunca
-        // iam, frontdesk nem tabela de outro schema; guests só pela API pública (os dados do hóspede para a ficha).
+        // iam nem tabela de outro schema; do `frontdesk`, só a porta dos rótulos (M6 E15); guests só pela API pública
+        // (os dados do hóspede para a ficha).
         // M5 E08: reservations (os eventos de reserva e de hospedagem e a ReservationsApi, que dá o código da reserva)
         // e notifications (o alerta de falha no envio, pela NotificationsApi; Task 9).
+        // M6 E15: frontdesk, só pela porta RegistrationCardLabels (teste abaixo).
         fnrh
             .getDirectDependencies(modules)
             .uniqueModules()
             .map { it.identifier.toString() }
             .toList() shouldContainExactlyInAnyOrder
-            listOf("shared", "guests", "reservations", "notifications")
+            listOf("shared", "guests", "reservations", "notifications", "frontdesk")
         FnrhModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
-            .toSet() shouldBe setOf("shared", "guests", "reservations", "notifications")
+            .toSet() shouldBe setOf("shared", "guests", "reservations", "notifications", "frontdesk")
+    }
+
+    @Test
+    fun `fnrh uses only the registration card labels port from frontdesk`() {
+        val fnrh = modules.getModuleByName("fnrh").orElseThrow()
+
+        // M6 E15: a aresta fnrh -> frontdesk é só a porta; nenhum outro tipo do frontdesk (serviços, eventos, web).
+        fnrh
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.frontdesk.") }
+            .toList()
+            .toSet() shouldBe setOf("com.zeny.hotel.frontdesk.RegistrationCardLabels")
     }
 
     @Test

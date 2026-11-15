@@ -180,14 +180,14 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E10 | Motor do fechamento do dia | #concluida | — | `EndOfDayRun` com etapas persistidas, retomada, ShedLock, gatilhos automático e manual, métricas e alerta |
 | E11 | Etapas financeiras e operacionais do fechamento | #concluida | E10 | No-show, diárias, bloqueios, pré-reservas, UHs Sujas, avanço da data, pendências |
-| E14 | No-show na FNRH | #pendente | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
+| E14 | No-show na FNRH | #concluida | E11 | Operação nova na porta da FNRH, enviada pela fila de submissões |
 
 **Manutenção herdada do M5**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #pendente | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
-| E16 | Dívidas de teste herdadas do M5 | #pendente | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
+| E15 | Rótulos da FNRH na ficha e descrição da permissão do check-in | #concluida | — | Porta do `frontdesk` implementada pelo `fnrh` com os rótulos de motivo de viagem e meio de transporte; `frontdesk.stays.checkin` descreve a ficha |
+| E16 | Dívidas de teste herdadas do M5 | #concluida | — | Teste de índices das listas por situação endurecido e a cópia duplicada de `FnrhSubmissionDismissCompat.kt` removida |
 | E17 | Corpo mínimo nas escritas de restrição e mesclagem do `guests` | #pendente | — | `restrict`, `lift-restriction` e `merge` só devolvem o perfil inteiro a quem tem `guests.profiles.read` |
 
 **Manutenção transversal**
@@ -398,7 +398,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E14 — No-show na FNRH — #pendente
+## E14 — No-show na FNRH — #concluida
 
 **Objetivo:** enviar à FNRH o no-show publicado pelo fechamento, pela fila de submissões do M5 E08, com a operação nova na porta `FnrhGateway` e no adaptador Serpro.
 
@@ -412,11 +412,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O no-show gera uma única `FnrhSubmission`; o evento reentregue não duplica.
-- [ ] A submissão segue a ordem por reserva e só sai depois do registro da reserva.
-- [ ] O caminho escolhido (`/no-show` ou `/noshow`) e o motivo da escolha ficam no handoff e na lista do que a M5 E09 confirma; se a E09 já tiver fechado, o roteiro dela é reexecutado para o no-show, ou fica a pendência que o gate de inauguração (M8 E13) cobra.
-- [ ] Com o Serpro fora do ar, o fechamento conclui e a submissão fica pendente.
-- [ ] Build, testes, verificação do contrato e oasdiff sem `ERR` passam.
+- [x] O no-show gera uma única `FnrhSubmission`; o evento reentregue não duplica.
+- [x] A submissão segue a ordem por reserva e só sai depois do registro da reserva.
+- [x] O caminho escolhido (`/no-show` ou `/noshow`) e o motivo da escolha ficam no handoff e na lista do que a M5 E09 confirma; se a E09 já tiver fechado, o roteiro dela é reexecutado para o no-show, ou fica a pendência que o gate de inauguração (M8 E13) cobra.
+- [x] Com o Serpro fora do ar, o fechamento conclui e a submissão fica pendente.
+- [x] Build, testes, verificação do contrato e oasdiff sem `ERR` passam.
 
 **Validação obrigatória:**
 
@@ -435,16 +435,45 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e14.md`, 6 tarefas, as 5 de código `Risco: alto`. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 2 Importantes: testes existentes que fixam a lista de operações e a nota do contrato da view, e a Task 1 grande demais; ambos corrigidos).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `31b9f10` (início) a `1b4a0bb`, sobre `3eeef98` da `main`. Cada tarefa passou por desenvolvedor → testador (as de risco alto) → verificação mecânica → `revisor-seguranca`. A Task 4 teve uma rodada de correção: a revisão achou que um `NO_SHOW` pendente saía mesmo depois da reativação da reserva, e o passo passou a agir pelo estado atual (`398d88a`, ruling registrada no plano em `e109fd0`).
+- Entregue:
+  - porta `FnrhGateway.markNoShow` → `POST /reservas/{reserva_id}/noshow` (lote, da reserva, sem corpo; a resposta não é lida);
+  - `FnrhOperation.NO_SHOW` (posto 6), gravada pelo listener de `ReservationMarkedNoShow` com a chave `no-show:v<versão>`;
+  - estado remoto `fnrh.remote_reservation.no_show`, nunca junto de `cancelled` (`remote_reservation_closed_ck`);
+  - `UPDATE` de remota no-show com a reserva ativa aqui → `FAILED REMOTE_NO_SHOW` com alerta; `CANCEL` de remota no-show → sem chamada; no-show de reserva que não está mais `NO_SHOW` aqui → `SENT` sem chamada;
+  - migração `fnrh/V2026_11_14_1000__add_fnrh_no_show.sql` (CHECKs com `NO_SHOW` e `REMOTE_NO_SHOW`, coluna e nota do contrato da `fnrh.report_submissions`); contrato com `NO_SHOW` e `REMOTE_NO_SHOW` em `x-extensible-enum`;
+  - SPEC §8.2.17, README ("Envio à FNRH"), `docs/fnrh/api-fnrh-v2.4.md` e a lista da M5 E09.
+- **Caminho escolhido (critério 3):** o no-show em lote da reserva, `POST /reservas/{reserva_id}/noshow`, e não um dos individuais (`/no-show` ou `/noshow`). O critério formulava a escolha entre os dois individuais; este é um terceiro caminho. Motivo: a reserva é registrada sem hóspedes e os hóspedes só entram no check-in (D-E07-2), então uma reserva no-show não tem `hospede_id` remoto; o caminho da reserva só precisa do id que já guardamos, é o único sem divergência no PDF e alcança os hóspedes de pré-check-in. A M5 E09 ainda está `#bloqueada`, e a lista dela ganhou o que a homologação confirma: o código de resposta numa reserva sem hóspedes, a situação da reserva depois do lote, a resposta à repetição numa reserva já `NOSHOW` e o lote numa reserva com hóspede `CHECKIN_REALIZADO` (check-in desfeito).
+- Revisão final: `revisor-seguranca` (opus) sobre `3eeef98..1b4a0bb`, "With fixes", 0 Critical e nenhum Importante de código; os dois Importantes são decisões para o usuário (abaixo) e o resto foi documentação, feita neste fechamento.
+- Verificação:
+  - **Gate:** `./gradlew build` em `1b4a0bb` → BUILD SUCCESSFUL in 23m 19s, 3962 testes, 0 falhas, 0 ignorados (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`). O gate anterior, em `6ad73ab`, falhou num teste pré-existente do M5 (`SerproFnrhGatewayRound3Test`): ele procurava `"100"` em toda a saída, e o PID da JVM de testes (`3010000`) contém `"100"`. O testador passou a procurar os valores só na mensagem do log (`1b4a0bb`, helper `testsupport/LogMessages.kt`).
+  - **oasdiff:** `.github/scripts/check-api-breaking.sh main` → nenhuma mudança `ERR` em `/api/v1`.
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles (426 + 74 + 0 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes; lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base 3eeef98` → exit 1, dois apontamentos julgados justificados pela revisão final: `DEV_TESTE_DO_TESTADOR` em `398d88a` (o teste do testador que caracterizava o envio depois da reativação foi invertido pela ruling da guarda) e `ASSERCAO_REMOVIDA` em `FnrhSubmissionTest` (postos `0..5` → `0..6`, D-E14-7).
+- Critérios verificados:
+  - (1) Uma única submissão e reentrega sem duplicar: `FnrhNoShowListenerTest`, `FnrhNoShowListenerAttackTest` (reentrega depois de `SENT`, `FAILED` e `DISMISSED`; 8 threads).
+  - (2) Ordem por reserva, só depois do registro: `FnrhNoShowSendTest`, `FnrhNoShowQueueAttackTest`, `EndOfDayFnrhNoShowAttackTest`.
+  - (3) Caminho e motivo: item acima, D-E14-1 do plano, `docs/fnrh/api-fnrh-v2.4.md` e a lista da M5 E09.
+  - (4) Serpro fora do ar: `EndOfDayFnrhNoShowTest` (fechamento real `COMPLETED`, submissão `PENDING` com `attempts = 1` e `SERVER_ERROR`) e `EndOfDayFnrhNoShowAttackTest` (credenciais recusadas).
+  - (5) Build, testes, contrato e oasdiff: gate e oasdiff acima.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** Caminho em lote da reserva (acima). Alternativa: o individual, que exigiria registrar hóspedes sem check-in.
+  - **(b)** O passo não envia o no-show de reserva que não está mais `NO_SHOW` aqui (reativada antes do envio), pelo estado atual (D-E08-9), porque o no-show remoto não se desfaz. Resíduo: uma reativação entre a leitura e o `POST` ainda envia o no-show; o `UPDATE` seguinte fica `FAILED REMOTE_NO_SHOW` com alerta.
+  - **(c)** O `POST …/noshow` é repetido no `retry` depois de `UNKNOWN_OUTCOME`, como o cancelamento da E08. Uma repetição recusada fica `FAILED` com alerta e a remota local continua sem `noShow`; depois do `dismiss`, um `UPDATE` de reativação faria o `PUT` numa reserva `NOSHOW`.
+  - **(d)** `CHECK_IN` e `CHECK_OUT` sobre uma remota no-show (ou cancelada, já na E08) não têm guarda local: depois de reativação, `dismiss` e check-in, o envio cadastra a pessoa e recebe `4xx` (`FAILED` com alerta). Recomendação: numa manutenção do `fnrh`, `remote.closed` → `FailedLocally(REMOTE_CANCELLED | REMOTE_NO_SHOW)` sem chamada.
+  - **(e)** Lacuna anterior na E08, achada pela revisão final: um `CANCEL_RESERVATION` pendente sai mesmo depois da reativação, e a remota é cancelada sem volta com a reserva ativa aqui. Recomendação: a mesma guarda pelo estado local (`status != CANCELLED` → sem chamada), numa etapa de manutenção do `fnrh` criada pelo `arquiteto` (a E16 é só de teste).
+- Notas para a próxima etapa:
+  - Para o `arquiteto`: o critério 3 desta etapa e o critério de aceite da M5 E09 ("o no-show, se o M6 já o publicar") pedem ajuste de texto; a ARCHITECTURE §3.1 lista `hotel` entre as dependências do `fnrh`, mas o `FnrhModule.kt` não o declara.
+  - Para a E16: o helper `messagesOf` (`testsupport/LogMessages.kt`) só entende o log de console; com o log em ECS JSON (contextos com o profile `prod` na mesma JVM), uma linha inteira, com `pid` e `@timestamp`, ainda pode bater num valor curto. Capturar pelo appender do logger ou ler o campo `message` do JSON.
+  - Dívidas de teste menores (revisões por tarefa): `FnrhRemoteId("")` é aceito por todas as operações (pré-existente; sugerido `require(isNotBlank())`); algumas asserções contam o `FnrhTestServer` inteiro em vez dos pedidos da própria reserva; provas de ausência com `await().during(1s)`; `FnrhAlertTestBase.submit` não limpa as linhas.
+  - O teste do fechamento com a FNRH (`EndOfDayFnrhNoShowTest`) sobe um contexto Spring a mais no banco isolado; os no-shows dos outros testes do fechamento agora também gravam `NO_SHOW` (inofensivo com a FNRH desligada).
+  - A próxima migração precisa de versão posterior a `V2026_11_14_1000`.
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E14 - 998156dc.md`.
 
 ---
 
-## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #pendente
+## E15 — Rótulos da FNRH na ficha e descrição da permissão do check-in — #concluida
 
 **Objetivo:** a ficha de registro passa a mostrar o motivo de viagem e o meio de transporte de cada hóspede pelo rótulo legível dos domínios da FNRH, no lugar do código cru, e a permissão `frontdesk.stays.checkin` passa a dizer que também abre a ficha. Atende às decisões que o usuário tomou em 2026-11-12, ao revisar a M5 E11 (decisões (f) e (g) do lote E11 de `docs/roadmaps/roadmap-m5-recepcao-fnrh.md`; D-E11-10 e D-E11-11).
 
@@ -464,13 +493,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O PDF e o ESC/POS da ficha de um hóspede com códigos do catálogo semeado mostram o rótulo do motivo de viagem e o do meio de transporte, sem "(código FNRH)" (o teste extrai o texto).
-- [ ] Um código fora do catálogo sai cru, com "(código FNRH)", e a ficha é gerada sem erro (teste).
-- [ ] Um rótulo trocado no catálogo (como faz o `refresh` dos domínios) aparece na ficha seguinte (teste).
-- [ ] `ModularityTest`: o `fnrh` depende exatamente de `shared`, `guests`, `reservations`, `notifications` e `frontdesk`, e do `frontdesk` usa só a porta; o `frontdesk` continua sem depender do `fnrh`; a tabela da ARCHITECTURE §3.1 lista a aresta nova.
-- [ ] `GET /api/v1/permissions` devolve a descrição nova de `frontdesk.stays.checkin`, com código, modelos de role e concessões iguais aos de antes (teste).
-- [ ] A ficha continua sem dado de RN-19 e sem número inteiro de documento (os testes da M5 E11 passam sem mudança de asserção).
-- [ ] `api/openapi.yaml` não muda, e o `README.md` descreve a ficha com os rótulos.
+- [x] O PDF e o ESC/POS da ficha de um hóspede com códigos do catálogo semeado mostram o rótulo do motivo de viagem e o do meio de transporte, sem "(código FNRH)" (o teste extrai o texto).
+- [x] Um código fora do catálogo sai cru, com "(código FNRH)", e a ficha é gerada sem erro (teste).
+- [x] Um rótulo trocado no catálogo (como faz o `refresh` dos domínios) aparece na ficha seguinte (teste).
+- [x] `ModularityTest`: o `fnrh` depende exatamente de `shared`, `guests`, `reservations`, `notifications` e `frontdesk`, e do `frontdesk` usa só a porta; o `frontdesk` continua sem depender do `fnrh`; a tabela da ARCHITECTURE §3.1 lista a aresta nova.
+- [x] `GET /api/v1/permissions` devolve a descrição nova de `frontdesk.stays.checkin`, com código, modelos de role e concessões iguais aos de antes (teste).
+- [x] A ficha continua sem dado de RN-19 e sem número inteiro de documento (os testes da M5 E11 passam sem mudança de asserção).
+- [x] `api/openapi.yaml` não muda, e o `README.md` descreve a ficha com os rótulos.
 
 **Validação obrigatória:**
 
@@ -489,16 +518,41 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e15.md`, 3 tarefas `Risco: alto`. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 1 Importante: a descrição do endpoint da ficha no contrato ficaria falsa, corrigido pela D-E15-7).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `dc52ff8` (início) a `c842f2a`. Cada tarefa passou por desenvolvedor → testador → verificação mecânica → `revisor-seguranca`. A Task 2 teve duas rodadas de correção: o `detektTest` do teste novo (achado do testador, `8fbab68`) e uma linha de KDoc com mais de 120 colunas (achada na revisão e refluída dentro do commit da Task 3, `f74657d`).
+- Entregue:
+  - porta `com.zeny.hotel.frontdesk.RegistrationCardLabels` (`travelReason`, `transportMode`; `null` fora do catálogo), implementada por `fnrh/application/FnrhRegistrationCardLabels` sobre o catálogo `fnrh.domain_value`, sem cache, sem Serpro e sem trilha;
+  - aresta `fnrh` → `frontdesk` só pela porta: `FnrhModule` com `frontdesk` em `allowedDependencies`, `ModularityTest` exigindo os cinco módulos e que os tipos do `frontdesk` usados pelo `fnrh` sejam exatamente `{RegistrationCardLabels}`; o `frontdesk` continua sem o `fnrh`; ARCHITECTURE §3.1 (linha do `fnrh` e exemplos de inversão);
+  - a ficha (PDF e ESC/POS) mostra o rótulo, ou o código seguido de "(código FNRH)" fora do catálogo; o texto é montado no serviço e os templates só o mostram;
+  - descrição de `frontdesk.stays.checkin`: "Fazer o check-in de uma reserva confirmada (com a caução opcional) e abrir a ficha de registro (PDF e impressão)"; código, sensibilidade, escopos, modelos e concessões iguais;
+  - descrição do `GET /api/v1/reservations/{id}/registration-card/pdf` no contrato e README ("Documentos impressos"); KDoc do `FrontdeskModule` com a porta.
+- Revisão final: `revisor-seguranca` (opus) sobre `dc52ff8..c842f2a`, "Ready to merge: Yes", 0 Critical e 0 Importante de código.
+- Verificação:
+  - **Gate:** `./gradlew build` em `c842f2a` → BUILD SUCCESSFUL in 19m 36s, 3998 testes, 0 falhas, 0 ignorados.
+  - **oasdiff:** `.github/scripts/check-api-breaking.sh main` → nenhuma mudança `ERR` em `/api/v1`; o diff do `api/openapi.yaml` da E15 é só a descrição da operação da ficha.
+  - **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles: 0 Critical/High, 2 Medium e 3 Low pré-existentes; lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base dc52ff8` → exit 0, sem apontamentos. A única asserção existente alterada (`RegistrationCardApiTest`, `AUTOMOVEL (código FNRH)` → `Automóvel` mais a negativa) foi julgada justificada pela revisão final (D-E15-6).
+- Critérios verificados:
+  - (1) Rótulos no PDF e no ESC/POS: `RegistrationCardLabelsApiTest`, `RegistrationCardApiTest`.
+  - (2) Código fora do catálogo, cru com "(código FNRH)": `RegistrationCardLabelsApiTest`, `RegistrationCardLabelsAttackApiTest`, `RegistrationCardApiTest` (`LAZER`).
+  - (3) Rótulo trocado aparece na ficha seguinte: `FnrhRegistrationCardLabelsTest`, `RegistrationCardLabelsApiTest`.
+  - (4) Grafo: `ModularityTest` (dependências exatas do `fnrh`, restrição à porta, `frontdesk` sem `fnrh`) e ARCHITECTURE §3.1.
+  - (5) Descrição nova em `GET /api/v1/permissions`, com código, modelos e concessões iguais e sessões abertas válidas: `FrontdeskCheckInPermissionDescriptionTest`, `FrontdeskCheckInPermissionAttackTest`.
+  - (6) Sem RN-19 e sem documento inteiro: os testes da M5 E11 sem mudança dessas asserções e `RegistrationCardLabelsAttackApiTest`.
+  - (7) README com os rótulos; contrato: ver a decisão (a).
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** O critério 7 dizia que o `api/openapi.yaml` não muda, mas a descrição do endpoint da ficha no contrato afirmava "os códigos FNRH guardados". A descrição foi atualizada e o contrato regenerado (D-E15-7): o critério foi lido como "sem mudança estrutural nem breaking change". Alternativa: manter o contrato descrevendo um comportamento que não existe mais.
+  - **(b)** A porta lê o catálogo a cada ficha, sem cache (D-E15-2): o `refresh` aparece na ficha seguinte; custo de duas consultas pequenas por hóspede.
+- Notas para a próxima etapa:
+  - Para o `arquiteto`: ajustar o texto do critério 7 desta etapa (D-E15-7); a ARCHITECTURE §3.1 lista `hotel` entre as dependências do `fnrh`, que o `FnrhModule` não declara (previsão ou divergência).
+  - Para a E16 (neste lote): o comentário do `ModularityTest` do `fnrh` ainda diz "Nunca iam, frontdesk…" logo acima de "M6 E15: frontdesk, só pela porta"; o KDoc e o nome de um teste de `RegistrationCardApiTest` ainda falam em "códigos FNRH".
+  - Dívidas menores: marcas bidi e zero-width cruas em literais de teste (`RegistrationCardLabelsApiTest`, `FnrhRegistrationCardLabelsAttackTest`, e o padrão anterior em `printing`), melhor como escapes; SQL interpolado com constantes nos apoios de teste; contagem exata de códigos semeados no ataque da porta; apoios duplicados entre os dois testes da permissão.
+  - O check-in recusa códigos de motivo e meio com caracteres fora de letras, dígitos, `_`, `.` e `-` (achado do testador): caracteres especiais só chegam à ficha pelo rótulo do catálogo, que o `refresh` também filtra.
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E15 - c139da21.md`.
 
 ---
 
-## E16 — Dívidas de teste herdadas do M5 — #pendente
+## E16 — Dívidas de teste herdadas do M5 — #concluida
 
 **Objetivo:** pagar as duas dívidas de teste que o gate do M5 passou ao M6: o teste de índices das listas por situação, que ficou mais fraco na M5 E01 (pendência Média), e a extensão de compatibilidade `FnrhSubmissionDismissCompat.kt`, duplicada em dois pacotes de teste desde a M5 E08.
 
@@ -515,10 +569,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] O teste de índices falha quando a lista de hospedados ou a de no-shows previstos é servida por um percurso sem `Index Cond` sobre `reservation r` (provado por mutação temporária, depois desfeita) e passa com os índices atuais.
-- [ ] O teste passa em três rodadas seguidas de `./gradlew test --tests '…ReservationSearchApiTest'` (sem voltar a intermitência).
-- [ ] Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test`, e nenhum teste chama `dismiss` com instante.
-- [ ] Nenhum arquivo de `src/main` muda.
+- [x] O teste de índices falha quando a lista de hospedados ou a de no-shows previstos é servida por um percurso sem `Index Cond` sobre `reservation r` (provado por mutação temporária, depois desfeita) e passa com os índices atuais.
+- [x] O teste passa em três rodadas seguidas de `./gradlew test --tests '…ReservationSearchApiTest'` (sem voltar a intermitência).
+- [x] Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test`, e nenhum teste chama `dismiss` com instante.
+- [x] Nenhum arquivo de `src/main` muda.
 
 **Validação obrigatória:**
 
@@ -536,12 +590,32 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-14-m6-operacao-fechamento-e16.md`, 3 tarefas (1 e 3 `Risco: alto`, 2 `normal`). Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus; rodada 0 bloqueada com 1 Crítico: a busca só por situação não tem `Index Cond` possível, porque nenhum índice tem `status` na chave; e 4 Importantes, todos corrigidos).
+- Commits: branch `roadmap/m6-operacao-fechamento`, `72a5d11` (início) a `559e25f`. Só código de teste: `git diff --stat` de `src/main` vazio. Cada tarefa passou por desenvolvedor → testador (as de risco alto) → verificação mecânica → `revisor-seguranca`. As Tasks 1 e 3 tiveram uma rodada de correção cada, pelos testes vermelhos do testador (o apoio de leitura do plano contava `Index Cond` de `InitPlan`/`SubPlan` e lia só o primeiro ramo do bitmap; o prefixo do console comia texto entre colchetes); os testes do testador não foram mudados.
+- Entregue:
+  - **Teste de índices:** nas listas por situação (hospedados e no-shows previstos, nas duas datas) e na busca só por situação, `reservation r` precisa ser lida por um índice com condição útil: `Index Cond` no próprio nó (ou no `Bitmap Index Scan` filho; `BitmapAnd` com um ramo útil, `BitmapOr` com todos), ou um índice parcial cujo predicado cita `status`. Apoio em `src/test/kotlin/com/zeny/hotel/reservations/ReservationPlanAssertions.kt`. O `ANALYZE` ficou; o filtro "period" segue com os dois índices (decisão E05 (f) do M5).
+  - **Guarda dos índices parciais:** um teste novo, numa só conexão do dono com `lock_timeout` de 2 s e sempre em `ROLLBACK`, derruba os índices de data e exige o parcial da situação (`reservation_in_house_idx`, `reservation_confirmed_arrival_idx`), com `Index Cond` nas listas com data.
+  - **Dismiss:** as duas cópias de `FnrhSubmissionDismissCompat.kt` saíram; os testes usam `FnrhSubmission.dismiss()`.
+  - **Escopo acrescentado por ruling:** os textos de teste da E15 (comentário do `ModularityTest` do `fnrh`; KDoc e nome de um teste de `RegistrationCardApiTest`), do handoff da E15; e o `messagesOf` (`testsupport/LogMessages.kt`) lendo a linha ECS JSON do logback e tirando só `@timestamp`, `process`, `ecs`, `service` e `log.level`, do handoff e da revisão final da E14.
+- Revisão final: `revisor-seguranca` (opus) sobre `72a5d11..559e25f`, "Ready to merge: Yes", 0 Critical e 0 Importante.
+- Verificação:
+  - **Gate:** `./gradlew build` em `559e25f` → BUILD SUCCESSFUL in 21m 25s, 4049 testes, 0 falhas, 0 ignorados.
+  - **oasdiff:** sem `ERR` em `/api/v1`. **Scanner:** `osv-scanner` 2.7.0 com `-L` nos três lockfiles: 0 Critical/High, 2 Medium e 3 Low pré-existentes.
+  - **Integridade:** `check_test_integrity.py --base 72a5d11` → exit 1, todos julgados justificados pela revisão final: três `ASSERCAO_REMOVIDA` no `ReservationSearchApiTest` (o `shouldUseOneOf` das listas por situação trocado pelo apoio novo e pela guarda, mais fortes no conjunto); dois `ASSERCAO_REMOVIDA` no `FnrhSubmissionTransitionsTest` (só o argumento ignorado de `dismiss` saiu); e `SEM_SOUL` em `6689f13`, commit do testador (só `LogMessagesAttackTest.kt`) cujo `Soul: testador` ficou colado ao corpo da mensagem, sem linha em branco, e por isso não é lido como trailer; o histórico não foi reescrito.
+- Critérios verificados:
+  - (1) Mutação: com a consulta de no-shows previstos trocada para data e situação não indexáveis, o plano `Index Scan using reservation_arrival_idx on reservation r` só com `Filter` — que passava no teste antigo — fica vermelho; derrubar `reservation_in_house_idx` dentro da guarda também fica vermelho. Mutações desfeitas.
+  - (2) Três rodadas seguidas do `ReservationSearchApiTest` verdes, e uma cópia temporária rodada depois do `StayTransitionsApiTest`, com a ordem conferida pelos carimbos do relatório XML (00:07:21.206Z → 00:07:21.219Z), apagada antes do commit; mais o gate.
+  - (3) Nenhum `FnrhSubmissionDismissCompat.kt` em `src/test` e nenhuma chamada de `dismiss` com instante (a extensão não existe mais, e a compilação passa).
+  - (4) Nenhum arquivo de `src/main` mudou.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis; nenhuma é de arquitetura):
+  - **(a)** "Condição útil" inclui o índice parcial da situação sem `Index Cond` (a busca só por situação não tem data, e nenhum índice tem `status` na chave). Se o projeto quiser `Index Cond` também nela, precisa de índice com `status` na chave (mudança de produção).
+  - **(b)** A guarda dos parciais faz DDL numa transação desfeita, a cada build, no banco compartilhado dos testes: um `ACCESS EXCLUSIVE` de milissegundos, com `lock_timeout` de 2 s (falha rápida, nunca build preso).
+  - **(c)** Escopo acrescentado (textos da E15 e `messagesOf` em ECS), com origem nos handoffs da E14 e da E15.
+- Notas para a próxima etapa:
+  - **Observabilidade (para o `arquiteto` e a nota de observabilidade do brain):** em `prod`, uma chave de MDC chamada `service` ou `process` (ou com esses prefixos e ponto) faz o escritor ECS do Spring Boot falhar, e a linha de log some (achado do testador). As chaves de hoje (`userId`, `deviceSessionId`, `traceId`, `spanId`) não colidem. Recomendação: registrar a regra "chave de MDC nunca usa raiz reservada do ECS" e, numa etapa que possa mexer em `src/main`, um teste que suba o log `prod` com cada constante de MDC.
+  - **Log dos testes:** os testes que sobem o profile `prod` (`ProductionProfileApiTest` e dois do `LogMessagesAttackTest`) reinicializam o logback da JVM inteira (ECS e `root: INFO`) até o próximo contexto; uma asserção negativa sobre linha DEBUG pode passar à toa, conforme a ordem. Sugestão: restaurar a configuração de log no fim desses testes ou isolá-los num fork.
+  - **Dívidas menores de teste:** o teste "a BOM before the brace…" de `LogMessagesAttackTest` não tem o BOM no literal (use o escape `\uFEFF`); `messagesOf` trata qualquer objeto JSON como ECS, aceita tokens depois do JSON e chave duplicada (só tratar como ECS com `ecs.version` ou `@timestamp` no topo; ligar `FAIL_ON_TRAILING_TOKENS` e `STRICT_DUPLICATE_DETECTION`); as asserções negativas do teste do MDC `service`/`process` passam também sem linha logada; a guarda dos parciais olha só o primeiro ramo do bitmap, descarta ramo desconhecido num `BitmapOr` e lê a data operacional pelo pool da aplicação enquanto segura a trava (seguro hoje, porque lê só o schema `hotel`); o `LIKE '%status%'` do catálogo é largo; um `Index Cond` parametrizado pela junção conta como útil.
+- Captura do brain: `00 Inbox/2026-11-14 - ZenyHotelManager - atualização m6-operacao-fechamento E16 - f7e211bd.md`.
 
 ---
 

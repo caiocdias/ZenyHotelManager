@@ -10,6 +10,7 @@ import com.zeny.hotel.reservations.ReservationChanged
 import com.zeny.hotel.reservations.ReservationConfirmed
 import com.zeny.hotel.reservations.ReservationCreated
 import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationMarkedNoShow
 import com.zeny.hotel.reservations.ReservationReactivated
 import com.zeny.hotel.reservations.ReservationsApi
 import org.slf4j.Logger
@@ -26,7 +27,8 @@ import java.util.UUID
  * Assíncronos e em transação própria, como todo `@ApplicationModuleListener`. Idempotentes: a chave
  * `(reservationId, operation, eventKey)` faz a reentrega do outbox, inclusive fora de ordem ou com a submissão já
  * enviada, não gravar outra. A ordem de execução entre eles não importa: a fila ordena pela versão causal (D-E08-3).
- * `RoomMoved` não gera envio (a API v2.4 não tem UH).
+ * O no-show marcado pelo fechamento do dia (`ReservationMarkedNoShow`, M6 E14) também grava a sua: a falha do Serpro
+ * nunca bloqueia o fechamento (RN-22). `RoomMoved` não gera envio (a API v2.4 não tem UH).
  */
 @Component
 class FnrhSubmissionListeners(
@@ -75,6 +77,18 @@ class FnrhSubmissionListeners(
             event.version,
             null,
             event.cancelledAt,
+        )
+
+    /** O no-show do fechamento (M6 E14): a versão do evento a põe depois do registro, que tem a versão 0 (D-E14-2). */
+    @ApplicationModuleListener
+    fun on(event: ReservationMarkedNoShow) =
+        record(
+            event.reservationId,
+            FnrhOperation.NO_SHOW,
+            "no-show",
+            event.version,
+            event.performedBy,
+            event.markedAt,
         )
 
     @ApplicationModuleListener

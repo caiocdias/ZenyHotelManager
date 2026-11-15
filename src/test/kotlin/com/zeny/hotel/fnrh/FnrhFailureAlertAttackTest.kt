@@ -81,6 +81,7 @@ class FnrhFailureAlertAttackTest(
             FnrhOperation.CHECK_IN to "check-in",
             FnrhOperation.UNDO_CHECK_IN to "desfazer check-in",
             FnrhOperation.CHECK_OUT to "check-out",
+            FnrhOperation.NO_SHOW to "no-show",
         )
 
     @Test

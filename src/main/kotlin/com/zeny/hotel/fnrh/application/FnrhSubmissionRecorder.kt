@@ -144,6 +144,7 @@ class FnrhSubmissionRecorder(
             FnrhOperation.CHECK_IN -> "check-in"
             FnrhOperation.UNDO_CHECK_IN -> "desfazer check-in"
             FnrhOperation.CHECK_OUT -> "check-out"
+            FnrhOperation.NO_SHOW -> "no-show"
         }
 
     private companion object {

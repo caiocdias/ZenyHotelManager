@@ -334,7 +334,14 @@ class FnrhReservationSendTest(
         val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
         iam.enableFnrh()
         remoteIds.saveReservation(
-            FnrhRemoteReservation(id, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId(remoteId()), null, cancelled = true),
+            FnrhRemoteReservation(
+                id,
+                FnrhEnvironment.HOMOLOGATION,
+                FnrhRemoteId(remoteId()),
+                null,
+                cancelled = true,
+                noShow = false,
+            ),
             register.id,
         )
         val update =
@@ -414,7 +421,14 @@ class FnrhReservationSendTest(
         val register = awaitSubmission(id, FnrhOperation.REGISTER_RESERVATION)
         iam.enableFnrh()
         remoteIds.saveReservation(
-            FnrhRemoteReservation(id, FnrhEnvironment.HOMOLOGATION, FnrhRemoteId(remoteId()), null, cancelled = true),
+            FnrhRemoteReservation(
+                id,
+                FnrhEnvironment.HOMOLOGATION,
+                FnrhRemoteId(remoteId()),
+                null,
+                cancelled = true,
+                noShow = false,
+            ),
             register.id,
         )
         val update = recordUpdate(id)

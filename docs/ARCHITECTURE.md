@@ -119,7 +119,7 @@ flowchart LR
 | `rates` | TAR | Planos, preços, restrições, pacotes e políticas | shared, hotel, rooms, billing |
 | `reservations` | RES | Bookings, reservas, bloqueios, alocação e **disponibilidade** | shared, hotel, rooms, rates, guests, billing, notifications, printing |
 | `frontdesk` | REC | Orquestra check-in/out, walk-in, troca de UH, recados e itens de empréstimo | shared, hotel, files, rates (só os tipos públicos da `ReservationsApi`: `RatePlanId`, `GuaranteeType`, `PackageId` e `PackageCharge`; nenhuma chamada à `RatesApi`), reservations, rooms, guests, billing, staff (só a `StaffApi`: o setor e o responsável dos recados), payments, fiscal, printing |
-| `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications |
+| `fnrh` | FNRH | Integração com a FNRH | shared, hotel, reservations, guests, notifications, `frontdesk` (só a porta `RegistrationCardLabels`, M6 E15) |
 | `distribution` | DIS | Integração com o channel manager | shared, rooms, rates, reservations, notifications |
 | `housekeeping` | GOV | Tarefas, distribuição, inspeção, achados e danos | shared, hotel, rooms, reservations, staff, checklists, billing, notifications |
 | `inventory` | EST | Itens, locais, movimentos, fornecedores, compras e inventário | shared, checklists, files, notifications |
@@ -148,7 +148,7 @@ Exemplos:
 
 - O fechamento do dia avança a data por meio de `hotel`. A governança escuta `BusinessDateAdvanced`, publicado por `hotel`, em vez de depender de `endofday`.
 - `checklists` não conhece estoque, rouparia nem manutenção. Esses módulos escutam `ChecklistCompleted` e tratam as ações que lhes dizem respeito.
-- `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`, e o extrato descreve o dono (nome, UH, datas) pela porta `FolioOwnerDescriber`, que o `billing` define e quem é dono do tipo implementa (o `reservations` para `RESERVATION`).
+- `billing` não conhece reservas. Uma conta referencia seu dono por `FolioOwner(type, id)`, e o extrato descreve o dono (nome, UH, datas) pela porta `FolioOwnerDescriber`, que o `billing` define e quem é dono do tipo implementa (o `reservations` para `RESERVATION`). Do mesmo modo, a ficha de registro do `frontdesk` lê os rótulos dos códigos da FNRH pela porta `RegistrationCardLabels`, que o `frontdesk` define e o `fnrh` implementa (a única aresta `fnrh` → `frontdesk`).
 - `guests` não reescreve referências em outros schemas ao mesclar perfis duplicados: publica `GuestsMerged`, e cada módulo que guarda o id de um hóspede (o primeiro é `reservations`) escuta o evento e reponta as próprias referências do absorvido para o sobrevivente.
 - Ao fechar uma comanda, o próprio `pos` chama `fiscal` (NFC-e) e `inventory` (baixa por ficha técnica). `fiscal` e `inventory` estão em camadas inferiores e não escutam `TabClosed`.
 

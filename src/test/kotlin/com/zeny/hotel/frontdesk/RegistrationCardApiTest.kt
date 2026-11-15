@@ -52,7 +52,7 @@ import java.util.UUID
 
 /**
  * A ficha de registro em PDF e na impressão (M5 E11, Task 11; D-E11-9 a D-E11-11 e D-E11-14): o conteúdo (código, UH,
- * datas, nome social, nacionalidade, nascimento, endereço, documento mascarado e os códigos FNRH), a ausência do
+ * datas, nome social, nacionalidade, nascimento, endereço, documento mascarado e os rótulos da FNRH), a ausência do
  * documento inteiro e dos dados de RN-19 no PDF e no ESC/POS, as situações sem ficha, a permissão, o `202` idempotente,
  * a trilha só com ids e o texto hostil no endereço.
  */
@@ -83,7 +83,7 @@ class RegistrationCardApiTest(
     // --- conteúdo ---
 
     @Test
-    fun `the PDF has the stay and the guests data with the masked document and the FNRH codes, and nothing else`() {
+    fun `the PDF has the stay and the guests data with the masked document and the FNRH labels, and nothing else`() {
         val scenario = scenario()
         val response = pdf(scenario.reservation, iam.asAdmin())
 
@@ -125,7 +125,8 @@ class RegistrationCardApiTest(
         text shouldContain "Rua das Acácias"
         text shouldContain "***${scenario.cpf.takeLast(4)}"
         text shouldContain "LAZER (código FNRH)"
-        text shouldContain "AUTOMOVEL (código FNRH)"
+        text shouldContain "Automóvel"
+        text shouldNotContain "AUTOMOVEL (código FNRH)"
         text shouldContain "Assinatura"
         forbidden(scenario).forEach { text shouldNotContain it }
     }

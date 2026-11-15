@@ -39,6 +39,7 @@ import java.time.Instant
  * Um timeout de leitura num `POST`/`PUT`/`PATCH` é [FnrhFailure.UNKNOWN_OUTCOME] (o Serpro pode ter gravado); num
  * `GET`, e em toda falha de conexão (nada foi enviado), é [FnrhFailure.UNAVAILABLE].
  */
+@Suppress("TooManyFunctions") // uma função por operação da porta [FnrhGateway]
 @Component
 class SerproFnrhGateway(
     properties: FnrhProperties,
@@ -95,6 +96,17 @@ class SerproFnrhGateway(
         correlationRef = correlationRef,
         method = HttpMethod.POST,
         segments = listOf("reservas", reservationId.value, "cancelar"),
+        knownRemoteId = reservationId.value,
+    ) { Unit }
+
+    override fun markNoShow(
+        reservationId: FnrhRemoteId,
+        correlationRef: String,
+    ) = call(
+        operation = "markNoShow",
+        correlationRef = correlationRef,
+        method = HttpMethod.POST,
+        segments = listOf("reservas", reservationId.value, "noshow"),
         knownRemoteId = reservationId.value,
     ) { Unit }
 

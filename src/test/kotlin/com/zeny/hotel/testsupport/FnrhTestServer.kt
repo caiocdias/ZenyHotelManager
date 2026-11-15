@@ -105,6 +105,14 @@ object FnrhTestServer {
         )
     }
 
+    /** `POST /reservas/{id}/noshow`: `200` de corpo vazio (no-show em lote da reserva). */
+    @Suppress("ktlint:standard:function-naming")
+    fun stubMarkNoShow_v2_4(reservationId: String) {
+        server.stubFor(
+            post(urlEqualTo("$BASE_PATH/reservas/$reservationId/noshow")).strictV24(JSON).willReturn(json("")),
+        )
+    }
+
     /** `GET /reservas?page_number=1&codigo_reserva=…`: a lista com os ids dados (cada um com o `numero_reserva`). */
     @Suppress("ktlint:standard:function-naming")
     fun stubFindReservationByCode_v2_4(

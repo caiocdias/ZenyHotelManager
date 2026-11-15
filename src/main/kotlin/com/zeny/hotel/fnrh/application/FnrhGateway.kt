@@ -91,6 +91,15 @@ interface FnrhGateway {
         correlationRef: String,
     )
 
+    /**
+     * `POST /reservas/{id}/noshow`, sem corpo: no-show em lote da reserva (D-E14-1; não há `hospede_id` remoto numa
+     * reserva que nunca teve check-in). O corpo da resposta não é lido.
+     */
+    fun markNoShow(
+        reservationId: FnrhRemoteId,
+        correlationRef: String,
+    )
+
     /** `GET /reservas?codigo_reserva=…`: para conciliar um [FnrhFailure.UNKNOWN_OUTCOME]; `null` se não existe. */
     fun findReservationByCode(
         reservationCode: String,

@@ -23,11 +23,12 @@ import org.springframework.modulith.PackageInfo
  * `GuaranteeType`; nenhuma chamada à `RatesApi`; desde a M6 E11 as cobranças do check-out vêm pela regra
  * do `reservations`, sem `PackageId` nem `PackageCharge`); desde a E06, `staff` (o setor e o responsável do
  * recado, só pela `StaffApi`: `DepartmentId`, `DepartmentSummary` e `EmployeeSummary`); nunca `fnrh` (camada acima: ele
- * reage aos eventos de `reservations`) nem `iam`; desde a E11, `printing` (a ficha de registro em PDF e ESC/POS, só a
- * `PrintingApi` e os tipos dela).
+ * reage aos eventos de `reservations`; desde a M6 E15 é ele quem depende do `frontdesk`, só pela porta
+ * `RegistrationCardLabels`, que implementa) nem `iam`; desde a E11, `printing` (a ficha de registro em PDF e ESC/POS,
+ * só a `PrintingApi` e os tipos dela).
  *
- * A raiz do pacote é a API pública: as permissões ([FrontdeskPermissions]) e os códigos de erro
- * ([FrontdeskErrorCodes]).
+ * A raiz do pacote é a API pública: as permissões ([FrontdeskPermissions]), os códigos de erro
+ * ([FrontdeskErrorCodes]) e a porta [RegistrationCardLabels] (os rótulos da ficha, implementada pelo `fnrh`).
  */
 @PackageInfo
 @ApplicationModule(

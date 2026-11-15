@@ -53,7 +53,7 @@ class FnrhSubmissionTest {
 
     @Test
     fun `o posto da operacao segue a ordem causal`() {
-        assertEquals(listOf(0, 1, 2, 3, 4, 5), FnrhOperation.entries.map { it.rank })
+        assertEquals(listOf(0, 1, 2, 3, 4, 5, 6), FnrhOperation.entries.map { it.rank })
         assertEquals(
             listOf(
                 FnrhOperation.REGISTER_RESERVATION,
@@ -62,6 +62,7 @@ class FnrhSubmissionTest {
                 FnrhOperation.CHECK_IN,
                 FnrhOperation.UNDO_CHECK_IN,
                 FnrhOperation.CHECK_OUT,
+                FnrhOperation.NO_SHOW,
             ),
             FnrhOperation.entries,
         )

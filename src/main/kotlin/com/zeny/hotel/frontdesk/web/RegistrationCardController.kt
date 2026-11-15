@@ -41,8 +41,9 @@ class RegistrationCardController(
         summary = "Ficha de registro da hospedagem em PDF",
         description =
             "A estadia (código, UH, datas) e, por hóspede, o nome (o social, se houver), a nacionalidade, o " +
-                "nascimento, o endereço, os documentos mascarados e o motivo de viagem e o meio de transporte como " +
-                "os códigos FNRH guardados, com a linha de assinatura. Nunca traz o número inteiro de documento nem " +
+                "nascimento, o endereço, os documentos mascarados e o motivo de viagem e o meio de transporte pelo " +
+                "rótulo do catálogo de domínios da FNRH, ou o código com \"(código FNRH)\" quando ele está fora do " +
+                "catálogo, com a linha de assinatura. Nunca traz o número inteiro de documento nem " +
                 "raça/cor ou deficiência. Exige `frontdesk.stays.checkin`. Reserva inexistente: 404 " +
                 "`RESERVATION_NOT_FOUND`; fora de `CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`: 409 " +
                 "`REGISTRATION_CARD_UNAVAILABLE`. Qualquer erro sai em `application/problem+json`. O arquivo se " +

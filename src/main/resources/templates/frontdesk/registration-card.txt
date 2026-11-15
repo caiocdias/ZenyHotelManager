@@ -9,8 +9,8 @@ FICHA DE REGISTRO [[${document.code}]]
 [/][# th:if="${guest.birthDate != null}"]Nascimento: [[${fmt.date(guest.birthDate)}]]
 [/][# th:if="${guest.address != null}"]Endereço: [[${guest.address}]]
 [/][# th:each="doc : ${guest.documents}"][[${doc.type}]] ([[${doc.country}]]): [[${doc.number}]]
-[/][# th:if="${guest.travelReason != null}"]Motivo: [[${guest.travelReason}]] (código FNRH)
-[/][# th:if="${guest.transportMode != null}"]Transporte: [[${guest.transportMode}]] (código FNRH)
+[/][# th:if="${guest.travelReason != null}"]Motivo: [[${guest.travelReason}]]
+[/][# th:if="${guest.transportMode != null}"]Transporte: [[${guest.transportMode}]]
 [/]
 Assinatura: ________________________________
 ---

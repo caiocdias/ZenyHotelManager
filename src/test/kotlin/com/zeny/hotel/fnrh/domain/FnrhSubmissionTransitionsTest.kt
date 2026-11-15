@@ -37,7 +37,7 @@ class FnrhSubmissionTransitionsTest {
             "DISMISSED" to
                 submission().also {
                     it.fail(FnrhSubmissionFailure.NO_REMOTE_OPERATION, now)
-                    it.dismiss(now)
+                    it.dismiss()
                 },
         )
 
@@ -127,7 +127,7 @@ class FnrhSubmissionTransitionsTest {
         val a = submission().also { it.markInFlight() }
         a.fail(FnrhSubmissionFailure.NO_REMOTE_OPERATION, now)
         assertTrue(a.inFlight)
-        a.dismiss(now)
+        a.dismiss()
         assertTrue(a.inFlight)
 
         val b = submission().also { it.markInFlight() }
@@ -185,12 +185,12 @@ class FnrhSubmissionTransitionsTest {
     fun `dismiss e cancel nao zeram a ultima falha nem os erros`() {
         val f = submission()
         f.recordFailure(FnrhSubmissionFailure.FORBIDDEN, now, policy)
-        f.dismiss(now)
+        f.dismiss()
         assertEquals(FnrhSubmissionFailure.FORBIDDEN, f.lastFailure)
 
         val i = submission()
         i.markInvalid(listOf(error()), now)
-        i.dismiss(now)
+        i.dismiss()
         assertEquals(listOf(error()), i.errors)
     }
 
@@ -199,7 +199,7 @@ class FnrhSubmissionTransitionsTest {
         for ((name, s) in terminals()) {
             val retry = assertThrows<ConflictException>(name) { s.retry(now.plusSeconds(1)) }
             assertEquals(FnrhErrorCodes.SUBMISSION_NOT_RETRYABLE, retry.code, name)
-            val dismiss = assertThrows<ConflictException>(name) { s.dismiss(now.plusSeconds(1)) }
+            val dismiss = assertThrows<ConflictException>(name) { s.dismiss() }
             assertEquals(FnrhErrorCodes.SUBMISSION_NOT_DISMISSABLE, dismiss.code, name)
             assertEquals(name, s.status.name)
             assertTrue(s.isTerminal, name)
@@ -265,7 +265,7 @@ class FnrhSubmissionTransitionsTest {
     fun `dismiss de PENDING deixa a submissao intacta`() {
         val s = submission()
 
-        assertThrows<ConflictException> { s.dismiss(now) }
+        assertThrows<ConflictException> { s.dismiss() }
 
         assertEquals(FnrhSubmissionStatus.PENDING, s.status)
     }

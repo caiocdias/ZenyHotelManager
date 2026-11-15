@@ -29,7 +29,7 @@ import com.zeny.hotel.shared.TemplateGrant
 object FrontdeskPermissions : ModulePermissions {
     override val module = "frontdesk"
 
-    /** Fazer o check-in de uma reserva confirmada. */
+    /** Fazer o check-in de uma reserva confirmada e abrir a ficha de registro (PDF e impressão, M5 E11). */
     val STAYS_CHECK_IN = PermissionCode("frontdesk.stays.checkin")
 
     /** Desfazer o check-in na mesma data operacional (sensível). */
@@ -68,7 +68,8 @@ object FrontdeskPermissions : ModulePermissions {
         listOf(
             PermissionDefinition(
                 STAYS_CHECK_IN,
-                "Fazer o check-in de uma reserva confirmada (com a caução opcional)",
+                "Fazer o check-in de uma reserva confirmada (com a caução opcional) e abrir a ficha de registro " +
+                    "(PDF e impressão)",
                 setOf(ALL),
                 templates = mapOf(RoleTemplate.MANAGER to all, RoleTemplate.RECEPTIONIST to all),
             ),

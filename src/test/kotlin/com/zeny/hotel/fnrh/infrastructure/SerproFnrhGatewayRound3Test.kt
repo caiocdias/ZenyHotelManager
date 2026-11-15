@@ -11,6 +11,7 @@ import com.zeny.hotel.fnrh.domain.FnrhRemoteId
 import com.zeny.hotel.fnrh.domain.FnrhReservationData
 import com.zeny.hotel.shared.Cpf
 import com.zeny.hotel.testsupport.FnrhTestServer
+import com.zeny.hotel.testsupport.messagesOf
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.nulls.shouldBeNull
@@ -125,7 +126,7 @@ class SerproFnrhGatewayRound3Test {
                 "100",
                 "Mulher trans",
             )
-        for (text in listOf(e.sanitizedMessage.orEmpty(), e.message.orEmpty(), output.all)) {
+        for (text in listOf(e.sanitizedMessage.orEmpty(), e.message.orEmpty(), messagesOf(output.all))) {
             for (word in sensitive) withClue(word) { text shouldNotContain word }
         }
         output.all shouldContain "corr-3"
