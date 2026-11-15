@@ -126,6 +126,7 @@ class GuestWriteBodyApiTest(
         lifted.json.propertyNames().toSet() shouldBe summaryKeys
         lifted.json["restricted"].asBoolean() shouldBe false
         for (secret in profile.texts) lifted.raw shouldNotContain secret
+        lifted.raw shouldNotContain profile.phone
         guestsApi.restrictionAlert(GuestId(profile.id)).shouldBeNull()
     }
 

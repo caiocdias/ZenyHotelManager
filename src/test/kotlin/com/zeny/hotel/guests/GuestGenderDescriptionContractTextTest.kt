@@ -28,10 +28,7 @@ class GuestGenderDescriptionContractTextTest {
     @Test
     fun `the contract description no longer promises the description in the writes, whatever the line breaks`() {
         val lines = Files.readAllLines(Path.of("api/openapi.yaml"))
-        val schema = lines.indexOf("    GuestResponse:")
-        val start = lines.drop(schema).indexOfFirst { it.trim() == "genderDescription:" } + schema
-        val block =
-            lines.drop(start + 1).takeWhile { it.startsWith("          ") }.joinToString("\n", postfix = "\n")
+        val block = propertyBlock(schemaBlock(lines, "GuestResponse"), "genderDescription")
         yamlScalarText(block) shouldNotContain oldPhrase
         yamlScalarText(block).contains("GuestWriteSummaryResponse") shouldBe true
     }

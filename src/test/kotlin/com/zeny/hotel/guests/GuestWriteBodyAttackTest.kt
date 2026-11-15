@@ -8,6 +8,7 @@ import com.zeny.hotel.iam.TestUser
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -56,11 +57,19 @@ class GuestWriteBodyAttackTest(
                 .take(12)
         val fullName = "Nome${tag}Completo"
         val email = "mail$tag@exemplo.com.br"
+        private val phoneSuffix =
+            UUID
+                .randomUUID()
+                .mostSignificantBits
+                .toULong()
+                .toString()
+                .takeLast(8)
+        val phone = "+55 11 9$phoneSuffix"
         val genderDescription = "Genero${tag}Descrito"
         val dietary = "Dieta${tag}Especial"
         val reason = "Motivo${tag}Restrito"
         val newReason = "Outro${tag}Motivo"
-        val texts get() = listOf(fullName, email, genderDescription, dietary, reason, newReason)
+        val texts get() = listOf(fullName, email, phone, phoneSuffix, genderDescription, dietary, reason, newReason)
         val id: UUID =
             UUID.fromString(
                 guests
@@ -74,6 +83,7 @@ class GuestWriteBodyAttackTest(
                                         mapOf(
                                             "gender" to "OTHER",
                                             "genderDescription" to genderDescription,
+                                            "phone" to phone,
                                             "dietaryRestrictions" to dietary,
                                         ),
                                 ),
@@ -171,7 +181,7 @@ class GuestWriteBodyAttackTest(
         val reply = write("/api/v1/guests/${p.id}/restrict", user, mapOf("reason" to p.reason))
         reply.status shouldBe 200
         for (t in p.texts) reply.headersText shouldNotContain t
-        reply.headersText shouldNotContain p.id.toString().let { "Location: $it" }
+        reply.response.getHeader(HttpHeaders.LOCATION).shouldBeNull()
         reply.etag.shouldNotBeNull() shouldMatch Regex("\"\\d+\"")
     }
 
