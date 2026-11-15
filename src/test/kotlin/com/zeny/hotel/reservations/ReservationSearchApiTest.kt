@@ -20,6 +20,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import com.zeny.hotel.testsupport.asUser
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -41,9 +42,13 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor
 import org.springframework.transaction.support.TransactionTemplate
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.sql.SQLException
 import java.time.Duration
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
+import javax.sql.DataSource
 
 /**
  * A busca de reservas e as listas operacionais (M4 E12; RF-RES-11, RF-RES-13, H13, H15): cada filtro da busca
@@ -522,6 +527,94 @@ class ReservationSearchApiTest(
         }
     }
 
+    // --- A guarda dos parciais não deixa rastro nem espera trava (M6 E16, testador) --------------------------------
+
+    @Test
+    fun `the owner transaction of the partial index guard is rolled back even when its block fails`(
+        @Autowired flyway: Flyway,
+    ) {
+        // Dentro da transação do dono os índices de data somem; a asserção falha; depois do ROLLBACK, voltam.
+        val failure =
+            shouldThrow<AssertionError> {
+                asOwnerRolledBack(flyway) { owner ->
+                    owner.sql("SET LOCAL lock_timeout = '2s'").update()
+                    owner
+                        .sql("DROP INDEX reservations.reservation_arrival_idx, reservations.reservation_departure_idx")
+                        .update()
+                    dateIndexes(owner).shouldBeEmpty()
+                    throw AssertionError("asserção que falha com os índices de data derrubados")
+                }
+            }
+        failure.message shouldBe "asserção que falha com os índices de data derrubados"
+        dateIndexes(jdbc) shouldContainExactly DATE_INDEXES
+    }
+
+    @Test
+    fun `after the partial index guard passes, the date indexes are still in the catalog`(
+        @Autowired flyway: Flyway,
+    ) {
+        `the status lists keep their partial indexes when the date indexes are gone`(flyway)
+
+        dateIndexes(jdbc) shouldContainExactly DATE_INDEXES
+        JdbcClient
+            .create(flyway.configuration.dataSource)
+            .sql("SELECT count(*) FROM pg_index WHERE indexrelid = ANY (CAST(:names AS regclass[])) AND indisvalid")
+            .param("names", DATE_INDEXES.joinToString(",", "{", "}") { "reservations.$it" })
+            .query(Int::class.java)
+            .single() shouldBe DATE_INDEXES.size
+    }
+
+    @Test
+    fun `the partial index guard gives up on its lock_timeout while another transaction reads the reservations`(
+        @Autowired flyway: Flyway,
+        @Autowired dataSource: DataSource,
+    ) {
+        // Outra transação segura ACCESS SHARE em reservations.reservation; o DROP INDEX da guarda pede ACCESS
+        // EXCLUSIVE. Com o lock_timeout de 2s ativo, a guarda falha com 55P03 em segundos, em vez de esperar.
+        val (elapsed, outcome) =
+            dataSource.connection.use { holder ->
+                holder.autoCommit = false
+                holder.createStatement().use { it.execute("SELECT 1 FROM reservations.reservation LIMIT 1") }
+                val started = System.nanoTime()
+                val guard =
+                    CompletableFuture.supplyAsync {
+                        runCatching {
+                            `the status lists keep their partial indexes when the date indexes are gone`(flyway)
+                        }
+                    }
+                try {
+                    val outcome =
+                        withClue("a guarda ficou esperando a trava: o lock_timeout não está ativo no DROP INDEX") {
+                            runCatching { guard.get(GUARD_WAIT_SECONDS, TimeUnit.SECONDS) }.getOrThrow()
+                        }
+                    Duration.ofNanos(System.nanoTime() - started) to outcome
+                } finally {
+                    holder.rollback()
+                    runCatching { guard.get(GUARD_WAIT_SECONDS, TimeUnit.SECONDS) }
+                }
+            }
+
+        val error = outcome.exceptionOrNull().shouldNotBeNull()
+        withClue(error.stackTraceToString()) {
+            generateSequence(error) { it.cause }
+                .filterIsInstance<SQLException>()
+                .any { it.sqlState == LOCK_NOT_AVAILABLE } shouldBe true
+        }
+        withClue("tempo até desistir: $elapsed") { (elapsed < LOCK_GIVE_UP_BOUND) shouldBe true }
+        dateIndexes(jdbc) shouldContainExactly DATE_INDEXES
+    }
+
+    /** Os índices de data de `reservation` presentes no catálogo, em ordem de nome. */
+    private fun dateIndexes(client: JdbcClient): List<String> =
+        client
+            .sql(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'reservations' " +
+                    "AND indexname IN (:names) ORDER BY indexname",
+            ).param("names", DATE_INDEXES)
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
+
     /**
      * As listas por situação (hospedados e no-shows previstos, na data operacional e no dia seguinte) e a busca só
      * pela situação.
@@ -704,5 +797,9 @@ class ReservationSearchApiTest(
         const val CLOCK_AHEAD_DAYS = 40L
         const val LIMIT = 51
         const val MAX_EXTRA_DROPS = 5
+        val DATE_INDEXES = listOf("reservation_arrival_idx", "reservation_departure_idx")
+        const val GUARD_WAIT_SECONDS = 20L
+        val LOCK_GIVE_UP_BOUND: Duration = Duration.ofSeconds(10)
+        const val LOCK_NOT_AVAILABLE = "55P03"
     }
 }
