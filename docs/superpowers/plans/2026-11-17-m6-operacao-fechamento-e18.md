@@ -47,7 +47,21 @@ Valem como requisito, salvo um achado novo que o desenvolvedor devolve ao orques
 - **(c)** A leitura estrita aceita **só texto**, sem espaço nas pontas. Numa data, vale o formato `ISO_LOCAL_DATE` do `java.time`, inclusive o ano com sinal e mais de 4 dígitos que o próprio servidor grava nos extremos (`-4712-01-01`, `+5874897-12-31`); não é um regex de 4 dígitos. Num instante, vale o ISO-8601 com `T` do `Instant`. Recusa número, epoch em texto, data-hora numa data (com ou sem `Z`), array `[a,m,d]` e objeto.
 - **(d)** O logger do ShedLock `net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateStorageAccessor` fica em `OFF`, com comentário sobre o custo: o "Unlock failed after 10 attempts" também some. A alternativa descartada é um filtro que descarte só os eventos com exceção. Fica registrado na ARCHITECTURE §13 (Task 3).
 - **(e)** Datas fora do `StorableRange` no **corpo** ficam fora desta etapa (roadmap, "Fora de escopo"), com a regressão conhecida acima.
-- **(f) Decisão nova (rodada 0 da revisão de arquitetura), que substitui o `spring.task.execution.mode: force` da execução perdida:** um `taskScheduler` próprio, que é um `Executor`, desligaria o `applicationTaskExecutor` do Boot (o executor dos `@Async` e dos ouvintes do Modulith). Primeiro se tenta a convenção que o projeto já usa em `endofday/infrastructure/EndOfDayExecutionConfiguration.kt:33-35`: o bean com `defaultCandidate = false`, achado pelo nome. Só se o `@Scheduled` ou o ShedLock não o acharem assim, o `force` entra, e a escolha e a alternativa descartada vão para a ARCHITECTURE §13 e para o relatório.
+- **(f) Decisão nova (rodada 0 da revisão de arquitetura), que substitui o `spring.task.execution.mode: force` da execução perdida:** um `taskScheduler` próprio, que é um `Executor`, desligaria o `applicationTaskExecutor` do Boot (o executor dos `@Async` e dos ouvintes do Modulith). Primeiro se tenta a convenção que o projeto já usa em `endofday/infrastructure/EndOfDayExecutionConfiguration.kt:33-35`: o bean com `defaultCandidate = false`, achado pelo nome. Só se o `@Scheduled` ou o ShedLock não o acharem assim, o `force` entra. Nos dois casos, o mecanismo que vencer e a alternativa descartada vão para a ARCHITECTURE §13 e para o relatório.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas, na rodada 1 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 6 Importantes: `Riscos:` incompleto; dependência da Task 2; critérios sem verificação; tamanho das fatias; a decisão (f) contra a convenção do `defaultCandidate = false`; decisões transversais sem registro na ARCHITECTURE. Havia também 7 Menores. Tudo foi corrigido em `2ecd971`.
+- **Notas Menores da rodada 1, aplicadas neste texto:**
+  - N1: a Task 3 está no limite, então a metade do rollback vem primeiro, com commit próprio;
+  - N2: o critério de releitura passou a citar as suítes de `reservations` e `checklists`;
+  - N3: o grep da §13 cobre a decisão (f), que é registrada nos dois casos;
+  - N4: o teste afirma que há um único `TaskScheduler`.
+- **Para o usuário (sem bloquear):**
+  - a regressão conhecida do `dueOn` absurdo;
+  - as decisões (a) a (e), que valem pela H15 sem confirmação;
+  - o aviso ao front desktop sobre o `""`.
 
 ---
 
@@ -86,7 +100,7 @@ Valem como requisito, salvo um achado novo que o desenvolvedor devolve ao orques
   - aceita `-4712-01-01`, `+5874897-12-31`, `-4712-01-01T00:00:00Z` e `+294276-12-31T23:59:59.999999Z` (Review Focus 3);
   - `null` e campo ausente não mudam.
   - Verificação: `timeout 900 ./gradlew test --tests '*StrictDateTimeJsonMapperTest'`.
-- Releitura: os testes de persistência que já existem para `JdbcBookingStore`, `JdbcRoomBlockStore`, `JdbcChecklists` e `ChecklistsOfflineSources` seguem verdes. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.reservations.*' --tests 'com.zeny.hotel.checklists.*'`.
+- Releitura: as suítes de `reservations` e `checklists`, que exercitam `JdbcBookingStore`, `JdbcRoomBlockStore`, `JdbcChecklists` e `ChecklistsOfflineSources`, seguem verdes. Verificação, em dois comandos: `timeout 1200 ./gradlew test --tests 'com.zeny.hotel.reservations.*'` e `timeout 900 ./gradlew test --tests 'com.zeny.hotel.checklists.*'`.
 - Offline: em `OfflineSyncTest`, um comando cujo payload traz uma data em número volta `REJECTED COMMAND_PAYLOAD_INVALID`, sem efeito, e o reenvio dá a mesma recusa. Com a data em ISO, o comando é aplicado. Verificação: `timeout 900 ./gradlew test --tests '*OfflineSyncTest'`.
 - Os testes que hoje mandam data ou instante em formato leniente para entrada legítima mudam junto, cada um listado no relatório.
 - O relatório confere e registra, sem corrigir (roadmap, "Fora de escopo"), como se comportam as datas e instantes em query string e path e os valores fora do alcance no corpo, com um exemplo reproduzível de cada.
@@ -120,18 +134,19 @@ Valem como requisito, salvo um achado novo que o desenvolvedor devolve ao orques
 - `ScheduledJobErrorLogTest` (novo, `@IntegrationTest`):
   - um job agendado real (`IdempotencyKeyPurgeJob.purgeExpiredKeys`), com a trava falhando com uma exceção cuja mensagem e cuja causa levam um sentinela, gera log (saída capturada) com o nome do job e a classe da exceção e da causa, sem o sentinela em lugar nenhum: nem mensagem, nem stack trace, nem suprimidas; o relatório traz o vermelho antes da correção;
   - uma falha no corpo do job sai no mesmo formato;
-  - um ouvinte assíncrono (`@ApplicationModuleListener`) continua rodando fora do agendador; o teste espera o ouvinte terminar antes de afirmar sobre a thread e o log.
+  - um ouvinte assíncrono (`@ApplicationModuleListener`) continua rodando fora do agendador; o teste espera o ouvinte terminar antes de afirmar sobre a thread e o log;
+  - o contexto tem um único `TaskScheduler`, e ele é um `JobErrorLoggingTaskScheduler` (o Boot não montou um segundo agendador).
   - Verificação: `timeout 900 ./gradlew test --tests '*ScheduledJobErrorLogTest'`.
 - O agendador é um só, sem código por job, e o mecanismo segue a decisão (f). Verificação: `grep -rn 'taskScheduler\|execution.mode' src/main` mostra só o bean do `shared` e, se entrou, o `force`, com o motivo no relatório.
 - O logger do ShedLock fica como na decisão (d). Verificação: `grep -n 'JdbcTemplateStorageAccessor: OFF' src/main/resources/application.yaml`, com o comentário do custo logo acima, e nenhum comentário deslocado do bloco a que se refere.
 - A sonda de trava é um `ExtensibleLockProvider` que delega ao `lockProvider` de produção, porque `EndOfDayExecutionConfiguration.kt:55` exige esse tipo. Ela só falha para o nome armado, e cada teste a desarma num `finally`, porque o contexto é compartilhado. Quem confere é a revisão de código.
 - O KDoc do agendador avisa que o nome logado é o `toString()` do `Runnable` e que um `Future` avulso tem a exceção logada e engolida.
-- A ARCHITECTURE registra: na §13, (d) e (f), com a alternativa descartada e as consequências de cada uma; na §5, item 6, a transação unida (Review Focus 5). Verificação: `grep -n 'UnexpectedRollbackException\|JdbcTemplateStorageAccessor' docs/ARCHITECTURE.md`.
+- A ARCHITECTURE registra: na §13, (d) e (f), com a alternativa descartada e as consequências de cada uma; na §5, item 6, a transação unida (Review Focus 5). Verificação: `grep -n 'UnexpectedRollbackException\|JdbcTemplateStorageAccessor\|defaultCandidate\|execution.mode' docs/ARCHITECTURE.md`.
 - `timeout 900 ./gradlew lint` verde.
 
 **Áreas tocadas:** `src/main/kotlin/com/zeny/hotel/shared/infrastructure/audit/AuditAspect.kt`, `src/main/kotlin/com/zeny/hotel/endofday/application/EndOfDayRunTransitions.kt`, `src/main/kotlin/com/zeny/hotel/shared/infrastructure/scheduling/` (`SchedulingConfiguration.kt`, `ScheduledJobErrors.kt` novo), `src/main/resources/application.yaml`, `docs/ARCHITECTURE.md`. Testes: `src/test/kotlin/com/zeny/hotel/testsupport/TransactionAndLockProbes.kt` (novo, sondas de transação e de trava; o nome evita confusão com a entidade de `KernelProbe.kt`), `RollbackOnAllExceptionsTest`, `ScheduledJobErrorLogTest`.
 
-**Tamanho:** ~60 min; 5 arquivos de produção (o inventário é confirmação da nota, não descoberta).
+**Tamanho:** ~60 min; 5 arquivos de produção (o inventário é confirmação da nota, não descoberta). Ordem dentro da fatia: primeiro a metade do rollback (configuração, `EndOfDayRunTransitions`, `RollbackOnAllExceptionsTest`, §5), com commit próprio; depois a metade dos jobs.
 
 **Depende de:** nenhuma.
 
