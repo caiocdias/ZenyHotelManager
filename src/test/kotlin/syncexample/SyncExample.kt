@@ -29,6 +29,7 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -114,6 +115,8 @@ data class RecordNotePayload(
     @field:NotBlank
     @field:Size(max = 200)
     val text: String,
+    /** Opcional e ignorado pelo handler: serve à leitura estrita de datas no payload (M6 E18). */
+    val dueOn: LocalDate? = null,
 )
 
 /**
