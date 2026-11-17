@@ -2,12 +2,23 @@ package com.zeny.hotel.testsupport
 
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
+import net.javacrumbs.shedlock.core.ExtensibleLockProvider
+import net.javacrumbs.shedlock.core.LockConfiguration
+import net.javacrumbs.shedlock.core.LockProvider
+import net.javacrumbs.shedlock.core.SimpleLock
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Primary
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.modulith.events.ApplicationModuleListener
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.transaction.annotation.Transactional
 import java.io.IOException
+import java.util.Optional
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 /** Exceção *checked* dos cenários de rollback (o Kotlin deixa lançá-la sem declarar). */
 class ProbeCheckedException : Exception("checked de teste")
@@ -68,9 +79,85 @@ open class SwallowingCaller(
     }
 }
 
+/**
+ * Trava dos jobs que delega ao `lockProvider` de produção e só falha para o nome armado com [failFor]. É um
+ * [ExtensibleLockProvider] porque o fechamento do dia exige esse tipo (`EndOfDayExecutionConfiguration`). O contexto é
+ * compartilhado: **quem arma desarma num `finally`** com [disarm].
+ */
+class FailingLockProvider(
+    private val delegate: LockProvider,
+) : ExtensibleLockProvider {
+    @Volatile private var armed: Pair<String, () -> RuntimeException>? = null
+
+    @Volatile var failures: Int = 0
+        private set
+
+    fun failFor(
+        lockName: String,
+        error: () -> RuntimeException,
+    ) {
+        armed = lockName to error
+    }
+
+    fun disarm() {
+        armed = null
+    }
+
+    override fun lock(lockConfiguration: LockConfiguration): Optional<SimpleLock> {
+        armed?.takeIf { (name, _) -> name == lockConfiguration.name }?.let { (_, error) ->
+            failures++
+            throw error()
+        }
+        return delegate.lock(lockConfiguration)
+    }
+}
+
+/** Evento só de teste, para provar em que thread os ouvintes assíncronos rodam. */
+data class AsyncProbeEvent(
+    val marker: String,
+)
+
+/**
+ * Ouvinte assíncrono do Modulith que anota a thread em que rodou, por marcador. O bean é um proxy de classe: leia por
+ * [threadOf], que é aberto, e não por uma propriedade (o getter final leria o campo vazio do proxy).
+ */
+open class AsyncListenerProbe {
+    private val threads = ConcurrentHashMap<String, String>()
+
+    @ApplicationModuleListener
+    open fun on(event: AsyncProbeEvent) {
+        threads[event.marker] = Thread.currentThread().name
+    }
+
+    open fun threadOf(marker: String): String? = threads[marker]
+}
+
+/** Um `@Scheduled` só de teste, que roda uma vez no boot e anota a thread do agendador que o executou. */
+open class SchedulerThreadProbe {
+    @Volatile var thread: String? = null
+        private set
+
+    @Scheduled(initialDelay = 0, fixedDelay = 1, timeUnit = TimeUnit.DAYS)
+    open fun record() {
+        thread = Thread.currentThread().name
+    }
+}
+
 /** Combinação de contexto dos testes do rollback e da trava do agendador (`@IntegrationTest` + esta configuração). */
 @TestConfiguration(proxyBeanMethods = false)
 class TransactionAndLockProbesConfiguration {
+    @Bean
+    @Primary
+    fun failingLockProvider(
+        @Qualifier("lockProvider") production: LockProvider,
+    ) = FailingLockProvider(production)
+
+    @Bean
+    fun asyncListenerProbe() = AsyncListenerProbe()
+
+    @Bean
+    fun schedulerThreadProbe() = SchedulerThreadProbe()
+
     @Bean
     fun transactionProbe(
         audit: AuditContext,

@@ -166,6 +166,11 @@ logging:
     # vai para o log (ARCHITECTURE §16). A exceção segue para quem chama, que a trata ou a converte
     # em 500 com a causa no log, já sem o DETAIL (logServerErrorDetail no datasource, acima).
     org.hibernate.orm.jdbc.error: ERROR
+    # A trava do ShedLock loga a DataAccessException com a mensagem do JDBC, que pode trazer valores
+    # do banco (ARCHITECTURE §13 e §16); a falha que escapa do job já sai pelo agendador do shared,
+    # só pelas classes. Custo: some também o "Unlock failed after 10 attempts", e uma trava que não
+    # se solta fica presa até o lockAtMostFor sem sinal no log.
+    net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateStorageAccessor: OFF
 
 zeny:
   events:
