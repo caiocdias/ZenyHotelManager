@@ -15,6 +15,7 @@ import org.springframework.core.annotation.AnnotationUtils
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.EnableTransactionManagement
+import org.springframework.transaction.annotation.RollbackOn
 import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.time.Clock
 
@@ -84,7 +85,22 @@ object AuditOrdering {
 /**
  * Liga o `@Transactional` (no lugar da configuração automática do Spring Boot, que recua) com a
  * ordem de [AuditOrdering.TRANSACTION] e proxies de classe, como o padrão do Boot.
+ *
+ * **Rollback em toda exceção** (ARCHITECTURE §5, item 6): `rollbackOn = ALL_EXCEPTIONS` faz uma
+ * exceção *checked* que escapa de um caso de uso desfazer a transação, como uma não-checada (o
+ * Kotlin deixa lançá-la sem declarar, e o padrão do Spring confirmaria a escrita sem trilha). Um
+ * `noRollbackFor` explícito, como o das recusas gravadas (`recordRejections`), continua valendo.
+ *
+ * **Atenção, transação unida:** um método `@Transactional` chamado de dentro de outra transação
+ * (propagação `REQUIRED`) que deixa escapar uma *checked* marca a transação externa só para
+ * rollback. Se o chamador engolir essa exceção e seguir, o commit dele falha com
+ * `UnexpectedRollbackException`, e nada do que ele gravou fica. Quem precisa sobreviver à falha
+ * de um passo usa `noRollbackFor` nele ou uma transação própria (`REQUIRES_NEW`).
  */
 @Configuration(proxyBeanMethods = false)
-@EnableTransactionManagement(proxyTargetClass = true, order = AuditOrdering.TRANSACTION)
+@EnableTransactionManagement(
+    proxyTargetClass = true,
+    order = AuditOrdering.TRANSACTION,
+    rollbackOn = RollbackOn.ALL_EXCEPTIONS,
+)
 class TransactionOrderingConfiguration
