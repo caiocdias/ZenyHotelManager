@@ -65,6 +65,21 @@ class StrictDateTimeJsonMapperTest(
     }
 
     @Test
+    fun `a well-formed date that does not exist in the calendar is refused on the field`() {
+        val bodies =
+            listOf("\"2025-02-29\"", "\"2026-02-30\"", "\"2026-13-01\"", "\"2026-11-31\"", "\"2026-00-10\"")
+                .flatMap { value ->
+                    listOf(
+                        """{"on":$value}""" to "on",
+                        """{"at":${value.dropLast(1)}T10:00:00Z"}""" to "at",
+                    )
+                }
+
+        bodies.associate { (json, _) -> json to outcome(json) } shouldBe
+            bodies.associate { (json, field) -> json to refused(field) }
+    }
+
+    @Test
     fun `ISO text is read, with a signed year of more than 4 digits at the extremes of the storable range`() {
         read("""{"on":"2026-11-13","at":"2026-11-13T10:00:00Z"}""") shouldBe
             Payload(on = LocalDate.of(2026, 11, 13), at = Instant.parse("2026-11-13T10:00:00Z"))

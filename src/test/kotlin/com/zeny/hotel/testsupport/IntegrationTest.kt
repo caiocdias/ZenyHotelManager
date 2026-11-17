@@ -20,8 +20,9 @@ import org.springframework.test.context.ContextConfiguration
  * requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  *
  * Os contextos `@IntegrationTest` compartilhados registram as etapas reais do fechamento do dia, inertes só pelo
- * `initial-delay PT24H` do job: nenhum teste no banco compartilhado pode disparar o fechamento
- * (`POST /api/v1/end-of-day/runs`).
+ * `initial-delay PT24H` do job: nenhum teste no banco compartilhado pode **executar** o fechamento. Um
+ * `POST /api/v1/end-of-day/runs` que a autorização recusa (403, sem criar execução) é permitido; quem precisa que o
+ * fechamento rode usa `@EndOfDayIntegrationTest`.
  */
 @Target(AnnotationTarget.CLASS)
 @Retention(AnnotationRetention.RUNTIME)

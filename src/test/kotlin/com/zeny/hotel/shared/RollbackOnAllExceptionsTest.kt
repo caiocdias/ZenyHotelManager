@@ -40,6 +40,16 @@ class RollbackOnAllExceptionsTest(
     }
 
     @Test
+    fun `the same audited use case that returns normally leaves the write and one trail entry`() {
+        val marker = marker()
+
+        probe.writeAudited(marker)
+
+        rowsWithMarker(jdbc, marker) shouldBe 1
+        trailEntriesWith(marker) shouldBe 1
+    }
+
+    @Test
     fun `an explicit noRollbackFor still commits with ALL_EXCEPTIONS`() {
         val marker = marker()
 

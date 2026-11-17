@@ -19,6 +19,7 @@ import java.util.Optional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Exceção *checked* dos cenários de rollback (o Kotlin deixa lançá-la sem declarar). */
 class ProbeCheckedException : Exception("checked de teste")
@@ -39,6 +40,17 @@ open class TransactionProbe(
         val id = insertMarker(jdbc, marker)
         audit.created(PROBE_ENTITY, id) { mapOf("title" to marker) }
         throw IOException("checked depois da escrita")
+    }
+
+    /**
+     * Grava e descreve com a mesma ação e o mesmo retrato de [writeThenThrowChecked], sem lançar: o controle positivo
+     * da consulta da trilha (a entrada aparece quando a transação confirma).
+     */
+    @Audited(WRITE_THEN_CHECKED)
+    @Transactional
+    open fun writeAudited(marker: String) {
+        val id = insertMarker(jdbc, marker)
+        audit.created(PROBE_ENTITY, id) { mapOf("title" to marker) }
     }
 
     /** Grava e lança uma *checked* listada no `noRollbackFor`: a escrita fica. */
@@ -89,8 +101,11 @@ class FailingLockProvider(
 ) : ExtensibleLockProvider {
     @Volatile private var armed: Pair<String, () -> RuntimeException>? = null
 
-    @Volatile var failures: Int = 0
-        private set
+    private val failureCount = AtomicInteger()
+
+    /** Quantas vezes a trava falhou para o nome armado (contador atômico: as threads do agendador o incrementam). */
+    val failures: Int
+        get() = failureCount.get()
 
     fun failFor(
         lockName: String,
@@ -105,7 +120,7 @@ class FailingLockProvider(
 
     override fun lock(lockConfiguration: LockConfiguration): Optional<SimpleLock> {
         armed?.takeIf { (name, _) -> name == lockConfiguration.name }?.let { (_, error) ->
-            failures++
+            failureCount.incrementAndGet()
             throw error()
         }
         return delegate.lock(lockConfiguration)

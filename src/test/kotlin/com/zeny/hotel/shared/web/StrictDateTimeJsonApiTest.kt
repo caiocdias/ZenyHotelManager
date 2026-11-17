@@ -100,6 +100,7 @@ class StrictDateTimeJsonApiTest(
         status shouldNotBe 500
         val problem = iam.json(this)
         problem["code"].asString() shouldNotBe "MALFORMED_REQUEST"
+        problem["code"].asString() shouldNotBe "VALIDATION_FAILED"
         val errors = problem["errors"]?.values()?.map { it["field"].asString() to it["code"].asString() }.orEmpty()
         errors shouldNotContain (field to "INVALID_FORMAT")
     }

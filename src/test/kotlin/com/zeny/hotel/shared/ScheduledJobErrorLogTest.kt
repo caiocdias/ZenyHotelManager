@@ -85,8 +85,39 @@ class ScheduledJobErrorLogTest(
 
         output.all shouldContain
             "Job ${FailingBodyJob::class.java.name}.run falhou: ${IllegalStateException::class.java.name} <- " +
-            "${SQLException::class.java.name}\n"
+            "${SQLException::class.java.name}${System.lineSeparator()}"
         output.all shouldNotContain SENTINEL
+    }
+
+    @Test
+    fun `an Error from a job is logged by class only, like an exception`(output: CapturedOutput) {
+        val job = ThrowingErrorJob()
+
+        runCatching { scheduler.schedule(job, Instant.now()).get(WAIT_SECONDS, TimeUnit.SECONDS) }
+
+        output.all shouldContain
+            "Job ${ThrowingErrorJob.NAME} falhou: ${AssertionError::class.java.name} <- " +
+            "${SQLException::class.java.name}${System.lineSeparator()}"
+        output.all shouldNotContain SENTINEL
+    }
+
+    @Test
+    fun `a job whose toString throws is logged under its class name, without the toString failure`(
+        output: CapturedOutput,
+    ) {
+        val job = UnnamableJob()
+
+        runCatching { scheduler.schedule(job, Instant.now()).get(WAIT_SECONDS, TimeUnit.SECONDS) }
+
+        output.all shouldContain
+            "Job ${UnnamableJob::class.java.name} falhou: ${IllegalStateException::class.java.name}" +
+            System.lineSeparator()
+        output.all shouldNotContain SENTINEL
+    }
+
+    @Test
+    fun `the task scheduler keeps the spring task scheduling settings of the Boot builder`() {
+        scheduler.threadNamePrefix shouldBe "scheduling-"
     }
 
     @Test
@@ -143,6 +174,25 @@ class ScheduledJobErrorLogTest(
             failure.addSuppressed(RuntimeException("suprimida $SENTINEL"))
             throw failure
         }
+    }
+
+    /** Um job que falha com um `Error` (não uma `Exception`), com o sentinela na mensagem e na causa. */
+    class ThrowingErrorJob : Runnable {
+        override fun run(): Unit = throw AssertionError("erro $SENTINEL", SQLException("causa $SENTINEL"))
+
+        override fun toString() = NAME
+
+        companion object {
+            const val NAME = "ThrowingErrorJob.run"
+        }
+    }
+
+    /** Um job cujo `toString()` também falha, com o sentinela: o nome logado cai na classe. */
+    class UnnamableJob : Runnable {
+        override fun run(): Unit = error("corpo $SENTINEL")
+
+        @Suppress("ExceptionRaisedInUnexpectedLocation") // o toString() que lança é o cenário do teste
+        override fun toString(): String = error("toString $SENTINEL")
     }
 
     private companion object {
