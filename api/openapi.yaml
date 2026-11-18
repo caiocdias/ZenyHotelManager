@@ -15266,11 +15266,8 @@ components:
       required:
       - adults
       - arrival
-      - childAges
       - departure
-      - guests
       - roomTypeId
-      - segment
     BookingRequest:
       type: object
       description: "Uma reserva agrupadora: o titular, a origem (que define o canal),\
@@ -15302,7 +15299,6 @@ components:
       required:
       - holderGuestId
       - origin
-      - reservations
     BookingResponse:
       type: object
       description: Uma reserva agrupadora com as reservas e os alertas da lista de
@@ -15889,7 +15885,6 @@ components:
           minLength: 0
           nullable: true
       required:
-      - blindClose
       - name
     CashPointResponse:
       type: object
@@ -16179,7 +16174,6 @@ components:
           nullable: true
       required:
       - guestId
-      - primary
     CheckInMinorAuthorizationRequest:
       type: object
       description: "A comprovação de um hóspede menor (RN-24, RF-REC-08): o tipo,\
@@ -16845,7 +16839,6 @@ components:
       - frequency
       - name
       - templateId
-      - weekdays
     ChecklistRoutineResponse:
       type: object
       description: Uma rotina de checklist.
@@ -17669,10 +17662,8 @@ components:
           maxItems: 30
           minItems: 0
       required:
-      - applicability
       - context
       - name
-      - sections
     CreateGuestRequest:
       type: object
       description: "Um perfil novo: os dados, os documentos e, opcionalmente, os dados\
@@ -17703,7 +17694,6 @@ components:
           - $ref: "#/components/schemas/GuestSensitiveDataRequest"
           nullable: true
       required:
-      - documents
       - profile
     CreateSchedulePatternRequest:
       type: object
@@ -17748,7 +17738,6 @@ components:
       - kind
       - shiftId
       - startsOn
-      - weekdays
     CreateShiftRequest:
       type: object
       description: Um turno novo.
@@ -20582,7 +20571,6 @@ components:
           type: boolean
       required:
       - fullName
-      - vip
     GuestResponse:
       type: object
       description: Um perfil de hóspede. Os documentos vêm mascarados e os dados sensíveis
@@ -21362,7 +21350,6 @@ components:
           description: Sem teto.
       required:
       - key
-      - unlimited
     LimitValueResponse:
       type: object
       description: "O limite efetivo de uma chave: sem teto ou o teto."
@@ -21619,7 +21606,6 @@ components:
           uniqueItems: true
       required:
       - mergedGuestId
-      - takeFromMerged
     MinorAuthorizationResponse:
       type: object
       description: "A comprovação do menor no check-in (RN-24): o tipo, o hóspede\
@@ -22184,9 +22170,7 @@ components:
       required:
       - from
       - limit
-      - roomTypeIds
       - to
-      - weekdays
     OverbookingLimitResponse:
       type: object
       description: O resultado de uma mudança do limite de overbooking.
@@ -22260,7 +22244,6 @@ components:
           nullable: true
       required:
       - code
-      - includedInRate
       - name
       - postingRhythm
       - price
@@ -22711,7 +22694,6 @@ components:
           nullable: true
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
       required:
-      - quantity
       - transactionCodeId
       - unitPrice
     PostingResponse:
@@ -22923,7 +22905,6 @@ components:
           nullable: true
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
       required:
-      - children
       - oneAdult
     PrintAgentIdentityResponse:
       type: object
@@ -23796,7 +23777,6 @@ components:
       - guaranteePolicyId
       - mealPlan
       - name
-      - packageIds
       - roomTypeIds
     RatePlanDerivationDto:
       type: object
@@ -24031,7 +24011,6 @@ components:
       - guaranteePolicyId
       - mealPlan
       - name
-      - packageIds
       - roomTypeIds
     RatePriceChangeResponse:
       type: object
@@ -24124,7 +24103,6 @@ components:
           minItems: 0
       required:
       - roomTypeIds
-      - weekdays
     RatePriceUpdateRequest:
       type: object
       description: "Edição em massa de preços (RF-TAR-04): os valores gravados em\
@@ -24177,7 +24155,6 @@ components:
       required:
       - prices
       - roomTypeIds
-      - weekdays
     RatePricesResponse:
       type: object
       description: "Os preços de um plano num período (calculados na leitura, num\
@@ -24342,7 +24319,6 @@ components:
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
       required:
       - amount
-      - deposit
       - method
     RecordScheduleEntriesRequest:
       type: object
@@ -24495,8 +24471,6 @@ components:
             $ref: "#/components/schemas/ChecklistAnswerDto"
           maxItems: 300
           minItems: 0
-      required:
-      - answers
     ReservationCancelRequest:
       type: object
       description: "O cancelamento: o motivo, uma observação opcional (texto livre\
@@ -24522,7 +24496,6 @@ components:
           type: boolean
       required:
       - reason
-      - waivePenalty
     ReservationChangeRequest:
       type: object
       description: "A alteração de uma reserva: a estadia inteira como deve ficar,\
@@ -24577,9 +24550,7 @@ components:
       required:
       - adults
       - arrival
-      - childAges
       - departure
-      - nightlyRates
       - ratePlanId
       - roomTypeId
       - segment
@@ -24663,7 +24634,6 @@ components:
           nullable: true
       required:
       - number
-      - statuses
       - type
     ReservationGuaranteeResponse:
       type: object
@@ -24985,10 +24955,7 @@ components:
       required:
       - adults
       - arrival
-      - childAges
       - departure
-      - guests
-      - nightlyRates
       - ratePlanId
       - roomTypeId
       - segment
@@ -25528,11 +25495,6 @@ components:
             - SUNDAY
           maxItems: 7
           minItems: 0
-      required:
-      - clear
-      - roomTypeIds
-      - set
-      - weekdays
     RestrictionValuesDto:
       type: object
       description: Os campos de uma restrição; nulo = não informado. Estadia de 1
@@ -25929,7 +25891,6 @@ components:
           type: string
           nullable: true
       required:
-      - allocations
       - cutoffDate
       - name
     RoomBlockRequest:
@@ -25962,7 +25923,6 @@ components:
           format: uuid
           nullable: true
       required:
-      - allocations
       - cutoffDate
       - name
       - ratePlanId
@@ -26276,7 +26236,6 @@ components:
           format: uuid
           description: Tipo da UH.
       required:
-      - featureIds
       - number
       - roomTypeId
     RoomResponse:
@@ -26621,8 +26580,6 @@ components:
           minimum: 0
       required:
       - code
-      - displayOrder
-      - featureIds
       - maxAdults
       - maxChildren
       - name
@@ -26731,7 +26688,6 @@ components:
             $ref: "#/components/schemas/BlockReservationDto"
       required:
       - origin
-      - reservations
     RoutingRuleCreateRequest:
       type: object
       description: "Uma regra de roteamento nova: a conta de origem (fixa depois)\
@@ -26993,7 +26949,6 @@ components:
       - kind
       - shiftId
       - startsOn
-      - weekdays
     SchedulePatternResponse:
       type: object
       description: Um padrão de escala de um colaborador.
@@ -27835,7 +27790,6 @@ components:
           type: boolean
       required:
       - guestId
-      - primary
     StayGuestResponse:
       type: object
       description: "Um hóspede da estadia, com os dados de check-in (motivo de viagem\
@@ -28614,7 +28568,6 @@ components:
       - kind
       - name
       - revenueGroup
-      - serviceChargeApplies
     TransactionCodeResponse:
       type: object
       description: Um código de lançamento.
@@ -28727,7 +28680,6 @@ components:
       required:
       - code
       - name
-      - serviceChargeApplies
     TransferRequest:
       type: object
       description: Transferir lançamentos inteiros (o que ainda resta de cada um)
@@ -28860,9 +28812,7 @@ components:
           maxItems: 30
           minItems: 0
       required:
-      - applicability
       - name
-      - sections
     UpdateShiftRequest:
       type: object
       description: Nome e horários de um turno.
@@ -29053,7 +29003,6 @@ components:
           nullable: true
       required:
       - adults
-      - childAges
       - departure
       - guests
       - ratePlanId

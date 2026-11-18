@@ -105,6 +105,15 @@ class OpenApiConfiguration {
             property
         }
 
+    /** A classe de cada schema nomeado, para a regra do `required` dos requests ([RequiredRequestProperties]). */
+    @Bean
+    fun schemaClasses(): SchemaClasses = SchemaClasses()
+
+    /** O `required` dos schemas de request pela regra única do DTO (M6 E20, D1, D3 e D5). */
+    @Bean
+    fun requiredRequestPropertiesCustomizer(schemaClasses: SchemaClasses): OpenApiCustomizer =
+        RequiredRequestProperties(schemaClasses)
+
     @Bean
     fun problemResponsesCustomizer(): OpenApiCustomizer =
         OpenApiCustomizer { openApi ->

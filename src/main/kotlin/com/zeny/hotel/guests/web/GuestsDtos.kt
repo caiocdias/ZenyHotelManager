@@ -223,8 +223,6 @@ data class CreateGuestRequest(
         description =
             "Consentimentos dados no cadastro (um por finalidade), registrados antes dos dados: o de " +
                 "`DIETARY_RESTRICTIONS` permite gravar as restrições alimentares no mesmo pedido. Opcional.",
-        // Opcional (vazio por padrão): um cliente anterior à E03 do M3 continua válido.
-        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
     )
     @field:Size(max = MAX_CONSENTS)
     val consents: List<@Valid ConsentRequest> = emptyList(),
