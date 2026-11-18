@@ -40,6 +40,17 @@ class JpaScheduledCleaningStore(
         return ids.mapNotNull(byId::get)
     }
 
+    override fun dueOn(date: LocalDate): List<ScheduledCleaning> =
+        scheduledCleanings(
+            jdbc
+                .sql(
+                    "SELECT id FROM housekeeping.scheduled_cleaning WHERE active AND next_due_on <= :date " +
+                        "ORDER BY next_due_on, id",
+                ).param("date", date)
+                .query { rs, _ -> rs.getObject("id", UUID::class.java) }
+                .list(),
+        )
+
     override fun page(
         active: Boolean?,
         after: Pair<LocalDate, UUID>?,

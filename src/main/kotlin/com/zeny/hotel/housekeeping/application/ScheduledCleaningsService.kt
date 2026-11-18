@@ -41,6 +41,9 @@ interface ScheduledCleaningStore {
     /** As faxinas de [ids], na ordem de [ids] (as inexistentes ficam de fora). */
     fun scheduledCleanings(ids: List<UUID>): List<ScheduledCleaning>
 
+    /** As faxinas **ativas** vencidas até [date] (próxima data até ela, inclusive), em ordem de (próxima data, id). */
+    fun dueOn(date: LocalDate): List<ScheduledCleaning>
+
     /** As chaves da ordenação (próxima data, id) da página depois de [after], só as ativas ou inativas se [active]. */
     fun page(
         active: Boolean?,

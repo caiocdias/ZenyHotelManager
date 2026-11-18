@@ -26,6 +26,7 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.requireCurrentVersion
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.stereotype.Service
@@ -360,7 +361,9 @@ internal fun CleaningType.view(activeRoomTypes: List<RoomTypeId>): CleaningTypeV
     )
 }
 
+/** As permissões do `housekeeping` e a conferência no boot dos parâmetros ([HousekeepingProperties]). */
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(HousekeepingProperties::class)
 class HousekeepingConfiguration {
     /** As permissões do `housekeeping` no catálogo (sincronizado pelo `iam` no boot). */
     @Bean

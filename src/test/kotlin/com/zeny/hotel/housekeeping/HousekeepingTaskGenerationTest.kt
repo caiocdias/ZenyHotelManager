@@ -1,9 +1,14 @@
 package com.zeny.hotel.housekeeping
 
+import com.zeny.hotel.hotel.BusinessDateAdvanced
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.application.CleaningTypeStore
+import com.zeny.hotel.housekeeping.application.DailyGenerationResult
+import com.zeny.hotel.housekeeping.application.HousekeepingProperties
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskGeneration
+import com.zeny.hotel.housekeeping.application.HousekeepingTaskListeners
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskStore
+import com.zeny.hotel.housekeeping.application.ScheduledCleaningStore
 import com.zeny.hotel.housekeeping.application.TaskFilter
 import com.zeny.hotel.housekeeping.application.TaskPageKey
 import com.zeny.hotel.housekeeping.domain.CleaningCredit
@@ -12,7 +17,11 @@ import com.zeny.hotel.housekeeping.domain.CleaningTypeDetails
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
+import com.zeny.hotel.rooms.GuestServiceFlag
+import com.zeny.hotel.rooms.HousekeepingStatus
+import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomStatus
 import com.zeny.hotel.rooms.RoomSummary
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomsApi
@@ -31,9 +40,12 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 /**
- * A geração automática das tarefas com portas falsas (M6 E02, Task 2): o tipo da origem pela chave (D1-E02), inativo
- * sem tarefa nem exceção e com `noChanges`; os créditos do tipo para o tipo da UH (D2); a chegada prevista (D8) pelas
- * chegadas pendentes com UH alocada; e a entrega repetida, que não cria outra tarefa nem lança.
+ * A geração automática das tarefas com portas falsas (M6 E02, Tasks 2 e 3): o tipo da origem pela chave (D1-E02),
+ * inativo sem tarefa nem exceção e com `noChanges`; os créditos do tipo para o tipo da UH (D2); a chegada prevista (D8)
+ * pelas chegadas pendentes com UH alocada; a entrega repetida, que não cria outra tarefa nem lança; a prioridade de
+ * chegada sobre a permanência com as prioridades editadas (Review Focus 4); e o avanço atrasado ignorado pelo listener
+ * (D10-E02). Os tipos inativos e as prioridades editadas ficam aqui, e não na integração: os testes nunca alteram os
+ * tipos da carga.
  */
 class HousekeepingTaskGenerationTest {
     private val now = Instant.parse("2026-11-18T12:00:00Z")
@@ -47,6 +59,7 @@ class HousekeepingTaskGenerationTest {
         )
 
     private val store = InMemoryTaskStore()
+    private val scheduledCleanings = mockk<ScheduledCleaningStore>()
     private val cleaningTypes = mockk<CleaningTypeStore>()
     private val rooms = mockk<RoomsApi>()
     private val reservations = mockk<ReservationsApi>()
@@ -55,10 +68,12 @@ class HousekeepingTaskGenerationTest {
     private val generation =
         HousekeepingTaskGeneration(
             store,
+            scheduledCleanings,
             cleaningTypes,
             rooms,
             reservations,
             hotel,
+            HousekeepingProperties(preArrivalAfterDays = 3),
             audit,
             Clock.fixed(now, ZoneOffset.UTC),
         )
@@ -69,6 +84,9 @@ class HousekeepingTaskGenerationTest {
         every { reservations.pendingArrivals(any()) } returns emptyList()
         every { reservations.assignedRooms(any()) } returns emptyMap()
         every { hotel.currentBusinessDate() } returns date
+        every { scheduledCleanings.dueOn(any()) } returns emptyList()
+        every { reservations.inHouse(any()) } returns emptyList()
+        every { reservations.pendingDepartures(any()) } returns emptyList()
     }
 
     @Test
@@ -173,6 +191,127 @@ class HousekeepingTaskGenerationTest {
         verify(exactly = 2) { audit.noChanges() }
     }
 
+    // --- Tarefas do dia (Task 3) ----------------------------------------------------------------------------------
+
+    @Test
+    fun `a room with an arrival comes before a stayover in the list order, even with the STAYOVER at priority 5`() {
+        val day = DailyScenario()
+        day.types(stayoverPriority = 5, preArrivalPriority = 1)
+
+        val result = generation.generateForDate(date)
+
+        result.stayovers shouldBe 1
+        result.preArrivals shouldBe 1
+        val stayover = store.saved.single { it.source == TaskSource.STAYOVER }
+        val preArrival = store.saved.single { it.source == TaskSource.PRE_ARRIVAL }
+        stayover.roomId shouldBe day.staying
+        stayover.priority shouldBe 5
+        stayover.arrivalExpected shouldBe false
+        preArrival.roomId shouldBe day.arriving
+        preArrival.priority shouldBe 1
+        preArrival.arrivalExpected shouldBe true
+        // A ordem da lista (Review Focus 4): chegada prevista desc, prioridade desc, id.
+        store.saved.sortedWith(LIST_ORDER).map { it.source } shouldBe
+            listOf(TaskSource.PRE_ARRIVAL, TaskSource.STAYOVER)
+        verify(exactly = 2) { audit.created("housekeeping.task", any(), any()) }
+    }
+
+    @Test
+    fun `with the STAYOVER type inactive there is no stayover, and the pre-arrival is still generated`() {
+        val day = DailyScenario()
+        day.types(stayoverActive = false)
+
+        val result = generation.generateForDate(date)
+
+        result.stayovers shouldBe 0
+        store.saved.map { it.source to it.roomId } shouldBe listOf(TaskSource.PRE_ARRIVAL to day.arriving)
+    }
+
+    @Test
+    fun `with the PRE_ARRIVAL type inactive there is no pre-arrival, and the stayover is still generated`() {
+        val day = DailyScenario()
+        day.types(preArrivalActive = false)
+
+        val result = generation.generateForDate(date)
+
+        result.preArrivals shouldBe 0
+        store.saved.map { it.source to it.roomId } shouldBe listOf(TaskSource.STAYOVER to day.staying)
+    }
+
+    @Test
+    fun `with both types inactive and nothing due the day records no change`() {
+        DailyScenario().types(stayoverActive = false, preArrivalActive = false)
+
+        generation.generateForDate(date) shouldBe DailyGenerationResult(scheduled = 0, stayovers = 0, preArrivals = 0)
+
+        store.saved.shouldBeEmpty()
+        verify(exactly = 1) { audit.noChanges() }
+        verify(exactly = 0) { audit.created(any(), any(), any()) }
+    }
+
+    @Test
+    fun `the listener ignores a late date advance and generates the day of a current one`() {
+        val daily = mockk<HousekeepingTaskGeneration>(relaxed = true)
+        val listeners = HousekeepingTaskListeners(daily, hotel)
+
+        listeners.on(BusinessDateAdvanced(date.minusDays(2), date.minusDays(1), now))
+        verify(exactly = 0) { daily.generateForDate(any()) }
+
+        listeners.on(BusinessDateAdvanced(date.minusDays(1), date, now))
+        verify(exactly = 1) { daily.generateForDate(date) }
+    }
+
+    /**
+     * O dia com uma UH hospedada que fica ([staying]) e uma UH vaga, limpa e com chegada alocada ([arriving]), as duas
+     * ativas e fora de OOO/OOS.
+     */
+    private inner class DailyScenario {
+        val staying = RoomId(UUID.randomUUID())
+        val arriving = RoomId(UUID.randomUUID())
+
+        init {
+            val guest = ReservationId(UUID.randomUUID())
+            val arrival = ReservationId(UUID.randomUUID())
+            every { rooms.activeRooms(null) } returns
+                listOf(
+                    RoomSummary(staying, "201", null, roomType, emptySet(), true),
+                    RoomSummary(arriving, "202", null, roomType, emptySet(), true),
+                )
+            every { rooms.status(staying) } returns status(staying, OccupancyStatus.OCCUPIED, HousekeepingStatus.DIRTY)
+            every { rooms.status(arriving) } returns status(arriving, OccupancyStatus.VACANT, HousekeepingStatus.CLEAN)
+            every { reservations.inHouse(date) } returns listOf(guest)
+            every { reservations.assignedRooms(listOf(guest)) } returns mapOf(guest to staying)
+            every { reservations.pendingArrivals(date) } returns listOf(arrival)
+            every { reservations.assignedRooms(listOf(arrival)) } returns mapOf(arrival to arriving)
+        }
+
+        fun types(
+            stayoverPriority: Int = 3,
+            preArrivalPriority: Int = 4,
+            stayoverActive: Boolean = true,
+            preArrivalActive: Boolean = true,
+        ) {
+            every { cleaningTypes.byKey(CleaningTypeKey.STAYOVER) } returns
+                type("PERMANENCIA", stayoverPriority, stayoverActive)
+            every { cleaningTypes.byKey(CleaningTypeKey.PRE_ARRIVAL) } returns
+                type("PRECHEGADA", preArrivalPriority, preArrivalActive)
+        }
+
+        private fun type(
+            code: String,
+            priority: Int,
+            active: Boolean,
+        ) = CleaningType
+            .create(CleaningTypeDetails(code, code, false, priority, null, null, emptyList()), now)
+            .also { if (!active) it.deactivate(now) }
+
+        private fun status(
+            id: RoomId,
+            occupancy: OccupancyStatus,
+            housekeeping: HousekeepingStatus,
+        ) = RoomStatus(id, true, occupancy, null, housekeeping, false, GuestServiceFlag.NONE, null, false, now, 0)
+    }
+
     /** A porta das tarefas em memória, com a unicidade por (local, data, tipo) de D5-E02. */
     private class InMemoryTaskStore : HousekeepingTaskStore {
         val saved = mutableListOf<HousekeepingTask>()
@@ -199,11 +338,27 @@ class HousekeepingTaskGenerationTest {
             limit: Int,
         ): List<TaskPageKey> = error("fora do teste")
 
-        override fun hasOpenTaskFor(scheduledCleaningId: ScheduledCleaningId): Boolean = error("fora do teste")
+        override fun hasOpenTaskFor(scheduledCleaningId: ScheduledCleaningId): Boolean =
+            saved.any {
+                it.scheduledCleaningId == scheduledCleaningId &&
+                    it.status != TaskStatus.DONE &&
+                    it.status != TaskStatus.CANCELLED
+            }
 
         override fun lastTaskDate(
             roomId: RoomId,
             onOrBefore: LocalDate,
-        ): LocalDate? = error("fora do teste")
+        ): LocalDate? =
+            saved
+                .filter { it.roomId == roomId && it.businessDate <= onOrBefore && it.status != TaskStatus.CANCELLED }
+                .maxOfOrNull { it.businessDate }
+    }
+
+    private companion object {
+        /** A ordem da lista de tarefas (`TaskPageKey`): chegada prevista desc, prioridade desc, id. */
+        val LIST_ORDER: Comparator<HousekeepingTask> =
+            compareByDescending<HousekeepingTask> { it.arrivalExpected }
+                .thenByDescending { it.priority }
+                .thenBy { it.id.value }
     }
 }

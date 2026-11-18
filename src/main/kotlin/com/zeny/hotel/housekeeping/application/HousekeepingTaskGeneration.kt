@@ -4,9 +4,12 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
+import com.zeny.hotel.housekeeping.domain.ScheduledCleaning
 import com.zeny.hotel.housekeeping.domain.TaskLocation
 import com.zeny.hotel.reservations.ReservationsApi
+import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomSummary
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
@@ -18,22 +21,35 @@ import java.time.Clock
 import java.time.LocalDate
 
 /**
+ * Quantas tarefas a geração do dia criou, por origem: as das faxinas programadas, as permanências e as pré-chegadas.
+ * Serve só ao log: a geração vale para o hotel inteiro.
+ */
+data class DailyGenerationResult(
+    val scheduled: Int,
+    val stayovers: Int,
+    val preArrivals: Int,
+)
+
+/**
  * Geração automática das tarefas de governança (RF-GOV-02, M6 E02), chamada pelos listeners
  * ([HousekeepingTaskListeners]) com o ator sistema e auditada como `housekeeping.task.generate`: uma entrada por
  * tarefa criada, com o retrato só de ids, local, data, tipo e origem (RN-13); sem tarefa criada, `noChanges`.
  *
  * Idempotente pela unicidade (local, data, tipo) de D5-E02: a entrega repetida do evento não cria outra tarefa nem
- * lança. Estados esperados nunca lançam (D12-E02): o tipo da origem inativo (D1-E02) e a UH inexistente ou desativada
- * não geram tarefa, com log `INFO` só com ids e datas.
+ * lança. Estados esperados nunca lançam (D12-E02): o tipo da origem inativo (D1-E02), a UH ou a área inexistente,
+ * desativada ou (para a pré-chegada e a programada) em OOO/OOS não geram tarefa, com log só com ids e datas. Um erro
+ * inesperado desfaz a geração inteira, e o outbox reentrega o evento.
  */
 @Service
 @Suppress("LongParameterList") // as portas que a geração usa
 class HousekeepingTaskGeneration(
     private val store: HousekeepingTaskStore,
+    private val scheduledCleanings: ScheduledCleaningStore,
     private val cleaningTypes: CleaningTypeStore,
     private val rooms: RoomsApi,
     private val reservations: ReservationsApi,
     private val hotel: HotelApi,
+    private val properties: HousekeepingProperties,
     private val audit: AuditContext,
     private val clock: Clock,
 ) {
@@ -51,12 +67,38 @@ class HousekeepingTaskGeneration(
     ): Boolean {
         require(source == TaskSource.CHECKOUT || source == TaskSource.ROOM_MOVE) { "Origem sem saída: $source" }
         val task = checkoutTask(roomId, date, source)
-        if (task == null || !store.insertIfAbsent(task)) {
+        if (task == null || !record(task)) {
             audit.noChanges()
             return false
         }
-        audit.created(HousekeepingAudit.TASK, task.id.value) { task.auditState() }
         return true
+    }
+
+    /**
+     * As tarefas do dia [date] (a `current` do avanço da data, D4-E02), nesta ordem (D11-E02), todas com a marca de
+     * chegada prevista na data (D8-E02):
+     * 1. as das faxinas programadas ativas vencidas até a data, com o tipo e o id da faxina, num local ativo, fora de
+     *    OOO/OOS e sem tarefa aberta da faxina (Review Focus 5); a que colide com uma tarefa já existente do mesmo
+     *    (local, data, tipo) não gera, com log `INFO`;
+     * 2. as permanências (`STAYOVER`): as UHs ativas com hospedada que não sai na data (D9-E02, Review Focus 3);
+     * 3. as pré-chegadas (`PRE_ARRIVAL`, D3-E02): as UHs ativas, fora de OOO/OOS, sem hospedada, não Sujas, com
+     *    chegada alocada na data e sem tarefa (fora as `CANCELLED`) há menos de
+     *    `zeny.housekeeping.pre-arrival-after-days` dias. A UH que o check-out sujou não recebe, qualquer que seja a
+     *    ordem dos eventos (Review Focus 1).
+     *
+     * Rodar de novo não duplica nada (Review Focus 2). A guarda do avanço atrasado (D10-E02) é do listener.
+     */
+    @Audited(HousekeepingAudit.GENERATE_TASK)
+    @Transactional
+    fun generateForDate(date: LocalDate): DailyGenerationResult {
+        val day = dayOf(date)
+        val scheduled = scheduledCleanings.dueOn(date).mapNotNull { scheduledTask(it, day) }.count(::recordScheduled)
+        val stayovers = roomTasks(TaskSource.STAYOVER, CleaningTypeKey.STAYOVER, day.staying, day).count(::record)
+        val preArrivals =
+            roomTasks(TaskSource.PRE_ARRIVAL, CleaningTypeKey.PRE_ARRIVAL, preArrivalRooms(day), day).count(::record)
+        val result = DailyGenerationResult(scheduled, stayovers, preArrivals)
+        if (scheduled + stayovers + preArrivals == 0) audit.noChanges()
+        return result
     }
 
     /**
@@ -105,6 +147,122 @@ class HousekeepingTaskGeneration(
             now = clock.instant(),
         )
     }
+
+    // --- Tarefas do dia ---------------------------------------------------------------------------------------------
+
+    /**
+     * O retrato do dia: as UHs ativas (na ordem de número), as com chegada prevista, as ocupadas pela `reservations`
+     * (hospedadas) e, delas, as que ficam (a hospedada não sai na data).
+     */
+    private class Day(
+        val date: LocalDate,
+        val rooms: Map<RoomId, RoomSummary>,
+        val arrivals: Set<RoomId>,
+        val occupied: Set<RoomId>,
+        val staying: Set<RoomId>,
+    )
+
+    private fun dayOf(date: LocalDate): Day {
+        val hosted = reservations.assignedRooms(reservations.inHouse(date))
+        val departing = reservations.pendingDepartures(date).toSet()
+        return Day(
+            date,
+            rooms.activeRooms().associateBy { it.id },
+            arrivalsByRoom(date),
+            hosted.values.toSet(),
+            hosted.filterKeys { it !in departing }.values.toSet(),
+        )
+    }
+
+    /**
+     * A tarefa da faxina programada [schedule] vencida; `null` (com log `DEBUG`) com o tipo dela inativo, o local
+     * inexistente, desativado ou em OOO/OOS, ou uma tarefa aberta da faxina.
+     */
+    private fun scheduledTask(
+        schedule: ScheduledCleaning,
+        day: Day,
+    ): HousekeepingTask? {
+        val type = cleaningTypes.cleaningType(schedule.cleaningTypeId)?.takeIf { it.active }
+        val roomId = schedule.roomId
+        val room = roomId?.let { day.rooms[it] }?.takeIf { rooms.status(it.id)?.outOfOrder == null }
+        val placeActive = if (roomId != null) room != null else schedule.areaId?.let { rooms.area(it)?.active } == true
+        if (type == null || !placeActive || store.hasOpenTaskFor(schedule.id)) {
+            log.debug("Faxina programada {} sem tarefa em {}: tipo, local ou tarefa aberta", schedule.id, day.date)
+            return null
+        }
+        val location = roomId?.let { TaskLocation.Room(it) } ?: TaskLocation.Area(checkNotNull(schedule.areaId))
+        return HousekeepingTask.create(
+            type,
+            location,
+            day.date,
+            TaskSource.SCHEDULED,
+            arrivalExpected = roomId in day.arrivals,
+            credits = HousekeepingTask.creditsFor(type, room?.roomTypeId),
+            now = clock.instant(),
+            scheduledCleaningId = schedule.id,
+        )
+    }
+
+    /** As UHs que recebem a pré-chegada (D3-E02): com chegada, sem hospedada, fora de OOO/OOS, não Sujas e paradas. */
+    private fun preArrivalRooms(day: Day): Set<RoomId> {
+        val since = day.date.minusDays(properties.preArrivalAfterDays.toLong())
+        return (day.arrivals - day.occupied)
+            .filter { room -> cleanAndAvailable(room) && store.lastTaskDate(room, day.date)?.isAfter(since) != true }
+            .toSet()
+    }
+
+    /** A UH existe, não está Suja e está fora de OOO/OOS na data operacional. */
+    private fun cleanAndAvailable(room: RoomId): Boolean =
+        rooms.status(room)?.let { it.outOfOrder == null && it.housekeepingStatus != HousekeepingStatus.DIRTY } == true
+
+    /**
+     * As tarefas da origem [source], do tipo de chave [key] (D1-E02), nas UHs ativas de [roomIds], na ordem de número;
+     * nenhuma (log `INFO`) com o tipo inativo ou ausente.
+     */
+    private fun roomTasks(
+        source: TaskSource,
+        key: CleaningTypeKey,
+        roomIds: Set<RoomId>,
+        day: Day,
+    ): List<HousekeepingTask> {
+        val type = cleaningTypes.byKey(key)?.takeIf { it.active }
+        if (type == null) {
+            if (roomIds.isNotEmpty()) log.info("Tarefas {} de {} não geradas: tipo inativo ou ausente", key, day.date)
+            return emptyList()
+        }
+        return day.rooms.values
+            .filter { it.id in roomIds }
+            .map { room ->
+                HousekeepingTask.create(
+                    type,
+                    TaskLocation.Room(room.id),
+                    day.date,
+                    source,
+                    arrivalExpected = room.id in day.arrivals,
+                    credits = HousekeepingTask.creditsFor(type, room.roomTypeId),
+                    now = clock.instant(),
+                )
+            }
+    }
+
+    /** Grava a tarefa se ainda não há outra no mesmo (local, data, tipo) e a audita; devolve se gravou. */
+    private fun record(task: HousekeepingTask): Boolean {
+        if (!store.insertIfAbsent(task)) return false
+        audit.created(HousekeepingAudit.TASK, task.id.value) { task.auditState() }
+        return true
+    }
+
+    /** [record] da tarefa de uma faxina programada, com o log `INFO` da colisão (D11-E02). */
+    private fun recordScheduled(task: HousekeepingTask): Boolean =
+        record(task).also { recorded ->
+            if (!recorded) {
+                log.info(
+                    "Faxina programada {} sem tarefa em {}: já há tarefa do mesmo tipo no local",
+                    task.scheduledCleaningId,
+                    task.businessDate,
+                )
+            }
+        }
 
     private companion object {
         val log: Logger = LoggerFactory.getLogger(HousekeepingTaskGeneration::class.java)
