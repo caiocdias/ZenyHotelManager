@@ -206,7 +206,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
-| E03 | Distribuição sugerida e publicação | #em-andamento | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
+| E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E04 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
@@ -1137,7 +1137,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E03 — Distribuição sugerida e publicação — #em-andamento
+## E03 — Distribuição sugerida e publicação — #concluida
 
 **Objetivo:** implementar o `AssignmentPlan` (RF-GOV-03): sugestão que balanceia créditos entre as camareiras escaladas no dia (escala de `staff`), agrupa por andar, prioriza chegadas e early check-in e respeita "Não perturbe"; ajuste manual pela governanta; publicação que notifica só quem teve mudança.
 
@@ -1155,13 +1155,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] A sugestão só atribui a camareiras escaladas na data (teste com escala de `staff`).
-- [ ] Em casos de teste, a diferença de créditos entre camareiras não passa do maior crédito de uma tarefa.
-- [ ] UHs do mesmo andar ficam com a mesma camareira sempre que o balanceamento permite; chegadas e early vêm primeiro na ordem.
-- [ ] UH com DND não recebe tarefa de permanência na sugestão inicial.
-- [ ] A mesma entrada gera a mesma sugestão (determinismo).
-- [ ] Publicar notifica cada camareira atribuída; republicar notifica só quem teve tarefa incluída ou removida.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] A sugestão só atribui a camareiras escaladas na data (teste com escala de `staff`).
+- [x] Em casos de teste, a diferença de créditos entre camareiras não passa do maior crédito de uma tarefa.
+- [x] UHs do mesmo andar ficam com a mesma camareira sempre que o balanceamento permite; chegadas e early vêm primeiro na ordem (**early adiado pela H17**: o `reservations` não guarda o dado; só a chegada prevista conta).
+- [x] UH com DND não recebe tarefa de permanência na sugestão inicial.
+- [x] A mesma entrada gera a mesma sugestão (determinismo).
+- [x] Publicar notifica cada camareira atribuída; republicar notifica só quem teve tarefa incluída ou removida.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1180,12 +1180,101 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e03.md`, com 3 fatias.
+  - Revisão de arquitetura (`revisor-arquitetura`, opus): aprovada com notas na rodada 2.
+  - Rodada 0: bloqueada por 12 Importantes (algoritmo, janela de datas, concorrência, tempo real, ordem publicada, "camareira" etc.).
+  - Rodada 1: bloqueada por 2 Importantes (datas dos testes e definição de "retirada").
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `fb9591a` (início e plano) a `41d9dcc`.
+  - **Task 1:** `ede9237` (algoritmo), `b3cda5c` (extrações da dívida da E02), `9142d43` (níveis do log) e `199ea31` (rodada 1: `@Timeout` em outra thread e casos de fronteira).
+  - **Task 2:** `2e90060`, `f93796f`, `c2735e6` e `4d7f62b` (testador, `AuthorizationTest`).
+    - A Task 2 foi refeita do zero depois de uma queda de energia que derrubou a máquina; nada commitado se perdeu.
+  - **Task 3:** `59060a5`, `cda7c27`, `1350e55`, `1f7a754`, `434470a`, `2620c1f` e `13b2730` (rodada 1: `StaffApi.employees(ids)` no aviso).
+  - **Testador da etapa:** `7c07db4`, `c217474`, `2948546` e `71599bd`.
+  - **Correção final:** `41d9dcc` (KDoc da D11) e `10cec11` (plano).
+- **Entregue:**
+  - **`AssignmentSuggester`** (`housekeeping/domain`): heurística gulosa e determinística.
+    1. Ordena por chegada, prioridade, andar em ordem natural, UH ou área e id.
+    2. Distribui os andares inteiros, do maior total de créditos para a camareira menos carregada.
+    3. Rebalanceia movendo só tarefas com crédito > 0, da de menor crédito para a de maior, até a diferença ficar ≤ o maior crédito de uma tarefa. O término é provado pela soma dos quadrados.
+
+    Garantia: se a distribuição gulosa dos andares inteiros cumpre o limite, nenhum andar é dividido. O algoritmo não é ótimo.
+  - **`AssignmentPlan`:**
+    - tabelas `assignment_plan` (`id` UUID, `business_date` único, `DRAFT`/`PUBLISHED`, nunca apagado) e `assignment_plan_item`;
+    - migrações `V2026_11_18_1100`, `1101` e `1102`, esta última com `assigned_employee_id` e `assignment_position` na tarefa.
+  - **API:**
+    - `POST /api/v1/assignment-plans/{date}/suggest`, com `employeeIds` opcional e `If-Match` quando o plano existe;
+    - `GET /api/v1/assignment-plans/{date}`;
+    - `PATCH /api/v1/assignment-plans/{date}`, para mover, acrescentar e remover;
+    - `POST …/publish`, com `If-Match`.
+    - Janela: da data operacional até +7. Tarefas de datas anteriores entram só no plano operacional.
+    - Trava com `FOR UPDATE` e `ON CONFLICT`. Falha otimista dá `412`.
+  - **Publicação:**
+    - grava camareira, posição e `ASSIGNED`;
+    - a tarefa "retirada" (`ASSIGNED`, dentro do conteúdo do plano e ausente do rascunho) volta a `PENDING`;
+    - uma tarefa que já andou nunca é tocada: se mudaria de camareira, a publicação dá `422` com os ids em `errors[]`.
+  - **Aviso:** `notifications.task-assigned` só para quem teve tarefa incluída ou removida. O título leva a data, e o texto só tem números de UH e nomes de área, truncado com "e mais N". Os "não avisados" vêm com `NO_USER` ou `NOT_DELIVERED`.
+  - **Tempo real:** tópico `housekeeping` (permissão `housekeeping.tasks.read`, registrado na ARCHITECTURE §10), mensagem `housekeeping.assignment-plan`.
+  - **Permissão:** `housekeeping.assignments.manage` (Gerente e Governanta).
+  - **`StaffApi.employees(ids)`:** nova.
+  - **Dependências:** o módulo passa a declarar `staff` e `notifications`.
+  - **Dívida da E02 paga:** `ArrivalsByRoom`, `HousekeepingAudit` e `HousekeepingConfiguration` extraídos; log em níveis.
+- **Revisões:**
+  - Task 1: 1 Importante de teste, corrigido na rodada 1.
+  - Task 2: aprovada só com Menores.
+  - Task 3: 1 Importante (`NO_USER` impreciso), corrigido na rodada 1.
+  - Revisão final (`revisor-seguranca`, opus, `c6e1e06..13b2730`): "With fixes", só 3 Menores (KDoc da D11, stub e lixo de teste), corrigidos.
+  - Re-revisão escopada (`13b2730..41d9dcc`): aprovada.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `41d9dcc` → BUILD SUCCESSFUL em 15m 59s, 4309 testes, 0 falhas, 0 ignorados (contagem dos XML do JUnit, árvore limpa). Antes, em `13b2730`: 4304 testes e 0 falhas.
+  - **oasdiff:** sem `ERR`; o contrato só cresceu.
+  - **Scanner:** `osv-scanner` 2.7.1, com 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base c6e1e06` → exit 0, sem apontamento.
+- **Critérios verificados:**
+  - (1) Só camareiras escaladas: `AssignmentPlansApiTest`, com quem está de folga e de outro setor de fora. A publicação reconfere a escala (`AssignmentPlanPublishTest`).
+  - (2) Diferença de créditos ≤ maior crédito: `AssignmentSuggesterTest`, com mais de 10 casos, mais 1000 aleatórios e a fronteira exata.
+  - (3) Andar com uma só camareira quando o limite permite: `AssignmentSuggesterTest`. As chegadas vêm primeiro, com a chegada recalculada (`AssignmentPlansApiTest`). O early foi adiado (H17).
+  - (4) DND sem `STAYOVER` na sugestão: `AssignmentSuggesterTest` e `AssignmentPlansApiTest`.
+  - (5) Determinismo: entrada embaralhada, empates por id.
+  - (6) Republicação avisa só quem mudou: `AssignmentPlanPublishTest` (A→B avisa A e B, não C). O caso de quem saiu da escala também é avisado.
+  - (7) Gate e `checkOpenApi`.
+- **Decisões para o usuário** (tomadas pelo orquestrador pela opção recomendada da revisão de arquitetura, sob a autorização noturna; revisáveis):
+  - **D1:** camareira é quem está escalado no setor de governança. O `employeeIds` opcional tira a governanta e as supervisoras e vale só no `suggest`; o ajuste manual aceita qualquer escalado.
+  - **D2:** janela da data operacional até +7. As anteriores entram só no plano operacional. O plano de uma data passada fica congelado.
+  - **D3 e H17:** a chegada é recalculada na sugestão, e o early check-in fica adiado.
+  - **D4:** DND tira só a `STAYOVER`.
+  - **D5:** heurística não ótima.
+  - **D6:** o `suggest` refaz o rascunho inteiro, e o `PATCH` acrescenta e remove.
+  - **D7:** `ASSIGNED → PENDING` para a tarefa "retirada". É extensão da SPEC §8.4, que o `arquiteto` registra.
+  - **D8:** aviso com a data e só números de UH e nomes de área.
+  - **D9:** tópico `housekeeping`, reaproveitado pela E04.
+  - **D10:** permissão `housekeeping.assignments.manage`.
+  - **D11:** exceção à H16. Colaborador inexistente dá `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, porque a validação é pela escala.
+  - **D12:** a posição publicada fica gravada na tarefa.
+  - **Ruling da rodada 1 da Task 3:** `StaffApi.employees(ids)` nova, para avisar quem saiu da escala.
+- **Notas para a próxima etapa:**
+  - **Para a E04:**
+    - Um rascunho com uma tarefa `DONE` ou `CANCELLED` dada a outra camareira recusa a publicação inteira. Decidir se esse item deve ser ignorado.
+    - Endurecer o CHECK `ASSIGNED ⇒ camareira`.
+    - Desempatar por posição e depois id: uma tarefa que andou pode repetir a posição.
+    - Ligar `mark_offline_change` em `housekeeping_task`.
+    - Publicar as mensagens de tarefa no tópico `housekeeping`.
+    - Montar o feed das tarefas abertas de datas anteriores, com a data no cursor.
+    - Extrair `AssignmentPlanPublication` do `AssignmentPlansService`, que tem cerca de 520 linhas.
+    - A resposta da publicação não lista as "retiradas", e a governanta não as vê no rascunho.
+    - O `422` de escala na publicação não traz o `employeeId` em `errors[]`.
+    - `employeeIds: []` deixa tudo sem camareira, e o contrato não diz isso.
+    - Não há teste de colaborador inativo escalado.
+    - O `HousekeepingTaskSchemaTest` (E02) ainda grava `PENDING` antigas no banco compartilhado.
+  - **Para o `arquiteto`:**
+    - registrar a D7 na SPEC §8.4;
+    - registrar a D11 como exceção à H16;
+    - levar o early check-in ao `reservations` (H17);
+    - resolver a divergência da D6 da E02 com a SPEC §8.3 e a ARCHITECTURE §6.1.
+  - **Menores aceitos:**
+    - `If-Match` em branco dá `428` também na criação, consistente com o resto do projeto;
+    - N+1 em `rooms.area` e `rooms.status` na sugestão;
+    - `remove` de tarefa fora do plano é ignorado em silêncio, como o contrato documenta.
+- **Capturas do brain:** ver a linha preenchida no início da E04.
 
 ---
 
