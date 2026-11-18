@@ -203,7 +203,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Tipos de limpeza, créditos e faxinas programadas | #em-andamento | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
+| E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #pendente | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
@@ -841,7 +841,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E01 — Tipos de limpeza, créditos e faxinas programadas — #em-andamento
+## E01 — Tipos de limpeza, créditos e faxinas programadas — #concluida
 
 **Objetivo:** criar o módulo `housekeeping` com a configuração de tipos de limpeza (RF-GOV-01) — créditos por tipo de UH, modelo de checklist, exigência de inspeção, prioridade padrão e regra de troca de enxoval — e de faxinas programadas por UH ou área (RF-GOV-10).
 
@@ -855,12 +855,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] CRUD de `CleaningType` com créditos por tipo de UH, modelo de checklist, `requiresInspection`, prioridade e regra de troca de enxoval, coberto por testes de integração.
-- [ ] Crédito para tipo de UH inexistente → `422` com `code` estável; modelo de checklist de contexto incompatível → `422`.
-- [ ] CRUD de `ScheduledCleaning` calcula a próxima data a partir da frequência.
-- [ ] Carga inicial cria os tipos da SPEC, com turndown desativado.
-- [ ] Escrita exige permissão e é auditada.
-- [ ] `ModularityTest`, build, testes e verificação do contrato passam.
+- [x] CRUD de `CleaningType` com créditos por tipo de UH, modelo de checklist, `requiresInspection`, prioridade e regra de troca de enxoval, coberto por testes de integração.
+- [x] Crédito para tipo de UH inexistente → `422` com `code` estável (**substituído pela H16:** `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE`); modelo de checklist de contexto incompatível → `422`.
+- [x] CRUD de `ScheduledCleaning` calcula a próxima data a partir da frequência.
+- [x] Carga inicial cria os tipos da SPEC, com turndown desativado.
+- [x] Escrita exige permissão e é auditada.
+- [x] `ModularityTest`, build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -879,12 +879,96 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-17-m6-operacao-fechamento-e01.md`, com 3 fatias.
+  - Revisão de arquitetura (`revisor-arquitetura`, opus): aprovada com notas na rodada 1.
+  - Na rodada 0, foi bloqueada por 4 Importantes: o `ModularityTest` da Task 1 dependia de usos das Tasks 2 e 3; havia critérios sem comando; a Task 3 tinha Áreas e dependência incompletas; e `Riscos:` não citava a migração nem o piso do `lastDoneOn`.
+- **Refação (H15):** a execução anterior desta etapa se perdeu com a branch. Esta execução refaz o comportamento da nota do brain `ZenyHotelManager - Módulo housekeeping`, com uma diferença: a D8 foi substituída pela H16, de modo que referência inexistente no corpo dá `400 …UNKNOWN_…`.
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `327f897` (início e plano) a `83a5839`.
+  - Task 1 (módulo, tipos e créditos): `fe971a7` e `4da1643` (desenvolvedor; a guarda de NUL foi para o `PageCursor.string`, ruling); `5e49b34` (testador, `AuthorizationTest`); `a8de977` (rodada 1: `@NotNull` nos créditos e frase do PUT).
+  - Task 2 (vínculo ao checklist): `978c668`.
+  - Task 3 (faxinas programadas): `72c3602`.
+  - Testador da etapa: `df82fad`.
+  - Correção final: `83a5839` (`credits` obrigatório).
+- **Entregue:**
+  - **Módulo** `com.zeny.hotel.housekeeping`, que declara `["shared", "hotel", "rooms", "checklists"]` (subconjunto da linha §3.1, sem aresta nova).
+  - **Schema** `housekeeping`, com as migrações `V2026_11_17_1000__create_cleaning_types.sql`, `V2026_11_17_1001__grant_cleaning_types_to_app_role.sql`, `V2026_11_17_1002__create_scheduled_cleanings.sql` (inclui o trigger `cleaning_type_system_key_never_changed`) e `V2026_11_17_1003__grant_scheduled_cleanings_to_app_role.sql`.
+    - Tabelas `cleaning_type`, `cleaning_type_credit` e `scheduled_cleaning`.
+    - Trigger `refuse_delete` nas duas tabelas que só se desativam; DELETE só em `cleaning_type_credit`.
+    - Índices únicos parciais `cleaning_type_system_key_uk` e `scheduled_cleaning_active_uk` (`NULLS NOT DISTINCT WHERE active`).
+  - **Carga D5:** `CHECKOUT`, `STAYOVER`, `TOUCH_UP`, `DEEP_CLEAN` e `PRE_ARRIVAL` ativos, e `TURNDOWN` inativo (H9). O código de cada um é igual à `key`, e a `key` é imutável em três níveis: `updatable=false`, índice e trigger.
+  - **API `/api/v1/cleaning-types`:**
+    - `GET` com cursor (`code`, `id`) e filtro `active`; `GET /{id}` com `ETag`;
+    - `POST` (`201`, `Location`, `ETag`) e `PUT` com `If-Match`;
+    - `/deactivate` e `/reactivate`.
+    - A resposta traz `key` (`x-extensible-enum`) e `missingCreditRoomTypeIds`.
+  - **API `/api/v1/scheduled-cleanings`:**
+    - `GET` com cursor (`nextDueOn`, `id`) e filtro `active`; `GET /{id}`;
+    - `POST`, e `PUT`, que muda só o tipo e a frequência;
+    - `/deactivate` e `/reactivate`.
+    - Nenhuma das duas APIs tem `DELETE`.
+  - **Regras:**
+    - D1: vínculo opcional a modelo de checklist `HOUSEKEEPING` ativo e publicado, conferido só quando o vínculo é novo.
+    - D6: `missingCreditRoomTypeIds`.
+    - D7: `nextDueOn`.
+    - Faixas: prioridade 1–5, enxoval 1–60 ou nulo, `credits` 1–100, até 200 por corpo, frequência 1–365.
+    - `lastDoneOn` acima da data operacional dá `422`; abaixo de `-4712-01-01` dá `400 VALIDATION_FAILED INVALID_VALUE`.
+    - Trava sempre na ordem faxina → tipo (`FOR NO KEY UPDATE`), e a desativação do tipo com faxina ativa dá `422`.
+  - **`ChecklistsApi.template(id)`:** nova, devolve `ChecklistTemplateSummary(id, context, active, published)`.
+  - **Permissões e auditoria:** `housekeeping.config.read` e `housekeeping.config.manage`, só `ALL`, nos modelos Gerente e Governanta, com a autorização antes de qualquer recusa que revele estado. Trilha `housekeeping.cleaning-type.*` e `housekeeping.scheduled-cleaning.*`.
+  - **`shared`:** `PageCursor.string` recusa chave com NUL (`400 INVALID_CURSOR`). Vale para todas as listas por texto, que antes davam 500.
+- **Revisões:**
+  - Task 1: 1 Importante (item `null` em `credits`). Na rodada 1, constatou-se que o Jackson Kotlin já recusa com 400; o `@NotNull` ficou como defesa, com teste. A re-revisão aprovou.
+  - Tasks 2 e 3: aprovadas só com Menores.
+  - Revisão final (`revisor-seguranca`, opus, `c312b25..72c3602`): "Ready to merge? Yes", 0 Crítico e 0 Importante.
+  - Rodada única de correção: o Menor 1 (PUT sem `credits` apagava os créditos em silêncio) virou `400 REQUIRED`.
+  - Re-revisão escopada (`72c3602..83a5839`, com os testes do testador): aprovada.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `83a5839` → BUILD SUCCESSFUL em 15m 9s, com 4170 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit). Antes da correção, o mesmo em `72c3602`: 4157 testes, 0 falhas.
+  - **oasdiff:** sem breaking change; o contrato só ganhou caminhos e schemas.
+  - **Scanner:** `osv-scanner` 2.7.1, 426+74 pacotes, 0 Critical/High, 2 Medium e 3 Low, todos anteriores à etapa. Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base c312b25` → exit 0, sem apontamento, também em cada fatia.
+- **Critérios verificados:**
+  - (1) CRUD de tipos: `CleaningTypesApiTest`, `CleaningTypesChecklistLinkTest`, `CleaningTypesBoundaryTest` e `CleaningTypesChecklistLinkRefusalTest`.
+  - (2) Referências e regras:
+    - crédito para tipo de UH inexistente dá `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (H16 substitui o "`422`" do critério);
+    - modelo de contexto incompatível dá `422 CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE`;
+    - modelo inativo ou não publicado dá `422`;
+    - modelo inexistente dá `400 CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE`.
+  - (3) `nextDueOn`: `ScheduledCleaningsApiTest`, `ScheduledCleaningsAttackTest` e `ScheduledCleaningDomainTest`. A corrida tipo × faxina está em `ScheduledCleaningsTypeLockTest` e `ScheduledCleaningsTypeSwapLockTest`, determinísticos por `pg_blocking_pids`.
+  - (4) Carga inicial: `HousekeepingSchemaTest`.
+  - (5) Permissão e auditoria: `HousekeepingPermissionsTest` e `AuthorizationTest`.
+  - (6) `ModularityTest`, `DatabaseRolesTest`, gate e `checkOpenApi`.
+- **Decisões para o usuário** (tomadas pela opção recomendada, revisáveis):
+  - **H16 (decidida pelo usuário):** `400 …UNKNOWN_…` para referência inexistente.
+  - **Herdadas da execução perdida, sem confirmação:** D1 (vínculo `0..1`), D5 (valores da carga), o limite de 200 créditos e a reativação que mantém o `nextDueOn` antigo.
+  - **Nova nesta execução:** a reativação da faxina confere também se o **local** está ativo, o que acrescenta um `422` ao `/reactivate`.
+  - **Nova nesta execução:** `credits` passou a ser obrigatório no corpo do tipo de limpeza. Omitido, dá `400`; `[]` explícito remove os créditos.
+  - **Ordem observada:** um corpo malformado (`"credits":[null]`) dá 400 antes de 403, porque a validação de forma vem antes da permissão. Isso não revela estado.
+- **Notas para a próxima etapa:**
+  - **Para a E02:**
+    - falta a porta `byKey(CleaningTypeKey)`; o índice já existe;
+    - decidir o que gerar para um tipo da carga desativado (`TURNDOWN`);
+    - filtrar `active` e ignorar local inativo ou inexistente, porque o `rooms` não desativa faxinas;
+    - não gerar uma tarefa por dia enquanto houver uma aberta;
+    - decidir o N de "UH vaga há N dias";
+    - garantir chegada acima de permanência com prioridades editadas;
+    - testes do desenvolvedor deixam faxinas ativas e válidas em UHs reais do banco compartilhado, que a varredura das vencidas vai encontrar.
+  - **Para a E04:** `ScheduledCleaning.recordDone(date)` não atualiza `updatedAt` (a versão sobe), não confere se a faxina está ativa e não limita `date` ao `StorableRange`.
+  - **Para o `arquiteto`** (manutenção transversal, como a E18):
+    - o leitor JSON global trunca número fracionário em campo inteiro (`frequencyDays: 7.5` → 7, `credits: 1.5` → 1);
+    - `""` num UUID opcional vira `null`, então um PUT com `checklistTemplateId: ""` remove o vínculo em silêncio;
+    - `40P01` (deadlock) e `55P03` (`lock_timeout`) viram 500 no `ApiExceptionHandler`. Exemplo: PUTs cruzados de faxinas no mesmo local, ou `reactivate` do tipo concorrendo com a desativação, que dá 412 sem `If-Match`;
+    - o contrato do projeto não marca `required` nos schemas de request (só em texto), então o SDK gera esses campos como opcionais;
+    - `ChecklistsApi.template` revela existência, contexto e estado de um modelo a quem tem `housekeeping.config.manage` (impacto baixo).
+  - **Menores aceitos:**
+    - o trigger da `system_key` ficou na migração das faxinas (1002) e não foi movido, por causa do checksum;
+    - a data operacional é lida sem trava na criação e no PUT da faxina;
+    - uma consulta por tipo de UH novo no corpo (até 200);
+    - validação dupla no `update` do tipo;
+    - nome qualificado repetido em `ChecklistTemplates.kt`;
+    - constantes de documentação e `HousekeepingAudit` espalhados (separar na E02);
+    - nos testes, `blockedOnCleaningType` é genérico e há `.ok()` em `finally`.
+- **Capturas do brain:** ver a linha seguinte, preenchida no início da E02.
 
 ---
 
