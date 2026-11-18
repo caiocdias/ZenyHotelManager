@@ -136,6 +136,60 @@ class HousekeepingTasksAttackTest(
         }
 
     @Test
+    fun `the notes limit is 500 characters, counted as code points, also outside the BMP`(): Unit =
+        with(iam) {
+            val type = housekeeping.createCleaningType()
+            val room = housekeeping.createRoom()
+            val emoji = "😀"
+
+            // 501 caracteres fora do plano básico: 400 no campo, nada gravado.
+            post(housekeeping.taskBody(type, roomId = room, notes = emoji.repeat(501))).problem400().field() shouldBe
+                "notes"
+            countTasksOf(room) shouldBe 0
+            // 500 (1000 unidades UTF-16) cabem no varchar(500) e são aceitos.
+            housekeeping
+                .requestTask(housekeeping.taskBody(type, roomId = room, notes = emoji.repeat(500)))["notes"]
+                .asString() shouldBe emoji.repeat(500)
+            // Espaços nas pontas não contam: o limite vale depois de aparar.
+            housekeeping
+                .requestTask(
+                    housekeeping.taskBody(
+                        housekeeping.createCleaningType(),
+                        roomId = room,
+                        notes = "  " + "c".repeat(500) + "  ",
+                    ),
+                )["notes"]
+                .asString() shouldBe "c".repeat(500)
+        }
+
+    @Test
+    fun `a list date outside the storable range is an empty page, never 500 nor the -infinity rows`(): Unit =
+        with(iam) {
+            // Uma tarefa gravada em -infinity (o que o driver grava para uma data abaixo do piso) num local só dela.
+            val room = UUID.randomUUID()
+            owner
+                .sql(
+                    """
+                    INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
+                        source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
+                        created_at, updated_at, version)
+                    VALUES (:id, :room, NULL, '-infinity', :type, 'AD_HOC', 'PENDING', 3, 0, FALSE, NULL, NULL, NULL,
+                        now(), now(), 0)
+                    """.trimIndent(),
+                ).param("id", UUID.randomUUID())
+                .param("room", room)
+                .param("type", housekeeping.createCleaningType())
+                .update()
+
+            listOf("-5000-01-01", "-4713-12-31", "+5874898-01-01", "+999999999-12-31").forEach { date ->
+                withClue(date) {
+                    call(GET, "$TASKS?date=$date&roomId=$room", asAdmin()).ok()["items"].size() shouldBe 0
+                    call(GET, "$TASKS?date=$date", asAdmin()).ok()["items"].size() shouldBe 0
+                }
+            }
+        }
+
+    @Test
     fun `a date before the business date or more than 30 days after it is 422`(): Unit =
         with(iam) {
             val type = housekeeping.createCleaningType()

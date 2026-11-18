@@ -22,7 +22,6 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
-import jakarta.validation.constraints.Size
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -145,8 +144,8 @@ data class HousekeepingTaskRequest(
         nullable = true,
     )
     val date: LocalDate? = null,
-    @field:Schema(description = NOTES_DESCRIPTION, nullable = true)
-    @field:Size(max = MAX_NOTES)
+    // O limite é do domínio (500 caracteres, em code points, depois de aparar); aqui só o documenta.
+    @field:Schema(description = NOTES_DESCRIPTION, nullable = true, maxLength = MAX_NOTES)
     val notes: String? = null,
 ) {
     fun toCommand() =

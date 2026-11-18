@@ -29,6 +29,7 @@ import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.StorableRange
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -138,7 +139,11 @@ class HousekeepingTasksService(
     private val audit: AuditContext,
     private val clock: Clock,
 ) {
-    /** A lista do dia ([TaskFilter.date] ou, sem ela, a data operacional), na ordem de [TaskPageKey]. */
+    /**
+     * A lista do dia ([TaskFilter.date] ou, sem ela, a data operacional), na ordem de [TaskPageKey]. Uma data fora do
+     * [StorableRange] não tem tarefa e não é consultada (a consulta falharia com um 500 ou, abaixo do piso do driver,
+     * buscaria `-infinity`): a página vem vazia.
+     */
     @Transactional(readOnly = true)
     fun list(
         filter: TaskFilter,
@@ -146,7 +151,9 @@ class HousekeepingTasksService(
     ): CursorPage<HousekeepingTaskView> {
         authorization.require(HousekeepingPermissions.TASKS_READ)
         val after = page.decodedCursor()?.let(::pageKey)
-        val rows = store.page(filter.date ?: hotel.currentBusinessDate(), filter, after, page.limit + 1)
+        val date = filter.date ?: hotel.currentBusinessDate()
+        if (!StorableRange.contains(date)) return CursorPage(emptyList(), null)
+        val rows = store.page(date, filter, after, page.limit + 1)
         val keys =
             CursorPage.fromRows(rows, page.limit) {
                 PageCursor.of(it.arrivalExpected.toString(), it.priority.toString(), it.id.toString())

@@ -20707,7 +20707,6 @@ components:
             \ **Não escreva dado do hóspede** (nome, documento, contato): a tarefa\
             \ é vista por toda a governança."
           maxLength: 500
-          minLength: 0
           nullable: true
         roomId:
           type: string
