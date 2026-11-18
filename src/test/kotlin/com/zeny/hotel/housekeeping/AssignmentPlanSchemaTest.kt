@@ -154,7 +154,10 @@ class AssignmentPlanSchemaTest(
             .update()
     }
 
-    /** Uma tarefa gravada pelo dono numa área inexistente (sem FK entre schemas), longe da data corrente. */
+    /**
+     * Uma tarefa gravada pelo dono numa área inexistente (sem FK entre schemas), longe da data corrente. Fica `CANCELLED`
+     * para não entrar no conteúdo de nenhum plano operacional (D2-E03): o schema não depende do status.
+     */
     private fun insertTask(): UUID {
         val id = UUID.randomUUID()
         owner
@@ -163,7 +166,7 @@ class AssignmentPlanSchemaTest(
                 INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
                     source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
                     created_at, updated_at, version)
-                VALUES (:id, NULL, :area, DATE '2001-01-01', :type, 'AD_HOC', 'PENDING', 3, 0, FALSE, NULL, NULL,
+                VALUES (:id, NULL, :area, DATE '2001-01-01', :type, 'AD_HOC', 'CANCELLED', 3, 0, FALSE, NULL, NULL,
                     NULL, now(), now(), 0)
                 """.trimIndent(),
             ).param("id", id)

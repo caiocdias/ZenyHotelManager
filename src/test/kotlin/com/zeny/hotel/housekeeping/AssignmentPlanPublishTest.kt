@@ -331,6 +331,32 @@ class AssignmentPlanPublishTest(
         assigned(outside) shouldBe (ana to 1)
     }
 
+    /**
+     * O plano de uma data futura leva só as tarefas da própria data (D2-E03): a `ASSIGNED` de uma data **anterior** a
+     * ele, ainda dentro da janela, não é retirada. Pega o mutante `includePrevious = true` na publicação do plano futuro.
+     * A data anterior ([DAYS_AHEAD] - 1) não é publicada por nenhum outro teste do banco compartilhado.
+     */
+    @Test
+    fun `an ASSIGNED task of an earlier date in the window is not withdrawn by the future plan`() {
+        val (ana, _) = attendantWithUser()
+        val earlier = date.minusDays(1)
+        val before =
+            plans.insertTask(
+                earlier,
+                area = UUID.randomUUID(),
+                status = "ASSIGNED",
+                employee = ana,
+                position = 2,
+            )
+        plans.draft(date, listOf(ana), listOf(roomTask() to ana))
+
+        plans.published(date)
+
+        plans.task(before)["status"].asString() shouldBe "ASSIGNED"
+        plans.task(before)["date"].asString() shouldBe "$earlier"
+        assigned(before) shouldBe (ana to 2)
+    }
+
     @Test
     fun `the notice title has the date and the text only room numbers and area names, never the guest name`() {
         val (ana, anaUser) = attendantWithUser()

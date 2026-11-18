@@ -20,7 +20,7 @@ import java.util.UUID
 /**
  * As recusas do plano do dia (M6 E03, Task 2): `If-Match` no plano existente (`428`/`412`), colaborador fora da escala
  * ou inexistente (D11-E03), tarefa que já andou ou fora do conteúdo da D2-E03, tarefa inexistente (H16), data fora da
- * janela ou malformada. O `PATCH` antes de existir plano (`404`) fica no `AssignmentPlanCreationTest`, no banco
+ * janela ou malformada. O `PATCH` antes de existir plano (`404`) fica no `AssignmentPlanConcurrencyTest`, no banco
  * isolado, porque aqui o plano de qualquer data da janela pode já existir.
  */
 @IntegrationTest

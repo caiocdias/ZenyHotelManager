@@ -15,6 +15,7 @@ import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.staff.StaffApi
 import com.zeny.hotel.testsupport.IntegrationTest
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainAll
@@ -74,13 +75,17 @@ class AssignmentPlansApiTest(
 
         body["date"].asString() shouldBe "$date"
         body["status"].asString() shouldBe "DRAFT"
-        UUID.fromString(body["id"].asString()) shouldNotBe null
         val etag = response.getHeader(HttpHeaders.ETAG)
         etag shouldNotBe null
         val items = itemsOf(body)
         items.keys shouldContainAll listOf(first, second)
         listOf(first, second).forEach { items.getValue(it).first shouldBeIn listOf(ana, bia) }
-        items.values.forEach { it.second shouldBe it.second.coerceAtLeast(1) }
+        listOf(ana, bia).forEach { attendant ->
+            withClue("posições de $attendant") {
+                val positions = items.values.filter { it.first == attendant }.map { it.second }.sorted()
+                positions shouldBe (1..positions.size).toList()
+            }
+        }
         body["unassigned"].isArray shouldBe true
 
         // A leitura devolve o mesmo plano, com o mesmo ETag.
