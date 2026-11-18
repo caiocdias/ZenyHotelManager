@@ -103,7 +103,7 @@ class ScheduledCleaningsAttackTest(
         }
 
     @Test
-    fun `a last date below the database floor is 400 VALIDATION_FAILED on the field, and the floor is valid`(): Unit =
+    fun `a last date below the storable range is 400 INVALID_FORMAT on the field, and the floor is valid`(): Unit =
         with(iam) {
             val type = housekeeping.createCleaningType()
 
@@ -113,7 +113,7 @@ class ScheduledCleaningsAttackTest(
                         post(housekeeping.scheduleBody(type, roomId = housekeeping.createRoom(), lastDoneOn = date))
                             .problem(400, "VALIDATION_FAILED")
                     problem.fields() shouldBe listOf("lastDoneOn")
-                    problem["errors"][0]["code"].asString() shouldBe "INVALID_VALUE"
+                    problem["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
                 }
             }
             countSchedulesOf(type) shouldBe 0

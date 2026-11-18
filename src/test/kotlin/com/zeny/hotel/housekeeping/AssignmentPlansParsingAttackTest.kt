@@ -58,17 +58,21 @@ class AssignmentPlansParsingAttackTest(
         }
 
     @Test
-    fun `a date outside the storable range is 404 on GET and 422 on writes, never 500`(): Unit =
+    fun `a date outside the storable range is 400 INVALID_FORMAT on the path date on every verb, never 500`(): Unit =
         with(iam) {
+            // A conversão do parâmetro de caminho recusa o que está fora do StorableRange (M6 E20), antes da regra.
             listOf("+6000000-01-01", "-5000-01-01").forEach { date ->
                 withClue(date) {
-                    call(GET, "$PLANS/$date", asAdmin()).problem(404, "ASSIGNMENT_PLAN_NOT_FOUND")
-                    call(POST, "$PLANS/$date/suggest", asAdmin(), mapOf("employeeIds" to null))
-                        .problem(422, "ASSIGNMENT_PLAN_DATE_INVALID")
-                    call(PATCH, "$PLANS/$date", asAdmin(), mapOf("remove" to listOf(UUID.randomUUID())), "\"0\"")
-                        .problem(422, "ASSIGNMENT_PLAN_DATE_INVALID")
-                    call(POST, "$PLANS/$date/publish", asAdmin(), null, "\"0\"")
-                        .problem(422, "ASSIGNMENT_PLAN_DATE_INVALID")
+                    listOf(
+                        call(GET, "$PLANS/$date", asAdmin()),
+                        call(POST, "$PLANS/$date/suggest", asAdmin(), mapOf("employeeIds" to null)),
+                        call(PATCH, "$PLANS/$date", asAdmin(), mapOf("remove" to listOf(UUID.randomUUID())), "\"0\""),
+                        call(POST, "$PLANS/$date/publish", asAdmin(), null, "\"0\""),
+                    ).forEach { response ->
+                        val problem = response.problem(400, "VALIDATION_FAILED")
+                        problem["errors"][0]["field"].asString() shouldBe "date"
+                        problem["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
+                    }
                 }
             }
         }
