@@ -204,7 +204,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
-| E02 | Geração automática de tarefas | #em-andamento | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
+| E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
@@ -972,7 +972,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E02 — Geração automática de tarefas — #em-andamento
+## E02 — Geração automática de tarefas — #concluida
 
 **Objetivo:** gerar as tarefas de governança (RF-GOV-02) a partir de saídas (`GuestCheckedOut`), troca de UH (`RoomMoved`, UH de origem), permanências e chegadas da data (ao receber `BusinessDateAdvanced`), faxinas programadas vencidas e solicitações avulsas da recepção, com créditos e prioridade do tipo de limpeza.
 
@@ -992,13 +992,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] `GuestCheckedOut` gera tarefa de saída na UH; `RoomMoved` gera tarefa na UH de origem (testes de módulo).
-- [ ] `BusinessDateAdvanced` gera permanência para UHs ocupadas, pré-chegada para UHs vagas há N dias com chegada e tarefas de faxinas programadas vencidas.
-- [ ] Reprocessar o mesmo evento não cria segunda tarefa (restrição única por UH, data e tipo).
-- [ ] UH com chegada prevista recebe prioridade maior que permanência comum.
-- [ ] `POST /api/v1/housekeeping-tasks` cria tarefa avulsa; sem permissão → `403`.
-- [ ] A tabela de tarefas não tem colunas de dados pessoais do hóspede.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `GuestCheckedOut` gera tarefa de saída na UH; `RoomMoved` gera tarefa na UH de origem (testes de módulo).
+- [x] `BusinessDateAdvanced` gera permanência para UHs ocupadas, pré-chegada para UHs vagas há N dias com chegada e tarefas de faxinas programadas vencidas.
+- [x] Reprocessar o mesmo evento não cria segunda tarefa (restrição única por UH, data e tipo).
+- [x] UH com chegada prevista recebe prioridade maior que permanência comum.
+- [x] `POST /api/v1/housekeeping-tasks` cria tarefa avulsa; sem permissão → `403`.
+- [x] A tabela de tarefas não tem colunas de dados pessoais do hóspede.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1017,12 +1017,122 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e02.md`, com 3 fatias.
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovada com notas na rodada 2.
+  - **Rodada 0:** bloqueada por 12 Importantes. Os principais:
+    - a premissa errada de que o banco compartilhado não recebe avanços;
+    - a auditoria da geração;
+    - a pré-chegada que dependia da ordem dos eventos;
+    - o `arrivalExpected` que envelhece;
+    - a D6 sem registro;
+    - a definição de "aberta".
+  - **Rodada 1:** bloqueada por 2 Importantes: a ordem B não era produzida de fato e a D10 não tinha comando.
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `2676247` (início e plano) a `c2ae72a`.
+  - **Task 1** (tarefa, lista e avulsa):
+    - `d94946b`;
+    - `b2aa044` (testador, `AuthorizationTest`);
+    - `7bbb5d6` (rodada 1: `?date=` fora do `StorableRange` dá página vazia; limite único de `notes`).
+  - **Task 2** (saída e troca de UH por evento, chegada prevista):
+    - `51c659f` (`ReservationsApi.assignedRooms` e KDoc dos eventos);
+    - `39d81bb`;
+    - `e39d11c` (rodada 1: chegada exata em data futura e leitura numa transação).
+  - **Task 3** (tarefas do dia): `c83b058`.
+  - **Testador da etapa:**
+    - `0a972c5` (contagens da trilha estreitadas em 3 testes de outros módulos);
+    - `aac73c5`;
+    - `fefec5d`;
+    - `c2ae72a`.
+  - **Correção final:** `4d75571` (I1 da revisão final).
+- **Entregue:**
+  - **Tarefa de governança `HousekeepingTask`:**
+    - nasce em `PENDING`;
+    - tabela `housekeeping.housekeeping_task` (migrações `V2026_11_18_1000` e `1001`);
+    - unicidade `(room_id, area_id, business_date, cleaning_type_id)` com `NULLS NOT DISTINCT`;
+    - CHECK `scheduled_cleaning_id` ⇔ `source = 'SCHEDULED'`;
+    - DELETE recusado;
+    - sem coluna de hóspede nem de reserva (RN-13).
+  - **API:**
+    - `GET /api/v1/housekeeping-tasks?date=…`, com cursor (`arrivalExpected` desc, `priority` desc, `id`) e filtros `roomId`, `areaId`, `status`, `cleaningTypeId` e `source`;
+    - `GET /{id}`;
+    - `POST` da avulsa (`201`; `409 HOUSEKEEPING_TASK_ALREADY_EXISTS`; `422 HOUSEKEEPING_TASK_DATE_INVALID` fora de [data operacional, +30 dias]; `422 HOUSEKEEPING_TASK_LOCATION_INACTIVE`);
+    - `status` e `source` saem como `x-extensible-enum`.
+  - **Permissões:** `housekeeping.tasks.read` e `housekeeping.tasks.request`, só `ALL`, nos modelos Gerente, Governanta e Recepção.
+  - **Listeners `@ApplicationModuleListener`** (outbox), que delegam a `HousekeepingTaskGeneration`, `@Audited("housekeeping.task.generate")` com o ator sistema e `noChanges()`:
+    - `GuestCheckedOut` e `RoomMoved` geram `CHECKOUT` na UH que ficou vaga, na data do evento;
+    - `BusinessDateAdvanced` gera, nesta ordem (D11): as programadas vencidas, as permanências e as pré-chegadas.
+  - **Avanço atrasado:** o listener ignora o avanço atrasado com `WARN` (D10).
+  - **`ReservationsApi.assignedRooms(ids)`:** alocação vigente, em lote. O KDoc dos eventos de reserva deixou de citar a governança como ouvinte, exceto em `GuestCheckedOut` e `RoomMoved` (D6).
+  - **Propriedade:** `zeny.housekeeping.pre-arrival-after-days: 3`, validada entre 1 e 30.
+  - **Módulo:** passa a declarar `["shared", "hotel", "rooms", "reservations", "checklists"]`.
+- **Revisões:**
+  - **Task 1:** 1 Importante, `?date=` fora do alcance dava 500, corrigido na rodada 1.
+  - **Task 2:** 1 Importante, a avulsa futura marcada com chegada de outra data, corrigido na rodada 1.
+  - **Task 3:** 2 Importantes de teste (contagens globais da trilha e idempotência parcial), resolvidos pelo testador.
+  - **Revisão final** (`revisor-seguranca`, opus, `78a3630..c83b058`): "With fixes", com 0 Crítico. O I1 era uma `STAYOVER` indevida no dia do check-in quando a geração do dia roda atrasada, somada à corrida `inHouse`/`pendingDepartures`. Foi corrigido em `4d75571`.
+  - **Re-revisão escopada** (`c83b058..c2ae72a`): aprovada. O apontamento `DEV_TESTE_DO_TESTADOR` foi justificado: o desenvolvedor mudou só a montagem de testes dele, com as asserções iguais.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `c2ae72a` → BUILD SUCCESSFUL em 16m 6s, com 4239 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit, árvore limpa). Antes da correção, em `c83b058`: 4232 testes, 0 falhas.
+  - **oasdiff:** sem breaking change; o contrato só ganhou caminhos e schemas.
+  - **Scanner:** `osv-scanner` 2.7.1, 426+74 pacotes. Resultado: 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base 78a3630` → exit 1, com um apontamento `DEV_TESTE_DO_TESTADOR` justificado (acima). Em cada fatia, exit 0.
+- **Critérios verificados:**
+  - **(1) Saída e troca de UH:** `HousekeepingCheckoutTasksTest`. `GuestCheckedOut` gera `CHECKOUT` na UH, e `RoomMoved` gera a tarefa na UH de origem, por check-out e troca reais com espera do listener.
+  - **(2) Tarefas do dia** (`HousekeepingDailyTasksTest` e `HousekeepingEndOfDayTasksTest`):
+    - permanência para quem chegou antes da data e não sai nela;
+    - pré-chegada para UH vaga, não Suja, fora de OOO, com chegada e sem tarefa nos últimos 3 dias;
+    - programadas vencidas, sem tarefa aberta, com local ativo e fora de OOO/OOS;
+    - avanço real no banco isolado.
+  - **(3) Reprocessar não duplica:**
+    - entrega repetida e 4 entregas simultâneas do mesmo check-out;
+    - `generateForDate` em dobro;
+    - restrição única.
+  - **(4) Prioridade de chegada:** `arrivalExpected` e a ordem da lista, em `HousekeepingTaskGenerationTest` (prioridade editada, com portas falsas) e na lista do dia.
+  - **(5) Avulsa e permissões:** `POST` cria a avulsa, e sem permissão dá `403` antes de qualquer recusa. Testes `HousekeepingTasksApiTest`, `HousekeepingTasksAttackTest` e `HousekeepingTaskPermissionsTest`.
+  - **(6) Sem dado pessoal:** a tabela não tem coluna de dado pessoal (`HousekeepingTaskSchemaTest`), e a trilha da geração também não leva nenhum.
+  - **(7)** Gate e `checkOpenApi` acima.
+- **Decisões para o usuário** (tomadas pelo orquestrador pela opção recomendada, sob a autorização da noite de 2026-11-17; todas revisáveis):
+  - **D1:** tipo por origem pela `key`. Se o tipo estiver inativo, a origem não gera tarefa.
+  - **D2:** créditos do tipo para o tipo da UH; sem crédito ou numa área, 0.
+  - **D3:** pré-chegada para UH vaga **e não Suja**, com N = 3 dias. A janela é (D-N, D]. Uma programada gerada no mesmo dia barra a pré-chegada.
+  - **D4:** a data da tarefa é a do evento. Uma tarefa não feita fica na data dela.
+  - **D5:** unicidade por (local, data, tipo) em qualquer status. Uma segunda saída no dia não gera outra tarefa, e uma avulsa repetida dá `409`, mesmo que a anterior esteja `CANCELLED`.
+  - **D6:** a governança não escuta `GuestCheckedIn`, `GuestCheckInUndone` nem `Reservation*`. Isso diverge da SPEC §8.3 e da ARCHITECTURE §6.1.
+  - **D7:** `ReservationsApi.assignedRooms`.
+  - **D8:** `arrivalExpected` é um retrato da geração. Na data operacional ou antes, inclui a chegada atrasada; numa data futura, só a chegada exata.
+  - **D9, refinada pela revisão final:** a permanência vale para quem chegou antes da data (`inHouse(date - 1)`), menos as saídas. A ocupação vem do `reservations`, e o OOO/OOS e o status vêm do `rooms`, na data operacional.
+  - **D10:** um avanço atrasado é ignorado com `WARN`.
+  - **D11:** as programadas são geradas primeiro.
+  - **D12:** estados esperados nunca lançam exceção. Um erro inesperado refaz o dia pelo outbox.
+  - **D13:** as colunas de sincronização offline ficam para a E04.
+  - **Também:** uma UH desativada entre o check-out e o listener não gera `CHECKOUT`. Uma avulsa em UH ou área inativa dá `422 HOUSEKEEPING_TASK_LOCATION_INACTIVE`.
+- **Notas para a próxima etapa:**
+  - **Para a E03:**
+    - a lista e a distribuição precisam incluir as tarefas abertas de datas anteriores (D4). Hoje a lista filtra `business_date = :date`;
+    - recalcular a chegada prevista na sugestão (D8);
+    - o cursor da lista não leva a data;
+    - a prioridade do early check-in (RF-GOV-03) não está na E02;
+    - a `HousekeepingTaskGeneration` está no limite do detekt (11 funções). Extraia `arrivalsByRoom`/`dayOf` antes de acrescentar;
+    - trocar para `INFO` o log da programada pulada por tipo ou local inválido;
+    - o `HousekeepingAudit` mora em `CleaningTypesService.kt` e deve ser separado;
+    - uma chegada atrasada (reserva de D-1 que faz check-in em D) com a geração de D atrasada ainda ganha `STAYOVER` em D. O caso é raro e anterior a esta etapa; corrigir exige a data efetiva do check-in no `reservations`.
+  - **Para a E04:**
+    - colunas de mudança (`change_seq`) para o feed offline;
+    - transições da tarefa;
+    - `recordDone` da faxina programada (sem carimbo e sem guarda; ver a E01).
+  - **Para o `arquiteto`:**
+    - a divergência da D6 com a SPEC §8.3 e a ARCHITECTURE §6.1 ("atualizar plano do dia");
+    - as pendências transversais da E01 (fracionário em inteiro, `""` em UUID, `40P01`/`55P03` → 500, `required` nos schemas de request).
+  - **Testes:**
+    - o banco compartilhado recebe avanços de data de outros testes, e a geração roda para o hotel inteiro;
+    - contagens globais de `audit.audit_entry` não devem voltar;
+    - um teste da lista grava uma linha `-infinity` permanente numa UH aleatória, porque o trigger impede a limpeza.
+  - **Menores restantes:**
+    - N+1 em `rooms.status`;
+    - log com um só motivo na `CHECKOUT`;
+    - o teste RN-13 da trilha sem controle positivo;
+    - nenhum teste prova que a pré-chegada usa `inHouse(date)`;
+    - nenhum teste de API prova a ordem por chegada com prioridade editada.
+- **Capturas do brain:** ver o início da E03 ou o fim do lote.
 
 ---
 
