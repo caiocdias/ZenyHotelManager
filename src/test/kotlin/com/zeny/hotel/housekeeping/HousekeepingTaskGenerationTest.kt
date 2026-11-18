@@ -1,5 +1,6 @@
 package com.zeny.hotel.housekeeping
 
+import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.application.CleaningTypeStore
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskGeneration
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskStore
@@ -49,6 +50,7 @@ class HousekeepingTaskGenerationTest {
     private val cleaningTypes = mockk<CleaningTypeStore>()
     private val rooms = mockk<RoomsApi>()
     private val reservations = mockk<ReservationsApi>()
+    private val hotel = mockk<HotelApi>()
     private val audit = mockk<AuditContext>(relaxed = true)
     private val generation =
         HousekeepingTaskGeneration(
@@ -56,6 +58,7 @@ class HousekeepingTaskGenerationTest {
             cleaningTypes,
             rooms,
             reservations,
+            hotel,
             audit,
             Clock.fixed(now, ZoneOffset.UTC),
         )
@@ -65,6 +68,7 @@ class HousekeepingTaskGenerationTest {
         every { rooms.room(room) } returns RoomSummary(room, "101", null, roomType, emptySet(), true)
         every { reservations.pendingArrivals(any()) } returns emptyList()
         every { reservations.assignedRooms(any()) } returns emptyMap()
+        every { hotel.currentBusinessDate() } returns date
     }
 
     @Test
@@ -109,6 +113,30 @@ class HousekeepingTaskGenerationTest {
         every { reservations.assignedRooms(listOf(first, unassigned)) } returns mapOf(first to other)
 
         generation.arrivalsByRoom(date) shouldBe setOf(other)
+    }
+
+    @Test
+    fun `on a future date only the arrivals exactly on it count, not the earlier ones still pending then`() {
+        val future = date.plusDays(5)
+        val earlier = ReservationId(UUID.randomUUID())
+        val exact = ReservationId(UUID.randomUUID())
+        val exactRoom = RoomId(UUID.randomUUID())
+        every { reservations.pendingArrivals(future) } returns listOf(earlier, exact)
+        every { reservations.pendingArrivals(future.minusDays(1)) } returns listOf(earlier)
+        every { reservations.assignedRooms(listOf(exact)) } returns mapOf(exact to exactRoom)
+
+        generation.arrivalsByRoom(future) shouldBe setOf(exactRoom)
+        verify(exactly = 0) { reservations.assignedRooms(listOf(earlier, exact)) }
+    }
+
+    @Test
+    fun `on the business date a late arrival still pending counts`() {
+        val late = ReservationId(UUID.randomUUID())
+        every { reservations.pendingArrivals(date) } returns listOf(late)
+        every { reservations.assignedRooms(listOf(late)) } returns mapOf(late to room)
+
+        generation.arrivalsByRoom(date) shouldBe setOf(room)
+        verify(exactly = 0) { reservations.pendingArrivals(date.minusDays(1)) }
     }
 
     @Test

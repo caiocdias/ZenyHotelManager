@@ -1,5 +1,6 @@
 package com.zeny.hotel.housekeeping.application
 
+import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
@@ -32,6 +33,7 @@ class HousekeepingTaskGeneration(
     private val cleaningTypes: CleaningTypeStore,
     private val rooms: RoomsApi,
     private val reservations: ReservationsApi,
+    private val hotel: HotelApi,
     private val audit: AuditContext,
     private val clock: Clock,
 ) {
@@ -58,12 +60,22 @@ class HousekeepingTaskGeneration(
     }
 
     /**
-     * As UHs com chegada prevista na [date] (D8-E02): as alocadas às reservas com a chegada pendente na data
-     * (`ReservationsApi.pendingArrivals`, confirmadas com chegada até a data, inclusive a atrasada). Um retrato do
-     * momento: alocação, cancelamento ou no-show posteriores não mudam as tarefas já geradas.
+     * As UHs com chegada prevista na [date] (D8-E02): as alocadas às reservas confirmadas que chegam na data. Até a
+     * data operacional, são as de `ReservationsApi.pendingArrivals(date)`, com chegada até a data (inclusive a
+     * atrasada); numa data futura, só as que chegam exatamente nela (as pendentes na véspera terão chegado antes).
+     * Um retrato do momento: alocação, cancelamento ou no-show posteriores não mudam as tarefas já geradas.
      */
-    fun arrivalsByRoom(date: LocalDate): Set<RoomId> =
-        reservations.assignedRooms(reservations.pendingArrivals(date)).values.toSet()
+    @Transactional(readOnly = true)
+    fun arrivalsByRoom(date: LocalDate): Set<RoomId> {
+        val pending = reservations.pendingArrivals(date)
+        val arriving =
+            if (date.isAfter(hotel.currentBusinessDate())) {
+                pending - reservations.pendingArrivals(date.minusDays(1)).toSet()
+            } else {
+                pending
+            }
+        return reservations.assignedRooms(arriving).values.toSet()
+    }
 
     /** A tarefa de saída a gravar; `null` (com log `INFO`) com o tipo `CHECKOUT` inativo ou a UH fora do cadastro. */
     private fun checkoutTask(

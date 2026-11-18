@@ -148,6 +148,25 @@ class HousekeepingCheckoutTasksTest(
             .asBoolean() shouldBe false
     }
 
+    @Test
+    fun `an ad hoc request on a future date is marked only by an arrival on that very date`() {
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(1, today)
+        val plan = planFor(type)
+        val (arriving, _) = reservation(type, plan, arrival = today.plusDays(1), departure = today.plusDays(2))
+        reservationsApi.assignRoom(arriving, RoomId(rooms[0]))
+        val cleaningType = housekeeping.createCleaningType()
+
+        // A chegada de D+1 não marca a avulsa de D+5 (já terá saído), só a da própria data.
+        housekeeping
+            .requestTask(housekeeping.taskBody(cleaningType, roomId = rooms[0], date = "${today.plusDays(5)}"))
+            .get("arrivalExpected")
+            .asBoolean() shouldBe false
+        housekeeping
+            .requestTask(housekeeping.taskBody(cleaningType, roomId = rooms[0], date = "${today.plusDays(1)}"))
+            .get("arrivalExpected")
+            .asBoolean() shouldBe true
+    }
+
     // --- Apoio ----------------------------------------------------------------------------------------------------
 
     private data class Task(
@@ -170,12 +189,16 @@ class HousekeepingCheckoutTasksTest(
         return plan.id
     }
 
-    /** Uma reserva confirmada de hoje a [departure], com o titular (de nome [name]); devolve a reserva e o titular. */
+    /**
+     * Uma reserva confirmada de [arrival] (padrão: hoje) a [departure], com o titular (de nome [name]); devolve a
+     * reserva e o titular.
+     */
     private fun reservation(
         type: UUID,
         plan: UUID,
         departure: LocalDate = today.plusDays(1),
         name: String = "Hóspede ${UuidV7.generate().toString().takeLast(8)}",
+        arrival: LocalDate = today,
     ): Pair<ReservationId, UUID> {
         val holder =
             UUID.fromString(
@@ -192,7 +215,7 @@ class HousekeepingCheckoutTasksTest(
             reservations.created(
                 reservations.booking(
                     holder,
-                    reservations.reservation(type, plan, today, departure, adults = 1),
+                    reservations.reservation(type, plan, arrival, departure, adults = 1),
                 ),
             )["reservations"][0]
         return ReservationId(UUID.fromString(created["id"].asString())) to holder

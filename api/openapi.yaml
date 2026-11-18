@@ -20728,8 +20728,10 @@ components:
           type: boolean
           description: "Se a UH tinha chegada prevista na data: **retrato do momento\
             \ da geração**. Alocação, cancelamento ou no-show posteriores não o atualizam.\
-            \ Chegada prevista é uma reserva confirmada com chegada até a data e a\
-            \ UH alocada; numa área, sempre `false`."
+            \ Chegada prevista é uma reserva confirmada com a UH alocada que chega\
+            \ na data: até a data operacional, com chegada até a data (inclusive a\
+            \ atrasada); numa data futura, só a que chega exatamente nela. Numa á\
+            rea, sempre `false`."
         cleaningTypeId:
           type: string
           format: uuid
