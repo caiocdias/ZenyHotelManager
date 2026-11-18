@@ -266,6 +266,11 @@ class AuthorizationTest(
                 "printing.jobs.manage:ALL",
                 "endofday.runs.read:ALL",
                 "endofday.runs.execute:ALL",
+                "housekeeping.config.read:ALL",
+                "housekeeping.config.manage:ALL",
+                "housekeeping.tasks.read:ALL",
+                "housekeeping.tasks.request:ALL",
+                "housekeeping.assignments.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

@@ -84,7 +84,8 @@ data class CursorPage<T>(
  *
  * O cursor não é assinado: trate as chaves como entrada não confiável (consulta sempre
  * parametrizada e com o escopo do usuário aplicado). Cursor ilegível, de outra versão do
- * formato ou com chave do tipo errado é `400 INVALID_CURSOR`.
+ * formato, com chave do tipo errado, com chave de texto que contenha NUL ou com chave de data ou de instante fora
+ * do [StorableRange] é `400 INVALID_CURSOR`.
  */
 class PageCursor private constructor(
     val keys: List<String>,
@@ -94,14 +95,21 @@ class PageCursor private constructor(
         return ENCODER.encodeToString(payload.toByteArray(Charsets.UTF_8))
     }
 
-    fun string(index: Int): String = keys.getOrNull(index) ?: throw invalid()
+    /** Uma chave de texto; com NUL (U+0000), que o PostgreSQL não guarda num texto, `400 INVALID_CURSOR`. */
+    fun string(index: Int): String = keys.getOrNull(index)?.takeIf { NUL !in it } ?: throw invalid()
 
     fun uuid(index: Int): UUID = parse(index) { UUID.fromString(it).also { uuid -> require(uuid.toString() == it) } }
 
-    fun instant(index: Int): Instant = parse(index, Instant::parse)
+    /** Um instante dentro do [StorableRange]; fora dele, `400 INVALID_CURSOR`, antes de chegar ao banco. */
+    fun instant(index: Int): Instant =
+        parse(index, Instant::parse).takeIf { StorableRange.contains(it) } ?: throw invalid()
 
-    /** Uma data de negócio (`YYYY-MM-DD`), como as chaves de ordenação por data. */
-    fun localDate(index: Int): LocalDate = parse(index, LocalDate::parse)
+    /**
+     * Uma data de negócio (`YYYY-MM-DD`), como as chaves de ordenação por data, dentro do [StorableRange]; fora dele,
+     * `400 INVALID_CURSOR`, antes de chegar ao banco.
+     */
+    fun localDate(index: Int): LocalDate =
+        parse(index, LocalDate::parse).takeIf { StorableRange.contains(it) } ?: throw invalid()
 
     fun long(index: Int): Long = parse(index, String::toLong)
 
@@ -153,6 +161,8 @@ class PageCursor private constructor(
                 ErrorCodes.INVALID_CURSOR,
                 "Cursor de paginação inválido. Recomece da primeira página.",
             )
+
+        private const val NUL = '\u0000'
 
         // Formato v1: "c1:" + chaves separadas por "|", com "~" e "|" escapados como "~~" e "~p".
         private const val VERSION = "c1:"

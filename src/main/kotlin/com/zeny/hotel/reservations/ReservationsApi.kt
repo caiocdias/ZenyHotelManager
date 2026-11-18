@@ -247,6 +247,13 @@ interface ReservationsApi {
     fun inHouse(date: LocalDate): List<ReservationId>
 
     /**
+     * A UH da alocação vigente (ainda não solta) de cada reserva de [ids], numa consulta só (M6 E02, D7: a chegada
+     * prevista da governança). A reserva sem alocação vigente (nunca alocada, solta no check-out, na troca ou no
+     * cancelamento) ou inexistente fica de fora. Sem conferir permissão e sem trava.
+     */
+    fun assignedRooms(ids: Collection<ReservationId>): Map<ReservationId, RoomId>
+
+    /**
      * As cobranças devidas da hospedada [id] até [through] (M6 E11; a regra única do fechamento do dia e do
      * check-out): `null` se a reserva não existe ou não está `IN_HOUSE`. Senão, as cobranças
      * ([ReservationNightCharges]) de cada noite congelada `n` com

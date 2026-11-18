@@ -24,8 +24,8 @@ import java.time.temporal.ChronoUnit
  * As transições da execução do fechamento (M6 E10), cada uma na transação dela e auditada. Chamadas da thread do motor
  * (sem contexto de segurança), ficam na trilha com o ator sistema. Toda transição trava a execução
  * ([EndOfDayRunRepository.lockForUpdate]) antes de lê-la, então duas transições da mesma execução nunca se cruzam.
- * Qualquer exceção desfaz a transição, inclusive uma *checked* (`rollbackFor = Throwable`): o Kotlin deixa o trabalho
- * de uma etapa lançar `IOException` sem declarar, e o padrão do Spring confirmaria a transação nesse caso.
+ * Qualquer exceção desfaz a transição, inclusive uma *checked* que o trabalho de uma etapa lance sem declarar: o
+ * `@EnableTransactionManagement` do `shared` usa `rollbackOn = ALL_EXCEPTIONS` (ARCHITECTURE §5, item 6).
  */
 @Component
 class EndOfDayRunTransitions(
@@ -42,7 +42,7 @@ class EndOfDayRunTransitions(
      * terminou (`COMPLETED`, agora ou antes).
      */
     @Audited(EndOfDayAudit.BEGIN_STEP)
-    @Transactional(rollbackFor = [Throwable::class])
+    @Transactional
     fun begin(runId: EndOfDayRunId): StepStart? {
         val run = locked(runId)
         if (run.status == RunStatus.COMPLETED) {
@@ -65,7 +65,7 @@ class EndOfDayRunTransitions(
      * ([EndOfDayIssues.notifyGrouped]), depois do [work], na mesma transação.
      */
     @Audited(EndOfDayAudit.COMPLETE_STEP)
-    @Transactional(rollbackFor = [Throwable::class])
+    @Transactional
     fun complete(
         runId: EndOfDayRunId,
         stepName: String,
@@ -108,7 +108,7 @@ class EndOfDayRunTransitions(
      * inexistente são recusadas com outra exceção, que não é corrida. Em toda recusa a transação é desfeita sem efeito.
      */
     @Audited(EndOfDayAudit.FAIL_STEP)
-    @Transactional(rollbackFor = [Throwable::class])
+    @Transactional
     fun fail(
         runId: EndOfDayRunId,
         stepName: String,

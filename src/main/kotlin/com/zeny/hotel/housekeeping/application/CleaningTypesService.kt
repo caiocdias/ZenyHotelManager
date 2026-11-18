@@ -1,0 +1,336 @@
+package com.zeny.hotel.housekeeping.application
+
+import com.zeny.hotel.checklists.ChecklistContext
+import com.zeny.hotel.checklists.ChecklistTemplateId
+import com.zeny.hotel.checklists.ChecklistsApi
+import com.zeny.hotel.housekeeping.CleaningTypeId
+import com.zeny.hotel.housekeeping.CleaningTypeKey
+import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
+import com.zeny.hotel.housekeeping.HousekeepingPermissions
+import com.zeny.hotel.housekeeping.domain.CleaningCredit
+import com.zeny.hotel.housekeeping.domain.CleaningType
+import com.zeny.hotel.housekeeping.domain.CleaningTypeDetails
+import com.zeny.hotel.rooms.RoomTypeId
+import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
+import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ConflictException
+import com.zeny.hotel.shared.CursorPage
+import com.zeny.hotel.shared.ErrorCode
+import com.zeny.hotel.shared.FieldViolation
+import com.zeny.hotel.shared.InvalidInputException
+import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.PageCursor
+import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.requireCurrentVersion
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.Clock
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * Persistência dos tipos de limpeza, na transação corrente. Gravar e trocar o código convertem a violação da
+ * unicidade do código em `false` (o caso de uso responde `409`), nunca em `500`.
+ */
+interface CleaningTypeStore {
+    fun cleaningType(id: CleaningTypeId): CleaningType?
+
+    /**
+     * O tipo com a linha travada (`SELECT … FOR NO KEY UPDATE`, que não conflita com o `FOR KEY SHARE` da FK de quem
+     * referencia o tipo) e relido. A trava sai sempre depois da da faxina programada (ordem faxina → tipo).
+     */
+    fun forUpdate(id: CleaningTypeId): CleaningType?
+
+    /** O tipo da carga inicial com a chave estável [key] (D5), ativo ou não; `null` só se a carga não o tem. */
+    fun byKey(key: CleaningTypeKey): CleaningType?
+
+    /** Os tipos de [ids], na ordem de [ids] (os inexistentes ficam de fora). */
+    fun cleaningTypes(ids: List<UUID>): List<CleaningType>
+
+    /** As chaves da ordenação (código, id) da página depois de [after], só os ativos ou inativos se [active]. */
+    fun page(
+        active: Boolean?,
+        after: Pair<String, UUID>?,
+        limit: Int,
+    ): List<Pair<String, UUID>>
+
+    /** Grava um tipo novo; `false` se o código já está em uso. */
+    fun tryAdd(cleaningType: CleaningType): Boolean
+
+    /** Grava as mudanças pendentes; `false` se o código novo já está em uso. */
+    fun tryFlush(): Boolean
+
+    fun flush()
+
+    /** Se há faxina programada ativa com o tipo (consulta nova a cada chamada: vê o que já foi confirmado). */
+    fun hasActiveSchedules(id: CleaningTypeId): Boolean
+}
+
+/** Um tipo de limpeza, com o aviso dos tipos de UH ativos sem crédito, calculado na leitura (D6). */
+data class CleaningTypeView(
+    val id: CleaningTypeId,
+    val key: CleaningTypeKey?,
+    val code: String,
+    val name: String,
+    val requiresInspection: Boolean,
+    val defaultPriority: Int,
+    val linenChangeEveryNights: Int?,
+    val checklistTemplateId: UUID?,
+    val credits: List<CleaningCreditView>,
+    val missingCreditRoomTypeIds: List<RoomTypeId>,
+    val active: Boolean,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val version: Long,
+)
+
+data class CleaningCreditView(
+    val roomTypeId: RoomTypeId,
+    val credits: Int,
+)
+
+/** Os dados de criação ou de edição de um tipo de limpeza (na edição, os créditos são a lista inteira). */
+data class CleaningTypeCommand(
+    val code: String,
+    val name: String,
+    val requiresInspection: Boolean,
+    val defaultPriority: Int,
+    val linenChangeEveryNights: Int?,
+    val checklistTemplateId: UUID?,
+    val credits: List<CleaningCreditView>,
+) {
+    internal val details: CleaningTypeDetails
+        get() =
+            CleaningTypeDetails(
+                code,
+                name,
+                requiresInspection,
+                defaultPriority,
+                linenChangeEveryNights,
+                checklistTemplateId,
+                credits.map { CleaningCredit(it.roomTypeId, it.credits) },
+            )
+}
+
+/**
+ * Tipos de limpeza (RF-GOV-01, M6 E01). Consultar exige `housekeeping.config.read`; escrever,
+ * `housekeeping.config.manage`, conferida **antes** de qualquer recusa que revele estado (`404`, `409`, `400
+ * …UNKNOWN_…`, `422`). A edição confere a versão (`If-Match`). Nada é apagado, só desativado; um tipo com faxina
+ * programada ativa não é desativado ([deactivate]).
+ *
+ * Os tipos de UH dos créditos são conferidos pela `RoomsApi` (nunca pelas tabelas do `rooms`), só os novos no tipo:
+ * inexistente `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (H16); desativado é aceito (D6). Um tipo ativo sem crédito para um
+ * tipo de UH ativo não é recusado, porque o gestor configura aos poucos: a leitura o aponta em
+ * `missingCreditRoomTypeIds`, que muda quando um tipo de UH é criado depois. O vínculo opcional ao modelo de checklist
+ * (D1) é conferido só quando é **novo** (criação, ou edição que troca o modelo), pela `ChecklistsApi`: inexistente `400
+ * CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE` (H16); de outro contexto que não `HOUSEKEEPING`, inativo ou nunca
+ * publicado, `422`. Depois do vínculo, desativar ou despublicar o modelo não o desfaz nem faz a leitura ou uma edição
+ * sem trocar o modelo falhar. Precedência da E04 (geração de tarefas): vínculo ativo e publicado → `ChecklistsApi
+ * .resolveTemplate(HOUSEKEEPING, …cleaningTypeId…)` → sem checklist.
+ */
+@Service
+@Suppress("TooManyFunctions") // um caso de uso por operação e as conferências
+class CleaningTypesService(
+    private val store: CleaningTypeStore,
+    private val rooms: RoomsApi,
+    private val checklists: ChecklistsApi,
+    private val authorization: Authorization,
+    private val audit: AuditContext,
+    private val clock: Clock,
+) {
+    @Transactional(readOnly = true)
+    fun list(
+        active: Boolean?,
+        page: PageParams,
+    ): CursorPage<CleaningTypeView> {
+        authorization.require(HousekeepingPermissions.CONFIG_READ)
+        val after = page.decodedCursor()?.let { it.string(0) to it.uuid(1) }
+        val rows = store.page(active, after, page.limit + 1)
+        val keys = CursorPage.fromRows(rows, page.limit) { PageCursor.of(it.first, it.second.toString()) }
+        val activeRoomTypes = activeRoomTypes()
+        return CursorPage(
+            store.cleaningTypes(keys.items.map { it.second }).map { it.view(activeRoomTypes) },
+            keys.nextCursor,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun get(id: CleaningTypeId): CleaningTypeView {
+        authorization.require(HousekeepingPermissions.CONFIG_READ)
+        return find(id).view(activeRoomTypes())
+    }
+
+    @Audited(HousekeepingAudit.CREATE_CLEANING_TYPE)
+    @Transactional
+    fun create(command: CleaningTypeCommand): CleaningTypeView {
+        authorization.require(HousekeepingPermissions.CONFIG_MANAGE)
+        val cleaningType = CleaningType.create(command.details, clock.instant())
+        requireLinkable(cleaningType.details, current = null)
+        audit.created(HousekeepingAudit.CLEANING_TYPE, cleaningType.id.value) { cleaningType.auditState() }
+        if (!store.tryAdd(cleaningType)) throw codeInUse()
+        return cleaningType.view(activeRoomTypes())
+    }
+
+    @Audited(HousekeepingAudit.UPDATE_CLEANING_TYPE)
+    @Transactional
+    fun update(
+        id: CleaningTypeId,
+        expectedVersion: Long,
+        command: CleaningTypeCommand,
+    ): CleaningTypeView {
+        authorization.require(HousekeepingPermissions.CONFIG_MANAGE)
+        val cleaningType = find(id)
+        requireCurrentVersion(expectedVersion, checkNotNull(cleaningType.version))
+        audit.track(HousekeepingAudit.CLEANING_TYPE, id.value) { cleaningType.auditState() }
+        requireLinkable(CleaningType.validate(command.details), current = cleaningType.details)
+        if (cleaningType.update(command.details, clock.instant()) && !store.tryFlush()) throw codeInUse()
+        return cleaningType.view(activeRoomTypes())
+    }
+
+    /**
+     * Desativa o tipo, recusado com faxina programada ativa nele (`422 CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`). A linha do
+     * tipo é travada antes da conferência, como na criação, na reativação e na troca de tipo da faxina: a operação que
+     * chega depois espera a outra confirmar e vê o resultado dela, então nunca sobra faxina ativa num tipo inativo.
+     */
+    @Audited(HousekeepingAudit.DEACTIVATE_CLEANING_TYPE)
+    @Transactional
+    fun deactivate(id: CleaningTypeId): CleaningTypeView {
+        authorization.require(HousekeepingPermissions.CONFIG_MANAGE)
+        val cleaningType = store.forUpdate(id) ?: throw notFound()
+        audit.track(HousekeepingAudit.CLEANING_TYPE, id.value) { cleaningType.auditState() }
+        if (cleaningType.active && store.hasActiveSchedules(id)) {
+            throw BusinessRuleException(
+                HousekeepingErrorCodes.CLEANING_TYPE_HAS_ACTIVE_SCHEDULES,
+                "O tipo de limpeza tem faxina programada ativa; desative-a antes.",
+            )
+        }
+        if (cleaningType.deactivate(clock.instant())) store.flush()
+        return cleaningType.view(activeRoomTypes())
+    }
+
+    @Audited(HousekeepingAudit.REACTIVATE_CLEANING_TYPE)
+    @Transactional
+    fun reactivate(id: CleaningTypeId): CleaningTypeView {
+        authorization.require(HousekeepingPermissions.CONFIG_MANAGE)
+        val cleaningType = find(id)
+        audit.track(HousekeepingAudit.CLEANING_TYPE, id.value) { cleaningType.auditState() }
+        if (cleaningType.reactivate(clock.instant())) store.flush()
+        return cleaningType.view(activeRoomTypes())
+    }
+
+    // --- Apoio -------------------------------------------------------------------------------------
+
+    /** As referências novas em [details] (as que não estão em [current]) existem. */
+    private fun requireLinkable(
+        details: CleaningTypeDetails,
+        current: CleaningTypeDetails?,
+    ) {
+        details.checklistTemplateId?.takeIf { it != current?.checklistTemplateId }?.let(::requireLinkableTemplate)
+        val known =
+            current
+                ?.credits
+                .orEmpty()
+                .map { it.roomTypeId }
+                .toSet()
+        val unknown =
+            details.credits
+                .map { it.roomTypeId }
+                .filter { it !in known }
+                .any { rooms.roomType(it) == null }
+        if (unknown) {
+            throw invalid(
+                HousekeepingErrorCodes.CLEANING_TYPE_UNKNOWN_ROOM_TYPE,
+                "credits",
+                "Algum tipo de UH dos créditos não existe.",
+            )
+        }
+    }
+
+    private fun requireLinkableTemplate(templateId: UUID) {
+        val template =
+            checklists.template(ChecklistTemplateId(templateId))
+                ?: throw invalid(
+                    HousekeepingErrorCodes.CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE,
+                    "checklistTemplateId",
+                    "O modelo de checklist não existe.",
+                )
+        val refusal =
+            when {
+                template.context != ChecklistContext.HOUSEKEEPING -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE to
+                        "O modelo de checklist não é do contexto de governança."
+                }
+
+                !template.active -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_TEMPLATE_INACTIVE to
+                        "O modelo de checklist está desativado."
+                }
+
+                !template.published -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED to
+                        "O modelo de checklist ainda não foi publicado."
+                }
+
+                else -> {
+                    null
+                }
+            }
+        if (refusal != null) throw BusinessRuleException(refusal.first, refusal.second)
+    }
+
+    private fun activeRoomTypes(): List<RoomTypeId> = rooms.activeRoomTypes().map { it.id }
+
+    private fun find(id: CleaningTypeId) = store.cleaningType(id) ?: throw notFound()
+
+    private fun notFound() =
+        NotFoundException(HousekeepingErrorCodes.CLEANING_TYPE_NOT_FOUND, "Tipo de limpeza não encontrado.")
+
+    private fun codeInUse() =
+        ConflictException(
+            HousekeepingErrorCodes.CLEANING_TYPE_CODE_ALREADY_IN_USE,
+            "Já existe um tipo de limpeza com este código; se estiver desativado, reative-o.",
+        )
+
+    private fun invalid(
+        code: ErrorCode,
+        field: String,
+        message: String,
+    ) = InvalidInputException(code, message, listOf(FieldViolation(field, code.value, message)))
+}
+
+internal fun CleaningType.auditState(): Map<String, Any?> =
+    mapOf(
+        "key" to key?.name,
+        "code" to code,
+        "name" to name,
+        "requiresInspection" to requiresInspection,
+        "defaultPriority" to defaultPriority,
+        "linenChangeEveryNights" to linenChangeEveryNights,
+        "checklistTemplateId" to checklistTemplateId?.toString(),
+        "credits" to credits.associate { it.roomTypeId.toString() to it.credits }.toSortedMap(),
+        "active" to active,
+    )
+
+/** O tipo, com os [activeRoomTypes] sem crédito (vazio se o tipo está desativado). */
+internal fun CleaningType.view(activeRoomTypes: List<RoomTypeId>): CleaningTypeView {
+    val credited = credits.map { it.roomTypeId }.toSet()
+    return CleaningTypeView(
+        id,
+        key,
+        code,
+        name,
+        requiresInspection,
+        defaultPriority,
+        linenChangeEveryNights,
+        checklistTemplateId,
+        credits.map { CleaningCreditView(it.roomTypeId, it.credits) },
+        if (active) activeRoomTypes.filter { it !in credited }.sortedBy { it.value } else emptyList(),
+        active,
+        createdAt,
+        updatedAt,
+        checkNotNull(version),
+    )
+}

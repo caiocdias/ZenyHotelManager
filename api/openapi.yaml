@@ -43,6 +43,9 @@ tags:
   name: rates
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
+- description: "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas\
+    \ e tarefas."
+  name: housekeeping
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
 - description: Integração com a FNRH do Serpro.
@@ -275,6 +278,185 @@ paths:
       summary: Reativar uma área comum
       tags:
       - rooms
+  /api/v1/assignment-plans/{date}:
+    get:
+      description: "Exige `housekeeping.tasks.read`. Sem plano na data: 404 `ASSIGNMENT_PLAN_NOT_FOUND`."
+      operationId: getAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o plano do dia
+      tags:
+      - housekeeping
+    patch:
+      description: "Cada item de `items` leva a tarefa para a camareira (`employeeId`;\
+        \ nulo: fica no plano sem camareira) na posição dada (sem ela, no fim): move\
+        \ a tarefa que já está no plano ou acrescenta uma elegível, inclusive gerada\
+        \ depois da sugestão. `remove` tira tarefas do plano (diferente de deixá-las\
+        \ sem camareira). As posições de cada camareira voltam a ir de 1 a n. O plano\
+        \ volta a `DRAFT`. Exige `housekeeping.assignments.manage`. Exige o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). A data vai da data operacional até\
+        \ 7 dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID` (o plano\
+        \ de uma data que ficou para trás está congelado). Sem plano na data: 404\
+        \ `ASSIGNMENT_PLAN_NOT_FOUND`. Tarefa inexistente: 400 `ASSIGNMENT_UNKNOWN_TASK`;\
+        \ tarefa que já andou (fora de `PENDING` e `ASSIGNED`) ou de outra data: 422\
+        \ `ASSIGNMENT_TASK_NOT_ASSIGNABLE`. Só recebe tarefa quem está na escala da\
+        \ data no setor de governança; fora dela, ou colaborador inexistente, 422\
+        \ `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Nenhuma mudança, ou a mesma tarefa\
+        \ duas vezes: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: adjustAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentAdjustRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Ajustar o plano do dia
+      tags:
+      - housekeeping
+  /api/v1/assignment-plans/{date}/publish:
+    post:
+      description: "Grava o rascunho nas tarefas: cada tarefa com camareira fica `ASSIGNED`,\
+        \ com a camareira e a posição (`assignedEmployeeId` e `assignmentPosition`,\
+        \ que um novo rascunho não muda); a sem camareira e a retirada (`ASSIGNED`\
+        \ da data do plano, ou de antes no plano da data operacional, fora do rascunho)\
+        \ voltam a `PENDING`. A tarefa que já andou (fora de `PENDING` e `ASSIGNED`)\
+        \ nunca é tocada: o item dela com a mesma camareira é ignorado, inclusive\
+        \ a posição, e o item que a passaria a outra camareira recusa a publicaçã\
+        o com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids das tarefas em `errors[].field`.\
+        \ O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`) só as camareiras\
+        \ com tarefa incluída ou removida; as não avisadas vêm em `notNotified`. Publica\
+        \ `housekeeping.assignment-plan` no tópico `housekeeping`. Exige `housekeeping.assignments.manage`.\
+        \ Exige o `If-Match` (ausente: 428; versão diferente, ou outra escrita numa\
+        \ tarefa durante a publicação: 412). A data vai da data operacional até 7\
+        \ dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID` (o plano\
+        \ de uma data que ficou para trás está congelado). Sem plano na data: 404\
+        \ `ASSIGNMENT_PLAN_NOT_FOUND`. Só recebe tarefa quem está na escala da data\
+        \ no setor de governança; fora dela, ou colaborador inexistente, 422 `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`.\
+        \ Nada é gravado quando a publicação é recusada."
+      operationId: publishAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanPublicationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Publicar o plano do dia
+      tags:
+      - housekeeping
+  /api/v1/assignment-plans/{date}/suggest:
+    post:
+      description: "Refaz o rascunho inteiro do plano da data (cria o plano se ainda\
+        \ não há) e o deixa `DRAFT`; as tarefas só mudam na publicação. Entram as\
+        \ tarefas `PENDING` e `ASSIGNED` da data e, no plano da data operacional,\
+        \ também as de datas anteriores. A sugestão balanceia os créditos entre as\
+        \ camareiras escaladas (ou só as de `employeeIds`), agrupa por andar e põ\
+        e primeiro as UHs com chegada prevista (recalculada agora); a permanência\
+        \ de UH em \"Não perturbe\" fica sem camareira. Exige `housekeeping.assignments.manage`.\
+        \ A data vai da data operacional até 7 dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID`\
+        \ (o plano de uma data que ficou para trás está congelado). Só recebe tarefa\
+        \ quem está na escala da data no setor de governança; fora dela, ou colaborador\
+        \ inexistente, 422 `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Com o plano já existente,\
+        \ exige o `If-Match` (ausente: 428; versão diferente: 412)."
+      operationId: suggestAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentSuggestRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Sugerir a distribuição das tarefas do dia
+      tags:
+      - housekeeping
   /api/v1/audit-entries:
     get:
       description: "Entradas da trilha, das mais recentes para as mais antigas, filtradas\
@@ -2508,6 +2690,211 @@ paths:
       summary: Consultar uma versão publicada
       tags:
       - checklists
+  /api/v1/cleaning-types:
+    get:
+      description: Em ordem de código. Exige `housekeeping.config.read`.
+      operationId: listCleaningTypes
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar tipos de limpeza
+      tags:
+      - housekeeping
+    post:
+      description: "Exige `housekeeping.config.manage`. Código repetido (inclusive\
+        \ de um desativado): 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`. Créditos de\
+        \ 1 a 100, até 200, cada tipo de UH uma vez só (repetido: 400 `CLEANING_TYPE_CREDIT_DUPLICATED`);\
+        \ tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (campo `credits`);\
+        \ tipo de UH desativado é aceito. Um tipo ativo sem crédito para algum tipo\
+        \ de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
+        \ Nome com NUL: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: createCleaningType
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTypeRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: Tipo de limpeza cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}:
+    get:
+      description: "Exige `housekeeping.config.read`. Inexistente: 404 `CLEANING_TYPE_NOT_FOUND`."
+      operationId: getCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um tipo de limpeza
+      tags:
+      - housekeeping
+    put:
+      description: "Troca código, nome, configuração e os créditos (a lista inteira);\
+        \ a chave (`key`) não muda. Exige `housekeeping.config.manage`. Exige també\
+        m o `If-Match` (ausente: 428; versão diferente: 412). Código de outro tipo:\
+        \ 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`. Créditos de 1 a 100, até 200, cada\
+        \ tipo de UH uma vez só (repetido: 400 `CLEANING_TYPE_CREDIT_DUPLICATED`);\
+        \ tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (campo `credits`);\
+        \ tipo de UH desativado é aceito. Um tipo ativo sem crédito para algum tipo\
+        \ de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
+        \ Nome com NUL: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: updateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTypeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}/deactivate:
+    post:
+      description: "Exige `housekeeping.config.manage`. Nada é apagado; desativar\
+        \ de novo não muda nada. Com faxina programada ativa no tipo: 422 `CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`\
+        \ (desative a faxina antes)."
+      operationId: deactivateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}/reactivate:
+    post:
+      description: Exige `housekeeping.config.manage`. Reativar um tipo ativo não
+        muda nada.
+      operationId: reactivateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um tipo de limpeza
+      tags:
+      - housekeeping
   /api/v1/companies:
     get:
       description: Em ordem de nome (sem acento). `name` procura cada palavra como
@@ -6532,6 +6919,166 @@ paths:
       summary: Editar as taxas
       tags:
       - hotel
+  /api/v1/housekeeping-tasks:
+    get:
+      description: "As tarefas da data (padrão: a data operacional), primeiro as das\
+        \ UHs com chegada prevista, depois por prioridade (da mais alta para a mais\
+        \ baixa) e id. Exige `housekeeping.tasks.read`."
+      operationId: listHousekeepingTasks
+      parameters:
+      - description: A data operacional das tarefas (YYYY-MM-DD); omita para a data
+          operacional corrente.
+        in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Só as tarefas desta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas desta área comum.
+        in: query
+        name: areaId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas neste status.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - ASSIGNED
+          - IN_PROGRESS
+          - PAUSED
+          - AWAITING_INSPECTION
+          - REJECTED
+          - DONE
+          - REFUSED
+          - CANCELLED
+      - description: Só as tarefas deste tipo de limpeza.
+        in: query
+        name: cleaningTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas desta origem.
+        in: query
+        name: source
+        required: false
+        schema:
+          type: string
+          enum:
+          - CHECKOUT
+          - ROOM_MOVE
+          - STAYOVER
+          - PRE_ARRIVAL
+          - SCHEDULED
+          - AD_HOC
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageHousekeepingTaskResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as tarefas de governança do dia
+      tags:
+      - housekeeping
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `HOUSEKEEPING_TASK_LOCATION_INVALID`. A tarefa nasce\
+        \ `PENDING`, com origem `AD_HOC`, a prioridade padrão do tipo e os créditos\
+        \ do tipo para o tipo da UH (área ou tipo de UH sem crédito: 0). Exige `housekeeping.tasks.request`.\
+        \ Local inexistente: 400 `HOUSEKEEPING_TASK_UNKNOWN_LOCATION`; tipo inexistente:\
+        \ 400 `HOUSEKEEPING_TASK_UNKNOWN_CLEANING_TYPE`; local desativado: 422 `HOUSEKEEPING_TASK_LOCATION_INACTIVE`;\
+        \ tipo desativado: 422 `CLEANING_TYPE_INACTIVE`; data antes da operacional\
+        \ ou mais de 30 dias depois dela: 422 `HOUSEKEEPING_TASK_DATE_INVALID`. Já\
+        \ há tarefa no mesmo local, na mesma data e com o mesmo tipo, em qualquer\
+        \ status (inclusive cancelada): 409 `HOUSEKEEPING_TASK_ALREADY_EXISTS`; para\
+        \ uma segunda limpeza no dia, use outro tipo (como o retoque)."
+      operationId: requestHousekeepingTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingTaskRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskResponse"
+          description: Tarefa solicitada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Solicitar uma tarefa de governança avulsa
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}:
+    get:
+      description: "Exige `housekeeping.tasks.read`. Inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`."
+      operationId: getHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma tarefa de governança
+      tags:
+      - housekeeping
   /api/v1/meta/version:
     get:
       description: "Público, sem autenticação. A versão da API muda só com mudanç\
@@ -12278,6 +12825,213 @@ paths:
       summary: Gerar a escala a partir dos padrões
       tags:
       - staff
+  /api/v1/scheduled-cleanings:
+    get:
+      description: Em ordem de próxima data (e id). Exige `housekeeping.config.read`.
+      operationId: listScheduledCleanings
+      parameters:
+      - description: Só as ativas (`true`) ou só as inativas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar faxinas programadas
+      tags:
+      - housekeeping
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `SCHEDULED_CLEANING_LOCATION_INVALID`. A próxima\
+        \ data é `lastDoneOn + frequencyDays` ou, sem `lastDoneOn`, a data operacional.\
+        \ Exige `housekeeping.config.manage`. Local inexistente: 400 `SCHEDULED_CLEANING_UNKNOWN_LOCATION`;\
+        \ tipo inexistente: 400 `SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE`; local\
+        \ desativado: 422 `SCHEDULED_CLEANING_LOCATION_INACTIVE`; tipo desativado:\
+        \ 422 `CLEANING_TYPE_INACTIVE`; `lastDoneOn` depois da data operacional: 422\
+        \ `SCHEDULED_CLEANING_LAST_DONE_IN_FUTURE`; antes de `-4712-01-01`: 400 `VALIDATION_FAILED`.\
+        \ Já há uma faxina ativa no mesmo local com o mesmo tipo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`."
+      operationId: createScheduledCleaning
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledCleaningRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: Faxina programada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Programar uma faxina
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}:
+    get:
+      description: "Exige `housekeeping.config.read`. Inexistente: 404 `SCHEDULED_CLEANING_NOT_FOUND`."
+      operationId: getScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma faxina programada
+      tags:
+      - housekeeping
+    put:
+      description: "Troca só o tipo de limpeza e a frequência e recalcula a próxima\
+        \ data; o local e a última faxina não mudam. A próxima data é `lastDoneOn\
+        \ + frequencyDays` ou, sem `lastDoneOn`, a data operacional. Exige `housekeeping.config.manage`.\
+        \ Exige também o `If-Match` (ausente: 428; versão diferente: 412). Tipo inexistente:\
+        \ 400 `SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE`; tipo novo desativado (mesmo\
+        \ com a faxina desativada): 422 `CLEANING_TYPE_INACTIVE`; já há uma faxina\
+        \ ativa no mesmo local com o tipo novo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`."
+      operationId: updateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledCleaningUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma faxina programada
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}/deactivate:
+    post:
+      description: Exige `housekeeping.config.manage`. Nada é apagado; desativar de
+        novo não muda nada.
+      operationId: deactivateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma faxina programada
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}/reactivate:
+    post:
+      description: "Exige `housekeeping.config.manage`. Mantém a próxima data antiga,\
+        \ mesmo vencida. Tipo desativado: 422 `CLEANING_TYPE_INACTIVE`; local desativado:\
+        \ 422 `SCHEDULED_CLEANING_LOCATION_INACTIVE`; já há outra ativa no mesmo local\
+        \ com o mesmo tipo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`. Reativar uma\
+        \ faxina ativa não muda nada."
+      operationId: reactivateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma faxina programada
+      tags:
+      - housekeeping
   /api/v1/seasons:
     get:
       description: Em ordem de início. Exige `rates.plans.read`.
@@ -14043,6 +14797,166 @@ components:
       - kind
       - name
       - updatedAt
+    AssignmentAdjustRequest:
+      type: object
+      description: "O ajuste do plano: tarefas que vão para uma camareira e tarefas\
+        \ que saem do plano."
+      properties:
+        items:
+          type: array
+          description: As tarefas que vão para uma camareira (mover ou acrescentar).
+          items:
+            $ref: "#/components/schemas/AssignmentItemRequest"
+          maxItems: 500
+          minItems: 0
+          nullable: true
+        remove:
+          type: array
+          description: As tarefas que saem do plano.
+          items:
+            type: string
+            format: uuid
+            description: As tarefas que saem do plano.
+            nullable: true
+          maxItems: 500
+          minItems: 0
+          nullable: true
+    AssignmentItemRequest:
+      type: object
+      description: Uma tarefa que vai para uma camareira.
+      nullable: true
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+          description: "A camareira; nulo: a tarefa fica no plano sem camareira."
+          nullable: true
+        position:
+          type: integer
+          format: int32
+          description: "A posição na ordem da camareira, de 1 em diante; omita para\
+            \ o fim."
+          maximum: 1000
+          minimum: 1
+          nullable: true
+        taskId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - taskId
+    AssignmentPlanItemResponse:
+      type: object
+      description: Uma tarefa do plano com camareira.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          format: int32
+          description: "A posição na ordem de execução da camareira, de 1 em diante."
+        taskId:
+          type: string
+          format: uuid
+      required:
+      - employeeId
+      - position
+      - taskId
+    AssignmentPlanPublicationResponse:
+      type: object
+      description: A publicação do plano do dia.
+      properties:
+        date:
+          type: string
+          format: date
+          description: A data operacional do plano.
+        id:
+          type: string
+          format: uuid
+          description: O plano publicado.
+        notNotified:
+          type: array
+          description: "As camareiras com tarefa incluída ou removida que não foram\
+            \ avisadas, e o motivo."
+          items:
+            $ref: "#/components/schemas/NotNotifiedResponse"
+        notified:
+          type: integer
+          format: int32
+          description: Quantas camareiras com tarefa incluída ou removida foram avisadas.
+        status:
+          type: string
+          description: O status do plano (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - DRAFT
+          - PUBLISHED
+        version:
+          type: integer
+          format: int64
+          description: A versão do plano depois da publicação (a mesma do `ETag`).
+      required:
+      - date
+      - id
+      - notNotified
+      - notified
+      - status
+      - version
+    AssignmentPlanResponse:
+      type: object
+      description: O plano do dia da distribuição.
+      properties:
+        date:
+          type: string
+          format: date
+          description: A data operacional do plano.
+        id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          description: "As tarefas com camareira, por camareira e posição (de 1 a\
+            \ n)."
+          items:
+            $ref: "#/components/schemas/AssignmentPlanItemResponse"
+        status:
+          type: string
+          description: O status do plano (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - DRAFT
+          - PUBLISHED
+        unassigned:
+          type: array
+          description: "As tarefas do plano sem camareira, na ordem da sugestão: sem\
+            \ camareira escalada ou permanência de UH em \"Não perturbe\"."
+          items:
+            type: string
+            format: uuid
+            description: "As tarefas do plano sem camareira, na ordem da sugestão:\
+              \ sem camareira escalada ou permanência de UH em \"Não perturbe\"."
+      required:
+      - date
+      - id
+      - items
+      - status
+      - unassigned
+    AssignmentSuggestRequest:
+      type: object
+      description: Os parâmetros da sugestão; o corpo pode faltar.
+      properties:
+        employeeIds:
+          type: array
+          description: Só estas camareiras recebem tarefas; precisam estar na escala
+            da data no setor de governança. Omita para todas as escaladas.
+          items:
+            type: string
+            format: uuid
+            description: Só estas camareiras recebem tarefas; precisam estar na escala
+              da data no setor de governança. Omita para todas as escaladas.
+            nullable: true
+          maxItems: 200
+          minItems: 0
+          nullable: true
     AttachGuestFileRequest:
       type: object
       description: O vínculo de um anexo já enviado (`POST /api/v1/files`) ao perfil.
@@ -16320,6 +17234,171 @@ components:
       required:
       - label
       - value
+    CleaningCreditRequest:
+      type: object
+      description: Os créditos de um tipo de UH.
+      properties:
+        credits:
+          type: integer
+          format: int32
+          description: "Créditos, de 1 a 100."
+          maximum: 100
+          minimum: 1
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - credits
+      - roomTypeId
+    CleaningCreditResponse:
+      type: object
+      description: Os créditos de um tipo de UH.
+      properties:
+        credits:
+          type: integer
+          format: int32
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - credits
+      - roomTypeId
+    CleaningTypeRequest:
+      type: object
+      description: "Os dados de um tipo de limpeza; na edição, os créditos são a lista\
+        \ inteira."
+      properties:
+        checklistTemplateId:
+          type: string
+          format: uuid
+          description: "Modelo de checklist vinculado, ou `null` (sem vínculo). Se\
+            \ informado, precisa ser do contexto `HOUSEKEEPING`, ativo e publicado\
+            \ no momento do vínculo; depois, desativar o modelo não o desfaz."
+          nullable: true
+        code:
+          type: string
+          description: "Código único, em maiúsculas: letras, dígitos, `_` e `-`."
+          example: CHECKOUT
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        credits:
+          type: array
+          description: "Créditos por tipo de UH (até 200, cada tipo de UH uma vez\
+            \ só). Obrigatório, para que a edição nunca zere os créditos por omissã\
+            o: sem créditos, envie a lista vazia."
+          items:
+            $ref: "#/components/schemas/CleaningCreditRequest"
+          maxItems: 200
+          minItems: 0
+        defaultPriority:
+          type: integer
+          format: int32
+          description: "Prioridade padrão das tarefas deste tipo, de 1 (mais baixa)\
+            \ a 5 (mais alta)."
+          maximum: 5
+          minimum: 1
+          nullable: true
+        linenChangeEveryNights:
+          type: integer
+          format: int32
+          description: "Troca de enxoval a cada N noites (de 1 a 60). Nulo significa\
+            \ \"sem regra de troca por noites\": a troca é só a pedido."
+          maximum: 60
+          minimum: 1
+          nullable: true
+        name:
+          type: string
+          example: Saída
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        requiresInspection:
+          type: boolean
+          description: Se a limpeza deste tipo exige inspeção da governanta.
+          nullable: true
+      required:
+      - code
+      - credits
+      - defaultPriority
+      - name
+      - requiresInspection
+    CleaningTypeResponse:
+      type: object
+      description: Um tipo de limpeza.
+      properties:
+        active:
+          type: boolean
+        checklistTemplateId:
+          type: string
+          format: uuid
+          description: Modelo de checklist vinculado; nulo sem vínculo.
+          nullable: true
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        credits:
+          type: array
+          description: "Créditos por tipo de UH, em ordem de tipo de UH."
+          items:
+            $ref: "#/components/schemas/CleaningCreditResponse"
+        defaultPriority:
+          type: integer
+          format: int32
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: "Chave estável dos tipos da carga inicial, que nunca muda;\
+            \ nula nos criados pela API (trate um valor desconhecido sem falhar)."
+          nullable: true
+          x-extensible-enum:
+          - CHECKOUT
+          - STAYOVER
+          - TOUCH_UP
+          - DEEP_CLEAN
+          - PRE_ARRIVAL
+          - TURNDOWN
+        linenChangeEveryNights:
+          type: integer
+          format: int32
+          description: "Troca de enxoval a cada N noites (de 1 a 60). Nulo significa\
+            \ \"sem regra de troca por noites\": a troca é só a pedido."
+          nullable: true
+        missingCreditRoomTypeIds:
+          type: array
+          description: "Tipos de UH ativos sem crédito neste tipo, calculados na leitura\
+            \ (vazio num tipo desativado): o gestor configura aos poucos, e o aviso\
+            \ muda quando um tipo de UH é criado depois."
+          items:
+            type: string
+            format: uuid
+            description: "Tipos de UH ativos sem crédito neste tipo, calculados na\
+              \ leitura (vazio num tipo desativado): o gestor configura aos poucos,\
+              \ e o aviso muda quando um tipo de UH é criado depois."
+        name:
+          type: string
+        requiresInspection:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - credits
+      - defaultPriority
+      - id
+      - missingCreditRoomTypeIds
+      - name
+      - requiresInspection
+      - updatedAt
     CompanyRequest:
       type: object
       description: Dados de uma empresa (RF-HOS-06).
@@ -16876,6 +17955,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageCleaningTypeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CleaningTypeResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageCompanyResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -17010,6 +18103,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GuestResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageHousekeepingTaskResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HousekeepingTaskResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -17360,6 +18467,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SchedulePatternResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageScheduledCleaningResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduledCleaningResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -19899,6 +21020,146 @@ components:
           - REJECT_INSPECTION
       required:
       - transition
+    HousekeepingTaskRequest:
+      type: object
+      description: "Uma solicitação avulsa de limpeza, numa UH ou numa área comum\
+        \ (exatamente um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum; informe esta ou `roomId`, uma só."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        date:
+          type: string
+          format: date
+          description: "A data operacional da tarefa, da corrente até 30 dias depois;\
+            \ omita para a corrente."
+          nullable: true
+        notes:
+          type: string
+          description: "Observações da recepção para a governança, até 500 caracteres.\
+            \ **Não escreva dado do hóspede** (nome, documento, contato): a tarefa\
+            \ é vista por toda a governança."
+          maxLength: 500
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - cleaningTypeId
+    HousekeepingTaskResponse:
+      type: object
+      description: Uma tarefa de governança.
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum; nula numa tarefa de UH.
+          nullable: true
+        arrivalExpected:
+          type: boolean
+          description: "Se a UH tinha chegada prevista na data: **retrato do momento\
+            \ da geração**. Alocação, cancelamento ou no-show posteriores não o atualizam.\
+            \ Chegada prevista é uma reserva confirmada com a UH alocada que chega\
+            \ na data: até a data operacional, com chegada até a data (inclusive a\
+            \ atrasada); numa data futura, só a que chega exatamente nela. Numa á\
+            rea, sempre `false`."
+        assignedEmployeeId:
+          type: string
+          format: uuid
+          description: A camareira publicada pelo plano do dia; nula sem camareira
+            (sempre nula em `PENDING`).
+          nullable: true
+        assignmentPosition:
+          type: integer
+          format: int32
+          description: "A posição publicada na ordem de execução da camareira, de\
+            \ 1 em diante; nula sem camareira. Não muda com um novo rascunho do plano,\
+            \ só com a publicação seguinte."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        credits:
+          type: integer
+          format: int32
+          description: Os créditos do tipo de limpeza para o tipo da UH; 0 numa área
+            ou sem crédito.
+        date:
+          type: string
+          format: date
+          description: A data operacional da tarefa.
+        id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          description: "Observações da recepção para a governança, até 500 caracteres.\
+            \ **Não escreva dado do hóspede** (nome, documento, contato): a tarefa\
+            \ é vista por toda a governança."
+          nullable: true
+        priority:
+          type: integer
+          format: int32
+          description: "A prioridade, de 1 (mais baixa) a 5 (mais alta): a padrão\
+            \ do tipo de limpeza."
+        roomId:
+          type: string
+          format: uuid
+          description: A UH; nula numa tarefa de área.
+          nullable: true
+        scheduledCleaningId:
+          type: string
+          format: uuid
+          description: A faxina programada que gerou a tarefa; nula nas outras origens.
+          nullable: true
+        source:
+          type: string
+          description: A origem da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - CHECKOUT
+          - ROOM_MOVE
+          - STAYOVER
+          - PRE_ARRIVAL
+          - SCHEDULED
+          - AD_HOC
+        status:
+          type: string
+          description: O status da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - PENDING
+          - ASSIGNED
+          - IN_PROGRESS
+          - PAUSED
+          - AWAITING_INSPECTION
+          - REJECTED
+          - DONE
+          - REFUSED
+          - CANCELLED
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - arrivalExpected
+      - cleaningTypeId
+      - createdAt
+      - credits
+      - date
+      - id
+      - priority
+      - source
+      - status
+      - updatedAt
     InventoryDayResponse:
       type: object
       description: "Os contadores de um tipo de UH numa data. Disponível = `total`\
@@ -20530,6 +21791,26 @@ components:
       - packages
       - ratePlanId
       - roomAmount
+    NotNotifiedResponse:
+      type: object
+      description: Uma camareira que não foi avisada da mudança nas tarefas dela.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          description: "`NO_USER`: o colaborador não tem usuário vinculado no cadastro\
+            \ (quem tem usuário é avisado mesmo fora da escala da data, como a camareira\
+            \ que perdeu a tarefa e saiu da escala); `NOT_DELIVERED`: o aviso não\
+            \ chegou ao painel (preferência desligada, usuário inativo ou que não\
+            \ recebe). Trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - NO_USER
+          - NOT_DELIVERED
+      required:
+      - employeeId
+      - reason
     NotificationPreferenceRequest:
       type: object
       description: A preferência para um tipo.
@@ -25769,6 +27050,110 @@ components:
       - startsOn
       - updatedAt
       - weekdays
+    ScheduledCleaningRequest:
+      type: object
+      description: "Uma faxina programada nova, numa UH ou numa área comum (exatamente\
+        \ um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum; informe esta ou `roomId`, uma só."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+          maximum: 365
+          minimum: 1
+          nullable: true
+        lastDoneOn:
+          type: string
+          format: date
+          description: "A última faxina, até a data operacional e a partir de `-4712-01-01`;\
+            \ nula se nunca foi feita (a próxima data é então a data operacional)."
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - cleaningTypeId
+      - frequencyDays
+    ScheduledCleaningResponse:
+      type: object
+      description: Uma faxina programada.
+      properties:
+        active:
+          type: boolean
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum; nula numa faxina de UH.
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+        id:
+          type: string
+          format: uuid
+        lastDoneOn:
+          type: string
+          format: date
+          description: A última faxina; nula se nunca foi feita.
+          nullable: true
+        nextDueOn:
+          type: string
+          format: date
+          description: "A próxima data é `lastDoneOn + frequencyDays` ou, sem `lastDoneOn`,\
+            \ a data operacional. A reativação mantém a data antiga, mesmo vencida."
+        roomId:
+          type: string
+          format: uuid
+          description: A UH; nula numa faxina de área.
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - cleaningTypeId
+      - createdAt
+      - frequencyDays
+      - id
+      - nextDueOn
+      - updatedAt
+    ScheduledCleaningUpdateRequest:
+      type: object
+      description: "Os dados editáveis de uma faxina programada: o tipo de limpeza\
+        \ e a frequência."
+      properties:
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+          maximum: 365
+          minimum: 1
+          nullable: true
+      required:
+      - cleaningTypeId
+      - frequencyDays
     SeasonRequest:
       type: object
       description: "Uma temporada nomeada: atalho de período (até 366 dias) para a\

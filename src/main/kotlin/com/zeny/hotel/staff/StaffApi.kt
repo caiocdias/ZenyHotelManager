@@ -29,6 +29,9 @@ interface StaffApi {
 
     /** O colaborador vinculado ao usuário (H7), ativo ou não, ou `null` se não há. */
     fun employeeOfUser(userId: UserId): EmployeeSummary?
+
+    /** Os colaboradores de [ids], ativos ou não, por id; os inexistentes ficam de fora. */
+    fun employees(ids: Collection<EmployeeId>): Map<EmployeeId, EmployeeSummary>
 }
 
 /** Id de um setor ([DepartmentSummary]). */

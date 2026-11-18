@@ -170,8 +170,21 @@ class ChecklistTemplatesService(
 @Service
 class ChecklistsApiService(
     private val directory: ChecklistDirectory,
+    private val templates: ChecklistTemplateStore,
     private val executions: ChecklistExecutionsApiService,
 ) : ChecklistsApi {
+    @Transactional(readOnly = true)
+    override fun template(id: ChecklistTemplateId): com.zeny.hotel.checklists.ChecklistTemplateSummary? =
+        templates.find(id)?.let {
+            // O resumo público; o `ChecklistTemplateSummary` deste pacote é o da listagem.
+            com.zeny.hotel.checklists.ChecklistTemplateSummary(
+                it.id,
+                it.context,
+                it.active,
+                it.publishedVersion != null,
+            )
+        }
+
     @Transactional(readOnly = true)
     override fun resolveTemplate(
         context: ChecklistContext,

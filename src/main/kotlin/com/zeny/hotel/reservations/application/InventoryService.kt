@@ -228,6 +228,7 @@ class ReservationsApiService(
     private val assignments: RoomAssignmentService,
     private val stays: StayTransitionsService,
     private val reservationQueries: ReservationQueryStore,
+    private val assignmentStore: RoomAssignmentStore,
     private val hotel: HotelApi,
     private val provisionalExpiry: ProvisionalExpiry,
 ) : ReservationsApi {
@@ -311,6 +312,10 @@ class ReservationsApiService(
 
     @Transactional(readOnly = true)
     override fun inHouse(date: LocalDate): List<ReservationId> = reservationQueries.inHouseIds(date)
+
+    @Transactional(readOnly = true)
+    override fun assignedRooms(ids: Collection<ReservationId>): Map<ReservationId, RoomId> =
+        assignmentStore.activeRooms(ids)
 
     @Transactional(readOnly = true)
     override fun chargesDue(

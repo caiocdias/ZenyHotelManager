@@ -6,6 +6,7 @@ import com.zeny.hotel.endofday.EndOfDayModule
 import com.zeny.hotel.fnrh.FnrhModule
 import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
+import com.zeny.hotel.housekeeping.HousekeepingModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
 import com.zeny.hotel.printing.PrintingModule
@@ -185,6 +186,38 @@ class ModularityTest {
             .stream()
             .map { it.targetType.name }
             .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.endofday.") }
+            .filter { !it.startsWith("com.zeny.hotel.shared.") }
+            .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `housekeeping depends only on shared, hotel, rooms, reservations, checklists, staff and notifications`() {
+        val housekeeping = modules.getModuleByName("housekeeping").orElseThrow()
+        val allowed = setOf("shared", "hotel", "rooms", "reservations", "checklists", "staff", "notifications")
+        val dependencies =
+            housekeeping
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1 (camada Operação), M6 E01: shared, hotel (a data operacional das faxinas programadas,
+        // pela HotelApi), rooms (os tipos de UH dos créditos e os locais das faxinas, pela RoomsApi) e checklists (o
+        // vínculo ao modelo, pela ChecklistsApi); desde a E02, reservations (os eventos de saída e troca de UH e a
+        // chegada prevista, pela ReservationsApi); desde a E03, staff (a escala das camareiras, pela StaffApi) e
+        // notifications (o aviso da publicação do plano do dia, pela NotificationsApi), exatamente.
+        dependencies.toSet() shouldBe allowed
+        HousekeepingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Nenhum tipo interno de outro módulo (só a raiz de cada um; verify() também barra).
+        housekeeping
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.housekeeping.") }
             .filter { !it.startsWith("com.zeny.hotel.shared.") }
             .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
             .toList() shouldBe emptyList()

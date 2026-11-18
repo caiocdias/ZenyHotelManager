@@ -84,6 +84,10 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H12 | **Decidida pelo usuário em 2026-11-13 (entrevista do fim do lote da E10):** o fechamento manual responde `201` síncrono com a execução no estado em que estiver; uma execução por data (`run_business_date_uk`) com reconciliação das etapas na retomada; os problemas transversais achados na E10 (cursor por instante sem faixa em 9 consultas, `rollbackOn` global, Jackson aceitando número/data-hora em `format: date`, log do ShedLock com a mensagem do JDBC) viram uma etapa de manutenção do M6, a criar pelo `arquiteto` antes do gate (criada em 2026-11-13: **E18**); na E11, o gatilho automático só dispara o motor e volta, sem aumentar o pool do agendador. | Mudar qualquer uma delas depois pede migração (unicidade) ou breaking change (resposta do `POST`). | E11, E12, E18 |
 | H13 | **Decidida pelo usuário em 2026-11-13 (entrevista do `arquiteto` ao criar a E18), pelas opções recomendadas:** (a) a faixa do cursor vale para as chaves de instante **e** de data (`PageCursor.instant` e `PageCursor.localDate`), o que cobre 15 consultas: as 9 por instante da E10 e mais 6 por data (`EndOfDayQueries` na lista de execuções, `ReservationQueries`, `RoomAssignments`, `TraceService`, `OutOfOrderService` e `Scheduling`), conferidas no código em 2026-11-13; (b) a leitura estrita vale para `format: date` **e** `format: date-time`: número (epoch) ou data-hora num campo de data, e número num campo de instante, são recusados; (c) o mapeador é um só: os payloads dos comandos offline também ficam estritos, e um comando fora do formato vira `REJECTED` com código, registrado e não descartado (RN-22). **Decidido pelo `arquiteto`:** a faixa vive no `PageCursor` (`shared`), e a validação local do `endofday` sai; o tratador de erro é o do agendador da aplicação, não um por job. Registrado na ARCHITECTURE §5, §7, §11 e §13. | Voltar atrás é só configuração. Nenhum cliente está em produção, então apertar a entrada agora não quebra ninguém. | E18 |
 | H14 | **Decidida pelo usuário em 2026-11-15 (entrevista do fim do lote da E17), pelas opções recomendadas:** (a) as escritas `restrict`, `lift-restriction` e `merge` do `guests` mantêm `oneOf: [GuestResponse, GuestWriteSummaryResponse]` sem discriminador (com o ogen, os clientes recebem `JsonElement` nessas três operações); (b) o corpo mínimo é `{id, restricted}`, com a versão no `ETag`. Regra registrada pelo `arquiteto` em 2026-11-15 na ARCHITECTURE §7, linha "Resposta que varia com a permissão" (`oneOf` sem discriminador, ramos disjuntos pelo `required`, sem `additionalProperties: false`, mesmo media type, decisão no caso de uso). | Trocar por discriminador pede uma propriedade nova no `GuestResponse` de todas as operações de perfil; tirar `restricted` do mínimo é remoção de campo obrigatório (`ERR`). | E17 |
+| H15 | **Decidida pelo usuário em 2026-11-17 (entrevista de abertura do lote), pela opção recomendada:** a execução anterior concluiu a E18 e a E01 e deixou a E02 `#em-andamento` (2026-11-15 e 16) numa branch `roadmap/m6-operacao-fechamento` local que nunca foi enviada ao remoto. Ela se perdeu com a troca da distro WSL: a `main` e o `origin` estão em `5e06f16`, em que as duas etapas seguem `#pendente`. A E18, a E01 e as seguintes são **refeitas a partir da `main`**, com as notas do brain como referência (Estado por marco, "M6 E18" e "M6 E01", e as notas de tema citadas lá), para o comportamento sair igual ao já documentado, salvo decisão nova registrada no handoff. Se a branch antiga reaparecer, ela é descartada. | As notas do brain descrevem commits que não existem; a captura de cada etapa refeita diz que o texto dela substitui o da branch perdida. | E18, E01, E02 |
+| H16 | **Decidida pelo usuário em 2026-11-17 (entrevista de abertura do lote), pela opção recomendada:** no `housekeeping`, uma referência inexistente no corpo (tipo de UH, modelo de checklist, local, tipo de limpeza) dá **`400` com código `…UNKNOWN_…`**, o padrão do projeto (`UNKNOWN_FOLIO`, `UNKNOWN_GUEST`, `UNKNOWN_RATE_PLAN`), e não `422`. Isso substitui o "`422`" do critério da E01 para crédito com tipo de UH inexistente, e a D8 da execução perdida. O modelo de checklist de contexto incompatível continua `422` (violação de regra). | Os SDKs tratam a referência inexistente de um jeito só; voltar a `422` depois é breaking change. | E01 e as etapas do `housekeeping` |
+| H17 | **Decidida pelo orquestrador em 2026-11-18 (autorização noturna do usuário), pela opção recomendada da revisão de arquitetura do plano da E03:** a prioridade de *early check-in* da RF-GOV-03 fica **adiada**. O `reservations` não guarda pedido de early nem hora prevista de chegada, e a E03 cumpre o critério "chegadas e early vêm primeiro" só para as chegadas. O `arquiteto` decide a etapa que leva o dado ao `reservations` e devolve o early à sugestão. Alternativa descartada: bloquear a E03 até o `reservations` ter o dado. | Sem o early, uma UH com early check-in pedido é distribuída como uma chegada comum. | E03 e a etapa futura do `reservations` |
+| H18 | **Decidida pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a E04 **não cabe** no formato de até 3 fatias de ~60 min (revisão de arquitetura do plano `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, rodada 0 bloqueada com 1 Crítico e 8 Importantes) e volta a `#pendente` para o `arquiteto` dividi-la (sugestão: E04a máquina de estados, ações online e conclusão; E04b comandos offline, conflito RN-22 e feed); (b) **conflito RN-22**: o comando offline de quem foi dona da tarefa e a perdeu (reatribuída, desatribuída ou cancelada) só é **registrado e sinalizado** (o que A fez, inclusive as respostas do checklist), sem mudar a tarefa nem a UH, e a governanta resolve; um **histórico de posse** distingue esse caso do de quem nunca foi dona, que é recusado (`403`/`REJECTED`); (c) a `notes` da avulsa **fica fora do feed** offline (RN-13, regra "nada de texto livre no feed"); (d) concluir tarefa numa UH já Limpa ou Inspecionada **não mexe na UH** (só tarefa e checklist). | A divisão muda o índice e as dependências do M6 (E05 e E06 dependem da E04). | E04 (e as que dependem dela) |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
 
@@ -100,7 +104,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
-- [ ] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
+- [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -195,15 +199,15 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #pendente | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
+| E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
 
 **Governança**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Tipos de limpeza, créditos e faxinas programadas | #pendente | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
-| E02 | Geração automática de tarefas | #pendente | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
-| E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
+| E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
+| E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
+| E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E04 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
@@ -705,7 +709,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E18 — Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs — #pendente
+## E18 — Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs — #concluida
 
 **Objetivo:** resolver no `shared`, para todos os módulos, os quatro problemas transversais achados na E10 (nenhum foi introduzido por ela): (1) chave de data ou de instante do cursor fora do alcance do PostgreSQL dá 500 em vez de `400 INVALID_CURSOR`; (2) uma exceção *checked* que escapa de um caso de uso confirma a transação, e a escrita fica sem trilha; (3) campos de data e de instante aceitam formatos fora do ISO-8601 da ARCHITECTURE §7; (4) a falha de um job, inclusive a da trava do ShedLock com o banco fora, é logada com a mensagem do JDBC.
 
@@ -729,18 +733,18 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] **Cursor, unidade:** `PageCursor.instant` e `PageCursor.localDate` aceitam os extremos do `timestamptz` e do `date` do PostgreSQL e recusam com `INVALID_CURSOR` o valor imediatamente fora de cada extremo (teste do `PageCursor`).
-- [ ] **Cursor, consultas:** em cada uma das 15 consultas do escopo, um cursor bem formado com a chave fora da faixa dá `400 INVALID_CURSOR` e não 500 (teste pelo endpoint que expõe a consulta, ou pelo serviço quando ela não tiver endpoint). Teste vermelho antes da correção em pelo menos uma consulta por instante e uma por data.
-- [ ] **Cursor, `endofday`:** `EndOfDayQueries` não tem validação própria de faixa, e os testes de cursor das pendências da E10 continuam passando.
-- [ ] **Transação:** um caso de uso de teste `@Transactional` + `@Audited` que grava e lança uma exceção *checked* não deixa nem a escrita nem a entrada de trilha. O teste fica vermelho com a configuração de antes e verde com a nova.
-- [ ] **Transação, exceções explícitas:** um `noRollbackFor` continua confirmando a transação com `ALL_EXCEPTIONS` (teste novo), e os testes atuais de login com falha, refresh, aprovação recusada e `files` passam.
-- [ ] **Transação, inventário:** o handoff lista cada caminho com exceção *checked* dentro de `@Transactional` e diz, em cada um, que nada dependia do commit ou qual ajuste foi feito.
-- [ ] **Datas:** no `POST /api/v1/end-of-day/runs` e em pelo menos outro endpoint com `LocalDate` no corpo, `businessDate` em número (`20405`) e em data-hora (`"2026-11-13T00:00:00"` e `"2026-11-13T00:00:00Z"`) dão `400 VALIDATION_FAILED` com o erro no campo, e `"2026-11-13"` continua aceito.
-- [ ] **Instantes:** num corpo de entrada com `Instant`, número (epoch em segundos e em milissegundos) dá `400 VALIDATION_FAILED` no campo, e o ISO-8601 com `Z` continua aceito.
-- [ ] **Mapeador:** um teste sobre o mapeador do contexto da aplicação (não um montado no teste) recusa os mesmos formatos para `LocalDate` e `Instant`.
-- [ ] **Offline:** um comando offline com data em número volta `REJECTED`, com código, e fica registrado; com data ISO, é aplicado.
-- [ ] **Jobs:** um job agendado real, com o `LockProvider` falhando com uma exceção cuja mensagem e cuja causa levam um valor sentinela, gera log (saída capturada) com a classe da exceção e sem o sentinela em lugar nenhum. Teste vermelho antes da correção.
-- [ ] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa mudança `ERR` em `/api/v1`.
+- [x] **Cursor, unidade:** `PageCursor.instant` e `PageCursor.localDate` aceitam os extremos do `timestamptz` e do `date` do PostgreSQL e recusam com `INVALID_CURSOR` o valor imediatamente fora de cada extremo (teste do `PageCursor`).
+- [x] **Cursor, consultas:** em cada uma das 15 consultas do escopo, um cursor bem formado com a chave fora da faixa dá `400 INVALID_CURSOR` e não 500 (teste pelo endpoint que expõe a consulta, ou pelo serviço quando ela não tiver endpoint). Teste vermelho antes da correção em pelo menos uma consulta por instante e uma por data.
+- [x] **Cursor, `endofday`:** `EndOfDayQueries` não tem validação própria de faixa, e os testes de cursor das pendências da E10 continuam passando.
+- [x] **Transação:** um caso de uso de teste `@Transactional` + `@Audited` que grava e lança uma exceção *checked* não deixa nem a escrita nem a entrada de trilha. O teste fica vermelho com a configuração de antes e verde com a nova.
+- [x] **Transação, exceções explícitas:** um `noRollbackFor` continua confirmando a transação com `ALL_EXCEPTIONS` (teste novo), e os testes atuais de login com falha, refresh, aprovação recusada e `files` passam.
+- [x] **Transação, inventário:** o handoff lista cada caminho com exceção *checked* dentro de `@Transactional` e diz, em cada um, que nada dependia do commit ou qual ajuste foi feito.
+- [x] **Datas:** no `POST /api/v1/end-of-day/runs` e em pelo menos outro endpoint com `LocalDate` no corpo, `businessDate` em número (`20405`) e em data-hora (`"2026-11-13T00:00:00"` e `"2026-11-13T00:00:00Z"`) dão `400 VALIDATION_FAILED` com o erro no campo, e `"2026-11-13"` continua aceito.
+- [x] **Instantes:** num corpo de entrada com `Instant`, número (epoch em segundos e em milissegundos) dá `400 VALIDATION_FAILED` no campo, e o ISO-8601 com `Z` continua aceito.
+- [x] **Mapeador:** um teste sobre o mapeador do contexto da aplicação (não um montado no teste) recusa os mesmos formatos para `LocalDate` e `Instant`.
+- [x] **Offline:** um comando offline com data em número volta `REJECTED`, com código, e fica registrado; com data ISO, é aplicado.
+- [x] **Jobs:** um job agendado real, com o `LockProvider` falhando com uma exceção cuja mensagem e cuja causa levam um valor sentinela, gera log (saída capturada) com a classe da exceção e sem o sentinela em lugar nenhum. Teste vermelho antes da correção.
+- [x] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa mudança `ERR` em `/api/v1`.
 
 **Validação obrigatória:**
 
@@ -763,16 +767,83 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-17-m6-operacao-fechamento-e18.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). Na rodada 0 foi bloqueada por 6 Importantes: `Riscos:` incompleto, dependência da Task 2, critérios sem verificação, tamanho das fatias, a decisão (f) contrária à convenção do `defaultCandidate = false` e decisões transversais sem registro na ARCHITECTURE.
+- **Refação (H15):** a execução anterior da E18 se perdeu com a branch (troca da distro WSL). Esta execução partiu da mesma base `5e06f16` e reproduz o comportamento documentado no brain. A única diferença intencional é a decisão (f), abaixo.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `83f54fc` (início) a `626de72`.
+  - Task 1 (faixa do cursor): `d865e23` (desenvolvedor).
+  - Task 2 (datas estritas): `1cc28cc` (desenvolvedor).
+  - Task 3 (rollback e log dos jobs): `f6268a1` e `fda61ff` (desenvolvedor).
+  - Testador da etapa: `626de72`, só `src/test`.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`. A Task 1 foi aprovada com 3 Menores; a Task 2, com 3 Menores; a Task 3, com 1 Importante de teste (controle positivo da trilha), resolvido pelo testador, e 4 Menores.
+- Entregue:
+  - **Faixa do cursor:** `com.zeny.hotel.shared.StorableRange` vai de `-4712-01-01` a `+5874897-12-31` nas datas e de `-4712-01-01T00:00:00Z` a `+294276-12-31T23:59:59.999999Z` nos instantes, com os extremos inclusivos. `PageCursor.instant`/`localDate` recusam o que fica fora com `400 INVALID_CURSOR`. As 15 consultas e as pendências do `endofday` passam por eles. A validação local do `endofday` saiu, e `checkNoRun` usa o `StorableRange`. A ARCHITECTURE §7 e a §11 registram o piso efetivo do pgjdbc.
+  - **Datas estritas:** `shared/infrastructure/json/StrictDateTimeJson.kt`, um `JsonMapperBuilderCustomizer` com `leniency=false` e o `IsoText` em `LocalDate` (`ISO_LOCAL_DATE`, com ano com sinal) e em `Instant` (`ISO_INSTANT`). Aceita só texto, sem espaço nas pontas. Número, epoch, data-hora numa data, array, objeto e `""` dão `400 VALIDATION_FAILED` com `INVALID_FORMAT` no campo, com o caminho completo. Um comando offline fora do formato volta `REJECTED COMMAND_PAYLOAD_INVALID` e não é guardado. A ARCHITECTURE §7 registra a regra do `""`.
+  - **Rollback:** `rollbackOn = RollbackOn.ALL_EXCEPTIONS` em `TransactionOrderingConfiguration`. Os 5 `noRollbackFor` seguem confirmando, e as transições do `endofday` perderam o `rollbackFor = Throwable`. A ARCHITECTURE §5, item 6, registra a transação unida: uma *checked* engolida dentro dela leva a `UnexpectedRollbackException` no commit externo.
+  - **Log dos jobs:** `shared/infrastructure/scheduling/ScheduledJobErrors.kt` (`JobErrorLoggingTaskScheduler`, bean `taskScheduler` com `defaultCandidate = false`, montado pelo `ThreadPoolTaskSchedulerBuilder`). O formato é `Job Classe.método falhou: Classe[ <- Causa…]`, sem mensagem, sem stack e sem suprimidas, com proteção contra ciclo. O logger `JdbcTemplateStorageAccessor` fica em `OFF`. A ARCHITECTURE §13 registra (d) e (f).
+- **Inventário dos caminhos com exceção *checked* dentro de `@Transactional`** (critério da etapa; detalhe no relatório da Task 3): **nenhum caminho dependia do commit, e nada foi ajustado.**
+  - `noRollbackFor`: `Authentication.kt:80` e `:124`, `TokenRefreshService.kt:43`, `Approvals.kt:117` e `FilesService.kt:236` seguem confirmando (teste e suítes `iam`/`files`).
+  - `printing`: `HtmlPdfRenderer.render` (`SAXException`/`IOException`). O `pdf(...)` é `readOnly`, e o `print(...)` renderiza antes da única escrita. Antes confirmava uma transação vazia; agora desfaz uma vazia.
+  - `shared`: as cifras capturam `GeneralSecurityException`. `IdempotencyFilter` e `OfflineCommands` gravam por `TransactionTemplate`, que desfaz em qualquer `Throwable`. `StreamController`/`RealtimeHub` ficam fora de transação.
+  - `files`: `S3FileStorage.kt:183` (`URISyntaxException`) é alcançado por `FilesService.downloadUrl`, sem escrita antes. O reencode do `upload` captura `IOException`.
+  - `MessageDigest.getInstance("SHA-256")` em 6 lugares: inalcançável.
+  - `notifications`: `FcmPushGateway.requestAccessToken` não captura `JOSEException` de `SignedJWT.sign`. É pendência do `arquiteto` já registrada; o ouvinte não tem escrita própria.
+  - `fnrh`: envio fora de transação; o alerta vai em `afterCommit` com transação própria.
+  - `endofday`: o motor roda sem transação, e as transições têm transação própria.
+  - Jobs (`ProvisionalExpiry`, `InventoryHorizonJob`, `GuestDocumentRekeyJob`, `FileOrphanPurgeJob`): transação própria por item, sem transação externa.
+  - `iam`: `JwtEncodingException` é não-checada.
+  - Há **14** `@Scheduled` em `src/main`; o roadmap e a nota de jobs dizem 15. Pelo critério `Exception`/`Throwable`/`RuntimeException`/`runCatching`, há 25 `catch` amplos; a nota de auditoria dizia 83, por outro critério. Nenhum engole uma *checked* vinda de um proxy na mesma transação.
+- Revisão final: `revisor-seguranca` (opus) sobre `be3ecf3..626de72`, "Ready to merge? Yes", 0 Crítico e 0 Importante. Os 6 Menores ficaram sem correção (abaixo).
+- Verificação:
+  - **Gate:** `./gradlew build` em `626de72` → BUILD SUCCESSFUL em 15m 7s, com 4095 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit).
+  - **oasdiff:** "No changes detected" e nenhuma mudança `ERR` em `/api/v1`; o contrato não mudou.
+  - **Scanner:** `osv-scanner` 2.7.1 com `-L` em `gradle.lockfile` (426 pacotes) e `buildscript-gradle.lockfile` (74). Resultado: 0 Critical/High, 2 Medium e 3 Low, todos anteriores à etapa (`commons-lang3` 3.16.0 só no buildscript, `logback-core` 1.3.16 só no ktlint, `opentelemetry-api` 1.62.0 aceito até a M8 E17). Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base be3ecf3` → exit 0, sem apontamento. Em cada fatia, também exit 0.
+  - **Ambiente:** antes do gate, o baseline da `main` estava vermelho nesta máquina, com 12 falhas no `endofday`. A causa era o relógio do WSL saltando ±25 s (o `systemd-timesyncd` brigando com a hora do Windows, atrasada). O usuário desligou o `systemd-timesyncd` em 2026-11-17; não houve mudança de código.
+- Critérios verificados:
+  - **Cursor, unidade:** `PaginationTest`, com os extremos exatos e os vizinhos de fora, inclusive a fração abaixo do µs acima do teto.
+  - **Cursor, consultas:** `CursorKeyRangeApiTest`, com as 15 consultas e as pendências do `endofday`. O vermelho antes da correção apareceu nas 15: `200` com página vazia abaixo do piso e `500` acima do teto.
+  - **Cursor, `endofday`:** o grep de `requireStorable|MIN_STORABLE|MAX_STORABLE` em `src/main` sai vazio, e os testes de cursor da E10 estão verdes.
+  - **Transação:** `RollbackOnAllExceptionsTest` (1), com o vermelho `expected:<0> but was:<1>` e o controle positivo `trailEntriesWith == 1`.
+  - **Transação, exceções explícitas:** `RollbackOnAllExceptionsTest` (2) e as suítes `iam.*`/`files.*`.
+  - **Transação, inventário:** o inventário acima.
+  - **Datas:** `StrictDateTimeJsonApiTest`, com `businessDate` (`POST /end-of-day/runs`, usuário sem permissão, H10) e `dueOn` dos recados.
+  - **Instantes:** `StrictDateTimeJsonApiTest`, com `expiresAt` da pré-autorização.
+  - **Mapeador:** `StrictDateTimeJsonMapperTest`, sobre o `JsonMapper` do contexto, com aninhado, lista, extremos, `null`, ausente e datas que não existem no calendário.
+  - **Offline:** `OfflineSyncTest`, com número rejeitado sem efeito e a mesma recusa no reenvio; com ISO, é aplicado.
+  - **Jobs:** `ScheduledJobErrorLogTest`, com o job real `IdempotencyKeyPurgeJob.purgeExpiredKeys` e a trava falhando com sentinela na mensagem e na causa. O vermelho vinha do `TaskUtils$LoggingErrorHandler`. Cobre também falha no corpo, `Error`, `toString()` que lança, agendador único, prefixo `scheduling-` e ouvinte no `applicationTaskExecutor`.
+  - **Contrato:** `checkOpenApi` (no gate) e oasdiff acima.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **(a)** O piso da faixa é `-4712-01-01` (limite do pgjdbc), e não `-4713-11-24`.
+  - **(b)** "Registrado" no comando offline (H13 c) é lido como "devolvido com `REJECTED COMMAND_PAYLOAD_INVALID`, nunca descartado em silêncio", sem guardar a recusa. O texto do critério dizia "fica registrado". Guardar a recusa mudaria o protocolo da §9.
+  - **(c)** A leitura estrita vai além do mínimo: recusa também array, epoch em texto, texto sem `T` num instante e espaço nas pontas. **`""` numa data ou num instante opcional passou a dar `400 INVALID_FORMAT`**; antes virava `null`. **Avisar o front desktop:** para "sem valor", omitir o campo ou mandar `null`.
+  - **(d)** O logger `JdbcTemplateStorageAccessor` fica em `OFF`. O custo é que o "Unlock failed after 10 attempts" também some. A alternativa é um filtro que descarte só os eventos com exceção.
+  - **(e) Regressão conhecida e aceita:** um recado gravado com `dueOn` = `+999999999-12-31` vira `infinity` e é relido como `LocalDate.MAX`. O cursor seguinte é recusado com `400 INVALID_CURSOR`, e o resto da lista fica inalcançável; antes da E18, a paginação seguia. Exige uma data absurda posta de propósito. A correção é recusar no corpo o que estiver fora do `StorableRange`.
+  - **(f) Decisão nova (rodada 0 da revisão de arquitetura), que substitui o `spring.task.execution.mode: force` da execução perdida:** o `taskScheduler` tem `defaultCandidate = false`, a convenção do `EndOfDayExecutionConfiguration`. No Boot 4.1.2, o `applicationTaskExecutor` continua sendo criado, e o Boot não monta um segundo agendador. Deixam de existir os dois `Executor` padrão que o `force` deixava.
+  - **(g)** Um instante continua aceitando deslocamento diferente de `Z` e `t`/`z` minúsculos (`ISO_INSTANT`); o roadmap põe isso fora de escopo.
+- Notas para a próxima etapa:
+  - **Para o `arquiteto`** (etapa de manutenção sugerida):
+    - recusar no corpo as datas e os instantes fora do `StorableRange`. Resolve a (e) e o `500` com `dueOn` `+5874898-01-01`;
+    - datas e instantes em **query string** seguem lenientes: aceitam o formato curto do locale (`13/11/25`) e epoch em ms num instante. Fora do alcance, por cima, dá `500` (`traces`, `audit-entries`, `card-pre-authorizations/expiring`); abaixo do piso, `-infinity`, sem erro. Não há `@PathVariable` de data;
+    - a chave de `Map` de data ou instante segue leniente (o `KeyDeserializer` não é coberto). Hoje não há DTO de entrada com isso;
+    - `LocalTime`, `LocalDateTime` e `OffsetDateTime` não entram na leitura estrita;
+    - quatro jobs ainda logam a própria falha com a mensagem (`OutboxMetrics.kt:74`, `FileOrphanPurgeJob`, `ProvisionalReservations`, `InventoryHorizonJob`);
+    - `JOSEException` sem captura em `FcmPushGateway.requestAccessToken`;
+    - trocar o `OFF` do ShedLock por um filtro (d).
+  - **Operação:**
+    - manter `/actuator/scheduledtasks` fora da exposição: o Spring guarda o `Throwable` da última execução de cada `@Scheduled`, com a mensagem;
+    - ao subir o ShedLock, rever o `KeepAliveLockProvider`, que no `master` loga a exceção.
+  - **Menores restantes da revisão final:**
+    - a cadeia de causas não tem teto (`ScheduledJobErrors.kt:92-98`);
+    - comentários em `CursorKeyRangeApiTest.kt:78` (400 antes de 404) e `:112` ("o banco arredonda" não demonstrado);
+    - KDoc do `StrictDateTimeJson` sem o limite da chave de mapa;
+    - `?` em `problem["code"]` no `StrictDateTimeJsonApiTest`;
+    - fim de linha na afirmação da trava em `ScheduledJobErrorLogTest.kt:73-75`.
+  - **Processo:** nesta máquina, o `systemd-timesyncd` precisa ficar desligado. Com ele ligado, os testes de prazo do `endofday` caem em cascata.
+- Capturas do brain: `00 Inbox/2026-11-17 - ZenyHotelManager - atualização m6-operacao-fechamento E18 (refação) - 6f1c16c9.md`.
 
 ---
 
-## E01 — Tipos de limpeza, créditos e faxinas programadas — #pendente
+## E01 — Tipos de limpeza, créditos e faxinas programadas — #concluida
 
 **Objetivo:** criar o módulo `housekeeping` com a configuração de tipos de limpeza (RF-GOV-01) — créditos por tipo de UH, modelo de checklist, exigência de inspeção, prioridade padrão e regra de troca de enxoval — e de faxinas programadas por UH ou área (RF-GOV-10).
 
@@ -786,12 +857,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] CRUD de `CleaningType` com créditos por tipo de UH, modelo de checklist, `requiresInspection`, prioridade e regra de troca de enxoval, coberto por testes de integração.
-- [ ] Crédito para tipo de UH inexistente → `422` com `code` estável; modelo de checklist de contexto incompatível → `422`.
-- [ ] CRUD de `ScheduledCleaning` calcula a próxima data a partir da frequência.
-- [ ] Carga inicial cria os tipos da SPEC, com turndown desativado.
-- [ ] Escrita exige permissão e é auditada.
-- [ ] `ModularityTest`, build, testes e verificação do contrato passam.
+- [x] CRUD de `CleaningType` com créditos por tipo de UH, modelo de checklist, `requiresInspection`, prioridade e regra de troca de enxoval, coberto por testes de integração.
+- [x] Crédito para tipo de UH inexistente → `422` com `code` estável (**substituído pela H16:** `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE`); modelo de checklist de contexto incompatível → `422`.
+- [x] CRUD de `ScheduledCleaning` calcula a próxima data a partir da frequência.
+- [x] Carga inicial cria os tipos da SPEC, com turndown desativado.
+- [x] Escrita exige permissão e é auditada.
+- [x] `ModularityTest`, build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -810,16 +881,100 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-17-m6-operacao-fechamento-e01.md`, com 3 fatias.
+  - Revisão de arquitetura (`revisor-arquitetura`, opus): aprovada com notas na rodada 1.
+  - Na rodada 0, foi bloqueada por 4 Importantes: o `ModularityTest` da Task 1 dependia de usos das Tasks 2 e 3; havia critérios sem comando; a Task 3 tinha Áreas e dependência incompletas; e `Riscos:` não citava a migração nem o piso do `lastDoneOn`.
+- **Refação (H15):** a execução anterior desta etapa se perdeu com a branch. Esta execução refaz o comportamento da nota do brain `ZenyHotelManager - Módulo housekeeping`, com uma diferença: a D8 foi substituída pela H16, de modo que referência inexistente no corpo dá `400 …UNKNOWN_…`.
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `327f897` (início e plano) a `83a5839`.
+  - Task 1 (módulo, tipos e créditos): `fe971a7` e `4da1643` (desenvolvedor; a guarda de NUL foi para o `PageCursor.string`, ruling); `5e49b34` (testador, `AuthorizationTest`); `a8de977` (rodada 1: `@NotNull` nos créditos e frase do PUT).
+  - Task 2 (vínculo ao checklist): `978c668`.
+  - Task 3 (faxinas programadas): `72c3602`.
+  - Testador da etapa: `df82fad`.
+  - Correção final: `83a5839` (`credits` obrigatório).
+- **Entregue:**
+  - **Módulo** `com.zeny.hotel.housekeeping`, que declara `["shared", "hotel", "rooms", "checklists"]` (subconjunto da linha §3.1, sem aresta nova).
+  - **Schema** `housekeeping`, com as migrações `V2026_11_17_1000__create_cleaning_types.sql`, `V2026_11_17_1001__grant_cleaning_types_to_app_role.sql`, `V2026_11_17_1002__create_scheduled_cleanings.sql` (inclui o trigger `cleaning_type_system_key_never_changed`) e `V2026_11_17_1003__grant_scheduled_cleanings_to_app_role.sql`.
+    - Tabelas `cleaning_type`, `cleaning_type_credit` e `scheduled_cleaning`.
+    - Trigger `refuse_delete` nas duas tabelas que só se desativam; DELETE só em `cleaning_type_credit`.
+    - Índices únicos parciais `cleaning_type_system_key_uk` e `scheduled_cleaning_active_uk` (`NULLS NOT DISTINCT WHERE active`).
+  - **Carga D5:** `CHECKOUT`, `STAYOVER`, `TOUCH_UP`, `DEEP_CLEAN` e `PRE_ARRIVAL` ativos, e `TURNDOWN` inativo (H9). O código de cada um é igual à `key`, e a `key` é imutável em três níveis: `updatable=false`, índice e trigger.
+  - **API `/api/v1/cleaning-types`:**
+    - `GET` com cursor (`code`, `id`) e filtro `active`; `GET /{id}` com `ETag`;
+    - `POST` (`201`, `Location`, `ETag`) e `PUT` com `If-Match`;
+    - `/deactivate` e `/reactivate`.
+    - A resposta traz `key` (`x-extensible-enum`) e `missingCreditRoomTypeIds`.
+  - **API `/api/v1/scheduled-cleanings`:**
+    - `GET` com cursor (`nextDueOn`, `id`) e filtro `active`; `GET /{id}`;
+    - `POST`, e `PUT`, que muda só o tipo e a frequência;
+    - `/deactivate` e `/reactivate`.
+    - Nenhuma das duas APIs tem `DELETE`.
+  - **Regras:**
+    - D1: vínculo opcional a modelo de checklist `HOUSEKEEPING` ativo e publicado, conferido só quando o vínculo é novo.
+    - D6: `missingCreditRoomTypeIds`.
+    - D7: `nextDueOn`.
+    - Faixas: prioridade 1–5, enxoval 1–60 ou nulo, `credits` 1–100, até 200 por corpo, frequência 1–365.
+    - `lastDoneOn` acima da data operacional dá `422`; abaixo de `-4712-01-01` dá `400 VALIDATION_FAILED INVALID_VALUE`.
+    - Trava sempre na ordem faxina → tipo (`FOR NO KEY UPDATE`), e a desativação do tipo com faxina ativa dá `422`.
+  - **`ChecklistsApi.template(id)`:** nova, devolve `ChecklistTemplateSummary(id, context, active, published)`.
+  - **Permissões e auditoria:** `housekeeping.config.read` e `housekeeping.config.manage`, só `ALL`, nos modelos Gerente e Governanta, com a autorização antes de qualquer recusa que revele estado. Trilha `housekeeping.cleaning-type.*` e `housekeeping.scheduled-cleaning.*`.
+  - **`shared`:** `PageCursor.string` recusa chave com NUL (`400 INVALID_CURSOR`). Vale para todas as listas por texto, que antes davam 500.
+- **Revisões:**
+  - Task 1: 1 Importante (item `null` em `credits`). Na rodada 1, constatou-se que o Jackson Kotlin já recusa com 400; o `@NotNull` ficou como defesa, com teste. A re-revisão aprovou.
+  - Tasks 2 e 3: aprovadas só com Menores.
+  - Revisão final (`revisor-seguranca`, opus, `c312b25..72c3602`): "Ready to merge? Yes", 0 Crítico e 0 Importante.
+  - Rodada única de correção: o Menor 1 (PUT sem `credits` apagava os créditos em silêncio) virou `400 REQUIRED`.
+  - Re-revisão escopada (`72c3602..83a5839`, com os testes do testador): aprovada.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `83a5839` → BUILD SUCCESSFUL em 15m 9s, com 4170 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit). Antes da correção, o mesmo em `72c3602`: 4157 testes, 0 falhas.
+  - **oasdiff:** sem breaking change; o contrato só ganhou caminhos e schemas.
+  - **Scanner:** `osv-scanner` 2.7.1, 426+74 pacotes, 0 Critical/High, 2 Medium e 3 Low, todos anteriores à etapa. Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base c312b25` → exit 0, sem apontamento, também em cada fatia.
+- **Critérios verificados:**
+  - (1) CRUD de tipos: `CleaningTypesApiTest`, `CleaningTypesChecklistLinkTest`, `CleaningTypesBoundaryTest` e `CleaningTypesChecklistLinkRefusalTest`.
+  - (2) Referências e regras:
+    - crédito para tipo de UH inexistente dá `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (H16 substitui o "`422`" do critério);
+    - modelo de contexto incompatível dá `422 CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE`;
+    - modelo inativo ou não publicado dá `422`;
+    - modelo inexistente dá `400 CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE`.
+  - (3) `nextDueOn`: `ScheduledCleaningsApiTest`, `ScheduledCleaningsAttackTest` e `ScheduledCleaningDomainTest`. A corrida tipo × faxina está em `ScheduledCleaningsTypeLockTest` e `ScheduledCleaningsTypeSwapLockTest`, determinísticos por `pg_blocking_pids`.
+  - (4) Carga inicial: `HousekeepingSchemaTest`.
+  - (5) Permissão e auditoria: `HousekeepingPermissionsTest` e `AuthorizationTest`.
+  - (6) `ModularityTest`, `DatabaseRolesTest`, gate e `checkOpenApi`.
+- **Decisões para o usuário** (tomadas pela opção recomendada, revisáveis):
+  - **H16 (decidida pelo usuário):** `400 …UNKNOWN_…` para referência inexistente.
+  - **Herdadas da execução perdida, sem confirmação:** D1 (vínculo `0..1`), D5 (valores da carga), o limite de 200 créditos e a reativação que mantém o `nextDueOn` antigo.
+  - **Nova nesta execução:** a reativação da faxina confere também se o **local** está ativo, o que acrescenta um `422` ao `/reactivate`.
+  - **Nova nesta execução:** `credits` passou a ser obrigatório no corpo do tipo de limpeza. Omitido, dá `400`; `[]` explícito remove os créditos.
+  - **Ordem observada:** um corpo malformado (`"credits":[null]`) dá 400 antes de 403, porque a validação de forma vem antes da permissão. Isso não revela estado.
+- **Notas para a próxima etapa:**
+  - **Para a E02:**
+    - falta a porta `byKey(CleaningTypeKey)`; o índice já existe;
+    - decidir o que gerar para um tipo da carga desativado (`TURNDOWN`);
+    - filtrar `active` e ignorar local inativo ou inexistente, porque o `rooms` não desativa faxinas;
+    - não gerar uma tarefa por dia enquanto houver uma aberta;
+    - decidir o N de "UH vaga há N dias";
+    - garantir chegada acima de permanência com prioridades editadas;
+    - testes do desenvolvedor deixam faxinas ativas e válidas em UHs reais do banco compartilhado, que a varredura das vencidas vai encontrar.
+  - **Para a E04:** `ScheduledCleaning.recordDone(date)` não atualiza `updatedAt` (a versão sobe), não confere se a faxina está ativa e não limita `date` ao `StorableRange`.
+  - **Para o `arquiteto`** (manutenção transversal, como a E18):
+    - o leitor JSON global trunca número fracionário em campo inteiro (`frequencyDays: 7.5` → 7, `credits: 1.5` → 1);
+    - `""` num UUID opcional vira `null`, então um PUT com `checklistTemplateId: ""` remove o vínculo em silêncio;
+    - `40P01` (deadlock) e `55P03` (`lock_timeout`) viram 500 no `ApiExceptionHandler`. Exemplo: PUTs cruzados de faxinas no mesmo local, ou `reactivate` do tipo concorrendo com a desativação, que dá 412 sem `If-Match`;
+    - o contrato do projeto não marca `required` nos schemas de request (só em texto), então o SDK gera esses campos como opcionais;
+    - `ChecklistsApi.template` revela existência, contexto e estado de um modelo a quem tem `housekeeping.config.manage` (impacto baixo).
+  - **Menores aceitos:**
+    - o trigger da `system_key` ficou na migração das faxinas (1002) e não foi movido, por causa do checksum;
+    - a data operacional é lida sem trava na criação e no PUT da faxina;
+    - uma consulta por tipo de UH novo no corpo (até 200);
+    - validação dupla no `update` do tipo;
+    - nome qualificado repetido em `ChecklistTemplates.kt`;
+    - constantes de documentação e `HousekeepingAudit` espalhados (separar na E02);
+    - nos testes, `blockedOnCleaningType` é genérico e há `.ok()` em `finally`.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E01 (refação) - 3bd9134b.md`.
 
 ---
 
-## E02 — Geração automática de tarefas — #pendente
+## E02 — Geração automática de tarefas — #concluida
 
 **Objetivo:** gerar as tarefas de governança (RF-GOV-02) a partir de saídas (`GuestCheckedOut`), troca de UH (`RoomMoved`, UH de origem), permanências e chegadas da data (ao receber `BusinessDateAdvanced`), faxinas programadas vencidas e solicitações avulsas da recepção, com créditos e prioridade do tipo de limpeza.
 
@@ -839,13 +994,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] `GuestCheckedOut` gera tarefa de saída na UH; `RoomMoved` gera tarefa na UH de origem (testes de módulo).
-- [ ] `BusinessDateAdvanced` gera permanência para UHs ocupadas, pré-chegada para UHs vagas há N dias com chegada e tarefas de faxinas programadas vencidas.
-- [ ] Reprocessar o mesmo evento não cria segunda tarefa (restrição única por UH, data e tipo).
-- [ ] UH com chegada prevista recebe prioridade maior que permanência comum.
-- [ ] `POST /api/v1/housekeeping-tasks` cria tarefa avulsa; sem permissão → `403`.
-- [ ] A tabela de tarefas não tem colunas de dados pessoais do hóspede.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `GuestCheckedOut` gera tarefa de saída na UH; `RoomMoved` gera tarefa na UH de origem (testes de módulo).
+- [x] `BusinessDateAdvanced` gera permanência para UHs ocupadas, pré-chegada para UHs vagas há N dias com chegada e tarefas de faxinas programadas vencidas.
+- [x] Reprocessar o mesmo evento não cria segunda tarefa (restrição única por UH, data e tipo).
+- [x] UH com chegada prevista recebe prioridade maior que permanência comum.
+- [x] `POST /api/v1/housekeeping-tasks` cria tarefa avulsa; sem permissão → `403`.
+- [x] A tabela de tarefas não tem colunas de dados pessoais do hóspede.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -864,16 +1019,126 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e02.md`, com 3 fatias.
+  - **Revisão de arquitetura** (`revisor-arquitetura`, opus): aprovada com notas na rodada 2.
+  - **Rodada 0:** bloqueada por 12 Importantes. Os principais:
+    - a premissa errada de que o banco compartilhado não recebe avanços;
+    - a auditoria da geração;
+    - a pré-chegada que dependia da ordem dos eventos;
+    - o `arrivalExpected` que envelhece;
+    - a D6 sem registro;
+    - a definição de "aberta".
+  - **Rodada 1:** bloqueada por 2 Importantes: a ordem B não era produzida de fato e a D10 não tinha comando.
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `2676247` (início e plano) a `c2ae72a`.
+  - **Task 1** (tarefa, lista e avulsa):
+    - `d94946b`;
+    - `b2aa044` (testador, `AuthorizationTest`);
+    - `7bbb5d6` (rodada 1: `?date=` fora do `StorableRange` dá página vazia; limite único de `notes`).
+  - **Task 2** (saída e troca de UH por evento, chegada prevista):
+    - `51c659f` (`ReservationsApi.assignedRooms` e KDoc dos eventos);
+    - `39d81bb`;
+    - `e39d11c` (rodada 1: chegada exata em data futura e leitura numa transação).
+  - **Task 3** (tarefas do dia): `c83b058`.
+  - **Testador da etapa:**
+    - `0a972c5` (contagens da trilha estreitadas em 3 testes de outros módulos);
+    - `aac73c5`;
+    - `fefec5d`;
+    - `c2ae72a`.
+  - **Correção final:** `4d75571` (I1 da revisão final).
+- **Entregue:**
+  - **Tarefa de governança `HousekeepingTask`:**
+    - nasce em `PENDING`;
+    - tabela `housekeeping.housekeeping_task` (migrações `V2026_11_18_1000` e `1001`);
+    - unicidade `(room_id, area_id, business_date, cleaning_type_id)` com `NULLS NOT DISTINCT`;
+    - CHECK `scheduled_cleaning_id` ⇔ `source = 'SCHEDULED'`;
+    - DELETE recusado;
+    - sem coluna de hóspede nem de reserva (RN-13).
+  - **API:**
+    - `GET /api/v1/housekeeping-tasks?date=…`, com cursor (`arrivalExpected` desc, `priority` desc, `id`) e filtros `roomId`, `areaId`, `status`, `cleaningTypeId` e `source`;
+    - `GET /{id}`;
+    - `POST` da avulsa (`201`; `409 HOUSEKEEPING_TASK_ALREADY_EXISTS`; `422 HOUSEKEEPING_TASK_DATE_INVALID` fora de [data operacional, +30 dias]; `422 HOUSEKEEPING_TASK_LOCATION_INACTIVE`);
+    - `status` e `source` saem como `x-extensible-enum`.
+  - **Permissões:** `housekeeping.tasks.read` e `housekeeping.tasks.request`, só `ALL`, nos modelos Gerente, Governanta e Recepção.
+  - **Listeners `@ApplicationModuleListener`** (outbox), que delegam a `HousekeepingTaskGeneration`, `@Audited("housekeeping.task.generate")` com o ator sistema e `noChanges()`:
+    - `GuestCheckedOut` e `RoomMoved` geram `CHECKOUT` na UH que ficou vaga, na data do evento;
+    - `BusinessDateAdvanced` gera, nesta ordem (D11): as programadas vencidas, as permanências e as pré-chegadas.
+  - **Avanço atrasado:** o listener ignora o avanço atrasado com `WARN` (D10).
+  - **`ReservationsApi.assignedRooms(ids)`:** alocação vigente, em lote. O KDoc dos eventos de reserva deixou de citar a governança como ouvinte, exceto em `GuestCheckedOut` e `RoomMoved` (D6).
+  - **Propriedade:** `zeny.housekeeping.pre-arrival-after-days: 3`, validada entre 1 e 30.
+  - **Módulo:** passa a declarar `["shared", "hotel", "rooms", "reservations", "checklists"]`.
+- **Revisões:**
+  - **Task 1:** 1 Importante, `?date=` fora do alcance dava 500, corrigido na rodada 1.
+  - **Task 2:** 1 Importante, a avulsa futura marcada com chegada de outra data, corrigido na rodada 1.
+  - **Task 3:** 2 Importantes de teste (contagens globais da trilha e idempotência parcial), resolvidos pelo testador.
+  - **Revisão final** (`revisor-seguranca`, opus, `78a3630..c83b058`): "With fixes", com 0 Crítico. O I1 era uma `STAYOVER` indevida no dia do check-in quando a geração do dia roda atrasada, somada à corrida `inHouse`/`pendingDepartures`. Foi corrigido em `4d75571`.
+  - **Re-revisão escopada** (`c83b058..c2ae72a`): aprovada. O apontamento `DEV_TESTE_DO_TESTADOR` foi justificado: o desenvolvedor mudou só a montagem de testes dele, com as asserções iguais.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `c2ae72a` → BUILD SUCCESSFUL em 16m 6s, com 4239 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit, árvore limpa). Antes da correção, em `c83b058`: 4232 testes, 0 falhas.
+  - **oasdiff:** sem breaking change; o contrato só ganhou caminhos e schemas.
+  - **Scanner:** `osv-scanner` 2.7.1, 426+74 pacotes. Resultado: 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base 78a3630` → exit 1, com um apontamento `DEV_TESTE_DO_TESTADOR` justificado (acima). Em cada fatia, exit 0.
+- **Critérios verificados:**
+  - **(1) Saída e troca de UH:** `HousekeepingCheckoutTasksTest`. `GuestCheckedOut` gera `CHECKOUT` na UH, e `RoomMoved` gera a tarefa na UH de origem, por check-out e troca reais com espera do listener.
+  - **(2) Tarefas do dia** (`HousekeepingDailyTasksTest` e `HousekeepingEndOfDayTasksTest`):
+    - permanência para quem chegou antes da data e não sai nela;
+    - pré-chegada para UH vaga, não Suja, fora de OOO, com chegada e sem tarefa nos últimos 3 dias;
+    - programadas vencidas, sem tarefa aberta, com local ativo e fora de OOO/OOS;
+    - avanço real no banco isolado.
+  - **(3) Reprocessar não duplica:**
+    - entrega repetida e 4 entregas simultâneas do mesmo check-out;
+    - `generateForDate` em dobro;
+    - restrição única.
+  - **(4) Prioridade de chegada:** `arrivalExpected` e a ordem da lista, em `HousekeepingTaskGenerationTest` (prioridade editada, com portas falsas) e na lista do dia.
+  - **(5) Avulsa e permissões:** `POST` cria a avulsa, e sem permissão dá `403` antes de qualquer recusa. Testes `HousekeepingTasksApiTest`, `HousekeepingTasksAttackTest` e `HousekeepingTaskPermissionsTest`.
+  - **(6) Sem dado pessoal:** a tabela não tem coluna de dado pessoal (`HousekeepingTaskSchemaTest`), e a trilha da geração também não leva nenhum.
+  - **(7)** Gate e `checkOpenApi` acima.
+- **Decisões para o usuário** (tomadas pelo orquestrador pela opção recomendada, sob a autorização da noite de 2026-11-17; todas revisáveis):
+  - **D1:** tipo por origem pela `key`. Se o tipo estiver inativo, a origem não gera tarefa.
+  - **D2:** créditos do tipo para o tipo da UH; sem crédito ou numa área, 0.
+  - **D3:** pré-chegada para UH vaga **e não Suja**, com N = 3 dias. A janela é (D-N, D]. Uma programada gerada no mesmo dia barra a pré-chegada.
+  - **D4:** a data da tarefa é a do evento. Uma tarefa não feita fica na data dela.
+  - **D5:** unicidade por (local, data, tipo) em qualquer status. Uma segunda saída no dia não gera outra tarefa, e uma avulsa repetida dá `409`, mesmo que a anterior esteja `CANCELLED`.
+  - **D6:** a governança não escuta `GuestCheckedIn`, `GuestCheckInUndone` nem `Reservation*`. Isso diverge da SPEC §8.3 e da ARCHITECTURE §6.1.
+  - **D7:** `ReservationsApi.assignedRooms`.
+  - **D8:** `arrivalExpected` é um retrato da geração. Na data operacional ou antes, inclui a chegada atrasada; numa data futura, só a chegada exata.
+  - **D9, refinada pela revisão final:** a permanência vale para quem chegou antes da data (`inHouse(date - 1)`), menos as saídas. A ocupação vem do `reservations`, e o OOO/OOS e o status vêm do `rooms`, na data operacional.
+  - **D10:** um avanço atrasado é ignorado com `WARN`.
+  - **D11:** as programadas são geradas primeiro.
+  - **D12:** estados esperados nunca lançam exceção. Um erro inesperado refaz o dia pelo outbox.
+  - **D13:** as colunas de sincronização offline ficam para a E04.
+  - **Também:** uma UH desativada entre o check-out e o listener não gera `CHECKOUT`. Uma avulsa em UH ou área inativa dá `422 HOUSEKEEPING_TASK_LOCATION_INACTIVE`.
+- **Notas para a próxima etapa:**
+  - **Para a E03:**
+    - a lista e a distribuição precisam incluir as tarefas abertas de datas anteriores (D4). Hoje a lista filtra `business_date = :date`;
+    - recalcular a chegada prevista na sugestão (D8);
+    - o cursor da lista não leva a data;
+    - a prioridade do early check-in (RF-GOV-03) não está na E02;
+    - a `HousekeepingTaskGeneration` está no limite do detekt (11 funções). Extraia `arrivalsByRoom`/`dayOf` antes de acrescentar;
+    - trocar para `INFO` o log da programada pulada por tipo ou local inválido;
+    - o `HousekeepingAudit` mora em `CleaningTypesService.kt` e deve ser separado;
+    - uma chegada atrasada (reserva de D-1 que faz check-in em D) com a geração de D atrasada ainda ganha `STAYOVER` em D. O caso é raro e anterior a esta etapa; corrigir exige a data efetiva do check-in no `reservations`.
+  - **Para a E04:**
+    - colunas de mudança (`change_seq`) para o feed offline;
+    - transições da tarefa;
+    - `recordDone` da faxina programada (sem carimbo e sem guarda; ver a E01).
+  - **Para o `arquiteto`:**
+    - a divergência da D6 com a SPEC §8.3 e a ARCHITECTURE §6.1 ("atualizar plano do dia");
+    - as pendências transversais da E01 (fracionário em inteiro, `""` em UUID, `40P01`/`55P03` → 500, `required` nos schemas de request).
+  - **Testes:**
+    - o banco compartilhado recebe avanços de data de outros testes, e a geração roda para o hotel inteiro;
+    - contagens globais de `audit.audit_entry` não devem voltar;
+    - um teste da lista grava uma linha `-infinity` permanente numa UH aleatória, porque o trigger impede a limpeza.
+  - **Menores restantes:**
+    - N+1 em `rooms.status`;
+    - log com um só motivo na `CHECKOUT`;
+    - o teste RN-13 da trilha sem controle positivo;
+    - nenhum teste prova que a pré-chegada usa `inHouse(date)`;
+    - nenhum teste de API prova a ordem por chegada com prioridade editada.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E02 - f7e6203c.md`.
 
 ---
 
-## E03 — Distribuição sugerida e publicação — #pendente
+## E03 — Distribuição sugerida e publicação — #concluida
 
 **Objetivo:** implementar o `AssignmentPlan` (RF-GOV-03): sugestão que balanceia créditos entre as camareiras escaladas no dia (escala de `staff`), agrupa por andar, prioriza chegadas e early check-in e respeita "Não perturbe"; ajuste manual pela governanta; publicação que notifica só quem teve mudança.
 
@@ -891,13 +1156,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] A sugestão só atribui a camareiras escaladas na data (teste com escala de `staff`).
-- [ ] Em casos de teste, a diferença de créditos entre camareiras não passa do maior crédito de uma tarefa.
-- [ ] UHs do mesmo andar ficam com a mesma camareira sempre que o balanceamento permite; chegadas e early vêm primeiro na ordem.
-- [ ] UH com DND não recebe tarefa de permanência na sugestão inicial.
-- [ ] A mesma entrada gera a mesma sugestão (determinismo).
-- [ ] Publicar notifica cada camareira atribuída; republicar notifica só quem teve tarefa incluída ou removida.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] A sugestão só atribui a camareiras escaladas na data (teste com escala de `staff`).
+- [x] Em casos de teste, a diferença de créditos entre camareiras não passa do maior crédito de uma tarefa.
+- [x] UHs do mesmo andar ficam com a mesma camareira sempre que o balanceamento permite; chegadas e early vêm primeiro na ordem (**early adiado pela H17**: o `reservations` não guarda o dado; só a chegada prevista conta).
+- [x] UH com DND não recebe tarefa de permanência na sugestão inicial.
+- [x] A mesma entrada gera a mesma sugestão (determinismo).
+- [x] Publicar notifica cada camareira atribuída; republicar notifica só quem teve tarefa incluída ou removida.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -916,12 +1181,101 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- **Plano:** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e03.md`, com 3 fatias.
+  - Revisão de arquitetura (`revisor-arquitetura`, opus): aprovada com notas na rodada 2.
+  - Rodada 0: bloqueada por 12 Importantes (algoritmo, janela de datas, concorrência, tempo real, ordem publicada, "camareira" etc.).
+  - Rodada 1: bloqueada por 2 Importantes (datas dos testes e definição de "retirada").
+- **Commits:** branch `roadmap/m6-operacao-fechamento`, de `fb9591a` (início e plano) a `41d9dcc`.
+  - **Task 1:** `ede9237` (algoritmo), `b3cda5c` (extrações da dívida da E02), `9142d43` (níveis do log) e `199ea31` (rodada 1: `@Timeout` em outra thread e casos de fronteira).
+  - **Task 2:** `2e90060`, `f93796f`, `c2735e6` e `4d7f62b` (testador, `AuthorizationTest`).
+    - A Task 2 foi refeita do zero depois de uma queda de energia que derrubou a máquina; nada commitado se perdeu.
+  - **Task 3:** `59060a5`, `cda7c27`, `1350e55`, `1f7a754`, `434470a`, `2620c1f` e `13b2730` (rodada 1: `StaffApi.employees(ids)` no aviso).
+  - **Testador da etapa:** `7c07db4`, `c217474`, `2948546` e `71599bd`.
+  - **Correção final:** `41d9dcc` (KDoc da D11) e `10cec11` (plano).
+- **Entregue:**
+  - **`AssignmentSuggester`** (`housekeeping/domain`): heurística gulosa e determinística.
+    1. Ordena por chegada, prioridade, andar em ordem natural, UH ou área e id.
+    2. Distribui os andares inteiros, do maior total de créditos para a camareira menos carregada.
+    3. Rebalanceia movendo só tarefas com crédito > 0, da de menor crédito para a de maior, até a diferença ficar ≤ o maior crédito de uma tarefa. O término é provado pela soma dos quadrados.
+
+    Garantia: se a distribuição gulosa dos andares inteiros cumpre o limite, nenhum andar é dividido. O algoritmo não é ótimo.
+  - **`AssignmentPlan`:**
+    - tabelas `assignment_plan` (`id` UUID, `business_date` único, `DRAFT`/`PUBLISHED`, nunca apagado) e `assignment_plan_item`;
+    - migrações `V2026_11_18_1100`, `1101` e `1102`, esta última com `assigned_employee_id` e `assignment_position` na tarefa.
+  - **API:**
+    - `POST /api/v1/assignment-plans/{date}/suggest`, com `employeeIds` opcional e `If-Match` quando o plano existe;
+    - `GET /api/v1/assignment-plans/{date}`;
+    - `PATCH /api/v1/assignment-plans/{date}`, para mover, acrescentar e remover;
+    - `POST …/publish`, com `If-Match`.
+    - Janela: da data operacional até +7. Tarefas de datas anteriores entram só no plano operacional.
+    - Trava com `FOR UPDATE` e `ON CONFLICT`. Falha otimista dá `412`.
+  - **Publicação:**
+    - grava camareira, posição e `ASSIGNED`;
+    - a tarefa "retirada" (`ASSIGNED`, dentro do conteúdo do plano e ausente do rascunho) volta a `PENDING`;
+    - uma tarefa que já andou nunca é tocada: se mudaria de camareira, a publicação dá `422` com os ids em `errors[]`.
+  - **Aviso:** `notifications.task-assigned` só para quem teve tarefa incluída ou removida. O título leva a data, e o texto só tem números de UH e nomes de área, truncado com "e mais N". Os "não avisados" vêm com `NO_USER` ou `NOT_DELIVERED`.
+  - **Tempo real:** tópico `housekeeping` (permissão `housekeeping.tasks.read`, registrado na ARCHITECTURE §10), mensagem `housekeeping.assignment-plan`.
+  - **Permissão:** `housekeeping.assignments.manage` (Gerente e Governanta).
+  - **`StaffApi.employees(ids)`:** nova.
+  - **Dependências:** o módulo passa a declarar `staff` e `notifications`.
+  - **Dívida da E02 paga:** `ArrivalsByRoom`, `HousekeepingAudit` e `HousekeepingConfiguration` extraídos; log em níveis.
+- **Revisões:**
+  - Task 1: 1 Importante de teste, corrigido na rodada 1.
+  - Task 2: aprovada só com Menores.
+  - Task 3: 1 Importante (`NO_USER` impreciso), corrigido na rodada 1.
+  - Revisão final (`revisor-seguranca`, opus, `c6e1e06..13b2730`): "With fixes", só 3 Menores (KDoc da D11, stub e lixo de teste), corrigidos.
+  - Re-revisão escopada (`13b2730..41d9dcc`): aprovada.
+- **Verificação:**
+  - **Gate:** `./gradlew build` em `41d9dcc` → BUILD SUCCESSFUL em 15m 59s, 4309 testes, 0 falhas, 0 ignorados (contagem dos XML do JUnit, árvore limpa). Antes, em `13b2730`: 4304 testes e 0 falhas.
+  - **oasdiff:** sem `ERR`; o contrato só cresceu.
+  - **Scanner:** `osv-scanner` 2.7.1, com 0 Critical/High, 2 Medium e 3 Low, todos pré-existentes. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base c6e1e06` → exit 0, sem apontamento.
+- **Critérios verificados:**
+  - (1) Só camareiras escaladas: `AssignmentPlansApiTest`, com quem está de folga e de outro setor de fora. A publicação reconfere a escala (`AssignmentPlanPublishTest`).
+  - (2) Diferença de créditos ≤ maior crédito: `AssignmentSuggesterTest`, com mais de 10 casos, mais 1000 aleatórios e a fronteira exata.
+  - (3) Andar com uma só camareira quando o limite permite: `AssignmentSuggesterTest`. As chegadas vêm primeiro, com a chegada recalculada (`AssignmentPlansApiTest`). O early foi adiado (H17).
+  - (4) DND sem `STAYOVER` na sugestão: `AssignmentSuggesterTest` e `AssignmentPlansApiTest`.
+  - (5) Determinismo: entrada embaralhada, empates por id.
+  - (6) Republicação avisa só quem mudou: `AssignmentPlanPublishTest` (A→B avisa A e B, não C). O caso de quem saiu da escala também é avisado.
+  - (7) Gate e `checkOpenApi`.
+- **Decisões para o usuário** (tomadas pelo orquestrador pela opção recomendada da revisão de arquitetura, sob a autorização noturna; revisáveis):
+  - **D1:** camareira é quem está escalado no setor de governança. O `employeeIds` opcional tira a governanta e as supervisoras e vale só no `suggest`; o ajuste manual aceita qualquer escalado.
+  - **D2:** janela da data operacional até +7. As anteriores entram só no plano operacional. O plano de uma data passada fica congelado.
+  - **D3 e H17:** a chegada é recalculada na sugestão, e o early check-in fica adiado.
+  - **D4:** DND tira só a `STAYOVER`.
+  - **D5:** heurística não ótima.
+  - **D6:** o `suggest` refaz o rascunho inteiro, e o `PATCH` acrescenta e remove.
+  - **D7:** `ASSIGNED → PENDING` para a tarefa "retirada". É extensão da SPEC §8.4, que o `arquiteto` registra.
+  - **D8:** aviso com a data e só números de UH e nomes de área.
+  - **D9:** tópico `housekeeping`, reaproveitado pela E04.
+  - **D10:** permissão `housekeeping.assignments.manage`.
+  - **D11:** exceção à H16. Colaborador inexistente dá `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, porque a validação é pela escala.
+  - **D12:** a posição publicada fica gravada na tarefa.
+  - **Ruling da rodada 1 da Task 3:** `StaffApi.employees(ids)` nova, para avisar quem saiu da escala.
+- **Notas para a próxima etapa:**
+  - **Para a E04:**
+    - Um rascunho com uma tarefa `DONE` ou `CANCELLED` dada a outra camareira recusa a publicação inteira. Decidir se esse item deve ser ignorado.
+    - Endurecer o CHECK `ASSIGNED ⇒ camareira`.
+    - Desempatar por posição e depois id: uma tarefa que andou pode repetir a posição.
+    - Ligar `mark_offline_change` em `housekeeping_task`.
+    - Publicar as mensagens de tarefa no tópico `housekeeping`.
+    - Montar o feed das tarefas abertas de datas anteriores, com a data no cursor.
+    - Extrair `AssignmentPlanPublication` do `AssignmentPlansService`, que tem cerca de 520 linhas.
+    - A resposta da publicação não lista as "retiradas", e a governanta não as vê no rascunho.
+    - O `422` de escala na publicação não traz o `employeeId` em `errors[]`.
+    - `employeeIds: []` deixa tudo sem camareira, e o contrato não diz isso.
+    - Não há teste de colaborador inativo escalado.
+    - O `HousekeepingTaskSchemaTest` (E02) ainda grava `PENDING` antigas no banco compartilhado.
+  - **Para o `arquiteto`:**
+    - registrar a D7 na SPEC §8.4;
+    - registrar a D11 como exceção à H16;
+    - levar o early check-in ao `reservations` (H17);
+    - resolver a divergência da D6 da E02 com a SPEC §8.3 e a ARCHITECTURE §6.1.
+  - **Menores aceitos:**
+    - `If-Match` em branco dá `428` também na criação, consistente com o resto do projeto;
+    - N+1 em `rooms.area` e `rooms.status` na sugestão;
+    - `remove` de tarefa fora do plano é ignorado em silêncio, como o contrato documenta.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E03 - 493d72a8.md`.
 
 ---
 
@@ -964,6 +1318,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Revisão humana:** sim
 
 **Notas para o plano:** H2 e H3: se a base de sync ou a API de execução de checklist do M2 não existir, pare e relate (não reimplementar a base). Ler RN-13, RN-22 e ARCHITECTURE §6.2 e §9 e as notas `ZenyHotelManager - Sincronização offline` e `ZenyHotelManager - Módulo checklists` (execução pela API pública, rotina já assumida registrada à parte com alerta). O `rooms` já espera a governança chamar `markClean`/`markInspected`/`rejectInspection` pela `RoomsApi` (nota `ZenyHotelManager - Módulo rooms`); o status da UH nunca muda fora dela. Armadilha de teste conhecida: todo teste que baixa `/api/v1/sync/changes` chama antes `InventoryListenersQuiescence.await(jdbc)` (os listeners do inventário seguram o cursor; nota `ZenyHotelManager - Testes de integração`). Esta etapa fixa o padrão de handlers offline que E05, E06 e E08 vão repetir: registrá-lo no handoff.
+
+**Plano tentado em 2026-11-18 (não executado):** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, bloqueado na revisão de arquitetura (rodada 0). Achados para o desenho da divisão (H18): o conflito RN-22 contradiz o escopo `OWN` sem histórico de posse; `markClean` só vale para UH Suja (a pré-chegada nunca conclui; tarefa de área não tem status de UH); a recusa por DND numa UH vaga dá `422 ROOM_NOT_OCCUPIED`; `OWN` em `housekeeping.tasks.read` vazaria a lista do dia, o plano e o tópico (exige `scopeFilter` e `owners`); a `ChecklistsApi` não dá a versão publicada de um modelo, o checklist offline precisa do `versionId` do aparelho (precedente `checklists.start-execution`) e a execução pode ser concluída por fora; acima da tolerância do relógio o comando é aplicado com `CLOCK_SKEW_EXCEEDED` (não rejeitado) e os instantes precisam de ordem (`max(at, última transição)`); falta estratégia de trava (tarefa → execução → UH) com teste determinístico; o nome da fonte offline deve ser `housekeeping-tasks` e os comandos `housekeeping.<verbo>-task`; transição inválida é `409` no padrão do projeto; o aviso de conflito pede um tipo novo no `notifications`. As decisões D1–D11 do plano tentado são ponto de partida, não decisões tomadas; as do usuário estão na H18.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1345,3 +1701,5 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. O fechamento passou para o início do roadmap: E10 e E11 vêm antes da governança, porque gravam dinheiro imutável e fazem a data andar. A E11 passou a depender só da E10 e foi dividida: o snapshot e os PDFs foram para a nova E13, e o no-show na FNRH para a nova E14. O gate passou a depender de E06, E13 e E14. A E10 ganhou métricas e alerta (ARCHITECTURE §16). Hipóteses H2 a H6 conferidas no código: a H4 caiu, e a H6 e o contexto citavam a aresta `endofday` → `files`, que não existe; o nome da view da FNRH foi corrigido para `fnrh.report_submissions`. Nenhuma etapa renumerada; tags inalteradas. Depois da revisão do `revisor-arquitetura`: `BusinessDay` fica só em `hotel`, a entrega do alerta passa à M8 E18, a E14 cobra o no-show na homologação e a H2 foi fechada.
 - 2026-11-12 — sincronizado com o código depois do gate do M5 (`main` em `3a42e35`) pelo `arquiteto` (skill `development-roadmap`, modo atualização; regra 2 de `docs/roadmaps/README.md`). Pré-requisito marcado como atendido, com a E09 do M5 `#bloqueada` pela exceção M5 → M6. "Contexto confirmado" ganhou a base técnica herdada do M5 (módulos, última migração `V2026_11_11_1001`, `ReservationsApi` com as transições de hospedagem e sem no-show nem consultas por data, eventos de hospedagem, `HotelApi`, `RoomsApi`, `BillingApi` e `FolioOwnerDescriber`, APIs de plataforma, views `report_*`, `FnrhGateway` e `FnrhOperation`, apoio de testes e o gate em `docker/gate/`) e as pendências do M5 com a etapa de cada uma. Hipóteses: H1 confirmada; H2 a H5 reconfirmadas; H6 ganhou a falta da gravação de conteúdo na `FilesApi`, a acrescentar pela E09; H10 (testes do fechamento num caminho próprio, isolado do banco compartilhado) **decidida pela opção recomendada pelo `arquiteto`**, revisável pelo usuário; H11 (rótulos no catálogo da FNRH) confirmada. Etapas novas no bloco "Manutenção herdada do M5", depois do fechamento: **E15** (rótulos da FNRH na ficha por porta do `frontdesk` implementada pelo `fnrh` e descrição de `frontdesk.stays.checkin`; decisões do usuário (f) e (g) do lote E11 do M5), **E16** (dívidas de teste: teste de índices da M5 E01 e `FnrhSubmissionDismissCompat.kt` duplicado) e **E17** (corpo mínimo do `guests`, decisão E15 (h) do M5; incluída a pedido do usuário em 2026-11-12). Onde entram (decidido pelo `arquiteto`, pela opção recomendada): no M6 e não no M5, cujo gate está concluído e não reabre; depois do fechamento, para não atrasar a E10 e a E11. A definição global de pronto ganhou o item da manutenção, e o gate passou a depender de E15, E16 e E17. Notas novas em E02 (KDoc dos eventos de hospedagem), E09 (H6 e o modelo dono + `printing`), E10 (H10), E11 (H10 e a chave comum com o check-out), E12 (`docker/gate/`, `MilestoneM5EndToEndTest` e os Menores do gate do M5) e E14 (`submission_operation_ck` e `rank`). Na mesma data, a ARCHITECTURE §3.2 passou a registrar a ordem interna da Hospedagem (`rates` < `reservations` < `frontdesk`). Nenhuma etapa renumerada nem removida; tags inalteradas.
 - 2026-11-13 — etapa nova **E18** (faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs), no bloco novo "Manutenção transversal", pelo `arquiteto` (skill `development-roadmap`, modo atualização), cumprindo a decisão do usuário H12 (handoff da E10, "Decisões do usuário", item 3). Ela resolve os quatro problemas transversais achados na E10, conferidos no código em 2026-11-13 (`main` em `9e65b3a`). Entrevista do usuário na mesma data, pelas opções recomendadas (H13): a faixa do cursor vale também para as chaves de data (6 consultas a mais que as 9 por instante); a leitura estrita vale para `format: date` e `date-time`; e o mapeador é único, com os payloads offline também estritos. Decidido pelo `arquiteto`: a faixa fica no `PageCursor`, e a validação local do `endofday` sai. A E18 entra depois da E17 e antes da governança, para que os módulos novos já nasçam sobre as regras corrigidas. Revisão humana: não. A definição global de pronto ganhou o item da E18, e o gate E12 passou a depender dela. Na mesma mudança, a ARCHITECTURE registra as decisões em §5 (rollback), §7 (cursor e datas), §11 (alcance de `date` e `timestamptz`) e §13 (log dos jobs), e o `docs/roadmaps/README.md` passou a contar 18 etapas no M6. Nenhuma outra etapa foi renumerada, removida nem mudou de tag ou conteúdo.
+- 2026-11-17 — entrevista de abertura do lote (`orquestrador`): H15 (a branch da execução anterior, com a E18 e a E01 concluídas, se perdeu e as etapas são refeitas a partir da `main`) e H16 (referência inexistente no corpo do `housekeeping` dá `400 …UNKNOWN_…`), decididas pelo usuário. Tag da E18 para `#em-andamento`; nenhuma outra etapa mudou.
+- 2026-11-18 — fim do lote E18–E03 (`orquestrador`): E18, E01, E02 e E03 `#concluida` (refação de E18 e E01 pela H15); H17 (early check-in adiado, decisão do orquestrador sob autorização noturna) e H18 (E04 volta a `#pendente` para o `arquiteto` dividir; conflito RN-22, `notes` e UH limpa decididos pelo usuário). Nenhuma outra etapa mudou de tag.

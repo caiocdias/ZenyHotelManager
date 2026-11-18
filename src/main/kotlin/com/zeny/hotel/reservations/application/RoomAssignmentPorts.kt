@@ -30,6 +30,9 @@ interface RoomAssignmentStore {
     /** A alocação ativa da reserva; `null` se não tem. */
     fun active(reservationId: ReservationId): RoomAssignmentSummary?
 
+    /** A UH da alocação ativa de cada reserva de [reservationIds]; as sem alocação ativa ficam de fora. */
+    fun activeRooms(reservationIds: Collection<ReservationId>): Map<ReservationId, RoomId>
+
     /** Todas as alocações da reserva (ativas e soltas), da mais recente à mais antiga. */
     fun history(reservationId: ReservationId): List<RoomAssignmentSummary>
 

@@ -1,6 +1,7 @@
 package com.zeny.hotel.shared
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -66,6 +67,46 @@ class PaginationTest {
     }
 
     @Test
+    fun `text keys with NUL are rejected, since PostgreSQL does not store NUL in text`() {
+        cursorOf("A~B|C").string(0) shouldBe "A~B|C"
+
+        listOf("A\u0000B", "\u0000", "AB\u0000").forEach { key ->
+            withClue(key.replace("\u0000", "<NUL>")) {
+                shouldThrow<InvalidInputException> { cursorOf(key).string(0) }.code shouldBe ErrorCodes.INVALID_CURSOR
+            }
+        }
+    }
+
+    @Test
+    fun `instant keys are accepted up to the storable extremes and rejected just outside them`() {
+        listOf("-4712-01-01T00:00:00Z", "+294276-12-31T23:59:59.999999Z").forEach { key ->
+            cursorOf(key).instant(0) shouldBe Instant.parse(key)
+        }
+
+        listOf("-4713-12-31T23:59:59.999999Z", "+294277-01-01T00:00:00Z", "+294276-12-31T23:59:59.9999995Z")
+            .forEach { key ->
+                withClue(key) {
+                    shouldThrow<InvalidInputException> { cursorOf(key).instant(0) }.code shouldBe
+                        ErrorCodes.INVALID_CURSOR
+                }
+            }
+    }
+
+    @Test
+    fun `date keys are accepted up to the storable extremes and rejected just outside them`() {
+        listOf("-4712-01-01", "+5874897-12-31").forEach { key ->
+            cursorOf(key).localDate(0) shouldBe LocalDate.parse(key)
+        }
+
+        listOf("-4713-12-31", "+5874898-01-01").forEach { key ->
+            withClue(key) {
+                shouldThrow<InvalidInputException> { cursorOf(key).localDate(0) }.code shouldBe
+                    ErrorCodes.INVALID_CURSOR
+            }
+        }
+    }
+
+    @Test
     fun `page from rows returns at most limit items and a cursor only when there are more`() {
         val rows = (1..5).toList()
 
@@ -92,4 +133,6 @@ class PaginationTest {
             7L
         shouldThrow<InvalidInputException> { PageParams(cursor = "???").decodedCursor() }
     }
+
+    private fun cursorOf(key: String): PageCursor = PageCursor.decode(PageCursor.of(key, "x").encode())
 }

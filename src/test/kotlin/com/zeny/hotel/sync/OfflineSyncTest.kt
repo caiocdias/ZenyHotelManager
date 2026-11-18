@@ -459,6 +459,37 @@ class OfflineSyncTest(
         storedCommand(old) shouldBe 0
     }
 
+    /**
+     * O payload passa pelo mesmo mapeador da API (M6 E18): uma data fora do texto ISO é `COMMAND_PAYLOAD_INVALID`,
+     * sem rodar o handler, sem efeito e sem guardar, e o reenvio dá a mesma recusa. Com a data em ISO, o comando vale.
+     */
+    @Test
+    fun `a date in the payload outside ISO text is COMMAND_PAYLOAD_INVALID, with no effect, also when sent again`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        val refused =
+            listOf<Any>(20405, listOf(2026, 11, 13), "2026-11-13T00:00:00Z", "").map { dueOn ->
+                command(SyncExample.RECORD, mapOf("text" to "data $dueOn", "dueOn" to dueOn))
+            }
+
+        repeat(2) { attempt ->
+            val results = send(auth(writer), refused)
+            refused.zip(results).forEach { (command, result) ->
+                withClue("envio ${attempt + 1}, payload ${command.payload}") {
+                    result["status"].asString() shouldBe "REJECTED"
+                    result["code"].asString() shouldBe "COMMAND_PAYLOAD_INVALID"
+                    result["replayed"].asBoolean() shouldBe false
+                    recordHandler.invocations(command.id()) shouldBe 0
+                    noteCount(command.id()) shouldBe 0
+                    storedCommand(command.id()) shouldBe 0
+                }
+            }
+        }
+
+        val iso = command(SyncExample.RECORD, mapOf("text" to "data ISO", "dueOn" to "2026-11-13"))
+        send(auth(writer), iso).single()["status"].asString() shouldBe "APPLIED"
+        noteCount(iso.id()) shouldBe 1
+    }
+
     @Test
     fun `a handler without the permission rejects the command`() {
         val reader = iam.createUserWith(notesRead(ALL))

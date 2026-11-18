@@ -86,7 +86,16 @@ class FilesApiReadContentAttackTest(
     private fun keyOf(id: FileId): String =
         files.objectKeys("fileexamples/").single { it.endsWith(id.value.toString()) }
 
-    private fun auditCount(): Int = jdbc.sql("SELECT count(*) FROM audit.audit_entry").query(Int::class.java).single()
+    /**
+     * As entradas da trilha do próprio `files`: os listeners assíncronos de outros módulos (a geração de tarefas da
+     * governança, as rotinas de checklist) gravam entradas depois de avanços de data de outros testes, e uma contagem
+     * global cairia entre as duas leituras.
+     */
+    private fun auditCount(): Int =
+        jdbc
+            .sql("SELECT count(*) FROM audit.audit_entry WHERE action LIKE 'files.%' OR entity_type LIKE 'files.%'")
+            .query(Int::class.java)
+            .single()
 
     @Test
     fun `refuses an empty, blank or differently cased owner id as a different owner`() {

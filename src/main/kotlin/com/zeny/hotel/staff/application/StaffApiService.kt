@@ -4,8 +4,10 @@ import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.staff.DaySchedule
 import com.zeny.hotel.staff.DepartmentId
 import com.zeny.hotel.staff.DepartmentSummary
+import com.zeny.hotel.staff.EmployeeId
 import com.zeny.hotel.staff.EmployeeSummary
 import com.zeny.hotel.staff.StaffApi
+import com.zeny.hotel.staff.domain.Employee
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -31,10 +33,13 @@ class StaffApiService(
     ): DaySchedule = DaySchedule(date, departmentId, directory.assignments(date, departmentId))
 
     @Transactional(readOnly = true)
-    override fun employeeOfUser(userId: UserId): EmployeeSummary? =
-        store.employeeOfUser(userId)?.let {
-            EmployeeSummary(it.id, it.name, it.position, it.departmentId, it.userId, it.active)
-        }
+    override fun employeeOfUser(userId: UserId): EmployeeSummary? = store.employeeOfUser(userId)?.summary()
+
+    @Transactional(readOnly = true)
+    override fun employees(ids: Collection<EmployeeId>): Map<EmployeeId, EmployeeSummary> =
+        if (ids.isEmpty()) emptyMap() else store.employees(ids).associate { it.id to it.summary() }
+
+    private fun Employee.summary() = EmployeeSummary(id, name, position, departmentId, userId, active)
 
     private companion object {
         const val PAGE = 200
