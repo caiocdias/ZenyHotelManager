@@ -1,7 +1,12 @@
 package com.zeny.hotel.housekeeping
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.zeny.hotel.hotel.BusinessDateAdvanced
 import com.zeny.hotel.hotel.HotelApi
+import com.zeny.hotel.housekeeping.application.ArrivalsByRoom
 import com.zeny.hotel.housekeeping.application.CleaningTypeStore
 import com.zeny.hotel.housekeeping.application.DailyGenerationResult
 import com.zeny.hotel.housekeeping.application.HousekeepingProperties
@@ -15,6 +20,8 @@ import com.zeny.hotel.housekeeping.domain.CleaningCredit
 import com.zeny.hotel.housekeeping.domain.CleaningType
 import com.zeny.hotel.housekeeping.domain.CleaningTypeDetails
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
+import com.zeny.hotel.housekeeping.domain.ScheduledCleaning
+import com.zeny.hotel.housekeeping.domain.ScheduledCleaningInput
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.rooms.GuestServiceFlag
@@ -34,6 +41,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -66,6 +74,7 @@ class HousekeepingTaskGenerationTest {
     private val reservations = mockk<ReservationsApi>()
     private val hotel = mockk<HotelApi>()
     private val audit = mockk<AuditContext>(relaxed = true)
+    private val arrivals = ArrivalsByRoom(reservations, hotel)
     private val generation =
         HousekeepingTaskGeneration(
             store,
@@ -73,7 +82,7 @@ class HousekeepingTaskGenerationTest {
             cleaningTypes,
             rooms,
             reservations,
-            hotel,
+            arrivals,
             HousekeepingProperties(preArrivalAfterDays = 3),
             audit,
             Clock.fixed(now, ZoneOffset.UTC),
@@ -131,7 +140,7 @@ class HousekeepingTaskGenerationTest {
         every { reservations.pendingArrivals(date) } returns listOf(first, unassigned)
         every { reservations.assignedRooms(listOf(first, unassigned)) } returns mapOf(first to other)
 
-        generation.arrivalsByRoom(date) shouldBe setOf(other)
+        arrivals.arrivalsByRoom(date) shouldBe setOf(other)
     }
 
     @Test
@@ -144,7 +153,7 @@ class HousekeepingTaskGenerationTest {
         every { reservations.pendingArrivals(future.minusDays(1)) } returns listOf(earlier)
         every { reservations.assignedRooms(listOf(exact)) } returns mapOf(exact to exactRoom)
 
-        generation.arrivalsByRoom(future) shouldBe setOf(exactRoom)
+        arrivals.arrivalsByRoom(future) shouldBe setOf(exactRoom)
         verify(exactly = 0) { reservations.assignedRooms(listOf(earlier, exact)) }
     }
 
@@ -154,7 +163,7 @@ class HousekeepingTaskGenerationTest {
         every { reservations.pendingArrivals(date) } returns listOf(late)
         every { reservations.assignedRooms(listOf(late)) } returns mapOf(late to room)
 
-        generation.arrivalsByRoom(date) shouldBe setOf(room)
+        arrivals.arrivalsByRoom(date) shouldBe setOf(room)
         verify(exactly = 0) { reservations.pendingArrivals(date.minusDays(1)) }
     }
 
@@ -287,6 +296,23 @@ class HousekeepingTaskGenerationTest {
     }
 
     @Test
+    fun `a scheduled cleaning skipped for an inactive type or place is logged at INFO`() {
+        DailyScenario().types(stayoverActive = false, preArrivalActive = false)
+        val inactive =
+            CleaningType
+                .create(CleaningTypeDetails("FAXINA", "Faxina", false, 2, null, null, emptyList()), now)
+                .also { it.deactivate(now) }
+        val schedule = ScheduledCleaning.create(ScheduledCleaningInput(room, null, inactive.id, 7, null), date, now)
+        every { scheduledCleanings.dueOn(date) } returns listOf(schedule)
+        every { cleaningTypes.cleaningType(inactive.id) } returns inactive
+
+        val events = capturingGenerationLog { generation.generateForDate(date) }
+
+        store.saved.shouldBeEmpty()
+        events.filter { schedule.id.toString() in it.formattedMessage }.map { it.level } shouldBe listOf(Level.INFO)
+    }
+
+    @Test
     fun `the listener ignores a late date advance and generates the day of a current one`() {
         val daily = mockk<HousekeepingTaskGeneration>(relaxed = true)
         val listeners = HousekeepingTaskListeners(daily, hotel)
@@ -296,6 +322,22 @@ class HousekeepingTaskGenerationTest {
 
         listeners.on(BusinessDateAdvanced(date.minusDays(1), date, now))
         verify(exactly = 1) { daily.generateForDate(date) }
+    }
+
+    /** Os eventos do log da geração durante o [block], inclusive os `DEBUG`, para conferir o nível de cada um. */
+    private fun capturingGenerationLog(block: () -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(HousekeepingTaskGeneration::class.java) as Logger
+        val level = logger.level
+        val captured = ListAppender<ILoggingEvent>().apply { start() }
+        logger.level = Level.DEBUG
+        logger.addAppender(captured)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(captured)
+            logger.level = level
+        }
+        return captured.list.toList()
     }
 
     /**

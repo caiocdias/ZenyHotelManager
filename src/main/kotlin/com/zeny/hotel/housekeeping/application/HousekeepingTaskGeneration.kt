@@ -1,6 +1,5 @@
 package com.zeny.hotel.housekeeping.application
 
-import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
@@ -48,7 +47,7 @@ class HousekeepingTaskGeneration(
     private val cleaningTypes: CleaningTypeStore,
     private val rooms: RoomsApi,
     private val reservations: ReservationsApi,
-    private val hotel: HotelApi,
+    private val arrivals: ArrivalsByRoom,
     private val properties: HousekeepingProperties,
     private val audit: AuditContext,
     private val clock: Clock,
@@ -105,24 +104,6 @@ class HousekeepingTaskGeneration(
         return result
     }
 
-    /**
-     * As UHs com chegada prevista na [date] (D8-E02): as alocadas às reservas confirmadas que chegam na data. Até a
-     * data operacional, são as de `ReservationsApi.pendingArrivals(date)`, com chegada até a data (inclusive a
-     * atrasada); numa data futura, só as que chegam exatamente nela (as pendentes na véspera terão chegado antes).
-     * Um retrato do momento: alocação, cancelamento ou no-show posteriores não mudam as tarefas já geradas.
-     */
-    @Transactional(readOnly = true)
-    fun arrivalsByRoom(date: LocalDate): Set<RoomId> {
-        val pending = reservations.pendingArrivals(date)
-        val arriving =
-            if (date.isAfter(hotel.currentBusinessDate())) {
-                pending - reservations.pendingArrivals(date.minusDays(1)).toSet()
-            } else {
-                pending
-            }
-        return reservations.assignedRooms(arriving).values.toSet()
-    }
-
     /** A tarefa de saída a gravar; `null` (com log `INFO`) com o tipo `CHECKOUT` inativo ou a UH fora do cadastro. */
     private fun checkoutTask(
         roomId: RoomId,
@@ -146,7 +127,7 @@ class HousekeepingTaskGeneration(
             TaskLocation.Room(roomId),
             date,
             source,
-            arrivalExpected = roomId in arrivalsByRoom(date),
+            arrivalExpected = roomId in arrivals.arrivalsByRoom(date),
             credits = HousekeepingTask.creditsFor(type, room.roomTypeId),
             now = clock.instant(),
         )
@@ -176,14 +157,14 @@ class HousekeepingTaskGeneration(
         return Day(
             date,
             rooms.activeRooms().associateBy { it.id },
-            arrivalsByRoom(date),
+            arrivals.arrivalsByRoom(date),
             hosted.values.toSet(),
             arrivedBefore.filterKeys { it !in departing }.values.toSet(),
         )
     }
 
     /**
-     * A tarefa da faxina programada [schedule] vencida; `null` (com log `DEBUG`) com o tipo dela inativo, o local
+     * A tarefa da faxina programada [schedule] vencida; `null` (com log `INFO`) com o tipo dela inativo, o local
      * inexistente, desativado ou em OOO/OOS, ou uma tarefa aberta da faxina.
      */
     private fun scheduledTask(
@@ -195,7 +176,7 @@ class HousekeepingTaskGeneration(
         val room = roomId?.let { day.rooms[it] }?.takeIf { rooms.status(it.id)?.outOfOrder == null }
         val placeActive = if (roomId != null) room != null else schedule.areaId?.let { rooms.area(it)?.active } == true
         if (type == null || !placeActive || store.hasOpenTaskFor(schedule.id)) {
-            log.debug("Faxina programada {} sem tarefa em {}: tipo, local ou tarefa aberta", schedule.id, day.date)
+            log.info("Faxina programada {} sem tarefa em {}: tipo, local ou tarefa aberta", schedule.id, day.date)
             return null
         }
         val location = roomId?.let { TaskLocation.Room(it) } ?: TaskLocation.Area(checkNotNull(schedule.areaId))
