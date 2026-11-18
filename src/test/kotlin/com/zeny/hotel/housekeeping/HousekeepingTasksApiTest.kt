@@ -162,6 +162,25 @@ class HousekeepingTasksApiTest(
         two shouldContainExactlyInAnyOrder ids("$TASKS?date=$date&roomId=$room&limit=200")
     }
 
+    @Test
+    fun `tasks of the same priority without arrival are paged one by one in id order`() {
+        val room = housekeeping.createRoom()
+        val date = hotel.currentBusinessDate()
+        val types = (1..3).map { housekeeping.createCleaningType(housekeeping.cleaningTypeBody(defaultPriority = 3)) }
+        // Pedidas fora da ordem de criação dos tipos: a ordem por id não coincide com a do tipo de limpeza.
+        val tasks = listOf(types[2], types[0], types[1]).map { request(it, room, date) }
+        // Uma de mesma prioridade, sem chegada, gravada depois delas com id menor que todos: a ordem é a do id, não a
+        // da gravação.
+        val first = insertSamePriorityTask(room, date)
+        val byId = (tasks + first).sortedBy { it.toString() }
+
+        val paged = ids("$TASKS?date=$date&roomId=$room&limit=1")
+
+        byId.first() shouldBe first
+        paged shouldContainExactly byId
+        ids("$TASKS?date=$date&roomId=$room&limit=2") shouldContainExactly byId
+    }
+
     private fun request(
         type: UUID,
         room: UUID,
@@ -193,6 +212,29 @@ class HousekeepingTasksApiTest(
             .param("date", date)
             .param("type", PRE_ARRIVAL_TYPE)
             .param("priority", priority)
+            .update()
+        return id
+    }
+
+    /** Uma tarefa avulsa de prioridade 3, sem chegada, de id menor que qualquer UUIDv7 gerado agora. */
+    private fun insertSamePriorityTask(
+        room: UUID,
+        date: LocalDate,
+    ): UUID {
+        val id = UUID.fromString("00000000-0000-7000-8000-" + UuidV7.generate().toString().takeLast(12))
+        jdbc
+            .sql(
+                """
+                INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
+                    source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
+                    created_at, updated_at, version)
+                VALUES (:id, :room, NULL, :date, :type, 'AD_HOC', 'PENDING', 3, 0, FALSE, NULL, NULL, NULL,
+                    now(), now(), 0)
+                """.trimIndent(),
+            ).param("id", id)
+            .param("room", room)
+            .param("date", date)
+            .param("type", PRE_ARRIVAL_TYPE)
             .update()
         return id
     }

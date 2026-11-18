@@ -1,12 +1,9 @@
 package com.zeny.hotel.housekeeping
 
-import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskGeneration
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
-import com.zeny.hotel.reservations.CheckIn
-import com.zeny.hotel.reservations.CheckInGuest
 import com.zeny.hotel.reservations.GuestCheckedOut
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
@@ -55,16 +52,17 @@ class HousekeepingCheckoutTasksTest(
 ) {
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
     private val reservations = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
+    private val stays = HousekeepingStays(reservations, reservationsApi, hotel)
     private val today: LocalDate get() = hotel.currentBusinessDate()
 
     @Test
     fun `a check-out generates the CHECKOUT task on the room and date of the event, audited as the system`() {
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(3, today)
-        val plan = planFor(type)
+        val plan = stays.planFor(type)
         val name = "Hóspede Saída ${UuidV7.generate().toString().takeLast(8)}"
-        val (leaving, holder) = inHouse(type, plan, rooms[0], today.plusDays(1), name)
-        val (leavingBeforeArrival, _) = inHouse(type, plan, rooms[1], today.plusDays(1))
-        val (arriving, _) = reservation(type, plan)
+        val (leaving, holder) = stays.inHouse(type, plan, rooms[0], today.plusDays(1), name)
+        val (leavingBeforeArrival, _) = stays.inHouse(type, plan, rooms[1], today.plusDays(1))
+        val (arriving, _) = stays.reservation(type, plan)
 
         reservationsApi.checkOut(leaving)
         // A chegada é alocada à UH na transação do check-out: o listener roda depois do commit e a vê.
@@ -100,9 +98,9 @@ class HousekeepingCheckoutTasksTest(
     @Test
     fun `a room move generates the CHECKOUT task on the room left, marked when an arrival is assigned to it`() {
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, today)
-        val plan = planFor(type)
-        val (moving, _) = inHouse(type, plan, rooms[0], today.plusDays(2))
-        val (arriving, _) = reservation(type, plan)
+        val plan = stays.planFor(type)
+        val (moving, _) = stays.inHouse(type, plan, rooms[0], today.plusDays(2))
+        val (arriving, _) = stays.reservation(type, plan)
 
         transactions.executeWithoutResult {
             reservationsApi.moveRoom(moving, RoomMove(RoomId(rooms[1]), RoomAssignmentReason.GUEST_REQUEST))
@@ -135,8 +133,8 @@ class HousekeepingCheckoutTasksTest(
     @Test
     fun `an ad hoc request on a room with an arrival assigned on the date is marked with the arrival`() {
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, today)
-        val plan = planFor(type)
-        val (arriving, _) = reservation(type, plan)
+        val plan = stays.planFor(type)
+        val (arriving, _) = stays.reservation(type, plan)
         reservationsApi.assignRoom(arriving, RoomId(rooms[0]))
         val cleaningType = housekeeping.createCleaningType()
 
@@ -151,8 +149,8 @@ class HousekeepingCheckoutTasksTest(
     @Test
     fun `an ad hoc request on a future date is marked only by an arrival on that very date`() {
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(1, today)
-        val plan = planFor(type)
-        val (arriving, _) = reservation(type, plan, arrival = today.plusDays(1), departure = today.plusDays(2))
+        val plan = stays.planFor(type)
+        val (arriving, _) = stays.reservation(type, plan, arrival = today.plusDays(1), departure = today.plusDays(2))
         reservationsApi.assignRoom(arriving, RoomId(rooms[0]))
         val cleaningType = housekeeping.createCleaningType()
 
@@ -182,65 +180,6 @@ class HousekeepingCheckoutTasksTest(
         val userId: UUID?,
         val after: String,
     )
-
-    private fun planFor(type: UUID): UUID {
-        val plan = reservations.plan(listOf(type))
-        reservations.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
-        return plan.id
-    }
-
-    /**
-     * Uma reserva confirmada de [arrival] (padrão: hoje) a [departure], com o titular (de nome [name]); devolve a
-     * reserva e o titular.
-     */
-    private fun reservation(
-        type: UUID,
-        plan: UUID,
-        departure: LocalDate = today.plusDays(1),
-        name: String = "Hóspede ${UuidV7.generate().toString().takeLast(8)}",
-        arrival: LocalDate = today,
-    ): Pair<ReservationId, UUID> {
-        val holder =
-            UUID.fromString(
-                reservations.guests
-                    .createGuest(
-                        reservations.guests.createBody(
-                            profile = reservations.guests.profileBody(fullName = name),
-                            documents = emptyList(),
-                        ),
-                    )["id"]
-                    .asString(),
-            )
-        val created =
-            reservations.created(
-                reservations.booking(
-                    holder,
-                    reservations.reservation(type, plan, arrival, departure, adults = 1),
-                ),
-            )["reservations"][0]
-        return ReservationId(UUID.fromString(created["id"].asString())) to holder
-    }
-
-    /** Uma reserva hospedada na UH [room] desde hoje, pelo check-in real. */
-    private fun inHouse(
-        type: UUID,
-        plan: UUID,
-        room: UUID,
-        departure: LocalDate,
-        name: String = "Hóspede ${UuidV7.generate().toString().takeLast(8)}",
-    ): Pair<ReservationId, UUID> {
-        val (id, holder) = reservation(type, plan, departure, name)
-        reservationsApi.assignRoom(id, RoomId(room))
-        reservationsApi.checkIn(
-            id,
-            CheckIn(
-                listOf(
-                    CheckInGuest(GuestId(holder), primary = true, travelReason = "LAZER", transportMode = "AUTOMOVEL"),
-                ),
-            ),
-        )
-        return id to holder
-    }
 
     /** Espera a publicação do evento da reserva para o listener da governança (e só ele) ser concluída. */
     private fun awaitListener(
@@ -293,7 +232,6 @@ class HousekeepingCheckoutTasksTest(
             .single()
 
     private companion object {
-        const val PRICED_DAYS = 10L
         const val TIMEOUT_SECONDS = 30L
     }
 }

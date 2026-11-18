@@ -1,8 +1,17 @@
 package com.zeny.hotel.housekeeping
 
+import com.zeny.hotel.guests.GuestId
+import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.reservations.CheckIn
+import com.zeny.hotel.reservations.CheckInGuest
+import com.zeny.hotel.reservations.ReservationId
+import com.zeny.hotel.reservations.ReservationsApi
+import com.zeny.hotel.reservations.ReservationsTestSupport
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomsTestSupport
 import com.zeny.hotel.shared.PermissionCode
+import com.zeny.hotel.shared.UuidV7
 import io.kotest.assertions.withClue
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -12,6 +21,7 @@ import org.springframework.http.HttpMethod.POST
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import tools.jackson.databind.JsonNode
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -162,5 +172,82 @@ class HousekeepingTestSupport(
         private const val MAX_PAGES = 1000
 
         fun definition(code: PermissionCode) = HousekeepingPermissions.permissions.single { it.code == code }
+    }
+}
+
+/**
+ * Apoio de reservas dos testes da geração de tarefas do `housekeeping`: plano com preços, reserva confirmada com um
+ * titular novo e hospedagem pelo check-in real, todos pelos casos de uso do `reservations`, na data operacional do
+ * banco (que os testes não avançam).
+ */
+class HousekeepingStays(
+    private val reservations: ReservationsTestSupport,
+    private val reservationsApi: ReservationsApi,
+    private val hotel: HotelApi,
+) {
+    private val today: LocalDate get() = hotel.currentBusinessDate()
+
+    /** Um plano novo do tipo de UH [type], com preços de hoje a [PRICED_DAYS] dias. */
+    fun planFor(type: UUID): UUID {
+        val plan = reservations.plan(listOf(type))
+        reservations.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
+        return plan.id
+    }
+
+    /**
+     * Uma reserva confirmada de [arrival] (padrão: hoje) a [departure] (padrão: a noite seguinte), com um titular novo
+     * de nome [name]; devolve a reserva e o titular.
+     */
+    fun reservation(
+        type: UUID,
+        plan: UUID,
+        arrival: LocalDate = today,
+        departure: LocalDate = arrival.plusDays(1),
+        name: String = guestName(),
+    ): Pair<ReservationId, UUID> {
+        val holder =
+            UUID.fromString(
+                reservations.guests
+                    .createGuest(
+                        reservations.guests.createBody(
+                            profile = reservations.guests.profileBody(fullName = name),
+                            documents = emptyList(),
+                        ),
+                    )["id"]
+                    .asString(),
+            )
+        val created =
+            reservations.created(
+                reservations.booking(holder, reservations.reservation(type, plan, arrival, departure, adults = 1)),
+            )["reservations"][0]
+        return ReservationId(UUID.fromString(created["id"].asString())) to holder
+    }
+
+    /** Uma reserva hospedada na UH [room] desde hoje até [departure], pelo check-in real; a reserva e o titular. */
+    fun inHouse(
+        type: UUID,
+        plan: UUID,
+        room: UUID,
+        departure: LocalDate,
+        name: String = guestName(),
+    ): Pair<ReservationId, UUID> {
+        val (id, holder) = reservation(type, plan, today, departure, name)
+        reservationsApi.assignRoom(id, RoomId(room))
+        reservationsApi.checkIn(
+            id,
+            CheckIn(
+                listOf(
+                    CheckInGuest(GuestId(holder), primary = true, travelReason = "LAZER", transportMode = "AUTOMOVEL"),
+                ),
+            ),
+        )
+        return id to holder
+    }
+
+    private fun guestName(): String = "Hóspede ${UuidV7.generate().toString().takeLast(NAME_SUFFIX)}"
+
+    private companion object {
+        const val PRICED_DAYS = 10L
+        const val NAME_SUFFIX = 8
     }
 }

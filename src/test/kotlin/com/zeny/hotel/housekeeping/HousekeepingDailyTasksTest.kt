@@ -1,14 +1,11 @@
 package com.zeny.hotel.housekeeping
 
-import com.zeny.hotel.guests.GuestId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.HousekeepingTestSupport.Companion.SCHEDULED_CLEANINGS
 import com.zeny.hotel.housekeeping.HousekeepingTestSupport.Companion.TASKS
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskGeneration
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
-import com.zeny.hotel.reservations.CheckIn
-import com.zeny.hotel.reservations.CheckInGuest
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsTestSupport
@@ -57,6 +54,7 @@ class HousekeepingDailyTasksTest(
 ) {
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
     private val reservations = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
+    private val stays = HousekeepingStays(reservations, reservationsApi, hotel)
     private val today: LocalDate get() = hotel.currentBusinessDate()
 
     // --- Permanência ----------------------------------------------------------------------------------------------
@@ -65,11 +63,14 @@ class HousekeepingDailyTasksTest(
     fun `an in-house room gets a STAYOVER, a vacant room none, and a guest leaving on the date none`() {
         val date = today
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(3, date)
-        val plan = planFor(type)
-        inHouse(type, plan, rooms[0], departure = date.plusDays(2))
-        inHouse(type, plan, rooms[2], departure = date.plusDays(1))
+        val plan = stays.planFor(type)
+        stays.inHouse(type, plan, rooms[0], departure = date.plusDays(2))
+        stays.inHouse(type, plan, rooms[2], departure = date.plusDays(1))
 
+        // Cada data duas vezes: a entrega repetida do avanço não duplica nada (Review Focus 2).
         generation.generateForDate(date)
+        generation.generateForDate(date)
+        generation.generateForDate(date.plusDays(1))
         generation.generateForDate(date.plusDays(1))
 
         tasksOf(rooms[0]).map { it.date to it.source } shouldBe
@@ -94,7 +95,7 @@ class HousekeepingDailyTasksTest(
     fun `a vacant clean room with an arrival and no recent task gets a PRE_ARRIVAL, and the others do not`() {
         val date = today
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(7, date)
-        val plan = planFor(type)
+        val plan = stays.planFor(type)
         val ready = rooms[0]
         val twoDays = rooms[1]
         val threeDays = rooms[2]
@@ -103,13 +104,17 @@ class HousekeepingDailyTasksTest(
         val outOfService = rooms[5]
         val noArrival = rooms[6]
         rooms.forEach { room -> if (room != dirty) clean(room) }
-        rooms.filter { it != noArrival }.forEach { room -> assign(reservation(type, plan, arrival = date), room) }
+        rooms.filter { it != noArrival }.forEach { room ->
+            assign(stays.reservation(type, plan, arrival = date).first, room)
+        }
         // A última tarefa há 2 dias barra a pré-chegada; há 3 dias (o padrão de pre-arrival-after-days), não.
         generation.generateCheckout(RoomId(twoDays), date.minusDays(2), TaskSource.CHECKOUT) shouldBe true
         generation.generateCheckout(RoomId(threeDays), date.minusDays(3), TaskSource.CHECKOUT) shouldBe true
         openOutOfOrder(outOfOrder, OutOfOrderKind.OUT_OF_ORDER, date)
         openOutOfOrder(outOfService, OutOfOrderKind.OUT_OF_SERVICE, date)
 
+        // Duas vezes: a segunda rodada não duplica a pré-chegada (Review Focus 2) nem é barrada por ela.
+        generation.generateForDate(date)
         generation.generateForDate(date)
 
         tasksOn(ready, date).single().let {
@@ -119,6 +124,7 @@ class HousekeepingDailyTasksTest(
             it.status shouldBe "PENDING"
             generatedBySystem(it.id) shouldBe true
         }
+        tasksOf(ready).map { it.date to it.source } shouldBe listOf(date to "PRE_ARRIVAL")
         tasksOn(threeDays, date).map { it.source } shouldBe listOf("PRE_ARRIVAL")
         listOf(twoDays, dirty, outOfOrder, outOfService, noArrival).forEach { room ->
             withClue(room) { tasksOn(room, date).shouldBeEmpty() }
@@ -129,10 +135,10 @@ class HousekeepingDailyTasksTest(
     fun `in the day list the room with an arrival comes before the stayover`() {
         val date = today
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, date)
-        val plan = planFor(type)
-        inHouse(type, plan, rooms[0], departure = date.plusDays(2))
+        val plan = stays.planFor(type)
+        stays.inHouse(type, plan, rooms[0], departure = date.plusDays(2))
         clean(rooms[1])
-        assign(reservation(type, plan, arrival = date), rooms[1])
+        assign(stays.reservation(type, plan, arrival = date).first, rooms[1])
 
         generation.generateForDate(date)
 
@@ -217,6 +223,69 @@ class HousekeepingDailyTasksTest(
         }
     }
 
+    @Test
+    fun `a due schedule colliding with an ad hoc task of its type on the same room and date gets no task`() {
+        val date = today
+        val cleaningType = housekeeping.createCleaningType()
+        val room = housekeeping.createRoom()
+        val adHoc =
+            UUID.fromString(
+                housekeeping
+                    .requestTask(housekeeping.taskBody(cleaningType, roomId = room, date = "$date"))["id"]
+                    .asString(),
+            )
+        val schedule = schedule(cleaningType, roomId = room)
+        try {
+            // D11-E02: a colisão não lança nem grava a SCHEDULED; a avulsa fica como estava.
+            generation.generateForDate(date)
+            generation.generateForDate(date)
+
+            tasksOf(room).single().let {
+                it.id shouldBe adHoc
+                it.source shouldBe "AD_HOC"
+                it.scheduledCleaningId shouldBe null
+                it.status shouldBe "PENDING"
+            }
+            housekeeping.auditActions("housekeeping.task", adHoc) shouldBe listOf("housekeeping.task.request")
+        } finally {
+            deactivateSchedule(schedule)
+        }
+    }
+
+    @Test
+    fun `a due schedule gets no task on a room out of service nor with its own cleaning type deactivated`() {
+        val date = today
+        val roomType = housekeeping.rooms.createRoomType()
+        val cleaningType = housekeeping.createCleaningType()
+        val deactivatedType = housekeeping.createCleaningType()
+        val control = housekeeping.rooms.createRoom(roomType)
+        val outOfService = housekeeping.rooms.createRoom(roomType)
+        val withDeactivatedType = housekeeping.rooms.createRoom(roomType)
+        val schedules =
+            listOf(
+                schedule(cleaningType, roomId = control),
+                schedule(cleaningType, roomId = outOfService),
+                schedule(deactivatedType, roomId = withDeactivatedType),
+            )
+        try {
+            openOutOfOrder(outOfService, OutOfOrderKind.OUT_OF_SERVICE, date)
+            // A API recusa desativar um tipo com faxina ativa (CLEANING_TYPE_HAS_ACTIVE_SCHEDULES): o tipo, criado por
+            // este teste (nunca um da carga), é desativado direto no banco, o estado que a geração precisa tolerar.
+            jdbc
+                .sql("UPDATE housekeeping.cleaning_type SET active = FALSE WHERE id = :id")
+                .param("id", deactivatedType)
+                .update() shouldBe 1
+
+            generation.generateForDate(date)
+
+            tasksOf(control).map { it.source to it.cleaningTypeId } shouldBe listOf("SCHEDULED" to cleaningType)
+            withClue("OOS") { tasksOf(outOfService).shouldBeEmpty() }
+            withClue("tipo desativado") { tasksOf(withDeactivatedType).shouldBeEmpty() }
+        } finally {
+            schedules.forEach(::deactivateSchedule)
+        }
+    }
+
     // --- Ordens do check-out e da virada (Review Focus 1) ---------------------------------------------------------
 
     @Test
@@ -264,45 +333,9 @@ class HousekeepingDailyTasksTest(
         val (type, rooms) = reservations.inventory.roomTypeWithRooms(1, date)
         val room = rooms.single()
         clean(room)
-        assign(reservation(type, planFor(type), arrival = date), room)
+        assign(stays.reservation(type, stays.planFor(type), arrival = date).first, room)
         roomsApi.markVacant(RoomId(room), RoomStatusSource.CHECK_OUT)
         return room
-    }
-
-    private fun planFor(type: UUID): UUID {
-        val plan = reservations.plan(listOf(type))
-        reservations.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
-        return plan.id
-    }
-
-    /** Uma reserva confirmada de [arrival] a [departure] (padrão: a noite seguinte), com um titular novo. */
-    private fun reservation(
-        type: UUID,
-        plan: UUID,
-        arrival: LocalDate = today,
-        departure: LocalDate = arrival.plusDays(1),
-    ): ReservationId = booked(type, plan, arrival, departure).first
-
-    /** A reserva confirmada e o titular dela. */
-    private fun booked(
-        type: UUID,
-        plan: UUID,
-        arrival: LocalDate,
-        departure: LocalDate,
-    ): Pair<ReservationId, UUID> {
-        val holder =
-            UUID.fromString(
-                reservations.guests
-                    .createGuest(
-                        reservations.guests.createBody(documents = emptyList()),
-                    )["id"]
-                    .asString(),
-            )
-        val created =
-            reservations.created(
-                reservations.booking(holder, reservations.reservation(type, plan, arrival, departure, adults = 1)),
-            )["reservations"][0]
-        return ReservationId(UUID.fromString(created["id"].asString())) to holder
     }
 
     private fun assign(
@@ -310,26 +343,6 @@ class HousekeepingDailyTasksTest(
         room: UUID,
     ) {
         reservationsApi.assignRoom(reservation, RoomId(room))
-    }
-
-    /** Uma reserva hospedada na UH [room] desde hoje, pelo check-in real. */
-    private fun inHouse(
-        type: UUID,
-        plan: UUID,
-        room: UUID,
-        departure: LocalDate,
-    ): ReservationId {
-        val (id, holder) = booked(type, plan, today, departure)
-        assign(id, room)
-        reservationsApi.checkIn(
-            id,
-            CheckIn(
-                listOf(
-                    CheckInGuest(GuestId(holder), primary = true, travelReason = "LAZER", transportMode = "AUTOMOVEL"),
-                ),
-            ),
-        )
-        return id
     }
 
     private fun clean(room: UUID) {
@@ -421,8 +434,4 @@ class HousekeepingDailyTasksTest(
             ).param("id", task.toString())
             .query(Int::class.java)
             .single() == 1
-
-    private companion object {
-        const val PRICED_DAYS = 10L
-    }
 }
