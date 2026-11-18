@@ -216,7 +216,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
-| E20 | Entrada estrita no corpo, na query e no caminho, e `required` no contrato | #pendente | — | Datas e instantes fora do alcance do banco recusados no corpo; query e caminho só ISO; `LocalTime`, inteiro e UUID estritos; `required` nos schemas de request |
+| E20 | Entrada estrita no corpo, na query e no caminho, e `required` no contrato | #em-andamento | — | Datas e instantes fora do alcance do banco recusados no corpo; query e caminho só ISO; `LocalTime`, inteiro e UUID estritos; `required` nos schemas de request |
 | E21 | Erros de trava e logs restantes | #pendente | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
 
 **Governança**
@@ -863,7 +863,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E20 — Entrada estrita no corpo, na query e no caminho, e `required` no contrato — #pendente
+## E20 — Entrada estrita no corpo, na query e no caminho, e `required` no contrato — #em-andamento
 
 **Objetivo:** completar no `shared`, para todos os módulos, a leitura estrita da E18 (H13) e fazer o contrato declarar o que o servidor já exige. São cinco furos achados na E18 e na E01: (1) data ou instante fora do alcance do banco no **corpo** passa da validação (um recado com `dueOn` `+999999999-12-31` vira `infinity` e trava a paginação, a regressão aceita (e) da E18; `+5874898-01-01` dá 500); (2) data e instante em **query string e caminho** aceitam o formato curto do locale e epoch em ms, e fora do alcance dão 500 por cima e `-infinity` por baixo; (3) número fracionário num campo inteiro é truncado (`frequencyDays: 7.5` vira 7); (4) `""` num UUID opcional vira `null`, e um PUT com `checklistTemplateId: ""` apaga o vínculo em silêncio; (5) os schemas de request não marcam `required`, e os SDKs geram como opcionais campos que o servidor recusa ausentes.
 
