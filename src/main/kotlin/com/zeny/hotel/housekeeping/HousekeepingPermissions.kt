@@ -8,9 +8,10 @@ import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.shared.TemplateGrant
 
 /**
- * Permissões do módulo `housekeeping` (RF-ACS-02, M6 E01). A configuração da governança (tipos de limpeza e, depois,
- * faxinas programadas) não tem dono, então só aceita o escopo `ALL`, e nenhuma é sensível. Sugestões aos modelos (SPEC
- * §3.1): o Gerente ("toda a operação") e a Governanta consultam e mantêm a configuração.
+ * Permissões do módulo `housekeeping` (RF-ACS-02, M6 E01 e E02). A configuração da governança (tipos de limpeza e
+ * faxinas programadas) e as tarefas não têm dono, então só aceitam o escopo `ALL`, e nenhuma é sensível. Sugestões aos
+ * modelos (SPEC §3.1): o Gerente ("toda a operação") e a Governanta consultam e mantêm a configuração; o Gerente, a
+ * Governanta e a Recepção consultam as tarefas e solicitam a avulsa.
  */
 object HousekeepingPermissions : ModulePermissions {
     override val module = "housekeeping"
@@ -21,7 +22,17 @@ object HousekeepingPermissions : ModulePermissions {
     /** Criar e editar a configuração da governança, desativar e reativar. */
     val CONFIG_MANAGE = PermissionCode("housekeeping.config.manage")
 
+    /** Consultar as tarefas de governança. */
+    val TASKS_READ = PermissionCode("housekeeping.tasks.read")
+
+    /** Solicitar uma tarefa de governança avulsa. */
+    val TASKS_REQUEST = PermissionCode("housekeeping.tasks.request")
+
     private val managers = listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER).associateWith { TemplateGrant(ALL) }
+
+    private val taskUsers =
+        listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER, RoleTemplate.RECEPTIONIST)
+            .associateWith { TemplateGrant(ALL) }
 
     override val permissions =
         listOf(
@@ -36,6 +47,18 @@ object HousekeepingPermissions : ModulePermissions {
                 "Criar e editar a configuração da governança, desativar e reativar",
                 setOf(ALL),
                 templates = managers,
+            ),
+            PermissionDefinition(
+                TASKS_READ,
+                "Consultar as tarefas de governança",
+                setOf(ALL),
+                templates = taskUsers,
+            ),
+            PermissionDefinition(
+                TASKS_REQUEST,
+                "Solicitar uma tarefa de governança avulsa",
+                setOf(ALL),
+                templates = taskUsers,
             ),
         )
 }

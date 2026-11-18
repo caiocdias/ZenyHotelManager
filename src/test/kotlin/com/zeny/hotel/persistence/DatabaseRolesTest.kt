@@ -284,6 +284,7 @@ class DatabaseRolesTest(
                 "endofday.run_issue",
                 "housekeeping.cleaning_type",
                 "housekeeping.scheduled_cleaning",
+                "housekeeping.housekeeping_task",
             )
     }
 }

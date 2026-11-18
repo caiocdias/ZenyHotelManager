@@ -47,6 +47,9 @@ interface CleaningTypeStore {
      */
     fun forUpdate(id: CleaningTypeId): CleaningType?
 
+    /** O tipo da carga inicial com a chave estável [key] (D5), ativo ou não; `null` só se a carga não o tem. */
+    fun byKey(key: CleaningTypeKey): CleaningType?
+
     /** Os tipos de [ids], na ordem de [ids] (os inexistentes ficam de fora). */
     fun cleaningTypes(ids: List<UUID>): List<CleaningType>
 
@@ -301,7 +304,7 @@ class CleaningTypesService(
     ) = InvalidInputException(code, message, listOf(FieldViolation(field, code.value, message)))
 }
 
-/** Ações e entidades da trilha do `housekeeping` (retrato só da configuração). */
+/** Ações e entidades da trilha do `housekeeping` (retrato só da configuração e dos ids, local e estado das tarefas). */
 internal object HousekeepingAudit {
     const val CLEANING_TYPE = "housekeeping.cleaning-type"
 
@@ -316,6 +319,10 @@ internal object HousekeepingAudit {
     const val UPDATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.update"
     const val DEACTIVATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.deactivate"
     const val REACTIVATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.reactivate"
+
+    const val TASK = "housekeeping.task"
+
+    const val REQUEST_TASK = "housekeeping.task.request"
 }
 
 internal fun CleaningType.auditState(): Map<String, Any?> =

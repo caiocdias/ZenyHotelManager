@@ -41,12 +41,13 @@ tags:
   name: frontdesk
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
-- description: "Governança: tipos de limpeza, créditos por tipo de UH e faxinas programadas."
-  name: housekeeping
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
   name: iam
+- description: "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas\
+    \ e tarefas."
+  name: housekeeping
 - description: Integração com a FNRH do Serpro.
   name: FNRH
 - description: "Tipos de UH, características, UHs e áreas comuns."
@@ -6739,6 +6740,166 @@ paths:
       summary: Editar as taxas
       tags:
       - hotel
+  /api/v1/housekeeping-tasks:
+    get:
+      description: "As tarefas da data (padrão: a data operacional), primeiro as das\
+        \ UHs com chegada prevista, depois por prioridade (da mais alta para a mais\
+        \ baixa) e id. Exige `housekeeping.tasks.read`."
+      operationId: listHousekeepingTasks
+      parameters:
+      - description: A data operacional das tarefas (YYYY-MM-DD); omita para a data
+          operacional corrente.
+        in: query
+        name: date
+        required: false
+        schema:
+          type: string
+          format: date
+      - description: Só as tarefas desta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas desta área comum.
+        in: query
+        name: areaId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas neste status.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - PENDING
+          - ASSIGNED
+          - IN_PROGRESS
+          - PAUSED
+          - AWAITING_INSPECTION
+          - REJECTED
+          - DONE
+          - REFUSED
+          - CANCELLED
+      - description: Só as tarefas deste tipo de limpeza.
+        in: query
+        name: cleaningTypeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as tarefas desta origem.
+        in: query
+        name: source
+        required: false
+        schema:
+          type: string
+          enum:
+          - CHECKOUT
+          - ROOM_MOVE
+          - STAYOVER
+          - PRE_ARRIVAL
+          - SCHEDULED
+          - AD_HOC
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageHousekeepingTaskResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as tarefas de governança do dia
+      tags:
+      - housekeeping
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `HOUSEKEEPING_TASK_LOCATION_INVALID`. A tarefa nasce\
+        \ `PENDING`, com origem `AD_HOC`, a prioridade padrão do tipo e os créditos\
+        \ do tipo para o tipo da UH (área ou tipo de UH sem crédito: 0). Exige `housekeeping.tasks.request`.\
+        \ Local inexistente: 400 `HOUSEKEEPING_TASK_UNKNOWN_LOCATION`; tipo inexistente:\
+        \ 400 `HOUSEKEEPING_TASK_UNKNOWN_CLEANING_TYPE`; local desativado: 422 `HOUSEKEEPING_TASK_LOCATION_INACTIVE`;\
+        \ tipo desativado: 422 `CLEANING_TYPE_INACTIVE`; data antes da operacional\
+        \ ou mais de 30 dias depois dela: 422 `HOUSEKEEPING_TASK_DATE_INVALID`. Já\
+        \ há tarefa no mesmo local, na mesma data e com o mesmo tipo, em qualquer\
+        \ status (inclusive cancelada): 409 `HOUSEKEEPING_TASK_ALREADY_EXISTS`; para\
+        \ uma segunda limpeza no dia, use outro tipo (como o retoque)."
+      operationId: requestHousekeepingTask
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingTaskRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskResponse"
+          description: Tarefa solicitada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Solicitar uma tarefa de governança avulsa
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}:
+    get:
+      description: "Exige `housekeeping.tasks.read`. Inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`."
+      operationId: getHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma tarefa de governança
+      tags:
+      - housekeeping
   /api/v1/meta/version:
     get:
       description: "Público, sem autenticação. A versão da API muda só com mudanç\
@@ -17609,6 +17770,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageHousekeepingTaskResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HousekeepingTaskResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageLocationHistoryEntryResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -20506,6 +20681,131 @@ components:
           - REJECT_INSPECTION
       required:
       - transition
+    HousekeepingTaskRequest:
+      type: object
+      description: "Uma solicitação avulsa de limpeza, numa UH ou numa área comum\
+        \ (exatamente um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum; informe esta ou `roomId`, uma só."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        date:
+          type: string
+          format: date
+          description: "A data operacional da tarefa, da corrente até 30 dias depois;\
+            \ omita para a corrente."
+          nullable: true
+        notes:
+          type: string
+          description: "Observações da recepção para a governança, até 500 caracteres.\
+            \ **Não escreva dado do hóspede** (nome, documento, contato): a tarefa\
+            \ é vista por toda a governança."
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - cleaningTypeId
+    HousekeepingTaskResponse:
+      type: object
+      description: Uma tarefa de governança.
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum; nula numa tarefa de UH.
+          nullable: true
+        arrivalExpected:
+          type: boolean
+          description: "Se a UH tinha chegada prevista na data: **retrato do momento\
+            \ da geração**. Alocação, cancelamento ou no-show posteriores não o atualizam.\
+            \ A avulsa nasce sem chegada prevista."
+        cleaningTypeId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        credits:
+          type: integer
+          format: int32
+          description: Os créditos do tipo de limpeza para o tipo da UH; 0 numa área
+            ou sem crédito.
+        date:
+          type: string
+          format: date
+          description: A data operacional da tarefa.
+        id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          description: "Observações da recepção para a governança, até 500 caracteres.\
+            \ **Não escreva dado do hóspede** (nome, documento, contato): a tarefa\
+            \ é vista por toda a governança."
+          nullable: true
+        priority:
+          type: integer
+          format: int32
+          description: "A prioridade, de 1 (mais baixa) a 5 (mais alta): a padrão\
+            \ do tipo de limpeza."
+        roomId:
+          type: string
+          format: uuid
+          description: A UH; nula numa tarefa de área.
+          nullable: true
+        scheduledCleaningId:
+          type: string
+          format: uuid
+          description: A faxina programada que gerou a tarefa; nula nas outras origens.
+          nullable: true
+        source:
+          type: string
+          description: A origem da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - CHECKOUT
+          - ROOM_MOVE
+          - STAYOVER
+          - PRE_ARRIVAL
+          - SCHEDULED
+          - AD_HOC
+        status:
+          type: string
+          description: O status da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - PENDING
+          - ASSIGNED
+          - IN_PROGRESS
+          - PAUSED
+          - AWAITING_INSPECTION
+          - REJECTED
+          - DONE
+          - REFUSED
+          - CANCELLED
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - arrivalExpected
+      - cleaningTypeId
+      - createdAt
+      - credits
+      - date
+      - id
+      - priority
+      - source
+      - status
+      - updatedAt
     InventoryDayResponse:
       type: object
       description: "Os contadores de um tipo de UH numa data. Disponível = `total`\

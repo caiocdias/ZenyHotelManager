@@ -42,8 +42,14 @@ class HousekeepingPermissionsTest(
     fun `the catalog has the two permissions, ALL only and not sensitive, in the manager and housekeeper templates`() {
         HousekeepingPermissions.CONFIG_READ.value shouldBe "housekeeping.config.read"
         HousekeepingPermissions.CONFIG_MANAGE.value shouldBe "housekeeping.config.manage"
+        // As permissões das tarefas (E02) estão no HousekeepingTaskPermissionsTest.
         HousekeepingPermissions.permissions.map { it.code.value } shouldContainExactlyInAnyOrder
-            listOf("housekeeping.config.read", "housekeeping.config.manage")
+            listOf(
+                "housekeeping.config.read",
+                "housekeeping.config.manage",
+                "housekeeping.tasks.read",
+                "housekeeping.tasks.request",
+            )
         HousekeepingPermissions.permissions.forEach {
             withClue(it.code.value) {
                 it.scopes shouldBe setOf(ALL)

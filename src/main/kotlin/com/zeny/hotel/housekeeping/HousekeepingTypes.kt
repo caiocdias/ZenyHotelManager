@@ -29,6 +29,48 @@ value class ScheduledCleaningId(
     }
 }
 
+/** Id de uma tarefa de governança. */
+@JvmInline
+value class HousekeepingTaskId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): HousekeepingTaskId = HousekeepingTaskId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de uma tarefa de governança (SPEC §8.2.10). A tarefa nasce `PENDING` (E02); as transições são da E03 e da E04.
+ * O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class TaskStatus {
+    PENDING,
+    ASSIGNED,
+    IN_PROGRESS,
+    PAUSED,
+    AWAITING_INSPECTION,
+    REJECTED,
+    DONE,
+    REFUSED,
+    CANCELLED,
+}
+
+/**
+ * Origem de uma tarefa de governança (RF-GOV-02): saída, troca de UH (na UH de origem), permanência, pré-chegada,
+ * faxina programada ou solicitação avulsa da recepção. O conjunto pode crescer: o cliente trata um valor desconhecido
+ * sem falhar.
+ */
+enum class TaskSource {
+    CHECKOUT,
+    ROOM_MOVE,
+    STAYOVER,
+    PRE_ARRIVAL,
+    SCHEDULED,
+    AD_HOC,
+}
+
 /**
  * Chave estável dos tipos de limpeza da carga inicial (D5 da M6 E01), que nunca muda: o gestor troca código, nome e
  * configuração e pode desativar o tipo, mas os outros módulos (e a geração de tarefas, E02) o acham pela chave. Os
@@ -112,4 +154,25 @@ object HousekeepingErrorCodes {
 
     /** 400: o tipo de limpeza da faxina programada não existe (campo `cleaningTypeId`, H16). */
     val SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE = ErrorCode("SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE")
+
+    /** 404: tarefa de governança inexistente. */
+    val HOUSEKEEPING_TASK_NOT_FOUND = ErrorCode("HOUSEKEEPING_TASK_NOT_FOUND")
+
+    /** 400: a tarefa precisa de exatamente um local, a UH (`roomId`) ou a área (`areaId`). */
+    val HOUSEKEEPING_TASK_LOCATION_INVALID = ErrorCode("HOUSEKEEPING_TASK_LOCATION_INVALID")
+
+    /** 400: a UH ou a área da tarefa não existe (campo `roomId` ou `areaId`, H16). */
+    val HOUSEKEEPING_TASK_UNKNOWN_LOCATION = ErrorCode("HOUSEKEEPING_TASK_UNKNOWN_LOCATION")
+
+    /** 400: o tipo de limpeza da tarefa não existe (campo `cleaningTypeId`, H16). */
+    val HOUSEKEEPING_TASK_UNKNOWN_CLEANING_TYPE = ErrorCode("HOUSEKEEPING_TASK_UNKNOWN_CLEANING_TYPE")
+
+    /** 422: a UH ou a área da tarefa está desativada. */
+    val HOUSEKEEPING_TASK_LOCATION_INACTIVE = ErrorCode("HOUSEKEEPING_TASK_LOCATION_INACTIVE")
+
+    /** 422: a data da tarefa é anterior à data operacional ou mais de 30 dias depois dela. */
+    val HOUSEKEEPING_TASK_DATE_INVALID = ErrorCode("HOUSEKEEPING_TASK_DATE_INVALID")
+
+    /** 409: já há tarefa no mesmo local, na mesma data e com o mesmo tipo de limpeza, em qualquer status (D5-E02). */
+    val HOUSEKEEPING_TASK_ALREADY_EXISTS = ErrorCode("HOUSEKEEPING_TASK_ALREADY_EXISTS")
 }

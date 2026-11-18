@@ -39,7 +39,7 @@ import java.util.UUID
 
 internal const val HOUSEKEEPING_TAG = "housekeeping"
 internal const val HOUSEKEEPING_TAG_DESCRIPTION =
-    "Governança: tipos de limpeza, créditos por tipo de UH e faxinas programadas."
+    "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas e tarefas."
 internal const val READ = "Exige `housekeeping.config.read`."
 internal const val MANAGE = "Exige `housekeeping.config.manage`."
 private const val MAX_CREDITS = 200

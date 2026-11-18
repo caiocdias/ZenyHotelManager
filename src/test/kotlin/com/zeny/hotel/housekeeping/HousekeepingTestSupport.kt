@@ -15,8 +15,8 @@ import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 /**
- * Apoio dos testes do `housekeeping`: monta corpos e cria tipos de limpeza e faxinas programadas pela API, como o
- * administrador, sempre com código único (o banco é compartilhado, e os seis tipos da carga
+ * Apoio dos testes do `housekeeping`: monta corpos e cria tipos de limpeza, faxinas programadas e tarefas avulsas pela
+ * API, como o administrador, sempre com código único (o banco é compartilhado, e os seis tipos da carga
  * inicial nunca são alterados pelos testes).
  */
 class HousekeepingTestSupport(
@@ -80,6 +80,26 @@ class HousekeepingTestSupport(
             UUID.fromString(call(POST, SCHEDULED_CLEANINGS, asAdmin(), body).expectStatus(201)!!["id"].asString())
         }
 
+    /** O corpo de uma solicitação avulsa (o local é a UH [roomId] **ou** a área [areaId]). */
+    fun taskBody(
+        cleaningTypeId: UUID?,
+        roomId: UUID? = null,
+        areaId: UUID? = null,
+        date: String? = null,
+        notes: String? = null,
+    ): Map<String, Any?> =
+        mapOf(
+            "roomId" to roomId,
+            "areaId" to areaId,
+            "cleaningTypeId" to cleaningTypeId,
+            "date" to date,
+            "notes" to notes,
+        )
+
+    /** Solicita uma tarefa avulsa como o administrador e devolve a resposta (`201`). */
+    fun requestTask(body: Map<String, Any?>): JsonNode =
+        with(iam) { call(POST, TASKS, asAdmin(), body).expectStatus(201)!! }
+
     fun etagOf(path: String): String {
         val response: MockHttpServletResponse = iam.call(GET, path, iam.asAdmin())
         withClue(response.getContentAsString(Charsets.UTF_8)) { response.status shouldBe 200 }
@@ -138,6 +158,7 @@ class HousekeepingTestSupport(
     companion object {
         const val CLEANING_TYPES = "/api/v1/cleaning-types"
         const val SCHEDULED_CLEANINGS = "/api/v1/scheduled-cleanings"
+        const val TASKS = "/api/v1/housekeeping-tasks"
         private const val MAX_PAGES = 1000
 
         fun definition(code: PermissionCode) = HousekeepingPermissions.permissions.single { it.code == code }

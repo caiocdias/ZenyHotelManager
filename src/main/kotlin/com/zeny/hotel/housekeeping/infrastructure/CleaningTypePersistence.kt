@@ -1,6 +1,7 @@
 package com.zeny.hotel.housekeeping.infrastructure
 
 import com.zeny.hotel.housekeeping.CleaningTypeId
+import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.application.CleaningTypeStore
 import com.zeny.hotel.housekeeping.domain.CleaningType
 import jakarta.persistence.EntityManager
@@ -34,6 +35,16 @@ class JpaCleaningTypeStore(
         entityManager
             .find(CleaningType::class.java, id.value)
             ?.also { entityManager.refresh(it, LockModeType.PESSIMISTIC_WRITE) }
+
+    /** Pelo índice único parcial `cleaning_type_system_key_uk`. */
+    override fun byKey(key: CleaningTypeKey): CleaningType? =
+        jdbc
+            .sql("SELECT id FROM housekeeping.cleaning_type WHERE system_key = :key")
+            .param("key", key.name)
+            .query(UUID::class.java)
+            .optional()
+            .map { cleaningType(CleaningTypeId(it)) }
+            .orElse(null)
 
     override fun cleaningTypes(ids: List<UUID>): List<CleaningType> {
         val byId = repository.findAllById(ids).associateBy { it.id.value }
