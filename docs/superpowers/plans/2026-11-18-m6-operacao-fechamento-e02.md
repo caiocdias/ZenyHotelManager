@@ -118,6 +118,26 @@ São do orquestrador, com a autorização do usuário de 2026-11-17 para escolhe
 - **D12-E02, falha na geração:** estados esperados (tipo inativo, crédito ausente, UH inativa, inexistente ou em OOO) nunca lançam exceção. Erro inesperado desfaz a geração do dia inteiro, e o outbox a reenvia. Isso é aceitável para 30 UHs.
 - **D13-E02, sincronização offline:** as colunas de mudança da ARCHITECTURE §9 (`change_seq` etc.) **não** entram nesta etapa. A E04, que leva as tarefas ao feed offline, as acrescenta (nota no handoff).
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas na rodada 2 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueada por 12 Importantes, corrigidos em `16dc904`:
+  - premissa H10 errada;
+  - auditoria da geração;
+  - pré-chegada dependente da ordem;
+  - `arrivalExpected` velho;
+  - D6 sem registro;
+  - tarefa atrasada;
+  - definição de "aberta";
+  - justificativa da D7;
+  - Task 1 dependente da 2;
+  - testes alterando a carga;
+  - `Riscos:` sem parsing;
+  - critérios sem comando.
+- **Rodada 1:** bloqueada por 2 Importantes (ordem B não produzida; D10 sem comando), corrigidos em `6ed4077`.
+- **Nota Menor da rodada 2 (N1):** objetivo da Task 3 alinhado aos critérios, já aplicado neste texto.
+- **Pontos de usuário (autorização noturna):** D1 a D13 tomadas pela opção recomendada. As que mais pesam na revisão humana são D3, D4, D5, D6, D8, D10 e D13.
+
 ---
 
 ### Task 1: Tarefa de governança, listagem e solicitação avulsa
@@ -237,7 +257,7 @@ Testes no `housekeeping` e no `reservations`.
 2. as permanências (D9);
 3. as pré-chegadas (D3).
 
-Todas levam a marca de chegada (D8). O listener ignora o avanço atrasado (D10). Um teste ponta a ponta com o fechamento real, no banco isolado, cobre as duas ordens de evento.
+Todas levam a marca de chegada (D8). O listener ignora o avanço atrasado (D10). Um teste ponta a ponta com o fechamento real, no banco isolado, cobre a ordem A; a ordem B fica no `HousekeepingDailyTasksTest`, por chamadas diretas.
 
 **Critérios de aceite:**
 - **`HousekeepingDailyTasksTest`** (`@IntegrationTest`), que chama `HousekeepingTaskGeneration.generateForDate(date)` direto, com a data operacional do banco ou uma futura, e afirma só sobre as UHs e áreas do próprio teste:
