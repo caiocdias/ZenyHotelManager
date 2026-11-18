@@ -74,7 +74,7 @@ class AssignmentPlansParsingAttackTest(
         }
 
     @Test
-    fun `malformed ids, a negative position and wrong types in the bodies are 400, and the plan does not change`(): Unit =
+    fun `malformed ids, a negative position and wrong types in the bodies are 400 and leave the plan`(): Unit =
         with(iam) {
             val date = hotel.currentBusinessDate().plusDays(7)
             val attendant = plans.attendant(date)

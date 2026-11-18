@@ -155,8 +155,8 @@ class AssignmentPlanSchemaTest(
     }
 
     /**
-     * Uma tarefa gravada pelo dono numa área inexistente (sem FK entre schemas), longe da data corrente. Fica `CANCELLED`
-     * para não entrar no conteúdo de nenhum plano operacional (D2-E03): o schema não depende do status.
+     * Uma tarefa gravada pelo dono numa área inexistente (sem FK entre schemas), longe da data corrente. Fica
+     * `CANCELLED` para não entrar no conteúdo de nenhum plano operacional (D2-E03): o schema não depende do status.
      */
     private fun insertTask(): UUID {
         val id = UUID.randomUUID()

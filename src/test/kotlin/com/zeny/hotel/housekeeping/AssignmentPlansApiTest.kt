@@ -82,7 +82,11 @@ class AssignmentPlansApiTest(
         listOf(first, second).forEach { items.getValue(it).first shouldBeIn listOf(ana, bia) }
         listOf(ana, bia).forEach { attendant ->
             withClue("posições de $attendant") {
-                val positions = items.values.filter { it.first == attendant }.map { it.second }.sorted()
+                val positions =
+                    items.values
+                        .filter { it.first == attendant }
+                        .map { it.second }
+                        .sorted()
                 positions shouldBe (1..positions.size).toList()
             }
         }
