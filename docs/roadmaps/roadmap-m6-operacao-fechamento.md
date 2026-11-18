@@ -203,7 +203,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E01 | Tipos de limpeza, créditos e faxinas programadas | #pendente | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
+| E01 | Tipos de limpeza, créditos e faxinas programadas | #em-andamento | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #pendente | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
@@ -837,11 +837,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - `?` em `problem["code"]` no `StrictDateTimeJsonApiTest`;
     - fim de linha na afirmação da trava em `ScheduledJobErrorLogTest.kt:73-75`.
   - **Processo:** nesta máquina, o `systemd-timesyncd` precisa ficar desligado. Com ele ligado, os testes de prazo do `endofday` caem em cascata.
-- Capturas do brain: ver o handoff do lote, na E01.
+- Capturas do brain: `00 Inbox/2026-11-17 - ZenyHotelManager - atualização m6-operacao-fechamento E18 (refação) - 6f1c16c9.md`.
 
 ---
 
-## E01 — Tipos de limpeza, créditos e faxinas programadas — #pendente
+## E01 — Tipos de limpeza, créditos e faxinas programadas — #em-andamento
 
 **Objetivo:** criar o módulo `housekeeping` com a configuração de tipos de limpeza (RF-GOV-01) — créditos por tipo de UH, modelo de checklist, exigência de inspeção, prioridade padrão e regra de troca de enxoval — e de faxinas programadas por UH ou área (RF-GOV-10).
 
