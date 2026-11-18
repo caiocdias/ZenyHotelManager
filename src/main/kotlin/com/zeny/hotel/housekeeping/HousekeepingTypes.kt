@@ -41,6 +41,27 @@ value class HousekeepingTaskId(
     }
 }
 
+/** Id de um plano do dia da distribuição das tarefas. */
+@JvmInline
+value class AssignmentPlanId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): AssignmentPlanId = AssignmentPlanId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status do plano do dia (D6-E03): `DRAFT`, o rascunho da sugestão e do ajuste; `PUBLISHED`, gravado nas tarefas pela
+ * publicação (Task 3). O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class AssignmentPlanStatus {
+    DRAFT,
+    PUBLISHED,
+}
+
 /**
  * Status de uma tarefa de governança (SPEC §8.2.10). A tarefa nasce `PENDING` (E02); as transições são da E03 e da E04.
  * O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
@@ -175,4 +196,25 @@ object HousekeepingErrorCodes {
 
     /** 409: já há tarefa no mesmo local, na mesma data e com o mesmo tipo de limpeza, em qualquer status (D5-E02). */
     val HOUSEKEEPING_TASK_ALREADY_EXISTS = ErrorCode("HOUSEKEEPING_TASK_ALREADY_EXISTS")
+
+    /** 404: ainda não há plano do dia na data. */
+    val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")
+
+    /** 422: a data do plano é anterior à data operacional ou mais de 7 dias depois dela (D2-E03). */
+    val ASSIGNMENT_PLAN_DATE_INVALID = ErrorCode("ASSIGNMENT_PLAN_DATE_INVALID")
+
+    /**
+     * 422: o colaborador não está na escala do setor de governança na data (ou fora dos `employeeIds` da sugestão).
+     * Um colaborador inexistente dá o mesmo código (D11-E03, exceção à H16: a `StaffApi` não busca colaborador por id).
+     */
+    val ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED = ErrorCode("ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED")
+
+    /**
+     * 422: a tarefa não pode entrar no plano: já andou (fora de `PENDING` e `ASSIGNED`) ou está fora do conteúdo do
+     * plano (D2-E03: a data dela, ou uma anterior só no plano da data operacional).
+     */
+    val ASSIGNMENT_TASK_NOT_ASSIGNABLE = ErrorCode("ASSIGNMENT_TASK_NOT_ASSIGNABLE")
+
+    /** 400: a tarefa do ajuste não existe (campo `items` ou `remove`, H16). */
+    val ASSIGNMENT_UNKNOWN_TASK = ErrorCode("ASSIGNMENT_UNKNOWN_TASK")
 }

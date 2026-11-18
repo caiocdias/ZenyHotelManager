@@ -20,4 +20,9 @@ internal object HousekeepingAudit {
 
     const val REQUEST_TASK = "housekeeping.task.request"
     const val GENERATE_TASK = "housekeeping.task.generate"
+
+    const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
+
+    const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"
+    const val ADJUST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.adjust"
 }

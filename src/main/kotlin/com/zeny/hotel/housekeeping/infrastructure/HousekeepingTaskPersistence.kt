@@ -113,6 +113,25 @@ class JpaHousekeepingTaskStore(
             .query(Boolean::class.java)
             .single()
 
+    override fun assignableUpTo(
+        date: LocalDate,
+        includePrevious: Boolean,
+    ): List<HousekeepingTask> =
+        tasks(
+            jdbc
+                .sql(
+                    """
+                    SELECT id FROM housekeeping.housekeeping_task
+                    WHERE status IN ('PENDING', 'ASSIGNED')
+                      AND (business_date = :date OR (CAST(:previous AS boolean) AND business_date < :date))
+                    ORDER BY id
+                    """.trimIndent(),
+                ).param("date", date)
+                .param("previous", includePrevious)
+                .query { rs, _ -> rs.getObject("id", UUID::class.java) }
+                .list(),
+        )
+
     override fun lastTaskDate(
         roomId: RoomId,
         onOrBefore: LocalDate,

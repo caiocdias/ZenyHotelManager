@@ -81,6 +81,15 @@ interface HousekeepingTaskStore {
      */
     fun hasOpenTaskFor(scheduledCleaningId: ScheduledCleaningId): Boolean
 
+    /**
+     * As tarefas que podem entrar no plano de [date] (D2-E03), em ordem de id: as `PENDING` e `ASSIGNED` da data e, se
+     * [includePrevious] (o plano da data operacional), também as de datas anteriores (D4 da E02).
+     */
+    fun assignableUpTo(
+        date: LocalDate,
+        includePrevious: Boolean,
+    ): List<HousekeepingTask>
+
     /** A data da última tarefa da UH até [onOrBefore] (inclusive), sem contar as `CANCELLED`; `null` se não há. */
     fun lastTaskDate(
         roomId: RoomId,
