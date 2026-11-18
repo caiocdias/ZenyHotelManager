@@ -113,7 +113,7 @@ São do orquestrador, com a autorização do usuário de 2026-11-17 para escolhe
   - "Chegada prevista" é a reserva de `pendingArrivals(date)` com UH alocada: `CONFIRMED` com chegada até a data, o que inclui a atrasada e exclui a pré-reserva.
   - Alternativas descartadas: calcular na leitura ou escutar os eventos de reserva.
 - **D9-E02, fonte da verdade:** a ocupação vem do `reservations`: hospedada é `inHouse(date)`, e sai na data quem está em `pendingDepartures(date)`. O `rooms` informa só UH ativa, OOO/OOS e status de governança. UH em OOO/OOS não recebe pré-chegada nem programada.
-- **D10-E02, evento de avanço atrasado:** um `BusinessDateAdvanced` cuja `current` é anterior à `HotelApi.currentBusinessDate()` é ignorado, com log `INFO`.
+- **D10-E02, evento de avanço atrasado:** um `BusinessDateAdvanced` cuja `current` é anterior à `HotelApi.currentBusinessDate()` é ignorado, com log `WARN` que traz as duas datas. A guarda fica no **listener**, não em `generateForDate`, para que as chamadas diretas dos testes não dependam dela.
 - **D11-E02, ordem dentro do dia:** `generateForDate` gera primeiro as programadas e depois as permanências e as pré-chegadas. Assim, a tarefa da faxina programada leva o `scheduledCleaningId`. Quando a programada colide com uma tarefa já existente do mesmo (local, data, tipo), ela não gera tarefa, e isso vai ao log `INFO`.
 - **D12-E02, falha na geração:** estados esperados (tipo inativo, crédito ausente, UH inativa, inexistente ou em OOO) nunca lançam exceção. Erro inesperado desfaz a geração do dia inteiro, e o outbox a reenvia. Isso é aceitável para 30 UHs.
 - **D13-E02, sincronização offline:** as colunas de mudança da ARCHITECTURE §9 (`change_seq` etc.) **não** entram nesta etapa. A E04, que leva as tarefas ao feed offline, as acrescenta (nota no handoff).
@@ -209,17 +209,17 @@ Testes em `src/test/kotlin/com/zeny/hotel/housekeeping/`.
 - **Entrega repetida** (Review Focus 2): chamar a geração da `CHECKOUT` duas vezes com o mesmo evento não cria uma segunda tarefa e não lança. Teste no `HousekeepingCheckoutTasksTest` chamando o caso de uso direto.
 - **Tipo inativo** (D1-E02): `HousekeepingTaskGenerationTest`, teste de unidade com portas falsas. Com o `CHECKOUT` inativo, não há tarefa nem exceção, e o resultado vem como `noChanges`. Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingTaskGenerationTest'`.
 - **`ReservationsApi.assignedRooms(ids)`:** devolve a alocação vigente em lote; id sem alocação ou com alocação liberada fica fora. O teste fica no `reservations`. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.reservations.*AssignedRooms*'`.
-- **KDoc** (D6): a verificação é `grep -n 'governança (M6)' src/main/kotlin/com/zeny/hotel/reservations/ReservationsEvents.kt`, que só pode achar `GuestCheckedOut` e `RoomMoved`.
+- **KDoc** (D6): `grep -n 'governança (M6' src/main/kotlin/com/zeny/hotel/reservations/ReservationsEvents.kt` só acha os KDocs de `GuestCheckedOut` e `RoomMoved`. Os de `ReservationCreated`, `ReservationCancelled`, `GuestCheckedIn` e `GuestCheckInUndone` deixam de citar a governança como ouvinte.
 - **Módulos:** o `ModularityTest` passa a declarar `["shared", "hotel", "rooms", "reservations", "checklists"]`, em igualdade exata. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
 - Em `src/main/kotlin/com/zeny/hotel/housekeeping/`: `HousekeepingModule.kt`, `application/HousekeepingTaskGeneration.kt` (novo, o caso de uso `@Audited`), `application/HousekeepingTaskListeners.kt` (novo) e `application/HousekeepingTasksService.kt` (marca na avulsa).
-- `src/main/kotlin/com/zeny/hotel/reservations/ReservationsApi.kt` e a implementação em `reservations/application/`.
+- `src/main/kotlin/com/zeny/hotel/reservations/ReservationsApi.kt`, a implementação em `reservations/application/InventoryService.kt` (que implementa a `ReservationsApi`), a porta `reservations/application/RoomAssignmentPorts.kt` e `reservations/infrastructure/JdbcRoomAssignmentStore.kt`.
 - `src/main/kotlin/com/zeny/hotel/reservations/ReservationsEvents.kt` (só o KDoc).
 
 Testes no `housekeeping` e no `reservations`.
 
-**Tamanho:** ~50 min; 7 arquivos de produção.
+**Tamanho:** ~50 min; 9 arquivos de produção.
 
 **Depende de:** Task 1.
 
@@ -249,7 +249,12 @@ Todas levam a marca de chegada (D8). O listener ignora o avanço atrasado (D10).
   - faxina vencida gera `SCHEDULED` com o tipo e o `scheduledCleaningId` dela;
   - rodar de novo com a tarefa aberta (inclusive com status `ASSIGNED` gravado direto no banco) não gera outra (Review Focus 5);
   - faxina inativa, ou com local inativo ou em OOO, não gera;
-  - rodar `generateForDate` duas vezes não duplica nada (Review Focus 2).
+  - rodar `generateForDate` duas vezes não duplica nada (Review Focus 2);
+  - **ordem B** (Review Focus 1), por chamadas diretas, reproduzindo o estado "check-out confirmado, listener ainda não rodou":
+    - montagem: uma UH do teste sem hospedada, deixada Suja por `RoomsApi.markVacant(id, CHECK_OUT)` (o que o `CheckOutService` do `frontdesk` faz na transação do check-out), sem tarefa anterior e com chegada alocada na data;
+    - `generateForDate(data)` não gera `PRE_ARRIVAL` nem `STAYOVER` para ela;
+    - depois, `generateCheckout(id, data - 1, CHECKOUT)` gera uma `CHECKOUT` em `data - 1`;
+  - **ordem A**, o caso espelhado: `generateCheckout` antes e `generateForDate` depois dão o mesmo resultado.
 
   Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingDailyTasksTest'`.
 - **Prioridade de chegada e tipo inativo**, com portas falsas no `HousekeepingTaskGenerationTest` (Review Focus 4 e D1-E02):
@@ -258,13 +263,16 @@ Todas levam a marca de chegada (D8). O listener ignora o avanço atrasado (D10).
   - com o `PRE_ARRIVAL` inativo, não sai pré-chegada.
 
   Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingTaskGenerationTest'`.
-- **Avanço atrasado** (D10): um `BusinessDateAdvanced` com `current` anterior à data operacional é ignorado. Teste de unidade do listener ou da geração.
+- **Avanço atrasado** (D10): no `HousekeepingTaskGenerationTest`, o listener recebe um `BusinessDateAdvanced` com `current` anterior à data operacional da `HotelApi` falsa e não chama a geração. Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingTaskGenerationTest'`.
 - **`HousekeepingEndOfDayTasksTest`** (`@EndOfDayIntegrationTest`, banco isolado, contexto de etapas reais como os testes do fechamento da E11, `EndOfDayTestRuns.settle(context)` no fim):
   - o fechamento real avança a data e gera a `STAYOVER` da nova data para uma hospedada do próprio teste;
-  - **duas ordens** (Review Focus 1), com uma estadia de uma noite que sai em D e uma chegada alocada à mesma UH em D+1:
-    - ordem A: o check-out é processado antes do avanço;
-    - ordem B: o avanço é processado antes do `GuestCheckedOut`. O teste a produz de forma determinística: deixa a publicação do `GuestCheckedOut` pendente no outbox e a reenvia depois do avanço, ou chama o caso de uso de geração da `CHECKOUT` só depois do avanço. O teste diz qual dos dois usou.
-  - Nas duas ordens, o resultado é o mesmo: uma `CHECKOUT` em D, nenhuma `STAYOVER` nem `PRE_ARRIVAL` em D+1, e nada duplicado.
+  - **ordem A ponta a ponta** (Review Focus 1), com uma estadia de uma noite que sai em D e uma chegada alocada à mesma UH em D+1:
+    - o check-out passa pelo caso de uso do `frontdesk` (`CheckOutService`), que deixa a UH Suja;
+    - o listener da `CHECKOUT` roda;
+    - o fechamento real avança para D+1;
+    - resultado: uma `CHECKOUT` em D, nenhuma `STAYOVER` nem `PRE_ARRIVAL` em D+1, e nada duplicado.
+
+    A ordem B fica no `HousekeepingDailyTasksTest`, por chamadas diretas.
 
   Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingEndOfDayTasksTest'`.
 - **Convivência com o listener das rotinas de checklist:** cada listener tem a sua publicação no outbox, e a falha de um não impede o outro. Quem confere é a revisão, e a suíte do `checklists` segue verde. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.checklists.*'`.
