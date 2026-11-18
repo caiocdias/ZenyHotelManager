@@ -1414,6 +1414,7 @@ classDiagram
     ReservationStatus status
     LocalDate arrival
     LocalDate departure
+    LocalTime expectedArrivalTime
     int adults
     int children
     String segment
@@ -1512,6 +1513,8 @@ classDiagram
   Reservation "1" *-- "*" Trace
   Reservation "1" --> "1..*" Folio
 ```
+
+`expectedArrivalTime` (decisão do usuário, 2026-11-18, H20 do roadmap do M6) é a hora prevista de chegada, opcional, em hora local do hotel. O early check-in é derivado dela (chegada prevista antes do horário de check-in da política), e a distribuição sugerida (RF-GOV-03) a usa para pôr o early e as chegadas primeiro.
 
 #### 8.2.7 Contas, caixa e pagamentos
 
@@ -2791,20 +2794,23 @@ classDiagram
 
 | Evento | Publicado por | Consumido por | Efeito |
 |---|---|---|---|
-| `ReservationCreated` / `Changed` / `Cancelled` | Reservas | Distribuição, FNRH, Governança | ARI atualizado; registro/cancelamento na FNRH; plano de chegadas |
-| `GuestCheckedIn` / `GuestCheckedOut` | Reservas | FNRH, Governança | Envio à FNRH; tarefa de limpeza de saída; aviso à governança |
+| `ReservationCreated` / `Changed` / `Cancelled` | Reservas | Distribuição, FNRH | ARI atualizado; registro/cancelamento na FNRH |
+| `GuestCheckedIn` | Reservas | FNRH | Envio à FNRH |
+| `GuestCheckedOut` | Reservas | FNRH, Governança | Envio à FNRH; tarefa de limpeza de saída |
 | `RoomMoved` | Reservas | Governança | Tarefa na UH de origem |
 | `RoomStatusChanged` | UHs | Tempo real (SSE), Governança | Painel atualizado; UH pronta notificada à recepção |
 | `OutOfOrderChanged` | UHs | Reservas (disponibilidade) | Contadores de inventário recalculados; alerta se houver reserva alocada |
 | `AvailabilityChanged` | Reservas | Distribuição | ARI de disponibilidade enviado |
 | `RatesChanged` / `RestrictionsChanged` | Tarifas | Distribuição | ARI enviado |
 | `ChecklistCompleted` | Checklists | Estoque, Rouparia, Manutenção, Governança | Baixa de insumos; movimento de enxoval; OS; achado/dano |
-| `HousekeepingTaskCompleted` | Governança | UHs | Status da UH; aviso de UH pronta ou de inspeção pendente |
+| `HousekeepingTaskCompleted` | Governança | — (sem consumidor na Fase 1) | Fato publicado para módulos futuros. O status da UH muda na mesma transação da conclusão, pela chamada da governança à API de UHs (ARCHITECTURE §6.2) |
 | `TabClosed` | Restaurante | Restaurante (listener próprio, que chama Estoque e Fiscal) | Baixa por ficha técnica; NFC-e |
 | `PaymentSucceeded` | Pagamentos | Contas | Registra pagamento na conta/comanda/parcela |
 | `FiscalDocumentAuthorized` / `Rejected` | Fiscal | Contas | Vínculo da nota; alerta de rejeição |
-| `BusinessDateAdvanced` | Hotel (via Fechamento) | Governança, Manutenção, Checklists | Tarefas do dia, preventivas e rotinas geradas |
+| `BusinessDateAdvanced` | Hotel (via Fechamento) | Governança, Manutenção, Checklists | Tarefas do dia (inclusive o plano de chegadas), preventivas e rotinas geradas |
 | `StockBelowMinimum` | Estoque | Estoque (listener próprio, que chama Notificações) | Alerta ao almoxarife |
+
+A governança não escuta os eventos de reserva nem `GuestCheckedIn`/`GuestCheckInUndone` (decisão do usuário, 2026-11-18, H19 do roadmap do M6). O plano do dia sai do `BusinessDateAdvanced`, e a distribuição sugerida relê as chegadas da data e a hora prevista de chegada no momento da sugestão, então uma reserva criada, alterada ou cancelada depois do avanço da data entra na próxima sugestão sem evento.
 
 Notificações e impressão não escutam eventos dos módulos de negócio. O módulo que gera o aviso ou é dono do documento chama esses serviços diretamente (ARCHITECTURE §3.1, regra por camadas). Por isso os avisos ligados aos eventos acima, como UH pronta, rejeição de nota e estoque mínimo, partem do módulo que publica o evento ou que o consome.
 
@@ -2871,6 +2877,7 @@ stateDiagram-v2
   [*] --> Pending
   Pending --> Assigned : distribuição publicada
   Assigned --> Assigned : reatribuída
+  Assigned --> Pending : recolhida na republicação
   Assigned --> InProgress : iniciar
   InProgress --> Paused : pausar
   Paused --> InProgress : retomar
@@ -2885,6 +2892,8 @@ stateDiagram-v2
   Assigned --> Cancelled
   Done --> [*]
 ```
+
+`Assigned → Pending` (decisão do usuário, 2026-11-18, H19 do roadmap do M6): a governanta tira a tarefa de uma camareira sem passá-la a outra, e a republicação do plano a devolve a Pendente. Só vale para a tarefa que ainda não andou; a que já começou nunca muda de camareira pela publicação.
 
 **Documento fiscal**
 

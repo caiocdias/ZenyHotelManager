@@ -1,6 +1,6 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-13
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-18
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
@@ -11,6 +11,8 @@
 Inicie uma sessão limpa do Claude Code na raiz do repositório com `claude --agent orquestrador` e cole o "Prompt de execução". Ele executa até 3 etapas em sequência na branch `roadmap/m6-operacao-fechamento`, cada uma planejada pelo plugin superpowers e executada pelas souls (subagentes do Second Brain), e para para revisão. No fim do lote, o orquestrador integra a branch na `main` com merge local e deixa pronto o `git push origin main`, que fica com você. Para não parar em cada pedido de permissão, libere antes os comandos de build/teste do projeto nas permissões do Claude Code (os comandos oficiais estão na tabela do `CLAUDE.md`; o Docker é necessário para os testes de integração).
 
 **Sincronizado com o código em 2026-11-12**, depois do gate do M5 (`main` em `3a42e35`), pelo `arquiteto` com a skill `development-roadmap` no modo atualização (regra 2 de `docs/roadmaps/README.md`). As APIs públicas, os eventos, as portas e as views de M1 a M5 que o marco usa foram conferidos no código e estão em "Base técnica herdada", em "Contexto confirmado"; as notas do handoff da M5 E12 entraram nas etapas que tocam. Entraram três etapas de manutenção herdadas do M5 (E15 a E17), e o gate passou a depender delas. Nenhuma etapa foi renumerada nem removida, e todas seguem `#pendente`.
+
+**Revisado em 2026-11-18**, depois do lote E18–E03 (`main` em `f992696`), pelo `arquiteto` com a skill `development-roadmap` no modo atualização. A E04 foi dividida (H18 e H21): a E04 ficou com a máquina de estados, as ações online e a conclusão, e a nova **E19** com os comandos offline, o conflito RN-22 e o feed. As pendências transversais da E18 e da E01 viraram a **E20** (entrada estrita) e a **E21** (erros de trava e logs), que rodam antes da E04. O early check-in (H17) ganhou a **E22**. As decisões do usuário estão na H20. A SPEC (§8.2.6, §8.3 e §8.4) e a ARCHITECTURE (§6.1 e §7) foram alinhadas às H19 e H20 na mesma revisão.
 
 ## Objetivo
 
@@ -38,6 +40,16 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
   - **Views `report_*` publicadas:** `billing` (`report_cashier_counts`, `report_cashier_shifts`, `report_folios`, `report_payments`, `report_postings`), `checklists` (`report_check_item_outcome`, `report_execution_compliance`, `report_location_history`), `fnrh.report_submissions`, `guests.report_guests`, `rates` (`report_rate_plans`, `report_rate_prices`) e `reservations` (`report_block_allocations`, `report_inventory`, `report_reservations`, `report_room_assignments`, `report_room_nights`). O `rooms` não publica view.
   - **FNRH:** a porta `FnrhGateway` tem 10 operações e nenhuma de no-show; `FnrhOperation` vai de `REGISTER_RESERVATION` a `CHECK_OUT` (contrato `x-extensible-enum`) e é conferida por `submission_operation_ck` no schema `fnrh` (E14).
   - **Testes:** `@IntegrationTest` adia oito jobs (`testsupport/IntegrationTest.kt`); o banco é compartilhado por todos os testes; `ChecklistRoutinesTest`, `StayTransitionsApiTest` e `BusinessDateTest` já avançam a data operacional desse banco, e o `MilestoneM5EndToEndTest` nunca a avança (H10). Modelo de teste de gate: `MilestoneM5EndToEndTest`; modelo de compose do gate: `docker/gate/` (`run-gate.sh`, `gate-env.sh`, `compose.gate.yaml`, `fnrh-mock/`, `m5-roteiro.sh` e o `README.md` dele). Máquina de 14 GB: um Gradle ou `docker build` por vez, e nunca `./gradlew --stop`.
+- **Base técnica do próprio M6** (conferida no código em 2026-11-18, `main` em `f992696`, para as etapas E04 e E19 a E22; referência completa nas capturas pendentes `ZenyHotelManager - atualização m6-operacao-fechamento` E18, E01, E02, E03 e "fim do lote E18-E03"):
+  - **`housekeeping`** existe desde a E01, com as permissões `housekeeping.config.read`/`manage`, `housekeeping.tasks.read`/`request` e `housekeeping.assignments.manage`, **todas só com escopo `ALL`** (`HousekeepingPermissions.kt`), nos modelos Gerente e Governanta (a leitura e o pedido de tarefas também na Recepção). O modelo **Camareira** (`RoleTemplate.ROOM_ATTENDANT`) ainda não recebe nenhuma permissão do módulo. A última migração do módulo é `housekeeping/V2026_11_18_1102__add_task_assignee.sql`.
+  - **`RoomsApi.markClean`** só leva Suja a Limpa ("uma UH já limpa, com inspeção pendente ou inspecionada não volta a limpa"); **`setServiceFlag`** recusa UH vaga com `422 ROOM_NOT_OCCUPIED`. A observação de ocupação da governança (RF-UH-08) só existe por endpoint (`RoomStatusService.recordObservation`, permissão `rooms.status.observe`, instante pelo `Clock`), sem método na `RoomsApi`.
+  - **`ChecklistsApi`** tem `resolveTemplate`, `template(id)` (só o resumo, com `published`), `version(templateId, number)`, `version(id)`, `startExecution` e `completeExecution`; **não** tem a "versão publicada vigente de um modelo". Os comandos offline do `checklists` são `checklists.start-execution` e `checklists.complete-execution`, com o `versionId` vindo do aparelho, e as fontes são `checklist-templates` e `checklist-executions` (`ChecklistsOffline.kt`).
+  - **Protocolo offline** (`shared/OfflineSync.kt`): o handler rejeita lançando `DomainException` (vira `REJECTED`) e aplica com alerta devolvendo `OfflineCommandOutcome.warnings`; `CLOCK_SKEW_EXCEEDED` é **alerta** de comando aplicado, não rejeição. Nomes vigentes de fonte em kebab-case no plural (`rooms`, `checklist-executions`) e de comando como `módulo.verbo-objeto` (`checklists.start-execution`).
+  - **Transição inválida** no projeto é `409` (precedente `409 RESERVATION_TRANSITION_NOT_ALLOWED` do `reservations`).
+  - **Catálogo do `notifications`** (`NotificationTypes.kt`): `task-assigned`, `room-released`, `inspection-rejected`, `urgent-work-order`, `low-stock`, `integration-failure` e `end-of-day-pending`; nenhum tipo para conflito de tarefa.
+  - **Reserva** sem hora prevista de chegada nem pedido de early (SPEC §8.2.6 e `reservations/`); a política do hotel tem `checkInTime` (`HotelApi.policy()`).
+  - **Contrato:** os schemas de request não marcam `required` (ex.: `CleaningTypeRequest` em `api/openapi.yaml`), e `.github/scripts/check-api-breaking.sh` roda `oasdiff breaking --fail-on ERR` sem lista de exceções. Há data em caminho desde a E03 (`/api/v1/assignment-plans/{date}`). Nenhum DTO de entrada usa `LocalDateTime` ou `OffsetDateTime`; `LocalTime` aparece na política do hotel, nos recados e nos checklists.
+  - **Erros de trava:** só o `endofday` trata `55P03` por conta própria (`EndOfDayRunCommands`, `EndOfDayRunRepository`); no resto, `40P01` e `55P03` chegam ao `ApiExceptionHandler` como 500 (handoff da E01).
 - **Pendências herdadas do M5 e onde entram aqui:** rótulos de motivo de viagem e meio de transporte na ficha e descrição de `frontdesk.stays.checkin` (M5 E11 (f) e (g)) → **E15**; teste de índices mais fraco nas listas por situação (Média da M5 E01) e `FnrhSubmissionDismissCompat.kt` duplicado em `src/test` → **E16**; corpo mínimo nas respostas de `restrict`, `lift-restriction` e `merge` do `guests` (M5 E15 (h)) → **E17**; no-show na FNRH (H15 do M5) → **E14**; caminho próprio do fechamento para mudar a data nos testes (handoff da M5 E12) → **E10** (H10); `docker/gate/` e o padrão do `MilestoneM5EndToEndTest` no gate → **E12**. Não são do M6: o aviso da LGPL do openhtmltopdf (documentação de implantação do M8), a homologação da FNRH (M5 E09, cobrada pela M8 E13) e o expurgo dos sensíveis da FNRH (M8 E16).
 
 ## Escopo
@@ -86,9 +98,11 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H14 | **Decidida pelo usuário em 2026-11-15 (entrevista do fim do lote da E17), pelas opções recomendadas:** (a) as escritas `restrict`, `lift-restriction` e `merge` do `guests` mantêm `oneOf: [GuestResponse, GuestWriteSummaryResponse]` sem discriminador (com o ogen, os clientes recebem `JsonElement` nessas três operações); (b) o corpo mínimo é `{id, restricted}`, com a versão no `ETag`. Regra registrada pelo `arquiteto` em 2026-11-15 na ARCHITECTURE §7, linha "Resposta que varia com a permissão" (`oneOf` sem discriminador, ramos disjuntos pelo `required`, sem `additionalProperties: false`, mesmo media type, decisão no caso de uso). | Trocar por discriminador pede uma propriedade nova no `GuestResponse` de todas as operações de perfil; tirar `restricted` do mínimo é remoção de campo obrigatório (`ERR`). | E17 |
 | H15 | **Decidida pelo usuário em 2026-11-17 (entrevista de abertura do lote), pela opção recomendada:** a execução anterior concluiu a E18 e a E01 e deixou a E02 `#em-andamento` (2026-11-15 e 16) numa branch `roadmap/m6-operacao-fechamento` local que nunca foi enviada ao remoto. Ela se perdeu com a troca da distro WSL: a `main` e o `origin` estão em `5e06f16`, em que as duas etapas seguem `#pendente`. A E18, a E01 e as seguintes são **refeitas a partir da `main`**, com as notas do brain como referência (Estado por marco, "M6 E18" e "M6 E01", e as notas de tema citadas lá), para o comportamento sair igual ao já documentado, salvo decisão nova registrada no handoff. Se a branch antiga reaparecer, ela é descartada. | As notas do brain descrevem commits que não existem; a captura de cada etapa refeita diz que o texto dela substitui o da branch perdida. | E18, E01, E02 |
 | H16 | **Decidida pelo usuário em 2026-11-17 (entrevista de abertura do lote), pela opção recomendada:** no `housekeeping`, uma referência inexistente no corpo (tipo de UH, modelo de checklist, local, tipo de limpeza) dá **`400` com código `…UNKNOWN_…`**, o padrão do projeto (`UNKNOWN_FOLIO`, `UNKNOWN_GUEST`, `UNKNOWN_RATE_PLAN`), e não `422`. Isso substitui o "`422`" do critério da E01 para crédito com tipo de UH inexistente, e a D8 da execução perdida. O modelo de checklist de contexto incompatível continua `422` (violação de regra). | Os SDKs tratam a referência inexistente de um jeito só; voltar a `422` depois é breaking change. | E01 e as etapas do `housekeeping` |
-| H17 | **Decidida pelo orquestrador em 2026-11-18 (autorização noturna do usuário), pela opção recomendada da revisão de arquitetura do plano da E03:** a prioridade de *early check-in* da RF-GOV-03 fica **adiada**. O `reservations` não guarda pedido de early nem hora prevista de chegada, e a E03 cumpre o critério "chegadas e early vêm primeiro" só para as chegadas. O `arquiteto` decide a etapa que leva o dado ao `reservations` e devolve o early à sugestão. Alternativa descartada: bloquear a E03 até o `reservations` ter o dado. | Sem o early, uma UH com early check-in pedido é distribuída como uma chegada comum. | E03 e a etapa futura do `reservations` |
-| H18 | **Decidida pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a E04 **não cabe** no formato de até 3 fatias de ~60 min (revisão de arquitetura do plano `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, rodada 0 bloqueada com 1 Crítico e 8 Importantes) e volta a `#pendente` para o `arquiteto` dividi-la (sugestão: E04a máquina de estados, ações online e conclusão; E04b comandos offline, conflito RN-22 e feed); (b) **conflito RN-22**: o comando offline de quem foi dona da tarefa e a perdeu (reatribuída, desatribuída ou cancelada) só é **registrado e sinalizado** (o que A fez, inclusive as respostas do checklist), sem mudar a tarefa nem a UH, e a governanta resolve; um **histórico de posse** distingue esse caso do de quem nunca foi dona, que é recusado (`403`/`REJECTED`); (c) a `notes` da avulsa **fica fora do feed** offline (RN-13, regra "nada de texto livre no feed"); (d) concluir tarefa numa UH já Limpa ou Inspecionada **não mexe na UH** (só tarefa e checklist). | A divisão muda o índice e as dependências do M6 (E05 e E06 dependem da E04). | E04 (e as que dependem dela) |
-| H19 | **Confirmadas pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a transição `ASSIGNED → PENDING` da E03 (D7, recolher tarefa sem passá-la a outra camareira) fica, e o `arquiteto` a registra na SPEC §8.4; (b) a governança **não** escuta os eventos de reserva (D6 da E02): o plano do dia sai do avanço da data e a E03 recalcula a chegada; o `arquiteto` alinha a SPEC §8.3 e a ARCHITECTURE §6.1; (c) a exceção à H16 da E03 (D11: colaborador inexistente dá `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, validação pela escala) fica e é registrada; (d) o early check-in (H17) fica com o `arquiteto`, que decide a etapa que leva o dado ao `reservations`. | Mudar qualquer uma pede etapa de manutenção. | E02, E03 e o `arquiteto` |
+| H17 | **Decidida pelo orquestrador em 2026-11-18 (autorização noturna do usuário), pela opção recomendada da revisão de arquitetura do plano da E03:** a prioridade de *early check-in* da RF-GOV-03 fica **adiada**. O `reservations` não guarda pedido de early nem hora prevista de chegada, e a E03 cumpre o critério "chegadas e early vêm primeiro" só para as chegadas. O `arquiteto` decide a etapa que leva o dado ao `reservations` e devolve o early à sugestão. Alternativa descartada: bloquear a E03 até o `reservations` ter o dado. | Sem o early, uma UH com early check-in pedido é distribuída como uma chegada comum. **Encaminhada em 2026-11-18 pelo usuário (H20 a e b):** a **E22** leva a hora prevista de chegada ao `reservations` e devolve o early à sugestão. | E03 e E22 |
+| H18 | **Decidida pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a E04 **não cabe** no formato de até 3 fatias de ~60 min (revisão de arquitetura do plano `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, rodada 0 bloqueada com 1 Crítico e 8 Importantes) e volta a `#pendente` para o `arquiteto` dividi-la (sugestão: E04a máquina de estados, ações online e conclusão; E04b comandos offline, conflito RN-22 e feed); (b) **conflito RN-22**: o comando offline de quem foi dona da tarefa e a perdeu (reatribuída, desatribuída ou cancelada) só é **registrado e sinalizado** (o que A fez, inclusive as respostas do checklist), sem mudar a tarefa nem a UH, e a governanta resolve; um **histórico de posse** distingue esse caso do de quem nunca foi dona, que é recusado (`403`/`REJECTED`); (c) a `notes` da avulsa **fica fora do feed** offline (RN-13, regra "nada de texto livre no feed"); (d) concluir tarefa numa UH já Limpa ou Inspecionada **não mexe na UH** (só tarefa e checklist). | A divisão muda o índice e as dependências do M6 (E05 e E06 dependem da E04). **Cumprida em 2026-11-18 pelo `arquiteto` (H21 a):** E04 (máquina de estados, ações online e conclusão) e **E19** (comandos offline, conflito RN-22 e feed); os achados da revisão do plano tentado estão nas duas. | E04, E19 (e as que dependem delas) |
+| H19 | **Confirmadas pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a transição `ASSIGNED → PENDING` da E03 (D7, recolher tarefa sem passá-la a outra camareira) fica, e o `arquiteto` a registra na SPEC §8.4; (b) a governança **não** escuta os eventos de reserva (D6 da E02): o plano do dia sai do avanço da data e a E03 recalcula a chegada; o `arquiteto` alinha a SPEC §8.3 e a ARCHITECTURE §6.1; (c) a exceção à H16 da E03 (D11: colaborador inexistente dá `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, validação pela escala) fica e é registrada; (d) o early check-in (H17) fica com o `arquiteto`, que decide a etapa que leva o dado ao `reservations`. | Mudar qualquer uma pede etapa de manutenção. **Registradas em 2026-11-18 pelo `arquiteto`:** (a) na SPEC §8.4; (b) na SPEC §8.3 e na ARCHITECTURE §6.1; (c) na ARCHITECTURE §7, linha "Erros"; (d) na H20 e na E22. | E02, E03 e o `arquiteto` |
+| H20 | **Decidida pelo usuário em 2026-11-18 (entrevista do `arquiteto` na revisão do roadmap), pelas opções recomendadas:** (a) o early check-in entra numa **etapa nova do M6, antes do gate** (**E22**), porque a RF-GOV-03 é da Fase 1, que o gate declara encerrada; (b) o `reservations` guarda a **hora prevista de chegada**, opcional, no fuso do hotel; o early é derivado (chegada prevista antes do `checkInTime` da política), e a hora também ordena as chegadas. É o mesmo dado que as OTAs mandam (M8); (c) as pendências transversais da E18 e da E01 rodam **antes da E04** (**E20** e **E21**, no bloco "Manutenção transversal"), para que a E04, a E19 e as etapas E05 a E09 já nasçam sobre elas, como fez a E18; (d) o contrato passa a marcar `required` em **todos** os schemas de request com campo que o servidor exige. O `oasdiff` acusa `ERR` nessa mudança, e ela é aceita **uma única vez**, na E20, registrada na ARCHITECTURE §7: o servidor não muda de comportamento (já recusa o campo faltando) e nenhum cliente está em produção. | Voltar atrás em (b) depois do M8 pede migração do dado das OTAs; em (d), outra quebra no contrato. | E20, E21, E22, E04 |
+| H21 | **Decidida pelo `arquiteto` em 2026-11-18 (revisão do roadmap), revisável:** (a) a divisão da E04 mantém o ID **E04** para a parte online (máquina de estados, ações e conclusão) e cria a **E19** para a offline. Os nomes "E04a" e "E04b" sugeridos não passam no verificador do roadmap, que só aceita `E` seguido de dígitos, e a regra da skill é não reutilizar nem renumerar IDs; (b) as pendências transversais viram **duas** etapas, a E20 (entrada estrita: corpo, query, caminho e `required`) e a E21 (erros de trava, logs dos jobs, filtro do ShedLock e `JOSEException`), para cada uma caber em até 3 fatias de ~60 min; a E04 mostrou o custo de uma etapa grande demais; (c) `40P01` (deadlock) e `55P03` (`lock_timeout`) que escapam de um caso de uso dão **`409 CONCURRENT_UPDATE`**, retentável e sem a mensagem do banco (ARCHITECTURE §7); o tratamento próprio do `endofday` continua; (d) a leitura estrita da E20 inclui `LocalTime` (só `HH:mm` ou `HH:mm:ss`), que já está na política do hotel, nos recados e nos checklists e que a E22 vai usar; (e) E05 e E06 passam a depender da E19, porque repetem o padrão offline dela; (f) **Revisão humana**: sim na E04 (contrato `OWN` da camareira e máquina de estados que a E05 e a E19 repetem), na E19 (padrão offline repetido por E05, E06 e E08, RN-22 e RN-13) e na E20 (contrato de todos os requests); não na E21 e na E22; (g) a SPEC §8.3 dizia que `HousekeepingTaskCompleted` é consumido por UHs para mudar o status; desde o M2, o status muda pela chamada síncrona da governança à `RoomsApi` (ARCHITECTURE §6.2, H3). A linha foi corrigida na mesma revisão. | (a) e (b) só mudam a organização; (c) é contrato novo, mas só substitui um 500; (d) recusa um formato leniente que nenhum cliente em produção usa. | E04, E05, E06, E19, E20, E21, E22 |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
 
@@ -97,7 +111,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 
 ## Definição global de pronto
 
-- [ ] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos, publicadas, executadas online e offline e inspecionadas, com o status da UH seguindo §8.4.
+- [ ] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
 - [ ] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
 - [ ] OS corretivas são abertas (manual, recepção, governança ou checklist), executadas online e offline, colocam a UH em OOO/OOS e a devolvem como Suja ao concluir.
 - [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
@@ -106,6 +120,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
 - [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
+- [ ] A manutenção transversal da E20 e da E21 está entregue: a entrada é estrita também em query string, caminho, `LocalTime`, número inteiro e UUID, e fora do alcance do banco no corpo; o contrato marca `required` nos requests; deadlock e `lock_timeout` dão `409 CONCURRENT_UPDATE`; nenhum job loga a mensagem da exceção.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -201,6 +216,8 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
+| E20 | Entrada estrita no corpo, na query e no caminho, e `required` no contrato | #pendente | — | Datas e instantes fora do alcance do banco recusados no corpo; query e caminho só ISO; `LocalTime`, inteiro e UUID estritos; `required` nos schemas de request |
+| E21 | Erros de trava e logs restantes | #pendente | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
 
 **Governança**
 
@@ -209,9 +226,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
-| E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
-| E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
-| E06 | Achados e perdidos e danos | #pendente | E04 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
+| E04 | Máquina de estados, ações online e conclusão da tarefa | #pendente | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
+| E19 | Comandos offline, conflito RN-22 e feed da camareira | #pendente | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
+| E05 | Inspeção e liberação da UH | #pendente | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
+| E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
+| E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
 **Manutenção**
 
@@ -231,7 +250,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17, E18 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -844,6 +863,124 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
+## E20 — Entrada estrita no corpo, na query e no caminho, e `required` no contrato — #pendente
+
+**Objetivo:** completar no `shared`, para todos os módulos, a leitura estrita da E18 (H13) e fazer o contrato declarar o que o servidor já exige. São cinco furos achados na E18 e na E01: (1) data ou instante fora do alcance do banco no **corpo** passa da validação (um recado com `dueOn` `+999999999-12-31` vira `infinity` e trava a paginação, a regressão aceita (e) da E18; `+5874898-01-01` dá 500); (2) data e instante em **query string e caminho** aceitam o formato curto do locale e epoch em ms, e fora do alcance dão 500 por cima e `-infinity` por baixo; (3) número fracionário num campo inteiro é truncado (`frequencyDays: 7.5` vira 7); (4) `""` num UUID opcional vira `null`, e um PUT com `checklistTemplateId: ""` apaga o vínculo em silêncio; (5) os schemas de request não marcam `required`, e os SDKs geram como opcionais campos que o servidor recusa ausentes.
+
+**Por que agora:** decisão do usuário (H20 c): roda antes da E04, como a E18 rodou antes da governança, para que os endpoints, os comandos offline e os DTOs novos de E04 a E09 e da E22 já nasçam estritos e com o `required` certo. O item 5 é a quebra única de contrato aceita pelo usuário (H20 d); quanto mais cedo, menos schemas e clientes ela alcança.
+
+**Dependências:** nenhuma dentro deste roadmap. Independente da E21. Se rodar numa branch separada de uma etapa que mude a API, espere conflito em `api/openapi.yaml`.
+
+**Escopo:**
+
+1. **Faixa no corpo:** `LocalDate` e `Instant` fora do `StorableRange` (`shared`, E18) no corpo JSON de `/api/v1` e nos payloads offline dão `400 VALIDATION_FAILED` com o erro no campo (offline: `REJECTED COMMAND_PAYLOAD_INVALID`, como na E18). Isso fecha a regressão (e) da E18.
+2. **Query string e caminho:** `LocalDate` e `Instant` em parâmetro de query e de caminho só aceitam o texto ISO-8601 da ARCHITECTURE §7 e o alcance do `StorableRange`; o resto dá `400 VALIDATION_FAILED` com o parâmetro em `errors[]`, nunca 500 nem `-infinity`. Vale para os existentes (ex.: `traces`, `audit-entries`, `card-pre-authorizations/expiring` e o caminho `/api/v1/assignment-plans/{date}`) e para os futuros, sem código por endpoint.
+3. **`LocalTime` estrito** (H21 d): só `HH:mm` ou `HH:mm:ss`, em texto, no corpo e nos payloads offline; o resto dá `400 VALIDATION_FAILED` no campo.
+4. **Inteiro e UUID estritos no JSON:** número fracionário num campo inteiro e `""` num UUID (obrigatório ou opcional) dão `400 VALIDATION_FAILED` com `INVALID_FORMAT` no campo. "Sem valor" é omitir o campo ou mandar `null`, como já vale para datas desde a E18.
+5. **`required` nos schemas de request** (H20 d): todo campo que o servidor exige no corpo (hoje recusado ausente com `400 REQUIRED` ou pela Bean Validation) sai `required` no `api/openapi.yaml`, em todos os módulos, de forma automática a partir do DTO, para os schemas futuros seguirem sem esforço. O comportamento do servidor não muda.
+
+**Fora de escopo:**
+
+- `LocalDateTime` e `OffsetDateTime` (nenhum DTO de entrada os usa, conferido em 2026-11-18) e a chave de `Map` de data ou instante (o `KeyDeserializer`; nenhum DTO de entrada a usa).
+- Deslocamento diferente de `Z` e `t`/`z` minúsculos num instante (decisão (g) da E18).
+- `ChecklistsApi.template` revelar existência e estado de um modelo a quem tem `housekeeping.config.manage` (handoff da E01; impacto baixo, aceito).
+- Os Menores restantes da revisão final da E18.
+
+**Critérios de aceite:**
+
+- [ ] **Faixa no corpo:** no `POST` de recado (`dueOn`) e em pelo menos um corpo com `Instant`, o valor imediatamente fora de cada extremo do `StorableRange` dá `400 VALIDATION_FAILED` no campo, e os extremos são aceitos; o mesmo valor num comando offline volta `REJECTED COMMAND_PAYLOAD_INVALID`. Teste vermelho antes da correção com `+5874898-01-01`.
+- [ ] **Query e caminho:** em `traces`, `audit-entries`, `card-pre-authorizations/expiring` e `/assignment-plans/{date}`, o formato curto do locale (`13/11/25`), epoch em ms e o valor fora do alcance por cima e por baixo dão `400 VALIDATION_FAILED` com o parâmetro em `errors[]`, e o ISO continua aceito. Teste vermelho antes da correção em pelo menos um parâmetro de query e no de caminho.
+- [ ] **`LocalTime`:** num corpo com `LocalTime` (ex.: a política do hotel), número, `"9:5"`, `"09:05:00Z"` e `""` dão `400 VALIDATION_FAILED` no campo, e `"09:05"` e `"09:05:30"` são aceitos.
+- [ ] **Inteiro:** `frequencyDays: 7.5` e `credits: 1.5` dão `400 VALIDATION_FAILED` com `INVALID_FORMAT` no campo; `7` continua aceito. Teste vermelho antes da correção.
+- [ ] **UUID:** um PUT de tipo de limpeza com `checklistTemplateId: ""` dá `400 VALIDATION_FAILED` com `INVALID_FORMAT` e não remove o vínculo; com `null`, remove. Teste vermelho antes da correção.
+- [ ] **Mapeador:** um teste sobre o `JsonMapper` do contexto da aplicação recusa os formatos dos itens 3 e 4, aninhados e em lista.
+- [ ] **`required`:** num teste sobre o contrato gerado, os campos obrigatórios de pelo menos `CleaningTypeRequest` (`credits` e os demais exigidos) e de um request de cada módulo com escrita saem em `required`, e nenhum campo opcional sai `required`.
+- [ ] **Contrato:** `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` só acusa `ERR` do tipo "propriedade de request passou a ser obrigatória"; a lista sai no handoff. Nenhum outro `ERR`.
+- [ ] Build e testes passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → só os `ERR` de `required` do item 5, listados no handoff (H20 d).
+
+**Revisão humana:** sim. O item 5 muda o contrato de todos os requests, e os SDKs dos clientes passam a exigir os campos; o usuário confere a lista dos `ERR` antes de o lote seguir.
+
+**Notas para o plano:** H13, H20 (c e d) e H21 (d); handoff da E18 ("Decisões para o usuário" (c) e (e) e "Notas para a próxima etapa") e handoff da E01 ("Para o `arquiteto`"). A regra de leitura estrita e a extensão desta etapa já estão na ARCHITECTURE §7, linha "Datas e valores", e a decisão do `required` na linha "Contrato" (o plano só as cumpre e, no fim, troca "a cumprir pela M6 E20" por "implementada"). A leitura estrita do corpo mora em `shared/infrastructure/json/StrictDateTimeJson.kt`; query e caminho são conversão do Spring MVC, não do Jackson. O `SerproFnrhWire` tem mapeador próprio e fica fora. Testes que enviam fracionário, `""` ou formato curto para entrada legítima são dívida de teste e mudam junto. **Avisar o front desktop** (como na E18): `""` num UUID passa a dar `400`, e o SDK regenerado passa a exigir os campos `required`. O `ERR` do item 5 aparece no `check-api-breaking.sh` até a etapa entrar na `main`; o usuário o verá uma vez antes do push.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- A conversão estrita de query pode recusar algo que um teste ou o próprio servidor manda. Mitigação: build completo com os testes de todos os módulos; os ajustes de teste ficam no handoff.
+- O `required` gerado pode marcar um campo que o servidor aceita ausente (ex.: com padrão). Mitigação: o critério confere que nenhum opcional sai `required`, e a lista dos `ERR` vai para a revisão humana.
+
+**Rollback / migração:** sem migração. Reverter é tirar as regras do `shared`; o `required` volta atrás com outra quebra de contrato (H20 d).
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E21 — Erros de trava e logs restantes — #pendente
+
+**Objetivo:** fechar as pendências de erro e de log que a E18 e a E01 deixaram para o `arquiteto`: (1) `40P01` (deadlock) e `55P03` (`lock_timeout`) que escapam de um caso de uso viram 500 no `ApiExceptionHandler`, e passam a dar `409 CONCURRENT_UPDATE` (H21 c); (2) quatro jobs ainda logam a própria falha com a mensagem (`OutboxMetrics`, `FileOrphanPurgeJob`, `ProvisionalReservations` e `InventoryHorizonJob`); (3) o logger `JdbcTemplateStorageAccessor` do ShedLock está em `OFF` (decisão (d) da E18), o que também esconde o "Unlock failed after 10 attempts"; (4) `FcmPushGateway.requestAccessToken` não captura a `JOSEException` de `SignedJWT.sign`.
+
+**Por que agora:** decisão do usuário (H20 c): roda antes da E04, que cria as primeiras travas em cadeia (tarefa → execução → UH) fora do `endofday`. Com o `409` no `shared`, a E04, a E19 e as etapas seguintes não precisam tratar deadlock e `lock_timeout` uma a uma.
+
+**Dependências:** nenhuma dentro deste roadmap. Independente da E20.
+
+**Escopo:**
+
+1. **Erros de trava:** `40P01` e `55P03` que chegam ao tratador RFC 9457 dão `409` com o código estável `CONCURRENT_UPDATE`, retentável, sem a mensagem nem o detalhe do banco. Os tratamentos próprios que já existem (o `55P03` da retomada do `endofday`) continuam. No protocolo offline, a mesma exceção continua sendo falha inesperada (`COMMAND_FAILED`, reenviar), que já é o comportamento retentável do protocolo.
+2. **Logs dos jobs:** os quatro jobs logam a falha com o nome do job e só a classe da exceção e das causas, como o tratador do agendador da E18 (`shared/infrastructure/scheduling/ScheduledJobErrors.kt`).
+3. **ShedLock:** o `OFF` do `JdbcTemplateStorageAccessor` dá lugar a um filtro que descarta só os eventos com exceção desse logger; as mensagens sem exceção (como o "Unlock failed after 10 attempts") voltam a aparecer.
+4. **FCM:** a `JOSEException` da assinatura vira a falha do gateway, sem a mensagem nem material de chave no log, e o envio do aviso segue o caminho de falha que o `notifications` já tem.
+
+**Fora de escopo:** mudar o `KeepAliveLockProvider` ou subir a versão do ShedLock (nota de operação da E18); expor `/actuator/scheduledtasks`; os Menores da revisão final da E18.
+
+**Critérios de aceite:**
+
+- [ ] **Deadlock:** um caso de uso de teste que provoca `40P01` de verdade (duas transações em ordem cruzada, coordenadas de forma determinística, como os testes de trava da E01) dá `409 CONCURRENT_UPDATE`, sem texto do PostgreSQL no corpo. Teste vermelho antes da correção (500).
+- [ ] **`lock_timeout`:** um caso de uso que espera uma linha travada além do `lock_timeout` dá `409 CONCURRENT_UPDATE`. Os testes de retomada do `endofday` continuam passando.
+- [ ] **Jobs:** cada um dos quatro jobs, com a falha forçada levando um sentinela na mensagem e na causa, gera log (saída capturada) com a classe e sem o sentinela. Teste vermelho antes da correção.
+- [ ] **ShedLock:** com o `LockProvider` falhando com sentinela, nenhum log do ShedLock traz o sentinela, e uma mensagem sem exceção do `JdbcTemplateStorageAccessor` aparece no log.
+- [ ] **FCM:** a `JOSEException` forçada na assinatura não escapa do gateway, e o log não traz a mensagem dela.
+- [ ] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa `ERR` (o `409` novo só documenta o que era 500).
+- [ ] Build e testes passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H21 (c); handoff da E18 ("Decisões para o usuário" (d) e "Notas para a próxima etapa": `OutboxMetrics.kt:74`, os jobs e o FCM) e da E01 (os exemplos de `40P01`/`55P03`: PUTs cruzados de faxinas no mesmo local e `reactivate` do tipo concorrendo com a desativação). O código `CONCURRENT_UPDATE` está registrado na ARCHITECTURE §7, linha "Concorrência". O padrão de teste de trava determinístico (`pg_blocking_pids`) está em `ScheduledCleaningsTypeLockTest` (E01). O valor do `lock_timeout` da aplicação, se não houver um, é decisão do plano, registrada no handoff. Máquina de 14 GB: um Gradle por vez.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- O filtro do ShedLock pode deixar passar uma mensagem com valor do banco. Mitigação: o critério usa sentinela na mensagem e na causa, como a E18.
+- Um `409` genérico pode esconder um deadlock recorrente de verdade. Mitigação: o log do tratador leva a classe e o SQLSTATE, sem a mensagem, e a revisão final confere se há métrica.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
 ## E01 — Tipos de limpeza, créditos e faxinas programadas — #concluida
 
 **Objetivo:** criar o módulo `housekeeping` com a configuração de tipos de limpeza (RF-GOV-01) — créditos por tipo de UH, modelo de checklist, exigência de inspeção, prioridade padrão e regra de troca de enxoval — e de faxinas programadas por UH ou área (RF-GOV-10).
@@ -1280,35 +1417,46 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E04 — Execução da tarefa online e offline — #pendente
+## E04 — Máquina de estados, ações online e conclusão da tarefa — #pendente
 
-**Objetivo:** implementar a execução da tarefa de governança (RF-GOV-04, RF-GOV-05) seguindo a máquina de estados de SPEC §8.4 — iniciar, pausar, retomar, concluir com checklist, registrar DND ou recusa — por API online e por comandos offline (`OfflineCommandHandler`, ARCHITECTURE §6.2 e §9), atualizando o status da UH, registrando discrepâncias (RF-UH-08) e tratando conflitos de RN-22.
+**Objetivo:** implementar a execução **online** da tarefa de governança (RF-GOV-04, RF-GOV-05) pela máquina de estados da SPEC §8.4: iniciar, pausar, retomar, concluir com checklist, recusar (não perturbe ou hóspede) e tentar de novo. A conclusão leva a UH Suja a Limpa (com ou sem inspeção pendente), registra quem limpou e os tempos, grava a ocupação encontrada para a discrepância (RF-UH-08), atualiza a faxina programada e publica `HousekeepingTaskCompleted`. Os comandos offline, o conflito RN-22 e o feed da camareira ficam na E19 (divisão da H18 e da H21 a).
 
-**Por que agora:** é o coração do app da camareira e o primeiro módulo de negócio a usar a sincronização offline de M2 de ponta a ponta.
+**Por que agora:** a E19 (offline), a inspeção (E05) e os achados (E06) usam a máquina de estados e o caso de uso de execução desta etapa. Ela roda depois da E20 e da E21 pela ordem do documento (H20 c), já com a entrada estrita e o `409 CONCURRENT_UPDATE`.
 
-**Dependências:** E03. Mesmo módulo que E05 e E06 (sem paralelismo com elas).
+**Dependências:** E03. Mesmo módulo que E19, E05, E06 e E22 (sem paralelismo com elas).
 
-**Escopo:** `housekeeping`:
+**Escopo:** `housekeeping`, com acréscimos mínimos às APIs públicas de `rooms` e `checklists` (dependências já declaradas):
 
-- Transições da tarefa no `domain` com testes; escopo `OWN` para a camareira (só as próprias tarefas).
-- Endpoints online de ação (`POST /api/v1/housekeeping-tasks/{id}/start` etc.) e handlers offline dos mesmos comandos, com idempotência por `commandId` e `occurredAt` corrigido pela defasagem.
-- Conclusão: chama `checklists` para concluir a execução (H2), `rooms.markClean(room, requiresInspection)` (H3), registra quem limpou, início, fim e duração, atualiza `lastDoneOn` de faxina programada e publica `HousekeepingTaskCompleted`.
-- Ocupação encontrada pela camareira (vazia/ocupada, número de hóspedes) enviada a `rooms` para detecção de discrepância.
-- Conflito RN-22: tarefa reatribuída ou cancelada enquanto offline → execução registrada e sinalizada à governanta (notificação e marca na tarefa), nunca descartada.
-- Feed de sincronização: tarefas da camareira e UHs (número e status, sem dados pessoais — RN-13) no `GET /api/v1/sync/changes`.
+- **Domínio:** todas as transições da §8.4, inclusive `ASSIGNED → PENDING` (H19 a, já registrada na SPEC), `REJECTED → IN_PROGRESS` (refazer, que a E05 vai produzir) e `REFUSED → ASSIGNED` (nova tentativa). Os instantes das transições ficam em ordem: nenhum antes da última transição da tarefa, regra que a E19 reaproveita com o `occurredAt` corrigido.
+- **Permissão de execução** própria, com escopo `OWN` no modelo Camareira (dona = a camareira atribuída, pelo usuário dela no `staff`) e `ALL` na Governanta e no Gerente. A autorização vem antes de qualquer recusa que revele estado.
+- **Ações online** como subrecurso de ação (ARCHITECTURE §7), com `If-Match`. Transição inválida dá `409`, no padrão `…_TRANSITION_NOT_ALLOWED` do projeto.
+- **Checklist:** o início abre a execução pela `ChecklistsApi` com a versão publicada do modelo da tarefa (vínculo do tipo de limpeza ou `resolveTemplate`; D1 da E01). A `ChecklistsApi` ganha a consulta da versão publicada vigente de um modelo, que hoje não existe. A conclusão fecha a execução com as respostas. Uma execução que já foi concluída por fora (pelos endpoints ou comandos do próprio `checklists`) é tratada sem 500 e sem dois `ChecklistCompleted`.
+- **UH na conclusão:** `markClean(requiresInspection)` só com a UH Suja. UH já Limpa ou Inspecionada (ex.: a pré-chegada, que nasce em UH não Suja; D3 da E02) não muda (H18 d), e a tarefa de área não tem UH. A recusa por não perturbe numa UH vaga não chama `setServiceFlag`, que a recusaria.
+- **Ocupação encontrada:** a observação de governança do `rooms` (hoje só por endpoint) ganha um método na `RoomsApi`, chamado pela conclusão quando a camareira informa a ocupação.
+- **Tempos e autoria:** quem limpou, início, fim e duração sem as pausas.
+- **Faxina programada:** a conclusão de tarefa `SCHEDULED` chama `ScheduledCleaning.recordDone`, que passa a atualizar `updatedAt`, recusar faxina inativa e data fora do `StorableRange` (nota da E01).
+- **Evento** público `HousekeepingTaskCompleted`, sem dado de hóspede. Ainda sem consumidor: o status da UH muda pela chamada síncrona acima (SPEC §8.3, corrigida em 2026-11-18).
+- **Tempo real:** cada transição publica uma mensagem de tarefa no tópico `housekeeping` (D9 da E03).
+- **Trava:** a ordem é **tarefa → execução do checklist → UH** em toda ação, com teste determinístico de concorrência.
 
-**Fora de escopo:** inspeção (E05); achados e danos (E06); ações de estoque e enxoval do checklist (M9).
+**Fora de escopo:** comandos offline, histórico de posse, conflito RN-22 e feed (E19); inspeção (E05); achados e danos (E06); prioridade do early (E22); ações de estoque e enxoval do checklist (M9).
 
 **Critérios de aceite:**
 
-- [ ] Testes de domínio cobrem todas as transições da tarefa em §8.4, válidas e inválidas.
-- [ ] Conclusão de tarefa de tipo sem inspeção deixa a UH Limpa e a tarefa `DONE`; com inspeção, UH Limpa com inspeção pendente e tarefa `AWAITING_INSPECTION`.
-- [ ] Lote offline com iniciar e concluir produz o mesmo estado que as chamadas online; o mesmo `commandId` reenviado devolve o resultado anterior sem reaplicar.
-- [ ] Tarefa reatribuída enquanto offline: a execução é registrada, a tarefa é marcada como conflito e a governanta é notificada.
-- [ ] Camareira com escopo `OWN` agindo sobre tarefa de outra → `403` online e rejeição no resultado do comando offline.
-- [ ] `HousekeepingTaskCompleted` publicado; quem limpou, início, fim e duração gravados.
-- [ ] Ocupação divergente informada pela camareira gera discrepância em `rooms`.
-- [ ] O feed `GET /api/v1/sync/changes` da camareira não contém nome, documento nem contato de hóspede (teste).
+- [ ] Testes de domínio cobrem todas as transições da §8.4 e `ASSIGNED → PENDING`, válidas e inválidas, e a ordem dos instantes.
+- [ ] Conclusão numa UH Suja: tipo sem inspeção deixa a UH Limpa e a tarefa `DONE`; com inspeção, UH Limpa com inspeção pendente e tarefa `AWAITING_INSPECTION`.
+- [ ] Conclusão numa UH já Limpa ou Inspecionada, e numa tarefa de área, não muda a UH; a tarefa e o checklist concluem.
+- [ ] Item obrigatório do checklist faltando dá `422`, com a tarefa, a UH e a faxina programada sem mudança.
+- [ ] Transição inválida dá `409` com `code` estável, sem mudar a UH nem o checklist.
+- [ ] Camareira com escopo `OWN` sobre tarefa de outra dá `403` antes de qualquer `404`, `409` ou `412`; a Governanta, com `ALL`, age sobre qualquer tarefa; sem a permissão de execução, `403`.
+- [ ] A Camareira não lê, pela lista do dia, pelo plano nem pelo tópico `housekeeping`, tarefas de outra camareira (teste com o modelo Camareira).
+- [ ] Recusa por não perturbe numa UH vaga não dá 500 e não muda a UH; a resposta escolhida está no contrato.
+- [ ] `HousekeepingTaskCompleted` publicado uma vez, sem dado de hóspede; quem limpou, início, fim e duração sem as pausas gravados.
+- [ ] Ocupação divergente informada na conclusão aparece nas discrepâncias do `rooms` (RF-UH-08).
+- [ ] Tarefa `SCHEDULED` concluída atualiza `lastDoneOn` e `nextDueOn`; `recordDone` atualiza `updatedAt`, recusa faxina inativa e data fora do `StorableRange` (testes de unidade).
+- [ ] Conclusão com a execução de checklist já concluída por fora não dá 500 nem publica um segundo `ChecklistCompleted`.
+- [ ] Ação e conclusão simultâneas na mesma tarefa e UH se enfileiram sem deadlock (teste determinístico).
+- [ ] Um cliente inscrito no tópico `housekeeping` recebe uma mensagem a cada transição.
 - [ ] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
@@ -1316,17 +1464,86 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
 - Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
 
-**Revisão humana:** sim
+**Revisão humana:** sim. Fixa o contrato da camareira (permissão de execução com `OWN`) e a máquina de estados que a E19 e a E05 repetem (H21 f).
 
-**Notas para o plano:** H2 e H3: se a base de sync ou a API de execução de checklist do M2 não existir, pare e relate (não reimplementar a base). Ler RN-13, RN-22 e ARCHITECTURE §6.2 e §9 e as notas `ZenyHotelManager - Sincronização offline` e `ZenyHotelManager - Módulo checklists` (execução pela API pública, rotina já assumida registrada à parte com alerta). O `rooms` já espera a governança chamar `markClean`/`markInspected`/`rejectInspection` pela `RoomsApi` (nota `ZenyHotelManager - Módulo rooms`); o status da UH nunca muda fora dela. Armadilha de teste conhecida: todo teste que baixa `/api/v1/sync/changes` chama antes `InventoryListenersQuiescence.await(jdbc)` (os listeners do inventário seguram o cursor; nota `ZenyHotelManager - Testes de integração`). Esta etapa fixa o padrão de handlers offline que E05, E06 e E08 vão repetir: registrá-lo no handoff.
+**Notas para o plano:** H2, H3, H18 (b a d), H19 (a) e H21. Ler a SPEC §8.4 e as notas `ZenyHotelManager - Módulo checklists`, `ZenyHotelManager - Módulo rooms` e `ZenyHotelManager - Módulo housekeeping`, mais as capturas pendentes da E01 a E03, que valem sobre ela. O status da UH nunca muda fora da `RoomsApi`. Armadilhas da revisão do plano tentado (abaixo), já distribuídas entre esta etapa e a E19:
 
-**Plano tentado em 2026-11-18 (não executado):** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, bloqueado na revisão de arquitetura (rodada 0). Achados para o desenho da divisão (H18): o conflito RN-22 contradiz o escopo `OWN` sem histórico de posse; `markClean` só vale para UH Suja (a pré-chegada nunca conclui; tarefa de área não tem status de UH); a recusa por DND numa UH vaga dá `422 ROOM_NOT_OCCUPIED`; `OWN` em `housekeeping.tasks.read` vazaria a lista do dia, o plano e o tópico (exige `scopeFilter` e `owners`); a `ChecklistsApi` não dá a versão publicada de um modelo, o checklist offline precisa do `versionId` do aparelho (precedente `checklists.start-execution`) e a execução pode ser concluída por fora; acima da tolerância do relógio o comando é aplicado com `CLOCK_SKEW_EXCEEDED` (não rejeitado) e os instantes precisam de ordem (`max(at, última transição)`); falta estratégia de trava (tarefa → execução → UH) com teste determinístico; o nome da fonte offline deve ser `housekeeping-tasks` e os comandos `housekeeping.<verbo>-task`; transição inválida é `409` no padrão do projeto; o aviso de conflito pede um tipo novo no `notifications`. As decisões D1–D11 do plano tentado são ponto de partida, não decisões tomadas; as do usuário estão na H18.
+- **Leitura da camareira:** dar `OWN` a `housekeeping.tasks.read` vazaria a lista do dia, o plano e o tópico, que hoje filtram só por `ALL` (exigiria `scopeFilter` e dono em cada um). O precedente do `checklists` evita isso: as fontes offline usam a permissão de execução (`checklists.executions.execute`), e não a de leitura. O plano escolhe e prova pelo critério da leitura.
+- **Inspeção sem UH tocada:** um tipo com inspeção concluído numa UH que não mudou (Limpa, Inspecionada ou área) deixa a tarefa em `AWAITING_INSPECTION`, mas a `RoomsApi.rejectInspection` exige inspeção pendente. O plano decide o estado da tarefa nesse caso e registra no handoff para a E05.
+- **Recusa:** a SPEC só prevê `ASSIGNED → REFUSED`; o motivo (não perturbe ou hóspede) e o que acontece com o sinal de não perturbe da UH ocupada ficam no plano.
+- **Notas da E03 para a E04** que o plano avalia: o item `DONE` ou `CANCELLED` de outra camareira que recusa a publicação inteira (o plano tentado propunha ignorá-lo); o CHECK `ASSIGNED ⇒ camareira`; o desempate por posição e id; a extração da `AssignmentPlanPublication` (o `AssignmentPlansService` tem ~520 linhas). As outras notas da E03 (resposta da publicação sem as retiradas, `employeeId` no `422` de escala, `employeeIds: []`, colaborador inativo) seguem para quando a publicação mudar de novo.
+- **Testes:** o banco compartilhado recebe avanços de data e planos de outros testes, e a geração roda para o hotel inteiro (handoff da E02); os testes afirmam só sobre as próprias tarefas, UHs e camareiras. Trava determinística por `pg_blocking_pids` (E01).
+
+**Plano tentado em 2026-11-18 (não executado; achados distribuídos entre esta etapa e a E19 em 2026-11-18):** `docs/superpowers/plans/2026-11-18-m6-operacao-fechamento-e04.md`, bloqueado na revisão de arquitetura (rodada 0). Achados para o desenho da divisão (H18): o conflito RN-22 contradiz o escopo `OWN` sem histórico de posse; `markClean` só vale para UH Suja (a pré-chegada nunca conclui; tarefa de área não tem status de UH); a recusa por DND numa UH vaga dá `422 ROOM_NOT_OCCUPIED`; `OWN` em `housekeeping.tasks.read` vazaria a lista do dia, o plano e o tópico (exige `scopeFilter` e `owners`); a `ChecklistsApi` não dá a versão publicada de um modelo, o checklist offline precisa do `versionId` do aparelho (precedente `checklists.start-execution`) e a execução pode ser concluída por fora; acima da tolerância do relógio o comando é aplicado com `CLOCK_SKEW_EXCEEDED` (não rejeitado) e os instantes precisam de ordem (`max(at, última transição)`); falta estratégia de trava (tarefa → execução → UH) com teste determinístico; o nome da fonte offline deve ser `housekeeping-tasks` e os comandos `housekeeping.<verbo>-task`; transição inválida é `409` no padrão do projeto; o aviso de conflito pede um tipo novo no `notifications`. As decisões D1–D11 do plano tentado são ponto de partida, não decisões tomadas; as do usuário estão na H18.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
-- Relógio do celular muito adiantado: confiar na correção de defasagem de M2 e testar `occurredAt` fora da tolerância.
+- A conclusão atravessa três módulos (checklist, UH e faxina) numa transação: uma falha no meio deixaria estado parcial. Mitigação: o critério do item obrigatório faltando e o teste de concorrência.
+- A etapa volta a ficar grande demais (o motivo da H18). Mitigação: a parte offline já saiu para a E19; se o plano passar de 3 fatias, a leitura da camareira e o tempo real são os primeiros candidatos a sair, registrados no handoff.
+
+**Rollback / migração:** colunas novas na tarefa, no schema `housekeeping`, sem apagar dados; o contrato só cresce.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E19 — Comandos offline, conflito RN-22 e feed da camareira — #pendente
+
+**Objetivo:** levar a execução da E04 para o app da camareira offline (RF-GOV-04, RN-22, ARCHITECTURE §6.2 e §9): comandos offline das mesmas ações, conflito RN-22 registrado e sinalizado com histórico de posse (H18 b) e o feed das tarefas da camareira sem dado de hóspede (RN-13).
+
+**Por que agora:** é o primeiro módulo de negócio a usar a sincronização offline do M2 de ponta a ponta, e o padrão daqui vale para a inspeção (E05), os achados e danos (E06) e a manutenção (E08).
+
+**Dependências:** E04. Mesmo módulo que E05, E06 e E22 (sem paralelismo com elas).
+
+**Escopo:** `housekeeping`, com um tipo novo no catálogo do `notifications`:
+
+- **Comandos** `housekeeping.<verbo>-task` (iniciar, pausar, retomar, concluir, recusar e tentar de novo), tratados pelo mesmo caso de uso da E04, com idempotência por `commandId`. Acima da tolerância do relógio, o comando é **aplicado com o alerta `CLOCK_SKEW_EXCEEDED`**, como manda o protocolo, e não rejeitado; os instantes gravados seguem a ordem da E04 (`max(occurredAt corrigido, última transição)`).
+- **Checklist offline:** o iniciar recebe o `versionId` que o aparelho tem (precedente `checklists.start-execution`), e a conclusão leva as respostas.
+- **Histórico de posse:** toda atribuição, reatribuição, retirada (`ASSIGNED → PENDING`, H19 a) e cancelamento grava quem foi dona da tarefa e quando, inclusive pela publicação do plano da E03.
+- **Conflito RN-22** (H18 b): o comando de quem **foi** dona e perdeu a tarefa (reatribuída, retirada ou cancelada) é aplicado com alerta. O que ela fez, inclusive as respostas do checklist, fica registrado; a tarefa ganha a marca de conflito; a governança recebe um aviso de um **tipo novo** no catálogo do `notifications`, com o número da UH e sem dado de hóspede. A tarefa e a UH **não** mudam, e a governanta resolve. Quem **nunca** foi dona recebe `REJECTED` com o código do escopo.
+- **Feed:** fonte `housekeeping-tasks` com as tarefas abertas da camareira, inclusive as de datas anteriores (o cursor leva a data; nota da E03), **sem `notes`** (H18 c) e sem nome, documento, contato nem id de hóspede ou de reserva (RN-13). As colunas de mudança e o gatilho `shared.mark_offline_change` entram na tarefa (ARCHITECTURE §9; notas da E02 e da E03). A tarefa que sai do escopo da camareira (reatribuída, retirada, concluída ou cancelada) gera *tombstone* para ela. As UHs já vêm da fonte `rooms`.
+- **Padrão offline** registrado no handoff (nomes, payload, código de recusa, alerta, posse e feed) para a E05, a E06 e a E08.
+
+**Fora de escopo:** resolução do conflito pela governanta além do registro e do aviso (uma ação de resolver, se pedida, vira etapa nova); inspeção offline (E05); achados e danos offline (E06).
+
+**Critérios de aceite:**
+
+- [ ] Um lote offline com iniciar e concluir produz o mesmo estado que as chamadas online da E04; o mesmo `commandId` reenviado devolve o resultado anterior sem reaplicar.
+- [ ] Um `occurredAt` além da tolerância do relógio é aplicado com `CLOCK_SKEW_EXCEEDED`, e nenhum instante gravado fica antes da última transição da tarefa.
+- [ ] Iniciar offline com o `versionId` do aparelho abre a execução dessa versão, mesmo que o modelo tenha publicado outra depois.
+- [ ] Ex-dona da tarefa (reatribuída, retirada ou cancelada): o comando volta aplicado com o alerta de conflito, o que ela fez fica registrado com as respostas do checklist, a tarefa fica marcada, um usuário com `housekeeping.assignments.manage` recebe o aviso do tipo novo, e a tarefa e a UH não mudam.
+- [ ] Quem nunca foi dona da tarefa recebe `REJECTED` com o código do escopo, sem registro de conflito.
+- [ ] O feed da camareira traz só as tarefas dela, inclusive as abertas de datas anteriores; reatribuir gera o *tombstone* para a antiga dona.
+- [ ] O corpo do feed, com tarefas e UHs, não contém `notes`, nome, documento, contato nem id de hóspede ou de reserva de uma reserva hospedada na UH do teste.
+- [ ] Os testes que baixam `/api/v1/sync/changes` chamam antes `InventoryListenersQuiescence.await(jdbc)`.
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
+
+**Revisão humana:** sim. Fixa o padrão offline que a E05, a E06 e a E08 repetem, e o tratamento de RN-22 e RN-13 (H21 f).
+
+**Notas para o plano:** H2, H18 (b e c), H21 e o handoff da E04. Ler RN-13, RN-22, ARCHITECTURE §6.2 e §9 e a nota `ZenyHotelManager - Sincronização offline`. O protocolo (`shared/OfflineSync.kt`) já tem as duas saídas: rejeitar lançando `DomainException` e aplicar com alerta devolvendo `OfflineCommandOutcome.warnings`; não reimplementar a base (H2). A ARCHITECTURE §6.2 ainda mostra o comando como `CompleteHousekeepingTask` e a conclusão do checklist por dentro dele: o nome vigente é o desta etapa, e o diagrama pode ser atualizado no handoff. O conflito não é transição inválida: uma transição inválida da própria dona continua `REJECTED` com o código da E04. A posse precisa existir antes de o conflito ser testado: tarefas atribuídas antes desta etapa não têm histórico, e o plano decide como tratá-las (nenhuma está em produção). Armadilhas do formato antigo: comando descartado em silêncio; dado de hóspede no feed; tarefa da nova dona alterada pelo comando da antiga.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Relógio do celular muito adiantado ou atrasado: a correção de defasagem do M2 mais a regra de ordem dos instantes; o critério testa o `occurredAt` fora da tolerância.
+- O registro do conflito guarda as respostas do checklist de uma camareira que já não é dona: elas não podem virar a execução oficial da tarefa. Mitigação: o critério confere que a tarefa e a UH não mudam.
+
+**Rollback / migração:** registros novos de posse e de conflito e colunas de mudança na tarefa, no schema `housekeeping`, sem apagar dados.
 
 **Evidências e handoff:**
 
@@ -1345,7 +1562,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** fecha o ciclo de limpeza e libera UHs para check-in (RN-05).
 
-**Dependências:** E04. Independente de E06 (só rodam juntas em branches separadas; conflito em `api/openapi.yaml` e no controller de tarefas).
+**Dependências:** E19 (e, por ela, a E04). Independente de E06 (só rodam juntas em branches separadas; conflito em `api/openapi.yaml` e no controller de tarefas).
 
 **Escopo:** `housekeeping` — `Inspection` ligada à tarefa e a uma execução de checklist; endpoints online e handlers offline; `rooms.markInspected`/`markDirty` (H3); notificação à camareira na reprovação (RF-NOT-01); evento de UH pronta no SSE e notificação de UH liberada via `notifications` para a recepção (RN-05 avaliada por `rooms`).
 
@@ -1358,7 +1575,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - [ ] Inspeção voluntária de UH Limpa → Inspecionada.
 - [ ] Inspeção sem a permissão própria → `403`.
 - [ ] Cliente inscrito no tópico de UHs do SSE recebe o evento quando a UH fica pronta.
-- [ ] Inspeção offline funciona pelo mesmo handler pattern de E04.
+- [ ] Inspeção offline funciona pelo mesmo padrão de comandos offline da E19.
 - [ ] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
@@ -1368,7 +1585,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** SPEC RF-GOV-06, RF-GOV-07 e RN-05; padrão de handlers offline no handoff de E04. Os tipos `notifications.room-released` e `notifications.inspection-rejected` já existem no catálogo do `notifications` (nota `ZenyHotelManager - Módulo notifications`). Armadilhas do formato antigo: a UH nunca fica pronta com a inspeção reprovada; quem limpou não inspeciona sem a permissão de inspeção.
+**Notas para o plano:** SPEC RF-GOV-06, RF-GOV-07 e RN-05; máquina de estados e conclusão no handoff da E04, padrão de comandos offline e histórico de posse no handoff da E19. A E04 registra o estado da tarefa com inspeção cuja UH não mudou na conclusão (UH já Limpa ou Inspecionada, ou área; H18 d): a `RoomsApi.rejectInspection` exige inspeção pendente, então a reprovação desse caso precisa de regra própria. Os tipos `notifications.room-released` e `notifications.inspection-rejected` já existem no catálogo do `notifications` (nota `ZenyHotelManager - Módulo notifications`). Armadilhas do formato antigo: a UH nunca fica pronta com a inspeção reprovada; quem limpou não inspeciona sem a permissão de inspeção.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1393,7 +1610,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** completa as ocorrências da governança previstas para a Fase 1.
 
-**Dependências:** E04. Independente de E05 (só rodam juntas em branches separadas; conflito em `api/openapi.yaml`).
+**Dependências:** E19 (e, por ela, a E04). Independente de E05 (só rodam juntas em branches separadas; conflito em `api/openapi.yaml`).
 
 **Escopo:** `housekeeping`:
 
@@ -1421,13 +1638,66 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** SPEC RF-GOV-08 e RF-GOV-09; H2 e H5. Convenção do M2 para quem consome `ChecklistCompleted` (nota `ZenyHotelManager - Módulo checklists`): o evento pode ser reentregue, então deduplique por `executionId` + `itemKey` + tipo da ação; a execução registrada à parte de uma rotina (`duplicateOf`) publica o próprio evento com as ações e o consumidor decide se as aplica. Padrão de handlers offline no handoff de E04; jobs adiados no `@IntegrationTest` e chamados direto nos testes (nota `ZenyHotelManager - Testes de integração`). Armadilhas do formato antigo: dano lançado duas vezes ou sem revisão; camareira vendo dados do hóspede ao registrar dano.
+**Notas para o plano:** SPEC RF-GOV-08 e RF-GOV-09; H2 e H5. Convenção do M2 para quem consome `ChecklistCompleted` (nota `ZenyHotelManager - Módulo checklists`): o evento pode ser reentregue, então deduplique por `executionId` + `itemKey` + tipo da ação; a execução registrada à parte de uma rotina (`duplicateOf`) publica o próprio evento com as ações e o consumidor decide se as aplica. Padrão de comandos offline no handoff da E19; jobs adiados no `@IntegrationTest` e chamados direto nos testes (nota `ZenyHotelManager - Testes de integração`). Armadilhas do formato antigo: dano lançado duas vezes ou sem revisão; camareira vendo dados do hóspede ao registrar dano.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
 **Riscos e mitigação:**
 
 - Dano em UH sem reserva ativa: permitir só registro e dispensa; cobrança exige reserva vinculada.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E22 — Hora prevista de chegada e prioridade do early check-in — #pendente
+
+**Objetivo:** guardar na reserva a hora prevista de chegada (H20 b) e devolver à sugestão de distribuição da E03 a prioridade do early check-in que a H17 adiou (RF-GOV-03, item 2: "prioriza UHs com chegada prevista ou early check-in").
+
+**Por que agora:** decisão do usuário (H20 a): a RF-GOV-03 é da Fase 1, e o gate do M6 declara a Fase 1 encerrada. A etapa é pequena e não toca a execução da tarefa.
+
+**Dependências:** E03, E20 (a hora é lida com o `LocalTime` estrito da E20). Mesmo módulo que E04, E19, E05 e E06 no lado da governança (sem paralelismo com elas).
+
+**Escopo:**
+
+- **`reservations`:** a reserva ganha a hora prevista de chegada, opcional, em hora local do hotel (SPEC §8.2.6, registrada em 2026-11-18), informada na criação e na alteração e devolvida nas respostas, com auditoria. Mudar só a hora não muda preço, inventário nem alocação. A `ReservationsApi` passa a dar a hora das chegadas da data por UH à governança, sem dado pessoal (RN-13).
+- **`housekeeping`:** a sugestão ordena as chegadas assim: primeiro o early (hora prevista antes do `checkInTime` da política do hotel, `HotelApi.policy()`), depois as demais chegadas por hora prevista, as sem hora por último entre elas, e então o resto, como na E03. O critério da E03 "chegadas e early vêm primeiro na ordem" passa a valer inteiro.
+
+**Fora de escopo:** trazer a hora das OTAs (M8, channel manager: o mapeamento do dado da OTA vai para o roadmap do M8 na sincronização dele); cobrança de early (já existe, M5 E05); aviso em tempo real à governança quando a hora muda (a governança não escuta eventos de reserva, H19 b: a sugestão lê a hora na hora de sugerir); a coluna na view `report_reservations` (a E09 decide se precisa).
+
+**Critérios de aceite:**
+
+- [ ] Criar e alterar uma reserva com a hora prevista grava e devolve o valor; omitida, a reserva segue sem hora; `null` na alteração remove a hora.
+- [ ] Hora fora de `HH:mm`/`HH:mm:ss` dá `400 VALIDATION_FAILED` no campo (regra da E20).
+- [ ] Alterar só a hora não muda o preço, o inventário nem a alocação da reserva, e fica na trilha.
+- [ ] Na sugestão, com a mesma entrada, a UH com chegada early vem antes das chegadas sem early, que vêm antes das demais tarefas; entre as chegadas, pela hora prevista, e as sem hora depois das com hora (teste de domínio com determinismo e teste de API).
+- [ ] O dado que a governança recebe do `reservations` não contém nome, documento nem contato de hóspede.
+- [ ] `.github/scripts/check-api-breaking.sh` não acusa `ERR` (campo opcional novo).
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H17, H19 (b e d), H20 (a e b); handoff da E03 (D3: a chegada é recalculada na sugestão; `ArrivalsByRoom` foi extraído na E03) e da E02 (D7: `ReservationsApi.assignedRooms`; D8: `arrivalExpected` é um retrato da geração). A ordem da hora usa o fuso do hotel (`HotelApi.timezone()`). Notas de tema: `ZenyHotelManager - Módulo reservations (ciclo de vida, alocação, grupos e busca)` e `ZenyHotelManager - Módulo housekeeping`. Uma alteração de reserva hoje publica `ReservationChanged`; se a hora sozinha deve publicá-lo, o plano decide e registra (a governança não escuta, H19 b; a distribuição de canais do M8, sim).
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- A hora vinda das OTAs no M8 pode ter outro formato ou fuso. Mitigação: o dado é hora local do hotel, e o M8 converte na entrada.
+
+**Rollback / migração:** coluna opcional nova na reserva, no schema `reservations`, sem apagar dados; o contrato só cresce.
 
 **Evidências e handoff:**
 
@@ -1521,7 +1791,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** H2. Ler o handoff de E07 e, se já concluída, o de E04 (padrão de handlers offline); E04 não é dependência, então sem ela o padrão vem da nota `ZenyHotelManager - Sincronização offline` (registro criado offline usa o `commandId` como id). Consumo de `ChecklistCompleted` com a mesma convenção da E06 (deduplicar por `executionId` + `itemKey` + tipo; execução à parte com `duplicateOf`; nota `ZenyHotelManager - Módulo checklists`). Testes que baixam `/api/v1/sync/changes` chamam antes `InventoryListenersQuiescence.await(jdbc)` (nota `ZenyHotelManager - Testes de integração`). Armadilhas do formato antigo: OS duplicada por reprocessamento; OS aberta offline com o id trocado pelo servidor; dados pessoais no feed.
+**Notas para o plano:** H2. Ler o handoff de E07 e, se já concluída, o da E19 (padrão de comandos offline, que saiu da E04 na divisão de 2026-11-18); a E19 não é dependência, então sem ela o padrão vem da nota `ZenyHotelManager - Sincronização offline` (registro criado offline usa o `commandId` como id). Consumo de `ChecklistCompleted` com a mesma convenção da E06 (deduplicar por `executionId` + `itemKey` + tipo; execução à parte com `duplicateOf`; nota `ZenyHotelManager - Módulo checklists`). Testes que baixam `/api/v1/sync/changes` chamam antes `InventoryListenersQuiescence.await(jdbc)` (nota `ZenyHotelManager - Testes de integração`). Armadilhas do formato antigo: OS duplicada por reprocessamento; OS aberta offline com o id trocado pelo servidor; dados pessoais no feed.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1648,11 +1918,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** marca o fim da Fase 1 da SPEC ("o hotel opera a hospedagem") e é o critério de entrada do M7.
 
-**Dependências:** E06, E13, E14, E15, E16, E17, E18 (cobrem transitivamente todas as demais; sem paralelismo).
+**Dependências:** E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 (cobrem transitivamente todas as demais, inclusive E04 e E19 pela E06; sem paralelismo).
 
 **Escopo:**
 
-- Teste de integração ponta a ponta (a criar): reserva → check-in → fechamento do dia (diária lançada, UH Suja, data avançada) → tarefa de permanência gerada, distribuída, executada offline e inspecionada → check-out com saldo zero → tarefa de saída gerada e concluída → submissões FNRH de check-in e check-out (WireMock).
+- Teste de integração ponta a ponta (a criar): reserva com hora prevista de chegada → check-in → fechamento do dia (diária lançada, UH Suja, data avançada) → tarefa de permanência gerada, distribuída, executada offline (E19) e inspecionada → check-out com saldo zero → tarefa de saída gerada e concluída → submissões FNRH de check-in e check-out (WireMock).
 - Rodar do zero numa cópia limpa: build, testes, verificação de módulos e do contrato.
 - Conferir a "Definição global de pronto"; registrar pendências herdadas (ex.: homologação da FNRH de M5, se ainda bloqueada).
 - Atualizar `docs/roadmaps/README.md` registrando a conclusão do M6 e da Fase 1 no histórico de revisões.
@@ -1705,3 +1975,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-17 — entrevista de abertura do lote (`orquestrador`): H15 (a branch da execução anterior, com a E18 e a E01 concluídas, se perdeu e as etapas são refeitas a partir da `main`) e H16 (referência inexistente no corpo do `housekeeping` dá `400 …UNKNOWN_…`), decididas pelo usuário. Tag da E18 para `#em-andamento`; nenhuma outra etapa mudou.
 - 2026-11-18 — fim do lote E18–E03 (`orquestrador`): E18, E01, E02 e E03 `#concluida` (refação de E18 e E01 pela H15); H17 (early check-in adiado, decisão do orquestrador sob autorização noturna) e H18 (E04 volta a `#pendente` para o `arquiteto` dividir; conflito RN-22, `notes` e UH limpa decididos pelo usuário). Nenhuma outra etapa mudou de tag.
 - 2026-11-18 — entrevista final do lote: H19 (D7 e D11 da E03, D6 da E02 e H17 confirmadas pelo usuário, com registros a cargo do `arquiteto`).
+- 2026-11-18 — revisão do `arquiteto` (skill `development-roadmap`, modo atualização; `main` em `f992696`), com o código conferido para as etapas tocadas ("Base técnica do próprio M6" em "Contexto confirmado"). **Divisão da E04** (H18 a, H21 a): a E04 manteve o ID com a máquina de estados, as ações online e a conclusão, e a etapa nova **E19** ficou com os comandos offline, o histórico de posse, o conflito RN-22 e o feed; os achados da revisão do plano tentado foram distribuídos entre as duas. E05 e E06 passaram a depender da E19 (H21 e). **Manutenção transversal** (H20 c e d, H21 b a d): etapas novas **E20** (entrada estrita no corpo, na query e no caminho, `LocalTime`, inteiro e UUID estritos e `required` nos requests, com a quebra única do `oasdiff` aceita pelo usuário) e **E21** (`409 CONCURRENT_UPDATE` para `40P01`/`55P03`, logs dos quatro jobs, filtro do ShedLock e `JOSEException` do FCM), no bloco "Manutenção transversal", para rodarem antes da E04. **Early check-in** (H17, H20 a e b): etapa nova **E22** (hora prevista de chegada na reserva e prioridade do early na sugestão), dependente de E03 e E20. Hipóteses novas H20 (decisões do usuário na entrevista desta revisão) e H21 (decisões do `arquiteto`); H17 a H19 anotadas com o encaminhamento. A definição global de pronto ganhou o early, o conflito RN-22 e o item da E20 e da E21; o gate passou a depender de E20, E21 e E22. Revisão humana: sim na E04, na E19 e na E20. Na mesma revisão, a SPEC (§8.2.6 hora prevista de chegada; §8.3 governança sem os eventos de reserva e de check-in, e `HousekeepingTaskCompleted` sem consumidor de status; §8.4 `ASSIGNED → PENDING`) e a ARCHITECTURE (§6.1 sem o "atualizar plano do dia"; §7 com a regra da H16 e a exceção D11, o `required` com a quebra única e o `409 CONCURRENT_UPDATE`) foram alinhadas, e o `docs/roadmaps/README.md` passou a contar 22 etapas no M6. Nenhuma etapa concluída mudou de tag ou conteúdo; nenhuma foi renumerada nem removida.
