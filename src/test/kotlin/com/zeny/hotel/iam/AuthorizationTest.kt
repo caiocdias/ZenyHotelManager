@@ -270,6 +270,7 @@ class AuthorizationTest(
                 "housekeeping.config.manage:ALL",
                 "housekeeping.tasks.read:ALL",
                 "housekeeping.tasks.request:ALL",
+                "housekeeping.assignments.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(
