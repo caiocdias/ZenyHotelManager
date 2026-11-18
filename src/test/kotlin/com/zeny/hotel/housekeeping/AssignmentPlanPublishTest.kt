@@ -334,12 +334,13 @@ class AssignmentPlanPublishTest(
     /**
      * O plano de uma data futura leva só as tarefas da própria data (D2-E03): a `ASSIGNED` de uma data **anterior** a
      * ele, ainda dentro da janela, não é retirada. Pega o mutante `includePrevious = true` na publicação do plano
-     * futuro. A data anterior ([DAYS_AHEAD] - 1) não é publicada por nenhum outro teste do banco compartilhado.
+     * futuro. A data anterior é +3 ([DAYS_AHEAD] - 2), que nenhum teste publica no Postgres compartilhado: o
+     * `AssignmentPlanRealtimeTest` publica +4, este teste +5, e o `AssignmentPlansApiTest` só sugere em +3.
      */
     @Test
     fun `an ASSIGNED task of an earlier date in the window is not withdrawn by the future plan`() {
         val (ana, _) = attendantWithUser()
-        val earlier = date.minusDays(1)
+        val earlier = date.minusDays(2)
         val before =
             plans.insertTask(
                 earlier,

@@ -84,9 +84,22 @@ class HousekeepingTaskSchemaTest(
             }
         }
 
-        insert(room = room, status = "ASSIGNED", employee = employee, position = 2)
+        val assigned = insert(room = room, status = "ASSIGNED", employee = employee, position = 2)
         insert(room = UUID.randomUUID(), status = "IN_PROGRESS", employee = employee, position = 1)
-        insert(room = UUID.randomUUID())
+        val pending = insert(room = UUID.randomUUID())
+
+        // A ASSIGNED e a PENDING de 2001-01-01 entrariam em todo plano operacional do banco compartilhado (D2-E03).
+        listOf(assigned, pending).forEach { cancel(it) }
+    }
+
+    /** Fecha a tarefa (`CANCELLED`, sem camareira), para ela sair do conteúdo dos planos. */
+    private fun cancel(task: UUID) {
+        owner
+            .sql(
+                "UPDATE housekeeping.housekeeping_task SET status = 'CANCELLED', assigned_employee_id = NULL, " +
+                    "assignment_position = NULL WHERE id = :id",
+            ).param("id", task)
+            .update() shouldBe 1
     }
 
     @Test
