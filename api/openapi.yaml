@@ -16565,7 +16565,9 @@ components:
         checklistTemplateId:
           type: string
           format: uuid
-          description: "Modelo de checklist vinculado; por enquanto, só `null`."
+          description: "Modelo de checklist vinculado, ou `null` (sem vínculo). Se\
+            \ informado, precisa ser do contexto `HOUSEKEEPING`, ativo e publicado\
+            \ no momento do vínculo; depois, desativar o modelo não o desfaz."
           nullable: true
         code:
           type: string

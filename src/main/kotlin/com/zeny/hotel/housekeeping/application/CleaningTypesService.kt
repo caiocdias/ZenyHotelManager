@@ -1,5 +1,8 @@
 package com.zeny.hotel.housekeeping.application
 
+import com.zeny.hotel.checklists.ChecklistContext
+import com.zeny.hotel.checklists.ChecklistTemplateId
+import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
@@ -12,6 +15,7 @@ import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ErrorCode
@@ -119,14 +123,19 @@ data class CleaningTypeCommand(
  * Os tipos de UH dos créditos são conferidos pela `RoomsApi` (nunca pelas tabelas do `rooms`), só os novos no tipo:
  * inexistente `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (H16); desativado é aceito (D6). Um tipo ativo sem crédito para um
  * tipo de UH ativo não é recusado, porque o gestor configura aos poucos: a leitura o aponta em
- * `missingCreditRoomTypeIds`, que muda quando um tipo de UH é criado depois. O vínculo ao modelo de checklist chega na
- * Task 2: até lá, só `null`.
+ * `missingCreditRoomTypeIds`, que muda quando um tipo de UH é criado depois. O vínculo opcional ao modelo de checklist
+ * (D1) é conferido só quando é **novo** (criação, ou edição que troca o modelo), pela `ChecklistsApi`: inexistente `400
+ * CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE` (H16); de outro contexto que não `HOUSEKEEPING`, inativo ou nunca
+ * publicado, `422`. Depois do vínculo, desativar ou despublicar o modelo não o desfaz nem faz a leitura ou uma edição
+ * sem trocar o modelo falhar. Precedência da E04 (geração de tarefas): vínculo ativo e publicado → `ChecklistsApi
+ * .resolveTemplate(HOUSEKEEPING, …cleaningTypeId…)` → sem checklist.
  */
 @Service
 @Suppress("TooManyFunctions") // um caso de uso por operação e as conferências
 class CleaningTypesService(
     private val store: CleaningTypeStore,
     private val rooms: RoomsApi,
+    private val checklists: ChecklistsApi,
     private val authorization: Authorization,
     private val audit: AuditContext,
     private val clock: Clock,
@@ -207,13 +216,7 @@ class CleaningTypesService(
         details: CleaningTypeDetails,
         current: CleaningTypeDetails?,
     ) {
-        if (details.checklistTemplateId != null) {
-            throw invalid(
-                HousekeepingErrorCodes.HOUSEKEEPING_DATA_INVALID,
-                "checklistTemplateId",
-                "O vínculo a um modelo de checklist ainda não está disponível; informe null.",
-            )
-        }
+        details.checklistTemplateId?.takeIf { it != current?.checklistTemplateId }?.let(::requireLinkableTemplate)
         val known =
             current
                 ?.credits
@@ -232,6 +235,38 @@ class CleaningTypesService(
                 "Algum tipo de UH dos créditos não existe.",
             )
         }
+    }
+
+    private fun requireLinkableTemplate(templateId: UUID) {
+        val template =
+            checklists.template(ChecklistTemplateId(templateId))
+                ?: throw invalid(
+                    HousekeepingErrorCodes.CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE,
+                    "checklistTemplateId",
+                    "O modelo de checklist não existe.",
+                )
+        val refusal =
+            when {
+                template.context != ChecklistContext.HOUSEKEEPING -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE to
+                        "O modelo de checklist não é do contexto de governança."
+                }
+
+                !template.active -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_TEMPLATE_INACTIVE to
+                        "O modelo de checklist está desativado."
+                }
+
+                !template.published -> {
+                    HousekeepingErrorCodes.CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED to
+                        "O modelo de checklist ainda não foi publicado."
+                }
+
+                else -> {
+                    null
+                }
+            }
+        if (refusal != null) throw BusinessRuleException(refusal.first, refusal.second)
     }
 
     private fun activeRoomTypes(): List<RoomTypeId> = rooms.activeRoomTypes().map { it.id }

@@ -170,7 +170,12 @@ data class CleaningTypeRequest(
     @field:Min(1)
     @field:Max(MAX_LINEN_NIGHTS)
     val linenChangeEveryNights: Int? = null,
-    @field:Schema(description = "Modelo de checklist vinculado; por enquanto, só `null`.", nullable = true)
+    @field:Schema(
+        description =
+            "Modelo de checklist vinculado, ou `null` (sem vínculo). Se informado, precisa ser do contexto " +
+                "`HOUSEKEEPING`, ativo e publicado no momento do vínculo; depois, desativar o modelo não o desfaz.",
+        nullable = true,
+    )
     val checklistTemplateId: UUID? = null,
     @field:Schema(description = "Créditos por tipo de UH (até 200, cada tipo de UH uma vez só).")
     @field:Size(max = MAX_CREDITS)

@@ -319,22 +319,6 @@ class CleaningTypesApiTest(
         housekeeping.storedCredits(existing) shouldBe mapOf(roomType to 2)
     }
 
-    @Test
-    fun `the checklist link only accepts null in this slice`() {
-        val code = housekeeping.uniqueCode("CL")
-
-        with(iam) {
-            fieldsOf(
-                admin(
-                    POST,
-                    CLEANING_TYPES,
-                    housekeeping.cleaningTypeBody(code = code, checklistTemplateId = UUID.randomUUID()),
-                ).problem(400, "HOUSEKEEPING_DATA_INVALID"),
-            ) shouldContain "checklistTemplateId"
-        }
-        housekeeping.countByCode(code) shouldBe 0
-    }
-
     private fun admin(
         method: HttpMethod,
         path: String,

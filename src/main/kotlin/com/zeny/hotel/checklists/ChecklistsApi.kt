@@ -23,6 +23,12 @@ interface ChecklistsApi {
         subject: SubjectAttributes,
     ): ChecklistVersionView?
 
+    /**
+     * O resumo do modelo (contexto, se está ativo e se tem versão publicada), ou `null` se não existe. Para quem
+     * vincula um modelo (governança, M6 E01) e confere o contexto, o estado ativo e a publicação no momento do vínculo.
+     */
+    fun template(id: ChecklistTemplateId): ChecklistTemplateSummary?
+
     /** A versão publicada [number] do modelo, ou `null` se não existe. */
     fun version(
         templateId: ChecklistTemplateId,
@@ -77,6 +83,14 @@ data class ChecklistVersionView(
     val content: ChecklistContent,
     val publishedAt: Instant,
     val publishedBy: UserId?,
+)
+
+/** O resumo de um modelo (RF-CHK-04): [published] diz se já tem versão publicada. */
+data class ChecklistTemplateSummary(
+    val id: ChecklistTemplateId,
+    val context: ChecklistContext,
+    val active: Boolean,
+    val published: Boolean,
 )
 
 /** Id de um modelo de checklist. */

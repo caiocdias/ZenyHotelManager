@@ -61,4 +61,16 @@ object HousekeepingErrorCodes {
 
     /** 400: o mesmo tipo de UH mais de uma vez nos créditos (campo `credits`). */
     val CLEANING_TYPE_CREDIT_DUPLICATED = ErrorCode("CLEANING_TYPE_CREDIT_DUPLICATED")
+
+    /** 400: o modelo de checklist do vínculo não existe (campo `checklistTemplateId`, H16). */
+    val CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE = ErrorCode("CLEANING_TYPE_UNKNOWN_CHECKLIST_TEMPLATE")
+
+    /** 422: o modelo de checklist do vínculo não é do contexto `HOUSEKEEPING`. */
+    val CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE = ErrorCode("CLEANING_TYPE_CHECKLIST_CONTEXT_INCOMPATIBLE")
+
+    /** 422: o modelo de checklist do vínculo está desativado. */
+    val CLEANING_TYPE_CHECKLIST_TEMPLATE_INACTIVE = ErrorCode("CLEANING_TYPE_CHECKLIST_TEMPLATE_INACTIVE")
+
+    /** 422: o modelo de checklist do vínculo nunca foi publicado. */
+    val CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED = ErrorCode("CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED")
 }
