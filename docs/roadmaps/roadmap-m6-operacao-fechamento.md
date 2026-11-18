@@ -205,7 +205,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
-| E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
+| E03 | Distribuição sugerida e publicação | #em-andamento | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E04 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
@@ -1132,11 +1132,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - o teste RN-13 da trilha sem controle positivo;
     - nenhum teste prova que a pré-chegada usa `inHouse(date)`;
     - nenhum teste de API prova a ordem por chegada com prioridade editada.
-- **Capturas do brain:** ver o início da E03 ou o fim do lote.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E02 - f7e6203c.md`.
 
 ---
 
-## E03 — Distribuição sugerida e publicação — #pendente
+## E03 — Distribuição sugerida e publicação — #em-andamento
 
 **Objetivo:** implementar o `AssignmentPlan` (RF-GOV-03): sugestão que balanceia créditos entre as camareiras escaladas no dia (escala de `staff`), agrupa por andar, prioriza chegadas e early check-in e respeita "Não perturbe"; ajuste manual pela governanta; publicação que notifica só quem teve mudança.
 
