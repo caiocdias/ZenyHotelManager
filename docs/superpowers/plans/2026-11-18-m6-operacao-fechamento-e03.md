@@ -46,8 +46,12 @@
 - **Execução:** um Gradle por vez, nunca `./gradlew --stop`, todo comando com `timeout`, nunca laço de espera.
 - **Testes:**
   - O banco compartilhado recebe avanços de data e gera tarefas para o hotel inteiro. Os testes afirmam só sobre as UHs, os colaboradores e os planos do próprio teste. Nunca contam `audit.audit_entry`, tarefas ou notificações de forma global, e nunca alteram os tipos da carga.
-  - O plano da **data operacional** do banco compartilhado só é usado com `suggest` e `PATCH` (sem publicar), e as afirmações se restringem às próprias tarefas.
-  - As **publicações** usam uma data futura dentro da janela (D2-E03) em que só existem as tarefas do próprio teste, criadas como avulsas daquela data. Uma data distinta por teste evita colisão entre planos.
+  - A janela só tem 8 datas e os planos nunca são apagados. Por isso **os testes toleram plano e tarefas alheias**:
+    - quando o plano da data já existe, fazem `GET` e mandam `If-Match`;
+    - restringem as camareiras com `employeeIds` às do próprio teste;
+    - afirmam só sobre as próprias tarefas e camareiras.
+  - O plano da data operacional só é usado sem publicar.
+  - Os casos que exigem uma data **sem plano** (o primeiro `suggest`, que cria o plano, e a corrida de criação) rodam no banco isolado do fechamento (`@EndOfDayIntegrationTest`, com `EndOfDayTestRuns.settle(context)`). Eles escolhem a primeira data da janela sem plano e falham com mensagem clara se não houver nenhuma.
 - **Verificação da fatia:** os testes focados dela, mais `timeout 900 ./gradlew checkOpenApi lint`. A suíte inteira roda no gate.
 
 ## Review Focus
@@ -60,7 +64,14 @@
 
    Testes de unidade na Task 1.
 3. **Republicação:** só recebe aviso quem teve tarefa incluída ou removida em relação ao que estava atribuído. Teste na Task 3.
-4. **Tarefa que já andou:** tarefa em `IN_PROGRESS`, `PAUSED`, `AWAITING_INSPECTION`, `REJECTED`, `DONE`, `REFUSED` ou `CANCELLED` não entra na sugestão nem no ajuste (`422`). Na publicação, o item dela é ignorado se não mudaria a tarefa (mesma camareira e mesma posição), e recusa a publicação inteira (`422`, com os ids em `errors[]`) se mudaria. Testes nas Tasks 2 e 3.
+4. **Tarefa que já andou:** uma tarefa em `IN_PROGRESS`, `PAUSED`, `AWAITING_INSPECTION`, `REJECTED`, `DONE`, `REFUSED` ou `CANCELLED`:
+   - não entra na sugestão nem no ajuste (`422`);
+   - na publicação, nunca é tocada.
+     - Se o rascunho tem um item dela com a **mesma camareira**, o item é ignorado, inclusive a diferença de posição: a posição dela não é regravada.
+     - Se o item a daria a **outra camareira**, a publicação inteira é recusada (`422`, com os ids em `errors[]`).
+     - Se ela está fora do rascunho, não conta como retirada (D7-E03).
+
+   Testes nas Tasks 2 e 3.
 5. **Tarefa aberta de data anterior** (D4 da E02): entra no plano da data operacional, e só nele. Teste na Task 2.
 
 ## Decisões desta etapa
@@ -71,7 +82,7 @@ Decisões do orquestrador, sob a autorização noturna do usuário. São todas r
   - são os colaboradores na escala da data do setor `DepartmentKey.HOUSEKEEPING` (`StaffApi.daySchedule`);
   - o `suggest` aceita `employeeIds` opcional, que precisa ser subconjunto dos escalados (`422` fora disso). O padrão é todos os escalados. É assim que a governanta e as supervisoras ficam de fora;
   - o setor de governança vem da carga do `staff`, que não pode ser apagado. Sem ele, é invariante quebrada (`IllegalStateException`), sem código no contrato; o teste é só de unidade, com `StaffApi` falsa;
-  - o colaborador sem usuário vinculado, ou com usuário inativo, recebe tarefas, mas não recebe aviso. A resposta da publicação lista esses casos pelo id.
+  - o colaborador sem usuário vinculado recebe tarefas, mas não recebe aviso. A resposta da publicação lista os "não avisados" pelo id, com o motivo `NO_USER` ou `NOT_DELIVERED`. O `housekeeping` não sabe se um usuário está inativo; vale só o retorno do `notify`.
 - **D2-E03, janela e conteúdo do plano:**
   - a data do plano vai da data operacional até 7 dias à frente. Fora disso, ou fora do `StorableRange`, dá `422 ASSIGNMENT_PLAN_DATE_INVALID` (data malformada dá `400`);
   - o plano de uma data que ficou para trás fica congelado: `suggest`, ajuste e publicação dão `422`;
@@ -94,7 +105,9 @@ Decisões do orquestrador, sob a autorização noturna do usuário. São todas r
   - **ajuste (`PATCH`):** move uma tarefa de camareira, acrescenta ao rascunho qualquer tarefa elegível pela D2 (inclusive as geradas depois da sugestão) e tira itens do rascunho (`remove`, diferente de "sem camareira");
   - **publicação:** grava nas tarefas e marca `PUBLISHED`.
   - **Alternativa descartada:** um `suggest` que preserve as atribuições vigentes. Fica como melhoria futura.
-- **D7-E03, tarefa sem camareira na publicação:** a tarefa publicada sem camareira, ou retirada do plano depois de atribuída, volta a `PENDING` (`ASSIGNED → PENDING`).
+- **D7-E03, tarefa sem camareira na publicação:** volta a `PENDING` (`ASSIGNED → PENDING`) a tarefa publicada sem camareira e a tarefa **retirada**.
+  - **Retirada**, só neste sentido: tarefa com status `ASSIGNED`, dentro do conteúdo do plano pela D2-E03 (no plano operacional, as da data e as anteriores; num plano futuro, só as da data) e ausente do rascunho.
+  - Uma tarefa em qualquer outro status nunca é tocada pela publicação.
   - A SPEC §8.4 não desenha essa transição. Ela é necessária para a governanta recolher uma tarefa sem passá-la a outra pessoa, e o `arquiteto` registra a extensão na §8.4.
   - "Refused → Assigned" (nova tentativa) fica com a E04, porque `REFUSED` fica fora do plano.
 - **D8-E03, aviso:**
@@ -263,7 +276,10 @@ Valem a janela de datas (D2-E03), as camareiras pela escala (D1-E03), o DND e a 
   - **republicação sem mudança:** ninguém é avisado;
   - **tarefa movida de A para B:** só A e B são avisadas, e C não (Review Focus 3);
   - **tarefa retirada:** volta a `PENDING` sem camareira;
-  - **colaborador sem usuário ou com usuário inativo:** aparece na resposta pelo id, sem aviso;
+  - **sem aviso:** o colaborador sem usuário vinculado, ou cujo `notify` não produziu notificação (painel desligado nas preferências, ou usuário que não recebe), aparece na resposta em "não avisados", com o id e o motivo `NO_USER` ou `NOT_DELIVERED`;
+  - **tarefa que andou fora do rascunho:** uma republicação em que uma tarefa `IN_PROGRESS` (gravada no banco) não está no rascunho passa e não altera essa tarefa (R2);
+  - **tarefa que andou, mudando só de posição:** uma tarefa `IN_PROGRESS` cujo item tem a mesma camareira e outra posição não impede a publicação, e a posição dela não é regravada;
+  - **tarefa `ASSIGNED` de outra data, fora do conteúdo do plano:** não é retirada;
   - **texto do aviso:** o título leva a data, e o texto só tem números de UH e nomes de área, sem o nome do hóspede de uma reserva da UH;
   - **muitas áreas:** o texto truncado com "e mais N" não estoura o limite;
   - **ordem:** depois de um novo `suggest`, as tarefas mantêm a posição publicada;
@@ -302,10 +318,11 @@ Valem a janela de datas (D2-E03), as camareiras pela escala (D1-E03), o DND e a 
   - `infrastructure/HousekeepingTaskPersistence.kt`;
   - `web/AssignmentPlansController.kt`.
 - `src/main/resources/db/migration/housekeeping/V2026_11_18_1102__add_task_assignee.sql`.
+- `src/main/kotlin/com/zeny/hotel/housekeeping/web/HousekeepingTasksController.kt` (DTO da tarefa com os campos novos).
 - `docs/ARCHITECTURE.md` (§10, tópico `housekeeping`).
 - `api/openapi.yaml`.
 
-**Tamanho:** ~60 min; 12 arquivos, sendo 1 SQL, 1 doc e o contrato gerado.
+**Tamanho:** ~60 min; 11 arquivos de produção mais 1 doc e o contrato gerado.
 
 **Depende de:** Task 2.
 
