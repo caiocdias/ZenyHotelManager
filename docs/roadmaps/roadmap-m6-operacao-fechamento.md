@@ -102,7 +102,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
-- [ ] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
+- [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -197,7 +197,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #em-andamento | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
+| E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
 
 **Governança**
 
@@ -707,7 +707,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E18 — Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs — #em-andamento
+## E18 — Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs — #concluida
 
 **Objetivo:** resolver no `shared`, para todos os módulos, os quatro problemas transversais achados na E10 (nenhum foi introduzido por ela): (1) chave de data ou de instante do cursor fora do alcance do PostgreSQL dá 500 em vez de `400 INVALID_CURSOR`; (2) uma exceção *checked* que escapa de um caso de uso confirma a transação, e a escrita fica sem trilha; (3) campos de data e de instante aceitam formatos fora do ISO-8601 da ARCHITECTURE §7; (4) a falha de um job, inclusive a da trava do ShedLock com o banco fora, é logada com a mensagem do JDBC.
 
@@ -731,18 +731,18 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] **Cursor, unidade:** `PageCursor.instant` e `PageCursor.localDate` aceitam os extremos do `timestamptz` e do `date` do PostgreSQL e recusam com `INVALID_CURSOR` o valor imediatamente fora de cada extremo (teste do `PageCursor`).
-- [ ] **Cursor, consultas:** em cada uma das 15 consultas do escopo, um cursor bem formado com a chave fora da faixa dá `400 INVALID_CURSOR` e não 500 (teste pelo endpoint que expõe a consulta, ou pelo serviço quando ela não tiver endpoint). Teste vermelho antes da correção em pelo menos uma consulta por instante e uma por data.
-- [ ] **Cursor, `endofday`:** `EndOfDayQueries` não tem validação própria de faixa, e os testes de cursor das pendências da E10 continuam passando.
-- [ ] **Transação:** um caso de uso de teste `@Transactional` + `@Audited` que grava e lança uma exceção *checked* não deixa nem a escrita nem a entrada de trilha. O teste fica vermelho com a configuração de antes e verde com a nova.
-- [ ] **Transação, exceções explícitas:** um `noRollbackFor` continua confirmando a transação com `ALL_EXCEPTIONS` (teste novo), e os testes atuais de login com falha, refresh, aprovação recusada e `files` passam.
-- [ ] **Transação, inventário:** o handoff lista cada caminho com exceção *checked* dentro de `@Transactional` e diz, em cada um, que nada dependia do commit ou qual ajuste foi feito.
-- [ ] **Datas:** no `POST /api/v1/end-of-day/runs` e em pelo menos outro endpoint com `LocalDate` no corpo, `businessDate` em número (`20405`) e em data-hora (`"2026-11-13T00:00:00"` e `"2026-11-13T00:00:00Z"`) dão `400 VALIDATION_FAILED` com o erro no campo, e `"2026-11-13"` continua aceito.
-- [ ] **Instantes:** num corpo de entrada com `Instant`, número (epoch em segundos e em milissegundos) dá `400 VALIDATION_FAILED` no campo, e o ISO-8601 com `Z` continua aceito.
-- [ ] **Mapeador:** um teste sobre o mapeador do contexto da aplicação (não um montado no teste) recusa os mesmos formatos para `LocalDate` e `Instant`.
-- [ ] **Offline:** um comando offline com data em número volta `REJECTED`, com código, e fica registrado; com data ISO, é aplicado.
-- [ ] **Jobs:** um job agendado real, com o `LockProvider` falhando com uma exceção cuja mensagem e cuja causa levam um valor sentinela, gera log (saída capturada) com a classe da exceção e sem o sentinela em lugar nenhum. Teste vermelho antes da correção.
-- [ ] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa mudança `ERR` em `/api/v1`.
+- [x] **Cursor, unidade:** `PageCursor.instant` e `PageCursor.localDate` aceitam os extremos do `timestamptz` e do `date` do PostgreSQL e recusam com `INVALID_CURSOR` o valor imediatamente fora de cada extremo (teste do `PageCursor`).
+- [x] **Cursor, consultas:** em cada uma das 15 consultas do escopo, um cursor bem formado com a chave fora da faixa dá `400 INVALID_CURSOR` e não 500 (teste pelo endpoint que expõe a consulta, ou pelo serviço quando ela não tiver endpoint). Teste vermelho antes da correção em pelo menos uma consulta por instante e uma por data.
+- [x] **Cursor, `endofday`:** `EndOfDayQueries` não tem validação própria de faixa, e os testes de cursor das pendências da E10 continuam passando.
+- [x] **Transação:** um caso de uso de teste `@Transactional` + `@Audited` que grava e lança uma exceção *checked* não deixa nem a escrita nem a entrada de trilha. O teste fica vermelho com a configuração de antes e verde com a nova.
+- [x] **Transação, exceções explícitas:** um `noRollbackFor` continua confirmando a transação com `ALL_EXCEPTIONS` (teste novo), e os testes atuais de login com falha, refresh, aprovação recusada e `files` passam.
+- [x] **Transação, inventário:** o handoff lista cada caminho com exceção *checked* dentro de `@Transactional` e diz, em cada um, que nada dependia do commit ou qual ajuste foi feito.
+- [x] **Datas:** no `POST /api/v1/end-of-day/runs` e em pelo menos outro endpoint com `LocalDate` no corpo, `businessDate` em número (`20405`) e em data-hora (`"2026-11-13T00:00:00"` e `"2026-11-13T00:00:00Z"`) dão `400 VALIDATION_FAILED` com o erro no campo, e `"2026-11-13"` continua aceito.
+- [x] **Instantes:** num corpo de entrada com `Instant`, número (epoch em segundos e em milissegundos) dá `400 VALIDATION_FAILED` no campo, e o ISO-8601 com `Z` continua aceito.
+- [x] **Mapeador:** um teste sobre o mapeador do contexto da aplicação (não um montado no teste) recusa os mesmos formatos para `LocalDate` e `Instant`.
+- [x] **Offline:** um comando offline com data em número volta `REJECTED`, com código, e fica registrado; com data ISO, é aplicado.
+- [x] **Jobs:** um job agendado real, com o `LockProvider` falhando com uma exceção cuja mensagem e cuja causa levam um valor sentinela, gera log (saída capturada) com a classe da exceção e sem o sentinela em lugar nenhum. Teste vermelho antes da correção.
+- [x] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa mudança `ERR` em `/api/v1`.
 
 **Validação obrigatória:**
 
@@ -765,12 +765,79 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-17-m6-operacao-fechamento-e18.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). Na rodada 0 foi bloqueada por 6 Importantes: `Riscos:` incompleto, dependência da Task 2, critérios sem verificação, tamanho das fatias, a decisão (f) contrária à convenção do `defaultCandidate = false` e decisões transversais sem registro na ARCHITECTURE.
+- **Refação (H15):** a execução anterior da E18 se perdeu com a branch (troca da distro WSL). Esta execução partiu da mesma base `5e06f16` e reproduz o comportamento documentado no brain. A única diferença intencional é a decisão (f), abaixo.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `83f54fc` (início) a `626de72`.
+  - Task 1 (faixa do cursor): `d865e23` (desenvolvedor).
+  - Task 2 (datas estritas): `1cc28cc` (desenvolvedor).
+  - Task 3 (rollback e log dos jobs): `f6268a1` e `fda61ff` (desenvolvedor).
+  - Testador da etapa: `626de72`, só `src/test`.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`. A Task 1 foi aprovada com 3 Menores; a Task 2, com 3 Menores; a Task 3, com 1 Importante de teste (controle positivo da trilha), resolvido pelo testador, e 4 Menores.
+- Entregue:
+  - **Faixa do cursor:** `com.zeny.hotel.shared.StorableRange` vai de `-4712-01-01` a `+5874897-12-31` nas datas e de `-4712-01-01T00:00:00Z` a `+294276-12-31T23:59:59.999999Z` nos instantes, com os extremos inclusivos. `PageCursor.instant`/`localDate` recusam o que fica fora com `400 INVALID_CURSOR`. As 15 consultas e as pendências do `endofday` passam por eles. A validação local do `endofday` saiu, e `checkNoRun` usa o `StorableRange`. A ARCHITECTURE §7 e a §11 registram o piso efetivo do pgjdbc.
+  - **Datas estritas:** `shared/infrastructure/json/StrictDateTimeJson.kt`, um `JsonMapperBuilderCustomizer` com `leniency=false` e o `IsoText` em `LocalDate` (`ISO_LOCAL_DATE`, com ano com sinal) e em `Instant` (`ISO_INSTANT`). Aceita só texto, sem espaço nas pontas. Número, epoch, data-hora numa data, array, objeto e `""` dão `400 VALIDATION_FAILED` com `INVALID_FORMAT` no campo, com o caminho completo. Um comando offline fora do formato volta `REJECTED COMMAND_PAYLOAD_INVALID` e não é guardado. A ARCHITECTURE §7 registra a regra do `""`.
+  - **Rollback:** `rollbackOn = RollbackOn.ALL_EXCEPTIONS` em `TransactionOrderingConfiguration`. Os 5 `noRollbackFor` seguem confirmando, e as transições do `endofday` perderam o `rollbackFor = Throwable`. A ARCHITECTURE §5, item 6, registra a transação unida: uma *checked* engolida dentro dela leva a `UnexpectedRollbackException` no commit externo.
+  - **Log dos jobs:** `shared/infrastructure/scheduling/ScheduledJobErrors.kt` (`JobErrorLoggingTaskScheduler`, bean `taskScheduler` com `defaultCandidate = false`, montado pelo `ThreadPoolTaskSchedulerBuilder`). O formato é `Job Classe.método falhou: Classe[ <- Causa…]`, sem mensagem, sem stack e sem suprimidas, com proteção contra ciclo. O logger `JdbcTemplateStorageAccessor` fica em `OFF`. A ARCHITECTURE §13 registra (d) e (f).
+- **Inventário dos caminhos com exceção *checked* dentro de `@Transactional`** (critério da etapa; detalhe no relatório da Task 3): **nenhum caminho dependia do commit, e nada foi ajustado.**
+  - `noRollbackFor`: `Authentication.kt:80` e `:124`, `TokenRefreshService.kt:43`, `Approvals.kt:117` e `FilesService.kt:236` seguem confirmando (teste e suítes `iam`/`files`).
+  - `printing`: `HtmlPdfRenderer.render` (`SAXException`/`IOException`). O `pdf(...)` é `readOnly`, e o `print(...)` renderiza antes da única escrita. Antes confirmava uma transação vazia; agora desfaz uma vazia.
+  - `shared`: as cifras capturam `GeneralSecurityException`. `IdempotencyFilter` e `OfflineCommands` gravam por `TransactionTemplate`, que desfaz em qualquer `Throwable`. `StreamController`/`RealtimeHub` ficam fora de transação.
+  - `files`: `S3FileStorage.kt:183` (`URISyntaxException`) é alcançado por `FilesService.downloadUrl`, sem escrita antes. O reencode do `upload` captura `IOException`.
+  - `MessageDigest.getInstance("SHA-256")` em 6 lugares: inalcançável.
+  - `notifications`: `FcmPushGateway.requestAccessToken` não captura `JOSEException` de `SignedJWT.sign`. É pendência do `arquiteto` já registrada; o ouvinte não tem escrita própria.
+  - `fnrh`: envio fora de transação; o alerta vai em `afterCommit` com transação própria.
+  - `endofday`: o motor roda sem transação, e as transições têm transação própria.
+  - Jobs (`ProvisionalExpiry`, `InventoryHorizonJob`, `GuestDocumentRekeyJob`, `FileOrphanPurgeJob`): transação própria por item, sem transação externa.
+  - `iam`: `JwtEncodingException` é não-checada.
+  - Há **14** `@Scheduled` em `src/main`; o roadmap e a nota de jobs dizem 15. Pelo critério `Exception`/`Throwable`/`RuntimeException`/`runCatching`, há 25 `catch` amplos; a nota de auditoria dizia 83, por outro critério. Nenhum engole uma *checked* vinda de um proxy na mesma transação.
+- Revisão final: `revisor-seguranca` (opus) sobre `be3ecf3..626de72`, "Ready to merge? Yes", 0 Crítico e 0 Importante. Os 6 Menores ficaram sem correção (abaixo).
+- Verificação:
+  - **Gate:** `./gradlew build` em `626de72` → BUILD SUCCESSFUL em 15m 7s, com 4095 testes, 0 falhas e 0 ignorados (contagem dos XML do JUnit).
+  - **oasdiff:** "No changes detected" e nenhuma mudança `ERR` em `/api/v1`; o contrato não mudou.
+  - **Scanner:** `osv-scanner` 2.7.1 com `-L` em `gradle.lockfile` (426 pacotes) e `buildscript-gradle.lockfile` (74). Resultado: 0 Critical/High, 2 Medium e 3 Low, todos anteriores à etapa (`commons-lang3` 3.16.0 só no buildscript, `logback-core` 1.3.16 só no ktlint, `opentelemetry-api` 1.62.0 aceito até a M8 E17). Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base be3ecf3` → exit 0, sem apontamento. Em cada fatia, também exit 0.
+  - **Ambiente:** antes do gate, o baseline da `main` estava vermelho nesta máquina, com 12 falhas no `endofday`. A causa era o relógio do WSL saltando ±25 s (o `systemd-timesyncd` brigando com a hora do Windows, atrasada). O usuário desligou o `systemd-timesyncd` em 2026-11-17; não houve mudança de código.
+- Critérios verificados:
+  - **Cursor, unidade:** `PaginationTest`, com os extremos exatos e os vizinhos de fora, inclusive a fração abaixo do µs acima do teto.
+  - **Cursor, consultas:** `CursorKeyRangeApiTest`, com as 15 consultas e as pendências do `endofday`. O vermelho antes da correção apareceu nas 15: `200` com página vazia abaixo do piso e `500` acima do teto.
+  - **Cursor, `endofday`:** o grep de `requireStorable|MIN_STORABLE|MAX_STORABLE` em `src/main` sai vazio, e os testes de cursor da E10 estão verdes.
+  - **Transação:** `RollbackOnAllExceptionsTest` (1), com o vermelho `expected:<0> but was:<1>` e o controle positivo `trailEntriesWith == 1`.
+  - **Transação, exceções explícitas:** `RollbackOnAllExceptionsTest` (2) e as suítes `iam.*`/`files.*`.
+  - **Transação, inventário:** o inventário acima.
+  - **Datas:** `StrictDateTimeJsonApiTest`, com `businessDate` (`POST /end-of-day/runs`, usuário sem permissão, H10) e `dueOn` dos recados.
+  - **Instantes:** `StrictDateTimeJsonApiTest`, com `expiresAt` da pré-autorização.
+  - **Mapeador:** `StrictDateTimeJsonMapperTest`, sobre o `JsonMapper` do contexto, com aninhado, lista, extremos, `null`, ausente e datas que não existem no calendário.
+  - **Offline:** `OfflineSyncTest`, com número rejeitado sem efeito e a mesma recusa no reenvio; com ISO, é aplicado.
+  - **Jobs:** `ScheduledJobErrorLogTest`, com o job real `IdempotencyKeyPurgeJob.purgeExpiredKeys` e a trava falhando com sentinela na mensagem e na causa. O vermelho vinha do `TaskUtils$LoggingErrorHandler`. Cobre também falha no corpo, `Error`, `toString()` que lança, agendador único, prefixo `scheduling-` e ouvinte no `applicationTaskExecutor`.
+  - **Contrato:** `checkOpenApi` (no gate) e oasdiff acima.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **(a)** O piso da faixa é `-4712-01-01` (limite do pgjdbc), e não `-4713-11-24`.
+  - **(b)** "Registrado" no comando offline (H13 c) é lido como "devolvido com `REJECTED COMMAND_PAYLOAD_INVALID`, nunca descartado em silêncio", sem guardar a recusa. O texto do critério dizia "fica registrado". Guardar a recusa mudaria o protocolo da §9.
+  - **(c)** A leitura estrita vai além do mínimo: recusa também array, epoch em texto, texto sem `T` num instante e espaço nas pontas. **`""` numa data ou num instante opcional passou a dar `400 INVALID_FORMAT`**; antes virava `null`. **Avisar o front desktop:** para "sem valor", omitir o campo ou mandar `null`.
+  - **(d)** O logger `JdbcTemplateStorageAccessor` fica em `OFF`. O custo é que o "Unlock failed after 10 attempts" também some. A alternativa é um filtro que descarte só os eventos com exceção.
+  - **(e) Regressão conhecida e aceita:** um recado gravado com `dueOn` = `+999999999-12-31` vira `infinity` e é relido como `LocalDate.MAX`. O cursor seguinte é recusado com `400 INVALID_CURSOR`, e o resto da lista fica inalcançável; antes da E18, a paginação seguia. Exige uma data absurda posta de propósito. A correção é recusar no corpo o que estiver fora do `StorableRange`.
+  - **(f) Decisão nova (rodada 0 da revisão de arquitetura), que substitui o `spring.task.execution.mode: force` da execução perdida:** o `taskScheduler` tem `defaultCandidate = false`, a convenção do `EndOfDayExecutionConfiguration`. No Boot 4.1.2, o `applicationTaskExecutor` continua sendo criado, e o Boot não monta um segundo agendador. Deixam de existir os dois `Executor` padrão que o `force` deixava.
+  - **(g)** Um instante continua aceitando deslocamento diferente de `Z` e `t`/`z` minúsculos (`ISO_INSTANT`); o roadmap põe isso fora de escopo.
+- Notas para a próxima etapa:
+  - **Para o `arquiteto`** (etapa de manutenção sugerida):
+    - recusar no corpo as datas e os instantes fora do `StorableRange`. Resolve a (e) e o `500` com `dueOn` `+5874898-01-01`;
+    - datas e instantes em **query string** seguem lenientes: aceitam o formato curto do locale (`13/11/25`) e epoch em ms num instante. Fora do alcance, por cima, dá `500` (`traces`, `audit-entries`, `card-pre-authorizations/expiring`); abaixo do piso, `-infinity`, sem erro. Não há `@PathVariable` de data;
+    - a chave de `Map` de data ou instante segue leniente (o `KeyDeserializer` não é coberto). Hoje não há DTO de entrada com isso;
+    - `LocalTime`, `LocalDateTime` e `OffsetDateTime` não entram na leitura estrita;
+    - quatro jobs ainda logam a própria falha com a mensagem (`OutboxMetrics.kt:74`, `FileOrphanPurgeJob`, `ProvisionalReservations`, `InventoryHorizonJob`);
+    - `JOSEException` sem captura em `FcmPushGateway.requestAccessToken`;
+    - trocar o `OFF` do ShedLock por um filtro (d).
+  - **Operação:**
+    - manter `/actuator/scheduledtasks` fora da exposição: o Spring guarda o `Throwable` da última execução de cada `@Scheduled`, com a mensagem;
+    - ao subir o ShedLock, rever o `KeepAliveLockProvider`, que no `master` loga a exceção.
+  - **Menores restantes da revisão final:**
+    - a cadeia de causas não tem teto (`ScheduledJobErrors.kt:92-98`);
+    - comentários em `CursorKeyRangeApiTest.kt:78` (400 antes de 404) e `:112` ("o banco arredonda" não demonstrado);
+    - KDoc do `StrictDateTimeJson` sem o limite da chave de mapa;
+    - `?` em `problem["code"]` no `StrictDateTimeJsonApiTest`;
+    - fim de linha na afirmação da trava em `ScheduledJobErrorLogTest.kt:73-75`.
+  - **Processo:** nesta máquina, o `systemd-timesyncd` precisa ficar desligado. Com ele ligado, os testes de prazo do `endofday` caem em cascata.
+- Capturas do brain: ver o handoff do lote, na E01.
 
 ---
 
