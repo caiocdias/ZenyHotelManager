@@ -204,7 +204,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
-| E02 | Geração automática de tarefas | #pendente | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
+| E02 | Geração automática de tarefas | #em-andamento | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #pendente | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
@@ -968,11 +968,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - nome qualificado repetido em `ChecklistTemplates.kt`;
     - constantes de documentação e `HousekeepingAudit` espalhados (separar na E02);
     - nos testes, `blockedOnCleaningType` é genérico e há `.ok()` em `finally`.
-- **Capturas do brain:** ver a linha seguinte, preenchida no início da E02.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E01 (refação) - 3bd9134b.md`.
 
 ---
 
-## E02 — Geração automática de tarefas — #pendente
+## E02 — Geração automática de tarefas — #em-andamento
 
 **Objetivo:** gerar as tarefas de governança (RF-GOV-02) a partir de saídas (`GuestCheckedOut`), troca de UH (`RoomMoved`, UH de origem), permanências e chegadas da data (ao receber `BusinessDateAdvanced`), faxinas programadas vencidas e solicitações avulsas da recepção, com créditos e prioridade do tipo de limpeza.
 
