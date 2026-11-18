@@ -22,6 +22,7 @@ import com.zeny.hotel.housekeeping.domain.CleaningTypeDetails
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.housekeeping.domain.ScheduledCleaning
 import com.zeny.hotel.housekeeping.domain.ScheduledCleaningInput
+import com.zeny.hotel.housekeeping.domain.TaskLocation
 import com.zeny.hotel.reservations.ReservationId
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.rooms.GuestServiceFlag
@@ -310,6 +311,34 @@ class HousekeepingTaskGenerationTest {
 
         store.saved.shouldBeEmpty()
         events.filter { schedule.id.toString() in it.formattedMessage }.map { it.level } shouldBe listOf(Level.INFO)
+    }
+
+    @Test
+    fun `a scheduled cleaning skipped for an open task is logged at DEBUG, the normal case of every day`() {
+        val day = DailyScenario()
+        day.types(stayoverActive = false, preArrivalActive = false)
+        val type = CleaningType.create(CleaningTypeDetails("FAXINA", "Faxina", false, 2, null, null, emptyList()), now)
+        val schedule =
+            ScheduledCleaning.create(ScheduledCleaningInput(day.arriving, null, type.id, 7, null), date, now)
+        store.insertIfAbsent(
+            HousekeepingTask.create(
+                type,
+                TaskLocation.Room(day.arriving),
+                date.minusDays(1),
+                TaskSource.SCHEDULED,
+                arrivalExpected = false,
+                credits = 0,
+                now = now,
+                scheduledCleaningId = schedule.id,
+            ),
+        )
+        every { scheduledCleanings.dueOn(date) } returns listOf(schedule)
+        every { cleaningTypes.cleaningType(type.id) } returns type
+
+        val events = capturingGenerationLog { generation.generateForDate(date) }
+
+        store.saved shouldHaveSize 1
+        events.filter { schedule.id.toString() in it.formattedMessage }.map { it.level } shouldBe listOf(Level.DEBUG)
     }
 
     @Test

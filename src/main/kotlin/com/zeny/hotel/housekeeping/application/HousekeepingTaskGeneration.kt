@@ -164,8 +164,9 @@ class HousekeepingTaskGeneration(
     }
 
     /**
-     * A tarefa da faxina programada [schedule] vencida; `null` (com log `INFO`) com o tipo dela inativo, o local
-     * inexistente, desativado ou em OOO/OOS, ou uma tarefa aberta da faxina.
+     * A tarefa da faxina programada [schedule] vencida; `null` com o tipo dela inativo ou o local inexistente,
+     * desativado ou em OOO/OOS (log `INFO`: configuração que alguém precisa ver), ou com uma tarefa aberta da faxina
+     * (log `DEBUG`: o caso normal de todo dia).
      */
     private fun scheduledTask(
         schedule: ScheduledCleaning,
@@ -176,7 +177,11 @@ class HousekeepingTaskGeneration(
         val room = roomId?.let { day.rooms[it] }?.takeIf { rooms.status(it.id)?.outOfOrder == null }
         val placeActive = if (roomId != null) room != null else schedule.areaId?.let { rooms.area(it)?.active } == true
         if (type == null || !placeActive || store.hasOpenTaskFor(schedule.id)) {
-            log.info("Faxina programada {} sem tarefa em {}: tipo, local ou tarefa aberta", schedule.id, day.date)
+            if (type == null || !placeActive) {
+                log.info("Faxina programada {} sem tarefa em {}: tipo ou local inválido", schedule.id, day.date)
+            } else {
+                log.debug("Faxina programada {} sem tarefa em {}: já tem tarefa aberta", schedule.id, day.date)
+            }
             return null
         }
         val location = roomId?.let { TaskLocation.Room(it) } ?: TaskLocation.Area(checkNotNull(schedule.areaId))
