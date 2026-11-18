@@ -15,7 +15,6 @@ import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ErrorCode
-import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.ModulePermissions
@@ -138,7 +137,7 @@ class CleaningTypesService(
         page: PageParams,
     ): CursorPage<CleaningTypeView> {
         authorization.require(HousekeepingPermissions.CONFIG_READ)
-        val after = page.decodedCursor()?.let { textKey(it) to it.uuid(1) }
+        val after = page.decodedCursor()?.let { it.string(0) to it.uuid(1) }
         val rows = store.page(active, after, page.limit + 1)
         val keys = CursorPage.fromRows(rows, page.limit) { PageCursor.of(it.first, it.second.toString()) }
         val activeRoomTypes = activeRoomTypes()
@@ -237,14 +236,6 @@ class CleaningTypesService(
 
     private fun activeRoomTypes(): List<RoomTypeId> = rooms.activeRoomTypes().map { it.id }
 
-    /** A chave de texto do cursor; com NUL (que o PostgreSQL não aceita num texto), o cursor é inválido. */
-    private fun textKey(cursor: PageCursor): String =
-        cursor.string(0).takeIf { NUL !in it }
-            ?: throw InvalidInputException(
-                ErrorCodes.INVALID_CURSOR,
-                "Cursor de paginação inválido. Recomece da primeira página.",
-            )
-
     private fun find(id: CleaningTypeId) =
         store.cleaningType(id)
             ?: throw NotFoundException(
@@ -263,10 +254,6 @@ class CleaningTypesService(
         field: String,
         message: String,
     ) = InvalidInputException(code, message, listOf(FieldViolation(field, code.value, message)))
-
-    private companion object {
-        const val NUL = '\u0000'
-    }
 }
 
 /** Ações e entidades da trilha do `housekeeping` (retrato só da configuração). */

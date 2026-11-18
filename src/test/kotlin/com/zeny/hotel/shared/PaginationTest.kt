@@ -67,6 +67,17 @@ class PaginationTest {
     }
 
     @Test
+    fun `text keys with NUL are rejected, since PostgreSQL does not store NUL in text`() {
+        cursorOf("A~B|C").string(0) shouldBe "A~B|C"
+
+        listOf("A\u0000B", "\u0000", "AB\u0000").forEach { key ->
+            withClue(key.replace("\u0000", "<NUL>")) {
+                shouldThrow<InvalidInputException> { cursorOf(key).string(0) }.code shouldBe ErrorCodes.INVALID_CURSOR
+            }
+        }
+    }
+
+    @Test
     fun `instant keys are accepted up to the storable extremes and rejected just outside them`() {
         listOf("-4712-01-01T00:00:00Z", "+294276-12-31T23:59:59.999999Z").forEach { key ->
             cursorOf(key).instant(0) shouldBe Instant.parse(key)
