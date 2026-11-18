@@ -2,250 +2,316 @@
 
 > **Para agentes:** execução por `superpowers:subagent-driven-development` com as souls (`desenvolvedor`, `testador`, `revisor-seguranca`), uma fatia por vez. Cada `### Task` é uma fatia vertical. O plano diz o quê e onde, não o código.
 
-**Goal:** implementar a distribuição das tarefas de governança (RF-GOV-03, `AssignmentPlan`):
-- uma sugestão determinística que balanceia créditos entre as camareiras escaladas no dia (RF-PES-04), agrupa por andar, põe as chegadas primeiro e respeita o "Não perturbe";
-- o ajuste manual pela governanta;
-- a publicação, que atribui as tarefas (`ASSIGNED`) e avisa só quem teve mudança, com evento de tempo real para o painel.
+**Goal:** implementar a distribuição das tarefas de governança (RF-GOV-03, `AssignmentPlan`). Ela tem três partes:
+- **sugestão determinística:** balanceia créditos entre as camareiras escaladas no dia (RF-PES-04), agrupa por andar, põe as chegadas primeiro e respeita o "Não perturbe";
+- **ajuste manual** pela governanta;
+- **publicação:** atribui as tarefas (`ASSIGNED`, com a camareira e a posição), avisa só quem teve mudança e publica um evento de tempo real para o painel.
 
 **Spec:**
-- `docs/roadmaps/roadmap-m6-operacao-fechamento.md`, seção "E03";
-- o handoff da E02, em "Notas para a próxima etapa" e "Decisões para o usuário";
-- SPEC: RF-GOV-03, RF-PES-04, RF-NOT-01, §8.2.10 (`AssignmentPlan`, `HousekeepingTask`) e §8.4 ("Tarefa de governança");
-- ARCHITECTURE: §3.1, §7, §8, §10 (tempo real) e §11;
-- brain: `ZenyHotelManager - Módulo housekeeping`, com as capturas pendentes `… E01 (refação) - 3bd9134b` e a da E02, que valem sobre ela; `ZenyHotelManager - Módulos hotel e staff` (escala); `ZenyHotelManager - Módulo notifications`; `ZenyHotelManager - Tempo real (SSE)`; `ZenyHotelManager - Módulo rooms`.
+- `docs/roadmaps/roadmap-m6-operacao-fechamento.md`, seção "E03", com H16 e **H17** (early check-in adiado, criada nesta etapa);
+- o handoff da E02 ("Notas para a próxima etapa" e "Decisões para o usuário");
+- SPEC: RF-GOV-03, RF-PES-04, RF-NOT-01, §8.2.10 e §8.4 ("Tarefa de governança");
+- ARCHITECTURE: §3.1, §7, §8, §10 e §11;
+- brain: `ZenyHotelManager - Módulo housekeeping` (as capturas pendentes `… E01 (refação) - 3bd9134b` e `… E02 - f7e6203c` valem sobre ela), `ZenyHotelManager - Módulos hotel e staff`, `ZenyHotelManager - Módulo notifications`, `ZenyHotelManager - Tempo real (SSE)` e `ZenyHotelManager - Módulo rooms`.
 
 **Architecture:**
-- **Onde:** no `housekeeping`, que passa a depender de `staff` (escala) e `notifications` (aviso). As duas arestas já estão na linha §3.1. O `notifications` não escuta eventos de negócio: quem avisa é o caso de uso de publicação.
-- **Algoritmo:** fica no `domain`, como função pura e determinística, testável sem Spring.
-- **Rascunho:** o plano do dia (`assignment_plan` + `assignment_plan_item`) é o rascunho da distribuição.
-- **Publicação:** copia as atribuições para as tarefas (`assigned_employee_id`, `ASSIGNED`), calcula a diferença contra a última publicação, avisa e publica no tempo real.
+- **Dependências:** a lógica fica no `housekeeping`, que passa a depender de `staff` (escala) e de `notifications` (aviso). As duas arestas já estão na linha §3.1. O `notifications` não escuta eventos de negócio: quem avisa é o caso de uso de publicação.
+- **Algoritmo:** fica no `domain` (função pura, com ids próprios do módulo), testável sem Spring.
+- **Plano:** o plano do dia é o rascunho (`assignment_plan` com id UUID e data única, mais `assignment_plan_item`).
+- **Publicação:** grava nas tarefas a camareira e a posição, calcula a diferença contra o que já estava atribuído, avisa e publica no tópico de tempo real `housekeeping`.
 
 **Tech Stack:** Kotlin 2.4, Spring Boot 4.1, Spring Modulith 2.1, Flyway 12, Testcontainers.
 
 **Riscos:**
-- **autenticação ou autorização:** a permissão nova de distribuição e a recusa de atribuir a quem não está escalado (Tasks 2 e 3);
-- **concorrência:** ajuste e publicação concorrentes no mesmo plano, e tarefas geradas depois da sugestão (Tasks 2 e 3);
-- **dado pessoal ou segredo:** o título e o texto do aviso e o evento de tempo real só levam número de UH, nunca dado de hóspede (Task 3);
-- **parsing de entrada externa não confiável:** a data no caminho e o corpo do ajuste (Task 2);
-- **migração ou escrita destrutiva de dados:** tabelas novas e coluna nova na tarefa (Tasks 2 e 3).
+- **autenticação ou autorização:** a permissão nova de distribuição; a atribuição só a quem está escalado; o tópico com permissão (Tasks 2 e 3);
+- **concorrência:** dois `suggest` iniciais, ajuste e publicação concorrentes no mesmo plano, tarefa que anda durante a publicação, tarefas geradas depois da sugestão (Tasks 2 e 3);
+- **dado pessoal ou segredo:** aviso, tempo real e trilha só com número de UH e nome de área, nunca dado de hóspede (Task 3);
+- **parsing de entrada externa não confiável:** a data no caminho e os corpos do `suggest` e do ajuste (Task 2);
+- **migração ou escrita destrutiva de dados:** tabelas novas e colunas novas na tarefa (Tasks 2 e 3).
 
 ## Global Constraints
 
-- **Grafo e dependências:** segue a ARCHITECTURE §3.1. O `housekeeping` passa a declarar `["shared", "hotel", "rooms", "reservations", "staff", "checklists"]` na Task 2 e acrescenta `"notifications"` na Task 3. Cada fatia confere com igualdade exata no `ModularityTest`.
-- **Migrações:** ficam no schema `housekeeping`, com timestamp posterior a `V2026_11_18_1001`, no padrão `create_*` + `grant_*_to_app_role`.
-- **Recusas:** H16 se aplica. Referência inexistente no corpo dá `400 …UNKNOWN_…`. Referência que fere regra dá `422`.
-- **Contrato:** regenerado com `./gradlew updateOpenApi`. Enum que cresce é `x-extensible-enum`. `.github/scripts/check-api-breaking.sh` sem `ERR`. O status do plano sai como `x-extensible-enum`.
-- **Escritas:**
-  - toda escrita da `application` é `@Audited`, com retrato sem dado pessoal;
+- **Grafo de módulos:** segue a ARCHITECTURE §3.1. O `housekeeping` passa a declarar `"staff"` na Task 2 e `"notifications"` na Task 3, com igualdade exata no `ModularityTest` em cada fatia. A Task 1 não usa tipo de outro módulo.
+- **Migrações:** ficam no schema `housekeeping`, com timestamp posterior a `V2026_11_18_1001`. O padrão é `create_*` + `grant_*_to_app_role`.
+- **H16:** referência inexistente no corpo dá `400 …UNKNOWN_…`. A **exceção registrada** é a D11-E03.
+- **Contrato:** é regenerado com `./gradlew updateOpenApi`. Enum que cresce sai como `x-extensible-enum`. `.github/scripts/check-api-breaking.sh` não acusa `ERR`.
+- **Escrita da `application`:**
+  - é `@Audited`, com retrato sem dado pessoal;
   - a autorização vem antes de qualquer checagem que revele estado;
-  - as edições do plano usam `ETag`/`If-Match` (`428`/`412`).
-- **Idioma:** código, API e banco em inglês; KDoc, comentários e commits em pt-BR (D17). O texto do aviso é pt-BR.
+  - toda escrita num plano existente exige `If-Match` (`428`/`412`), inclusive o `suggest`;
+  - a versão é comparada **sob trava** da linha do plano (`SELECT … FOR UPDATE`);
+  - falha otimista numa tarefa durante a publicação dá `412`, nunca `500`.
+- **Idioma:** código, API e banco em inglês; KDoc, comentários, commits e texto do aviso em pt-BR (D17).
 - **Commits:** por fatia, com o trailer `Soul: <soul>` no mesmo parágrafo do `Co-Authored-By`.
 - **Execução:** um Gradle por vez, nunca `./gradlew --stop`, todo comando com `timeout`, nunca laço de espera.
 - **Testes:**
-  - o banco compartilhado recebe avanços de data de outros testes e gera tarefas para o hotel inteiro. Os testes de integração afirmam só sobre as UHs, os colaboradores e os planos do próprio teste. Os planos usam uma data futura própria (por exemplo, a data operacional + 20 a 29 dias, distinta por teste), para não colidir com o plano do dia de outros testes;
-  - nunca contar `audit.audit_entry` nem tarefas de forma global;
-  - os tipos da carga nunca são alterados.
-- **Verificação da fatia:** os testes focados dela mais `timeout 900 ./gradlew checkOpenApi lint`. A suíte inteira roda no gate.
+  - O banco compartilhado recebe avanços de data e gera tarefas para o hotel inteiro. Os testes afirmam só sobre as UHs, os colaboradores e os planos do próprio teste. Nunca contam `audit.audit_entry`, tarefas ou notificações de forma global, e nunca alteram os tipos da carga.
+  - O plano da **data operacional** do banco compartilhado só é usado com `suggest` e `PATCH` (sem publicar), e as afirmações se restringem às próprias tarefas.
+  - As **publicações** usam uma data futura dentro da janela (D2-E03) em que só existem as tarefas do próprio teste, criadas como avulsas daquela data. Uma data distinta por teste evita colisão entre planos.
+- **Verificação da fatia:** os testes focados dela, mais `timeout 900 ./gradlew checkOpenApi lint`. A suíte inteira roda no gate.
 
 ## Review Focus
 
-1. **Só quem está escalado:** a sugestão e o ajuste só atribuem a quem está na escala do setor de governança naquela data (`StaffApi.daySchedule`, setor com `DepartmentKey.HOUSEKEEPING`). O ajuste para outro colaborador dá `422`. Também não se atribui a quem saiu da escala entre a sugestão e a publicação: a publicação reconfere a escala. Testes nas Tasks 1, 2 e 3.
-2. **Balanceamento contra agrupamento por andar:** a diferença de créditos entre a mais e a menos carregada nunca passa do maior crédito de uma tarefa. O andar fica com uma só camareira **sempre que isso não quebrar o limite**. Testes de unidade na Task 1 com casos difíceis: um andar maior que a média, créditos 0, uma só camareira e mais camareiras que tarefas.
-3. **Republicação:** só recebe aviso quem teve tarefa incluída ou removida. Quem não mudou não é avisado, nem quando outra camareira mudou. Teste na Task 3.
-4. **Tarefa que já andou:** uma tarefa em `IN_PROGRESS`, `PAUSED`, `AWAITING_INSPECTION`, `REJECTED`, `DONE`, `REFUSED` ou `CANCELLED` não entra na sugestão nem pode ser movida pelo ajuste (`422`). A publicação não a altera. Teste na Task 2.
-5. **Tarefa aberta de data anterior** (D4 da E02): uma tarefa `PENDING` ou `ASSIGNED` de uma data anterior entra no plano da data. Assim, uma `CHECKOUT` entregue depois do avanço não fica órfã. Teste na Task 2.
+1. **Só quem está escalado:** a sugestão, o ajuste e a publicação só atribuem a quem está na escala do setor de governança na data e, se o `suggest` recebeu `employeeIds`, a esse subconjunto. A publicação reconfere a escala. Testes nas Tasks 2 e 3.
+2. **Balanceamento contra andar (heurística, D5-E03):**
+   - a diferença de créditos entre a mais e a menos carregada nunca passa do maior crédito de uma tarefa;
+   - se a distribuição dos andares inteiros já cumpre esse limite, nenhum andar é dividido;
+   - o algoritmo termina sempre, inclusive com créditos 0.
+
+   Testes de unidade na Task 1.
+3. **Republicação:** só recebe aviso quem teve tarefa incluída ou removida em relação ao que estava atribuído. Teste na Task 3.
+4. **Tarefa que já andou:** tarefa em `IN_PROGRESS`, `PAUSED`, `AWAITING_INSPECTION`, `REJECTED`, `DONE`, `REFUSED` ou `CANCELLED` não entra na sugestão nem no ajuste (`422`). Na publicação, o item dela é ignorado se não mudaria a tarefa (mesma camareira e mesma posição), e recusa a publicação inteira (`422`, com os ids em `errors[]`) se mudaria. Testes nas Tasks 2 e 3.
+5. **Tarefa aberta de data anterior** (D4 da E02): entra no plano da data operacional, e só nele. Teste na Task 2.
 
 ## Decisões desta etapa
 
-Decisões do orquestrador, sob a autorização noturna do usuário. Todas são revisáveis.
+Decisões do orquestrador, sob a autorização noturna do usuário. São todas revisáveis. Onde houve alternativa, a escolhida foi a recomendada pela revisão de arquitetura.
 
-- **D1-E03, quem é camareira:** é colaborador ativo na escala da data (`daySchedule(date, departmentId)`) do setor `DepartmentKey.HOUSEKEEPING`.
-  - Sem esse setor cadastrado, a sugestão dá `422 HOUSEKEEPING_DEPARTMENT_MISSING`.
-  - Sem ninguém escalado, a sugestão fica vazia, com todas as tarefas sem camareira.
-  - Um colaborador sem usuário vinculado recebe tarefas, mas não recebe aviso. A resposta da publicação lista esse caso, sem nome.
-- **D2-E03, o que entra no plano:** tarefas `PENDING` ou `ASSIGNED` com `business_date` até a data do plano, inclusive as de datas anteriores (D4 da E02). As tarefas em outros status ficam fora (Review Focus 4).
-- **D3-E03, chegada:**
-  - a marca de chegada é **recalculada** na sugestão, pelo `ArrivalsByRoom` extraído na Task 2. Corresponde à D8 da E02;
-  - **early check-in:** o `reservations` não guarda hora prevista de chegada nem pedido de early. Por isso a prioridade de early da RF-GOV-03 fica **pendente**, com nota para o `arquiteto`. Aqui só a chegada prevista conta.
-- **D4-E03, DND:** com a UH em `GuestServiceFlag.DO_NOT_DISTURB` (`RoomsApi.status`) no momento da sugestão, a tarefa `STAYOVER` dela fica fora da sugestão inicial e segue `PENDING` sem camareira. A governanta pode atribuí-la no ajuste.
-- **D5-E03, algoritmo** (guloso determinístico, no `domain`):
-  1. ordena as tarefas por (chegada desc, prioridade desc, andar, número da UH ou nome da área, id);
-  2. distribui os andares inteiros, do maior total de créditos para o menor, sempre para a camareira menos carregada (desempate por nome e depois id do colaborador);
-  3. se a diferença entre a mais e a menos carregada passar do maior crédito de uma tarefa, move tarefas da mais carregada para a menos carregada, começando pela de menor crédito e terminando na de maior id, até respeitar o limite;
-  4. a ordem de execução de cada camareira segue o passo 1.
+- **D1-E03, quem recebe tarefas:**
+  - são os colaboradores na escala da data do setor `DepartmentKey.HOUSEKEEPING` (`StaffApi.daySchedule`);
+  - o `suggest` aceita `employeeIds` opcional, que precisa ser subconjunto dos escalados (`422` fora disso). O padrão é todos os escalados. É assim que a governanta e as supervisoras ficam de fora;
+  - o setor de governança vem da carga do `staff`, que não pode ser apagado. Sem ele, é invariante quebrada (`IllegalStateException`), sem código no contrato; o teste é só de unidade, com `StaffApi` falsa;
+  - o colaborador sem usuário vinculado, ou com usuário inativo, recebe tarefas, mas não recebe aviso. A resposta da publicação lista esses casos pelo id.
+- **D2-E03, janela e conteúdo do plano:**
+  - a data do plano vai da data operacional até 7 dias à frente. Fora disso, ou fora do `StorableRange`, dá `422 ASSIGNMENT_PLAN_DATE_INVALID` (data malformada dá `400`);
+  - o plano de uma data que ficou para trás fica congelado: `suggest`, ajuste e publicação dão `422`;
+  - o plano da **data operacional** leva as tarefas `PENDING` ou `ASSIGNED` com `business_date` até essa data, inclusive as de datas anteriores (D4 da E02);
+  - um plano de **data futura** leva só as tarefas da própria data.
+- **D3-E03, chegada e early:**
+  - a chegada é recalculada na sugestão pelo `ArrivalsByRoom` (D8 da E02), com teste de que vale a recalculada, e não a gravada;
+  - **early check-in fica adiado (H17).** O `reservations` não guarda pedido de early nem hora prevista de chegada. Por isso o critério da E03 "chegadas e early vêm primeiro" é cumprido só para as chegadas. O registro vai na tabela de hipóteses e na nota ao `arquiteto`, que decide a etapa que leva o dado ao `reservations`.
+- **D4-E03, DND:** a `STAYOVER` de UH em `GuestServiceFlag.DO_NOT_DISTURB` no momento da sugestão fica de fora e segue `PENDING`. A governanta pode acrescentá-la no ajuste.
+- **D5-E03, algoritmo** (heurística gulosa e determinística no `domain`; não é ótimo, como o roadmap aceita):
+  1. **ordem:** as tarefas são ordenadas por chegada (desc), prioridade (desc), andar em ordem natural (números como números, depois texto, depois sem andar), número da UH ou nome da área, id;
+  2. **andares inteiros:** os andares são distribuídos do maior total de créditos para o menor, cada um para a camareira menos carregada (desempate por nome e depois id);
+  3. **rebalanceamento:** se a diferença entre a mais carregada (M) e a menos carregada (m) passar do maior crédito de uma tarefa, tarefas de crédito maior que 0 vão da mais para a menos carregada, a de menor crédito primeiro, até cumprir o limite. Como cada movimento usa c ≤ maior crédito < M − m, a soma dos quadrados das cargas cai a cada passo, e o laço termina;
+  4. **ordem de execução:** a de cada camareira segue a do passo 1.
 
-  Área sem andar entra como andar `null`, depois dos andares. O desenvolvedor pode ajustar os detalhes se mantiver as garantias do Review Focus 2 e o determinismo. O handoff registra o que ficou.
-- **D6-E03, plano:** um plano por data (`assignment_plan`, chave `business_date`), em `DRAFT` ou `PUBLISHED`.
-  - `suggest` refaz o rascunho inteiro a partir das tarefas atuais. Isso vale também depois de publicado: o plano volta a `DRAFT`, e as tarefas só mudam na próxima publicação.
-  - O ajuste (`PATCH`) muda itens do rascunho.
-  - A publicação grava nas tarefas e marca `PUBLISHED` com a versão.
-- **D7-E03, tarefa removida numa republicação:** volta a `PENDING`, sem camareira. É a transição `ASSIGNED → PENDING`, que a SPEC §8.4 não desenha (só `Assigned → Assigned`, reatribuída). Fica registrada como extensão da máquina de estados para o `arquiteto`. A alternativa descartada, proibir a remoção, contradiz "republicar notifica quem teve tarefa removida".
+  Todas as áreas valem 0 crédito (D2 da E02). O grupo "sem andar" vai inteiro para uma camareira, sem custo, e isso é um efeito conhecido. O handoff registra o algoritmo final.
+- **D6-E03, plano:**
+  - **estrutura:** um plano por data (`assignment_plan`: `id` UUID, `business_date` único, status `DRAFT` ou `PUBLISHED`, `version`);
+  - **`suggest`:** refaz o rascunho inteiro e exige `If-Match` quando o plano já existe. Depois de publicado, volta a `DRAFT`; as tarefas só mudam na próxima publicação;
+  - **ajuste (`PATCH`):** move uma tarefa de camareira, acrescenta ao rascunho qualquer tarefa elegível pela D2 (inclusive as geradas depois da sugestão) e tira itens do rascunho (`remove`, diferente de "sem camareira");
+  - **publicação:** grava nas tarefas e marca `PUBLISHED`.
+  - **Alternativa descartada:** um `suggest` que preserve as atribuições vigentes. Fica como melhoria futura.
+- **D7-E03, tarefa sem camareira na publicação:** a tarefa publicada sem camareira, ou retirada do plano depois de atribuída, volta a `PENDING` (`ASSIGNED → PENDING`).
+  - A SPEC §8.4 não desenha essa transição. Ela é necessária para a governanta recolher uma tarefa sem passá-la a outra pessoa, e o `arquiteto` registra a extensão na §8.4.
+  - "Refused → Assigned" (nova tentativa) fica com a E04, porque `REFUSED` fica fora do plano.
 - **D8-E03, aviso:**
-  - tipo `notifications.task-assigned`, uma notificação por camareira com mudança;
-  - título "Suas tarefas de hoje mudaram";
-  - texto com os números das UHs e os nomes das áreas incluídas e removidas, sem dado de hóspede;
-  - destinatário `NotificationRecipients.user(employee.userId)`.
-- **D9-E03, tempo real:** tópico novo `housekeeping`, com permissão `housekeeping.tasks.read`. A mensagem `assignment-plan.published` leva só a data, a versão e as contagens. Ela é publicada na transação da publicação pelo `RealtimePublisher`.
-- **D10-E03, permissão:** `housekeeping.assignments.manage`, só escopo `ALL`, não sensível, nos modelos Gerente e Governanta. A leitura do plano usa `housekeeping.tasks.read`.
+  - tipo `NotificationsTypes.TASK_ASSIGNED`, uma notificação por camareira com mudança;
+  - título "Suas tarefas de DD/MM mudaram";
+  - texto com os números das UHs e os nomes das áreas incluídas e removidas, truncado em "e mais N" para caber no limite de 1000 caracteres do `notify`;
+  - nenhum dado de hóspede.
+- **D9-E03, tempo real:**
+  - tópico novo `housekeeping`, com permissão `housekeeping.tasks.read`, que a E04 reaproveita para as mensagens das tarefas. A Task 3 o registra na ARCHITECTURE §10;
+  - a mensagem tem o payload padrão do `shared` (`type = "housekeeping.assignment-plan"`, `id` do plano, `version`);
+  - só a publicação publica no tópico; `suggest` e ajuste não publicam.
+- **D10-E03, permissão:**
+  - `housekeeping.assignments.manage`, só escopo `ALL`, não sensível, nos modelos Gerente e Governanta;
+  - a leitura do plano exige `housekeeping.tasks.read`.
+- **D11-E03, exceção à H16:** como a `StaffApi` não busca colaborador por id, um colaborador inexistente e um colaborador fora da escala dão o mesmo `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Tarefa inexistente no corpo dá `400 ASSIGNMENT_UNKNOWN_TASK`.
+- **D12-E03, posição publicada:** a tarefa grava `assigned_employee_id` e `assignment_position` na publicação. Assim, o app da camareira (E04) mantém a ordem publicada mesmo depois de um novo `suggest`.
+- **Adiados, com nota no handoff:** a lista `GET /housekeeping-tasks` com as tarefas abertas de datas anteriores e com a data no cursor fica para a E04, com o feed da camareira.
 
 ---
 
-### Task 1: Algoritmo da sugestão no domínio
+### Task 1: Algoritmo da sugestão e dívida da E02
 
-**Objetivo:** criar a função pura que, dadas as tarefas elegíveis, as camareiras escaladas, os andares e o DND, devolve a distribuição sugerida e a ordem de cada camareira, cumprindo D4-E03, D5-E03 e o Review Focus 2.
+**Objetivo:**
+- criar a função pura que, dadas as tarefas elegíveis, as camareiras, os andares e o DND, devolve a distribuição e a ordem de cada camareira (D4-E03 e D5-E03, Review Focus 2);
+- pagar a dívida mecânica da E02:
+  - extrair o `ArrivalsByRoom` e o `HousekeepingAudit`, este com a `@Configuration` dos beans do módulo, para arquivos próprios;
+  - mudar o log da programada pulada por tipo ou local inválido para `INFO`.
 
 **Critérios de aceite:**
-- `AssignmentSuggesterTest` (unidade, sem Spring), que afirma:
+- **`AssignmentSuggesterTest`** (unidade, sem Spring):
   - só as camareiras dadas recebem tarefas;
-  - a diferença de créditos entre a mais e a menos carregada é ≤ o maior crédito de uma tarefa, em pelo menos 8 casos, inclusive:
-    - andar maior que a média;
-    - créditos 0;
-    - uma só camareira;
-    - mais camareiras que tarefas;
-    - 30 UHs em 3 andares;
-    - todas as tarefas do mesmo crédito;
-  - quando o limite permite, todas as tarefas de um andar ficam com a mesma camareira;
-  - na ordem de cada camareira, as chegadas vêm primeiro;
-  - DND tira só a `STAYOVER` da UH, e a `CHECKOUT` dela continua;
-  - a mesma entrada, embaralhada, gera a mesma saída (determinismo);
-  - sem camareira, a saída é vazia, com todas as tarefas em "não atribuídas".
-- Verificação: `timeout 900 ./gradlew test --tests '*AssignmentSuggesterTest'` e `timeout 900 ./gradlew lint`.
+  - a diferença de créditos é ≤ o maior crédito de uma tarefa em pelo menos 8 casos: andar maior que a média, créditos 0 (inclusive todas as tarefas com 0), uma só camareira, mais camareiras que tarefas, 30 UHs em 3 andares, créditos iguais, o contraexemplo 5/4/3/3/3 com duas camareiras e andares "2" e "10" (ordem natural);
+  - se a distribuição dos andares inteiros cumpre o limite, nenhum andar é dividido;
+  - as chegadas vêm primeiro na ordem de cada camareira;
+  - DND tira só a `STAYOVER` da UH;
+  - a mesma entrada embaralhada gera a mesma saída;
+  - sem camareira, tudo fica em não atribuídas;
+  - o algoritmo termina em todos os casos: o teste usa `@Timeout`.
+  - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentSuggesterTest'`.
+- **Extrações:**
+  - `application/ArrivalsByRoom.kt` passa a ser usado pela geração e pela avulsa;
+  - `application/HousekeepingAudit.kt` sai de `CleaningTypesService.kt`;
+  - a `@Configuration` do módulo vai para `application/HousekeepingConfiguration.kt`.
+  - O log `INFO` está aplicado.
+  - As suítes do `housekeeping` seguem verdes, sem mudança de asserção.
+  - Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.housekeeping.*' --tests 'com.zeny.hotel.architecture.*'` e `timeout 900 ./gradlew lint`.
 
-**Áreas tocadas:** `src/main/kotlin/com/zeny/hotel/housekeeping/domain/AssignmentSuggester.kt` (novo). Teste em `src/test/kotlin/com/zeny/hotel/housekeeping/domain/`.
+**Áreas tocadas:** em `src/main/kotlin/com/zeny/hotel/housekeeping/`:
+- `domain/AssignmentSuggester.kt` (novo);
+- `application/ArrivalsByRoom.kt` (novo);
+- `application/HousekeepingAudit.kt` (novo);
+- `application/HousekeepingConfiguration.kt` (novo);
+- `application/HousekeepingTaskGeneration.kt`;
+- `application/HousekeepingTasksService.kt`;
+- `application/CleaningTypesService.kt`.
 
-**Tamanho:** ~40 min; 1 a 2 arquivos de produção.
+Os testes ficam em `src/test/kotlin/com/zeny/hotel/housekeeping/`.
+
+**Tamanho:** ~50 min; 7 arquivos de produção (3 deles extrações mecânicas).
 
 **Depende de:** nenhuma.
 
 **Interfaces (produz):**
-- `data class SuggestionTask(val taskId: HousekeepingTaskId, val roomNumber: String?, val areaName: String?, val floor: String?, val credits: Int, val priority: Int, val arrivalExpected: Boolean, val source: TaskSource, val doNotDisturb: Boolean)`.
-- `data class Attendant(val employeeId: EmployeeId, val name: String)`.
-- `object AssignmentSuggester { fun suggest(tasks: List<SuggestionTask>, attendants: List<Attendant>): Suggestion }`.
-- `data class Suggestion(val byAttendant: Map<EmployeeId, List<HousekeepingTaskId>>, val unassigned: List<HousekeepingTaskId>)`, com cada lista já na ordem de execução.
-
-O `EmployeeId` é do `staff` (tipo público). Se o `domain` não puder depender dele pela ArchUnit, use um id próprio e converta na `application`.
+- `AttendantId`, um id próprio do `domain` (`value: UUID`), que a `application` converte de e para o `EmployeeId` do `staff`;
+- `data class SuggestionTask(val taskId: HousekeepingTaskId, val roomNumber: String?, val areaName: String?, val floor: String?, val credits: Int, val priority: Int, val arrivalExpected: Boolean, val source: TaskSource, val doNotDisturb: Boolean)`;
+- `data class Attendant(val id: AttendantId, val name: String)`;
+- `object AssignmentSuggester { fun suggest(tasks: List<SuggestionTask>, attendants: List<Attendant>): Suggestion }`;
+- `data class Suggestion(val byAttendant: Map<AttendantId, List<HousekeepingTaskId>>, val unassigned: List<HousekeepingTaskId>)`, com cada lista na ordem de execução;
+- o componente `ArrivalsByRoom`, com `arrivalsByRoom(date: LocalDate): Set<RoomId>` e a mesma regra da E02.
 
 ### Task 2: Plano do dia, sugestão e ajuste
 
-**Objetivo:**
-- criar o `AssignmentPlan` persistido, com:
-  - `POST /api/v1/assignment-plans/{date}/suggest`, que monta o rascunho com as tarefas elegíveis (D2-E03), as camareiras da escala (D1-E03), os andares, o DND e a chegada recalculada (D3-E03);
-  - `GET /api/v1/assignment-plans/{date}`;
-  - `PATCH /api/v1/assignment-plans/{date}/assignments`, para o ajuste manual;
-- extrair antes o `ArrivalsByRoom` e o `HousekeepingAudit` (dívida da E02).
+**Objetivo:** persistir o `AssignmentPlan` e expor três rotas:
+- `POST /api/v1/assignment-plans/{date}/suggest` (com `employeeIds` opcional e `If-Match` quando o plano existe);
+- `GET /api/v1/assignment-plans/{date}`;
+- `PATCH /api/v1/assignment-plans/{date}` (mover, acrescentar e remover itens, com `If-Match`).
+
+Valem a janela de datas (D2-E03), as camareiras pela escala (D1-E03), o DND e a chegada recalculada.
 
 **Critérios de aceite:**
-- **Refatoração:**
-  - `arrivalsByRoom` sai da `HousekeepingTaskGeneration` para `application/ArrivalsByRoom.kt`, usado pela geração, pela avulsa e pela sugestão;
-  - o `HousekeepingAudit` sai de `CleaningTypesService.kt` para `application/HousekeepingAudit.kt`;
-  - o log da programada pulada por tipo ou local inválido passa a `INFO` (T3-M4 da E02);
-  - as suítes do `housekeeping` seguem verdes, sem mudança de asserção.
-- **`AssignmentPlansApiTest`** (`@IntegrationTest`, data futura própria):
-  - `suggest` responde `200` com o plano em `DRAFT`, a versão no `ETag`, os itens (tarefa, camareira, ordem) e as não atribuídas;
-  - só aparecem as camareiras escaladas no setor de governança naquela data, montadas pelo teste com a escala do `staff`;
-  - uma tarefa `PENDING` de uma data anterior entra no plano (Review Focus 5);
+- **`AssignmentPlansApiTest`** (`@IntegrationTest`):
+  - `suggest` em data futura da janela, com as avulsas do próprio teste, dá `200` com o plano `DRAFT`, o `id`, a versão no `ETag`, os itens (tarefa, camareira, posição) e as não atribuídas;
+  - só aparecem as camareiras escaladas pelo teste no setor de governança;
+  - `employeeIds` restringe a sugestão a um subconjunto;
   - uma `STAYOVER` de UH em DND fica em não atribuídas;
-  - uma tarefa `IN_PROGRESS`, gravada direto no banco, não entra (Review Focus 4);
+  - uma tarefa `IN_PROGRESS` gravada direto no banco não entra (Review Focus 4);
   - `GET` devolve o mesmo plano;
-  - `PATCH` com `If-Match` move uma tarefa de camareira, ou a tira (`employeeId: null`), e devolve o plano novo.
+  - `PATCH` com `If-Match` move uma tarefa, acrescenta uma avulsa criada depois da sugestão e remove um item;
+  - um novo `suggest` sobre o plano existente exige `If-Match`;
+  - **data operacional, sem publicar:** uma tarefa `PENDING` do próprio teste de data anterior entra no plano da data operacional e não entra no plano de amanhã (Review Focus 5). As afirmações ficam só sobre as próprias tarefas.
   - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlansApiTest'`.
+- **Chegada recalculada:** uma tarefa gravada com `arrivalExpected = false` numa UH que agora tem chegada alocada vem primeiro na ordem da camareira. Teste em `AssignmentPlansApiTest`, numa data futura.
 - **Recusas** (`AssignmentPlansAttackTest`):
-  - sem `If-Match` → `428`; com versão velha → `412`;
-  - colaborador fora da escala da data → `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`;
+  - plano existente: sem `If-Match` → `428`; versão velha → `412`;
+  - colaborador fora da escala ou inexistente → `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED` (D11-E03);
+  - `employeeIds` fora da escala → `422`;
   - tarefa que já andou → `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE`;
-  - tarefa ou colaborador inexistente → `400 …UNKNOWN_…`;
-  - tarefa de data posterior à do plano → `422`;
-  - sem o setor de governança → `422 HOUSEKEEPING_DEPARTMENT_MISSING`;
-  - data malformada ou fora do `StorableRange` no caminho → `400`, nunca `500`;
-  - ajuste antes de existir o plano → `404`.
+  - tarefa inexistente → `400 ASSIGNMENT_UNKNOWN_TASK`;
+  - tarefa fora do conteúdo da D2 → `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE`;
+  - data antes da operacional ou depois de +7 → `422 ASSIGNMENT_PLAN_DATE_INVALID`;
+  - data malformada → `400`, nunca `500`;
+  - `PATCH` antes de existir plano → `404`.
   - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlansAttackTest'`.
+- **Concorrência** (`AssignmentPlanConcurrencyTest`):
+  - dois primeiros `suggest` simultâneos da mesma data: um cria o plano e o outro recebe `428` ou `412`, nunca `500`. A criação usa `INSERT … ON CONFLICT DO NOTHING` + `SELECT … FOR UPDATE`;
+  - dois `PATCH` com o mesmo `If-Match`: um passa e o outro dá `412`.
+  - O teste é determinístico (latch ou `pg_blocking_pids`, sem `sleep` cego).
+  - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanConcurrencyTest'`.
 - **Permissões** (`AssignmentPlanPermissionsTest`):
-  - `housekeeping.assignments.manage` (D10-E03) nos modelos Gerente e Governanta;
-  - sem ela, `suggest` e `PATCH` dão `403`, antes de qualquer recusa de estado;
-  - o `GET` exige `housekeeping.tasks.read`;
-  - a trilha é `housekeeping.assignment-plan.suggest` e `housekeeping.assignment-plan.adjust`;
+  - `housekeeping.assignments.manage` (D10-E03) entra nos modelos Gerente e Governanta;
+  - sem ela, `suggest` e `PATCH` dão `403` antes de qualquer recusa de estado;
+  - `GET` exige `housekeeping.tasks.read`;
+  - a trilha registra `housekeeping.assignment-plan.suggest` e `housekeeping.assignment-plan.adjust`;
   - o `AuthorizationTest` do testador vai ao testador se ficar vermelho.
   - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanPermissionsTest' --tests 'com.zeny.hotel.iam.*'`.
+- **Setor ausente** (D1-E03): um teste de unidade do serviço com `StaffApi` falsa confere a `IllegalStateException`.
 - **Schema** (`AssignmentPlanSchemaTest`):
-  - `assignment_plan` (`business_date` PK, `status`, `version`, carimbos, `published_at`, `published_by`);
-  - `assignment_plan_item` (`business_date`, `task_id` único por plano, `employee_id`, `position`);
-  - FK para a tarefa;
-  - o banco recusa DELETE em `assignment_plan`;
-  - `assignment_plan_item` aceita DELETE, porque o rascunho é refeito;
+  - `assignment_plan` com `id`, `business_date` único, `status`, `version`, carimbos, `published_at` e `published_by`;
+  - `assignment_plan_item` com `plan_id`, `task_id` único por plano, `employee_id` nulável e `position`;
+  - FKs nas duas tabelas;
+  - o banco recusa DELETE em `assignment_plan`, e o item aceita DELETE;
   - `DatabaseRolesTest` atualizado.
   - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanSchemaTest' --tests '*DatabaseRolesTest'`.
-- **Módulo:** `ModularityTest` com `["shared", "hotel", "rooms", "reservations", "staff", "checklists"]` em igualdade exata, e o contrato regenerado. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
+- **Módulo:** `ModularityTest` com `"staff"` acrescentado, em igualdade exata, e o contrato regenerado. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
 - Em `src/main/kotlin/com/zeny/hotel/housekeeping/`:
-  - `HousekeepingModule.kt`, `HousekeepingPermissions.kt` e `HousekeepingTypes.kt`;
-  - `application/ArrivalsByRoom.kt` e `application/HousekeepingAudit.kt` (extraídos);
-  - `application/HousekeepingTaskGeneration.kt` e `application/CleaningTypesService.kt` (só a extração e o log);
-  - `application/AssignmentPlansService.kt`, `infrastructure/AssignmentPlanPersistence.kt` e `web/AssignmentPlansController.kt` (novos).
+  - `HousekeepingModule.kt`;
+  - `HousekeepingPermissions.kt`;
+  - `HousekeepingTypes.kt`;
+  - `domain/AssignmentPlan.kt`;
+  - `application/AssignmentPlansService.kt`;
+  - `application/HousekeepingTasksService.kt` (a porta ganha a consulta das elegíveis);
+  - `infrastructure/AssignmentPlanPersistence.kt`;
+  - `infrastructure/HousekeepingTaskPersistence.kt`;
+  - `web/AssignmentPlansController.kt`.
 - `src/main/resources/db/migration/housekeeping/V2026_11_18_1100__create_assignment_plans.sql` e `V2026_11_18_1101__grant_assignment_plans_to_app_role.sql`.
 - `api/openapi.yaml`.
 
-**Tamanho:** ~60 min; 12 arquivos de produção (2 SQL, o contrato gerado e 2 extrações mecânicas).
+**Tamanho:** ~60 min; 12 arquivos de produção, sendo 2 SQL e o contrato gerado.
 
 **Depende de:** Task 1.
 
 **Interfaces:**
-- **Consome:** `AssignmentSuggester.suggest` (Task 1); `StaffApi.departments()` e `daySchedule(date, departmentId)`; `RoomsApi.room(id)` (andar e número), `area(id)` e `status(id)` (`serviceFlag`); `ArrivalsByRoom`.
-- **Produz:**
-  - a porta `AssignmentPlanStore`;
-  - `AssignmentPlansService.suggest(date)`, `get(date)` e `adjust(date, expectedVersion, changes)`;
-  - o `AssignmentPlanView` (data, status, versão, itens com `taskId`, `employeeId`, `position` e não atribuídas), que a Task 3 publica;
-  - uma função interna que devolve as camareiras escaladas numa data, reusada pela Task 3.
+- Consome: `AssignmentSuggester`, `AttendantId` e `ArrivalsByRoom` (Task 1); `StaffApi.departments()` e `daySchedule`; `RoomsApi.activeRooms()` (andar e número, em lote), `area(id)` e `status(id)` (`serviceFlag`).
+- Produz:
+  - `HousekeepingTaskStore.assignableUpTo(date: LocalDate, includePrevious: Boolean): List<HousekeepingTask>`;
+  - a porta `AssignmentPlanStore` (`createIfAbsent`, `lockByDate`);
+  - `AssignmentPlansService.suggest(date, expectedVersion?, employeeIds?)`, `get(date)` e `adjust(date, expectedVersion, changes)`;
+  - o `AssignmentPlanView` (`id`, data, status, versão, itens com `taskId`, `employeeId` e `position`, e as não atribuídas);
+  - uma função interna `scheduledAttendants(date): List<Attendant>`, que a Task 3 reusa.
 
 ### Task 3: Publicação, republicação, aviso e tempo real
 
-**Objetivo:** `POST /api/v1/assignment-plans/{date}/publish` com `If-Match`:
+**Objetivo:** `POST /api/v1/assignment-plans/{date}/publish` com `If-Match`. A publicação, sob trava do plano:
 - reconfere a escala;
-- grava nas tarefas a camareira (`assigned_employee_id`) e o status `ASSIGNED`, ou `PENDING` para as removidas (D7-E03);
+- grava nas tarefas `assigned_employee_id`, `assignment_position` e `ASSIGNED`, ou `PENDING` para as que ficaram sem camareira ou foram retiradas (D7-E03);
+- ignora o item de tarefa que andou quando ele não mudaria a tarefa;
 - marca o plano `PUBLISHED`;
-- avisa só as camareiras com tarefa incluída ou removida em relação à publicação anterior (D8-E03);
-- publica `assignment-plan.published` no tópico `housekeeping` (D9-E03).
+- avisa só as camareiras com tarefa incluída ou removida (D8-E03);
+- publica no tópico `housekeeping` (D9-E03).
 
 **Critérios de aceite:**
-- **`AssignmentPlanPublishTest`** (`@IntegrationTest`, data futura própria):
-  - na primeira publicação, as tarefas do plano ficam `ASSIGNED` com a camareira, e cada camareira com usuário recebe uma notificação `notifications.task-assigned`, conferida no painel dela;
-  - na republicação sem mudança, ninguém é avisado;
-  - na republicação depois de mover uma tarefa de A para B, só A e B são avisadas, e C, sem mudança, não (Review Focus 3);
-  - a tarefa removida volta a `PENDING`, sem camareira (D7-E03);
-  - a camareira sem usuário não é avisada e aparece na resposta como "sem usuário", só pelo id;
-  - o título e o texto do aviso só têm números de UH e nomes de área: o teste confere que não há nome de hóspede de uma reserva da UH;
-  - a trilha é `housekeeping.assignment-plan.publish`, com retrato só de ids e contagens.
+- **`AssignmentPlanPublishTest`** (`@IntegrationTest`, data futura própria, só com as avulsas do teste):
+  - **primeira publicação:** as tarefas ficam `ASSIGNED`, com camareira e posição, e cada camareira com usuário ativo recebe uma `notifications.task-assigned`, conferida no painel dela;
+  - **republicação sem mudança:** ninguém é avisado;
+  - **tarefa movida de A para B:** só A e B são avisadas, e C não (Review Focus 3);
+  - **tarefa retirada:** volta a `PENDING` sem camareira;
+  - **colaborador sem usuário ou com usuário inativo:** aparece na resposta pelo id, sem aviso;
+  - **texto do aviso:** o título leva a data, e o texto só tem números de UH e nomes de área, sem o nome do hóspede de uma reserva da UH;
+  - **muitas áreas:** o texto truncado com "e mais N" não estoura o limite;
+  - **ordem:** depois de um novo `suggest`, as tarefas mantêm a posição publicada;
+  - **trilha:** `housekeeping.assignment-plan.publish`, com a camareira antes e depois de cada tarefa alterada, só por ids.
   - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanPublishTest'`.
-- **Escala na publicação** (Review Focus 1): uma camareira que sai da escala entre a sugestão e a publicação faz a publicação responder `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, e nada é gravado.
-- **Tarefa que andou:** uma tarefa que andou entre o ajuste e a publicação (`IN_PROGRESS`, gravada no banco) não é alterada, e a publicação responde `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE` sem gravar nada.
-- **Concorrência:** sem `If-Match` → `428`; com versão velha → `412`.
-- **Tempo real:** um `SseTestClient` com `housekeeping.tasks.read` recebe `assignment-plan.published` com a data e a versão, e sem `housekeeping.tasks.read` não recebe.
-  - O tópico é registrado como bean.
-  - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanPublishTest' --tests '*AssignmentPlanRealtimeTest'`.
-- **Schema:** `housekeeping_task.assigned_employee_id` (nulo em `PENDING`) e a lista de tarefas expõe `assignedEmployeeId`. Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingTaskSchemaTest' --tests '*HousekeepingTasksApiTest'`.
+- **Escala e tarefa que andou** (Review Focus 1 e 4):
+  - uma camareira que sai da escala antes da publicação faz a publicação dar `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, sem nada gravado;
+  - uma tarefa `IN_PROGRESS` com o mesmo item publicado não impede a publicação e não é alterada;
+  - uma tarefa `IN_PROGRESS` cujo item a moveria dá `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com o id em `errors[]` e nada gravado.
+- **Concorrência:**
+  - duas publicações com o mesmo `If-Match` em paralelo: uma passa e a outra dá `412`;
+  - uma falha otimista numa tarefa dá `412`;
+  - o teste é determinístico.
+  - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanPublishTest' --tests '*AssignmentPlanConcurrencyTest'`.
+- **Tempo real** (`AssignmentPlanRealtimeTest`, contexto `RANDOM_PORT` próprio, como o `RealtimeStreamTest`):
+  - quem tem `housekeeping.tasks.read` recebe `housekeeping.assignment-plan`, com o `id` do plano e a versão;
+  - a inscrição no tópico sem a permissão dá `403 PERMISSION_DENIED`;
+  - `suggest` e `PATCH` não publicam.
+  - O tópico é registrado como bean na `HousekeepingConfiguration`, e a ARCHITECTURE §10 o lista.
+  - Verificação: `timeout 900 ./gradlew test --tests '*AssignmentPlanRealtimeTest'`.
+- **Schema e lista:**
+  - `housekeeping_task` ganha `assigned_employee_id` e `assignment_position`, nulos em `PENDING`, com CHECK de coerência;
+  - a lista e o `GET` da tarefa expõem `assignedEmployeeId` e `assignmentPosition`.
+  - Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingTaskSchemaTest' --tests '*HousekeepingTasksApiTest'`.
 - **Módulo:** `ModularityTest` com `"notifications"` acrescentado, em igualdade exata, e o contrato regenerado. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
 - Em `src/main/kotlin/com/zeny/hotel/housekeeping/`:
-  - `HousekeepingModule.kt` e `HousekeepingTypes.kt`;
-  - `HousekeepingRealtime.kt` (novo, o tópico);
-  - `domain/HousekeepingTask.kt` (`assign` e `unassign`);
+  - `HousekeepingModule.kt`;
+  - `HousekeepingTypes.kt`;
+  - `HousekeepingRealtime.kt` (novo);
+  - `domain/HousekeepingTask.kt` (`assign`, `unassign`);
   - `application/AssignmentPlansService.kt` (`publish`);
+  - `application/HousekeepingConfiguration.kt` (bean do tópico);
+  - `application/HousekeepingTasksService.kt` (view e retrato da tarefa);
   - `infrastructure/HousekeepingTaskPersistence.kt`;
-  - `web/AssignmentPlansController.kt` e `web/HousekeepingTasksController.kt` (campo novo).
+  - `web/AssignmentPlansController.kt`.
 - `src/main/resources/db/migration/housekeeping/V2026_11_18_1102__add_task_assignee.sql`.
+- `docs/ARCHITECTURE.md` (§10, tópico `housekeeping`).
 - `api/openapi.yaml`.
 
-Testes no `housekeeping`.
-
-**Tamanho:** ~55 min; 10 arquivos de produção.
+**Tamanho:** ~60 min; 12 arquivos, sendo 1 SQL, 1 doc e o contrato gerado.
 
 **Depende de:** Task 2.
 
 **Interfaces:**
-- **Consome:** `AssignmentPlansService` e a função das camareiras escaladas (Task 2); `NotificationsApi.notify`; `NotificationTypes.TASK_ASSIGNED`; `RealtimePublisher`.
-- **Produz:**
-  - `HousekeepingTask.assign(employeeId)` e `unassign()`, só a partir de `PENDING` ou `ASSIGNED`;
-  - `AssignmentPlansService.publish(date, expectedVersion): PublishResult`, com a versão, os avisados (contagem) e os sem usuário;
+- Consome: `AssignmentPlansService` e `scheduledAttendants` (Task 2), `NotificationsApi.notify`, `NotificationsTypes.TASK_ASSIGNED` e `RealtimePublisher`.
+- Produz:
+  - `HousekeepingTask.assign(employeeId, position)` e `unassign()`, só a partir de `PENDING` ou `ASSIGNED`;
+  - `AssignmentPlansService.publish(date, expectedVersion): PublishResult`, com a versão, a contagem de avisados e os ids sem usuário ativo;
   - `HousekeepingRealtime.TOPIC`.
