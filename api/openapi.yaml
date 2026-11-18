@@ -41,6 +41,8 @@ tags:
   name: frontdesk
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
+- description: "Governança: tipos de limpeza e créditos por tipo de UH."
+  name: housekeeping
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Autenticação, sessões por dispositivo e usuários."
@@ -2508,6 +2510,209 @@ paths:
       summary: Consultar uma versão publicada
       tags:
       - checklists
+  /api/v1/cleaning-types:
+    get:
+      description: Em ordem de código. Exige `housekeeping.config.read`.
+      operationId: listCleaningTypes
+      parameters:
+      - description: Só os ativos (`true`) ou só os inativos (`false`); omita para
+          todos.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageCleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar tipos de limpeza
+      tags:
+      - housekeeping
+    post:
+      description: "Exige `housekeeping.config.manage`. Código repetido (inclusive\
+        \ de um desativado): 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`. Créditos de\
+        \ 1 a 100, até 200, cada tipo de UH uma vez só (repetido: 400 `CLEANING_TYPE_CREDIT_DUPLICATED`);\
+        \ tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (campo `credits`);\
+        \ tipo de UH desativado é aceito. Um tipo ativo sem crédito para algum tipo\
+        \ de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
+        \ Nome com NUL: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: createCleaningType
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTypeRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: Tipo de limpeza cadastrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cadastrar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}:
+    get:
+      description: "Exige `housekeeping.config.read`. Inexistente: 404 `CLEANING_TYPE_NOT_FOUND`."
+      operationId: getCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um tipo de limpeza
+      tags:
+      - housekeeping
+    put:
+      description: "Troca código, nome, configuração e os créditos (a lista inteira);\
+        \ a chave (`key`) não muda. Exige `housekeeping.config.manage`. e o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). Código de outro tipo: 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`.\
+        \ Créditos de 1 a 100, até 200, cada tipo de UH uma vez só (repetido: 400\
+        \ `CLEANING_TYPE_CREDIT_DUPLICATED`); tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE`\
+        \ (campo `credits`); tipo de UH desativado é aceito. Um tipo ativo sem cré\
+        dito para algum tipo de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
+        \ Nome com NUL: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: updateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CleaningTypeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}/deactivate:
+    post:
+      description: Exige `housekeeping.config.manage`. Nada é apagado; desativar de
+        novo não muda nada.
+      operationId: deactivateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar um tipo de limpeza
+      tags:
+      - housekeeping
+  /api/v1/cleaning-types/{id}/reactivate:
+    post:
+      description: Exige `housekeeping.config.manage`. Reativar um tipo ativo não
+        muda nada.
+      operationId: reactivateCleaningType
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CleaningTypeResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar um tipo de limpeza
+      tags:
+      - housekeeping
   /api/v1/companies:
     get:
       description: Em ordem de nome (sem acento). `name` procura cada palavra como
@@ -16320,6 +16525,168 @@ components:
       required:
       - label
       - value
+    CleaningCreditRequest:
+      type: object
+      description: Os créditos de um tipo de UH.
+      properties:
+        credits:
+          type: integer
+          format: int32
+          description: "Créditos, de 1 a 100."
+          maximum: 100
+          minimum: 1
+          nullable: true
+        roomTypeId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - credits
+      - roomTypeId
+    CleaningCreditResponse:
+      type: object
+      description: Os créditos de um tipo de UH.
+      properties:
+        credits:
+          type: integer
+          format: int32
+        roomTypeId:
+          type: string
+          format: uuid
+      required:
+      - credits
+      - roomTypeId
+    CleaningTypeRequest:
+      type: object
+      description: "Os dados de um tipo de limpeza; na edição, os créditos são a lista\
+        \ inteira."
+      properties:
+        checklistTemplateId:
+          type: string
+          format: uuid
+          description: "Modelo de checklist vinculado; por enquanto, só `null`."
+          nullable: true
+        code:
+          type: string
+          description: "Código único, em maiúsculas: letras, dígitos, `_` e `-`."
+          example: CHECKOUT
+          maxLength: 20
+          minLength: 0
+          nullable: true
+        credits:
+          type: array
+          description: "Créditos por tipo de UH (até 200, cada tipo de UH uma vez\
+            \ só)."
+          items:
+            $ref: "#/components/schemas/CleaningCreditRequest"
+          maxItems: 200
+          minItems: 0
+        defaultPriority:
+          type: integer
+          format: int32
+          description: "Prioridade padrão das tarefas deste tipo, de 1 (mais baixa)\
+            \ a 5 (mais alta)."
+          maximum: 5
+          minimum: 1
+          nullable: true
+        linenChangeEveryNights:
+          type: integer
+          format: int32
+          description: "Troca de enxoval a cada N noites (de 1 a 60). Nulo significa\
+            \ \"sem regra de troca por noites\": a troca é só a pedido."
+          maximum: 60
+          minimum: 1
+          nullable: true
+        name:
+          type: string
+          example: Saída
+          maxLength: 80
+          minLength: 0
+          nullable: true
+        requiresInspection:
+          type: boolean
+          description: Se a limpeza deste tipo exige inspeção da governanta.
+          nullable: true
+      required:
+      - code
+      - credits
+      - defaultPriority
+      - name
+      - requiresInspection
+    CleaningTypeResponse:
+      type: object
+      description: Um tipo de limpeza.
+      properties:
+        active:
+          type: boolean
+        checklistTemplateId:
+          type: string
+          format: uuid
+          description: Modelo de checklist vinculado; nulo sem vínculo.
+          nullable: true
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        credits:
+          type: array
+          description: "Créditos por tipo de UH, em ordem de tipo de UH."
+          items:
+            $ref: "#/components/schemas/CleaningCreditResponse"
+        defaultPriority:
+          type: integer
+          format: int32
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: "Chave estável dos tipos da carga inicial, que nunca muda;\
+            \ nula nos criados pela API (trate um valor desconhecido sem falhar)."
+          nullable: true
+          x-extensible-enum:
+          - CHECKOUT
+          - STAYOVER
+          - TOUCH_UP
+          - DEEP_CLEAN
+          - PRE_ARRIVAL
+          - TURNDOWN
+        linenChangeEveryNights:
+          type: integer
+          format: int32
+          description: "Troca de enxoval a cada N noites (de 1 a 60). Nulo significa\
+            \ \"sem regra de troca por noites\": a troca é só a pedido."
+          nullable: true
+        missingCreditRoomTypeIds:
+          type: array
+          description: "Tipos de UH ativos sem crédito neste tipo, calculados na leitura\
+            \ (vazio num tipo desativado): o gestor configura aos poucos, e o aviso\
+            \ muda quando um tipo de UH é criado depois."
+          items:
+            type: string
+            format: uuid
+            description: "Tipos de UH ativos sem crédito neste tipo, calculados na\
+              \ leitura (vazio num tipo desativado): o gestor configura aos poucos,\
+              \ e o aviso muda quando um tipo de UH é criado depois."
+        name:
+          type: string
+        requiresInspection:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - code
+      - createdAt
+      - credits
+      - defaultPriority
+      - id
+      - missingCreditRoomTypeIds
+      - name
+      - requiresInspection
+      - updatedAt
     CompanyRequest:
       type: object
       description: Dados de uma empresa (RF-HOS-06).
@@ -16870,6 +17237,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ChecklistVersionSummaryResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageCleaningTypeResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CleaningTypeResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.

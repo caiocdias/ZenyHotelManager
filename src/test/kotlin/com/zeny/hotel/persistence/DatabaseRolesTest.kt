@@ -272,7 +272,11 @@ class DatabaseRolesTest(
         const val PROBE_SUFFIX = 12
         val PRIVILEGES = listOf("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 
-        /** Tabelas que o papel da aplicação altera mas nunca apaga: o histórico do fechamento do dia (M6 E10). */
-        val NO_DELETE_TABLES = setOf("endofday.run", "endofday.run_step", "endofday.run_issue")
+        /**
+         * Tabelas que o papel da aplicação altera mas nunca apaga: o histórico do fechamento do dia (M6 E10) e os
+         * tipos de limpeza, que só se desativam (M6 E01; os créditos do tipo, substituídos pelo `PUT`, têm DELETE).
+         */
+        val NO_DELETE_TABLES =
+            setOf("endofday.run", "endofday.run_step", "endofday.run_issue", "housekeeping.cleaning_type")
     }
 }

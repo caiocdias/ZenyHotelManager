@@ -6,6 +6,7 @@ import com.zeny.hotel.endofday.EndOfDayModule
 import com.zeny.hotel.fnrh.FnrhModule
 import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
+import com.zeny.hotel.housekeeping.HousekeepingModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
 import com.zeny.hotel.printing.PrintingModule
@@ -185,6 +186,35 @@ class ModularityTest {
             .stream()
             .map { it.targetType.name }
             .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.endofday.") }
+            .filter { !it.startsWith("com.zeny.hotel.shared.") }
+            .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `housekeeping depends only on shared and rooms, and only on their public APIs`() {
+        val housekeeping = modules.getModuleByName("housekeeping").orElseThrow()
+        val allowed = setOf("shared", "rooms")
+        val dependencies =
+            housekeeping
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1 (camada Operação), M6 E01 Task 1: shared e rooms (os tipos de UH dos créditos, pela
+        // RoomsApi), exatamente; checklists e hotel entram com as Tasks 2 e 3.
+        dependencies.toSet() shouldBe allowed
+        HousekeepingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Nenhum tipo interno de outro módulo (só a raiz de cada um; verify() também barra).
+        housekeeping
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.housekeeping.") }
             .filter { !it.startsWith("com.zeny.hotel.shared.") }
             .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
             .toList() shouldBe emptyList()
