@@ -207,7 +207,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
-| E04 | Execução da tarefa online e offline | #pendente | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
+| E04 | Execução da tarefa online e offline | #em-andamento | E03 | Máquina de estados da tarefa, checklist, DND, conflitos RN-22 |
 | E05 | Inspeção e liberação da UH | #pendente | E04 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E04 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 
@@ -1274,11 +1274,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - `If-Match` em branco dá `428` também na criação, consistente com o resto do projeto;
     - N+1 em `rooms.area` e `rooms.status` na sugestão;
     - `remove` de tarefa fora do plano é ignorado em silêncio, como o contrato documenta.
-- **Capturas do brain:** ver a linha preenchida no início da E04.
+- **Capturas do brain:** `00 Inbox/2026-11-18 - ZenyHotelManager - atualização m6-operacao-fechamento E03 - 493d72a8.md`.
 
 ---
 
-## E04 — Execução da tarefa online e offline — #pendente
+## E04 — Execução da tarefa online e offline — #em-andamento
 
 **Objetivo:** implementar a execução da tarefa de governança (RF-GOV-04, RF-GOV-05) seguindo a máquina de estados de SPEC §8.4 — iniciar, pausar, retomar, concluir com checklist, registrar DND ou recusa — por API online e por comandos offline (`OfflineCommandHandler`, ARCHITECTURE §6.2 e §9), atualizando o status da UH, registrando discrepâncias (RF-UH-08) e tratando conflitos de RN-22.
 
