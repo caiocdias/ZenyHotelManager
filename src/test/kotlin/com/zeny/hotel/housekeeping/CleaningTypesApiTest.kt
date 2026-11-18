@@ -290,6 +290,36 @@ class CleaningTypesApiTest(
     }
 
     @Test
+    fun `a null credit item is a validation error on POST and PUT, and nothing is written`() {
+        val roomType = rooms.createRoomType()
+        val code = housekeeping.uniqueCode("NC")
+        val existing =
+            housekeeping.createCleaningType(
+                housekeeping.cleaningTypeBody(credits = listOf(housekeeping.credit(roomType, 2))),
+            )
+        val path = "$CLEANING_TYPES/$existing"
+        val existingCode = with(iam) { admin(GET, path).ok() }["code"].asString()
+
+        with(iam) {
+            val nullItem =
+                admin(POST, CLEANING_TYPES, housekeeping.cleaningTypeBody(code = code) + ("credits" to listOf(null)))
+                    .problem(400, "VALIDATION_FAILED")
+            nullItem["errors"].values().map { it["field"].asString() to it["code"].asString() } shouldContain
+                ("credits[0]" to "REQUIRED")
+            val withNull =
+                housekeeping.cleaningTypeBody(code = existingCode) +
+                    ("credits" to listOf(housekeeping.credit(roomType, 3), null))
+            fieldsOf(
+                call(PUT, path, asAdmin(), withNull, ifMatch = "\"0\"").problem(400, "VALIDATION_FAILED"),
+            ) shouldContain
+                "credits[1]"
+        }
+        housekeeping.countByCode(code) shouldBe 0
+        housekeeping.etagOf(path) shouldBe "\"0\""
+        housekeeping.storedCredits(existing) shouldBe mapOf(roomType to 2)
+    }
+
+    @Test
     fun `the checklist link only accepts null in this slice`() {
         val code = housekeeping.uniqueCode("CL")
 

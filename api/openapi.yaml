@@ -2615,12 +2615,13 @@ paths:
       - housekeeping
     put:
       description: "Troca código, nome, configuração e os créditos (a lista inteira);\
-        \ a chave (`key`) não muda. Exige `housekeeping.config.manage`. e o `If-Match`\
-        \ (ausente: 428; versão diferente: 412). Código de outro tipo: 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`.\
-        \ Créditos de 1 a 100, até 200, cada tipo de UH uma vez só (repetido: 400\
-        \ `CLEANING_TYPE_CREDIT_DUPLICATED`); tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE`\
-        \ (campo `credits`); tipo de UH desativado é aceito. Um tipo ativo sem cré\
-        dito para algum tipo de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
+        \ a chave (`key`) não muda. Exige `housekeeping.config.manage`. Exige també\
+        m o `If-Match` (ausente: 428; versão diferente: 412). Código de outro tipo:\
+        \ 409 `CLEANING_TYPE_CODE_ALREADY_IN_USE`. Créditos de 1 a 100, até 200, cada\
+        \ tipo de UH uma vez só (repetido: 400 `CLEANING_TYPE_CREDIT_DUPLICATED`);\
+        \ tipo de UH inexistente: 400 `CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (campo `credits`);\
+        \ tipo de UH desativado é aceito. Um tipo ativo sem crédito para algum tipo\
+        \ de UH ativo não é recusado: a resposta o aponta em `missingCreditRoomTypeIds`.\
         \ Nome com NUL: 400 `HOUSEKEEPING_DATA_INVALID`."
       operationId: updateCleaningType
       parameters:

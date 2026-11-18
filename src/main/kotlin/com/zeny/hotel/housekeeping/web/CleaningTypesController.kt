@@ -104,8 +104,8 @@ class CleaningTypesController(
         operationId = "updateCleaningType",
         summary = "Editar um tipo de limpeza",
         description =
-            "Troca código, nome, configuração e os créditos (a lista inteira); a chave (`key`) não muda. $MANAGE e o " +
-                "`If-Match` (ausente: 428; versão diferente: 412). Código de outro tipo: 409 " +
+            "Troca código, nome, configuração e os créditos (a lista inteira); a chave (`key`) não muda. $MANAGE " +
+                "Exige também o `If-Match` (ausente: 428; versão diferente: 412). Código de outro tipo: 409 " +
                 "`CLEANING_TYPE_CODE_ALREADY_IN_USE`. $RULES",
     )
     fun update(
@@ -174,7 +174,10 @@ data class CleaningTypeRequest(
     val checklistTemplateId: UUID? = null,
     @field:Schema(description = "Créditos por tipo de UH (até 200, cada tipo de UH uma vez só).")
     @field:Size(max = MAX_CREDITS)
-    val credits: List<@Valid CleaningCreditRequest> = emptyList(),
+    val credits: List<
+        @NotNull @Valid
+        CleaningCreditRequest,
+    > = emptyList(),
 ) {
     fun toCommand() =
         CleaningTypeCommand(
