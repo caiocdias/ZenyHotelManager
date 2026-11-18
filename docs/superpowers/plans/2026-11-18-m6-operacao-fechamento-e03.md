@@ -122,7 +122,7 @@ Decisões do orquestrador, sob a autorização noturna do usuário. São todas r
 - **D10-E03, permissão:**
   - `housekeeping.assignments.manage`, só escopo `ALL`, não sensível, nos modelos Gerente e Governanta;
   - a leitura do plano exige `housekeeping.tasks.read`.
-- **D11-E03, exceção à H16:** como a `StaffApi` não busca colaborador por id, um colaborador inexistente e um colaborador fora da escala dão o mesmo `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Tarefa inexistente no corpo dá `400 ASSIGNMENT_UNKNOWN_TASK`.
+- **D11-E03, exceção à H16:** a validação de quem recebe tarefas é pela escala da data e não distingue um colaborador inexistente de um que está fora da escala. Os dois dão o mesmo `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. *(Motivo reescrito na revisão final: a premissa original, "a `StaffApi` não busca colaborador por id", caiu com a `StaffApi.employees(ids)` da rodada 1 da Task 3, e a exceção foi mantida por simplicidade.)* Tarefa inexistente no corpo dá `400 ASSIGNMENT_UNKNOWN_TASK`.
 - **D12-E03, posição publicada:** a tarefa grava `assigned_employee_id` e `assignment_position` na publicação. Assim, o app da camareira (E04) mantém a ordem publicada mesmo depois de um novo `suggest`.
 - **Adiados, com nota no handoff:** a lista `GET /housekeeping-tasks` com as tarefas abertas de datas anteriores e com a data no cursor fica para a E04, com o feed da camareira.
 
