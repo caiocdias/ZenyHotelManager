@@ -154,8 +154,12 @@ class HousekeepingTaskPermissionsTest(
                     "arrivalExpected",
                     "scheduledCleaningId",
                     "notesLength",
+                    // Desde a M6 E03: a camareira e a posição publicadas, só pelo id (nulas na avulsa nova).
+                    "assignedEmployeeId",
+                    "assignmentPosition",
                 )
             state["roomId"].asString() shouldBe room.toString()
+            state["assignedEmployeeId"].isNull shouldBe true
             state["source"].asString() shouldBe "AD_HOC"
             state["notesLength"].asInt() shouldBe "Segredo das notas".length
         }
