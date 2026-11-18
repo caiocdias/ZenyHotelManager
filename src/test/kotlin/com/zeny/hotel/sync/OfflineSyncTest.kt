@@ -13,6 +13,7 @@ import com.zeny.hotel.rooms.RoomsTestSupport
 import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.PermissionScope.OWN
+import com.zeny.hotel.shared.StorableRange
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.UuidV7Generator
 import com.zeny.hotel.shared.infrastructure.sync.OfflineCommandPurgeJob
@@ -490,6 +491,59 @@ class OfflineSyncTest(
         noteCount(iso.id()) shouldBe 1
     }
 
+    /**
+     * Faixa do `StorableRange` e `""` num UUID no payload (M6 E20): `COMMAND_PAYLOAD_INVALID` sem rodar o handler, sem
+     * efeito e sem guardar; com o valor válido (inclusive o extremo da faixa), o comando é aplicado.
+     */
+    @Test
+    fun `a date outside the range or an empty UUID in the payload is COMMAND_PAYLOAD_INVALID, a valid one applies`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        val refused =
+            listOf(
+                mapOf("dueOn" to "+5874898-01-01"),
+                mapOf("dueOn" to "-4713-12-31"),
+                mapOf("ref" to ""),
+            ).map { extra -> command(SyncExample.RECORD, mapOf("text" to "faixa $extra") + extra) }
+
+        val results = send(auth(writer), refused)
+        refused.zip(results).forEach { (command, result) ->
+            withClue("payload ${command.payload}") {
+                result["status"].asString() shouldBe "REJECTED"
+                result["code"].asString() shouldBe "COMMAND_PAYLOAD_INVALID"
+                recordHandler.invocations(command.id()) shouldBe 0
+                noteCount(command.id()) shouldBe 0
+                storedCommand(command.id()) shouldBe 0
+            }
+        }
+
+        listOf(mapOf("dueOn" to "+5874897-12-31"), mapOf("ref" to UUID.randomUUID().toString())).forEach { extra ->
+            val valid = command(SyncExample.RECORD, mapOf("text" to "válido $extra") + extra)
+            send(auth(writer), valid).single()["status"].asString() shouldBe "APPLIED"
+            noteCount(valid.id()) shouldBe 1
+        }
+    }
+
+    /** O `occurredAt` e o `deviceClock` do envelope também passam pela faixa: fora dela o lote é `400` no campo. */
+    @Test
+    fun `an occurredAt or deviceClock outside the storable range makes the whole batch 400 on the field`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        val command = command(SyncExample.RECORD, mapOf("text" to "faixa do relógio"))
+
+        listOf("occurredAt", "deviceClock").forEach { field ->
+            listOf("+294277-01-01T00:00:00Z", "-4713-12-31T23:59:59Z").forEach { value ->
+                val body = mapOf("commands" to listOf(command.body() + (field to value)))
+                val response = with(iam) { call(POST, "/api/v1/sync/commands", auth(writer), body) }
+                withClue("$field = $value: ${response.getContentAsString(Charsets.UTF_8)}") {
+                    response.status shouldBe 400
+                    val errors = iam.json(response)["errors"].values()
+                    errors.map { "${it["field"].asString()}:${it["code"].asString()}" } shouldBe
+                        listOf("commands[0].$field:INVALID_FORMAT")
+                }
+            }
+        }
+        noteCount(command.id()) shouldBe 0
+    }
+
     @Test
     fun `a handler without the permission rejects the command`() {
         val reader = iam.createUserWith(notesRead(ALL))
@@ -646,7 +700,8 @@ class OfflineSyncTest(
         val writer = iam.createUserWith(notesRead(ALL), notesWrite())
         val recorded = command(SyncExample.RECORD, mapOf("text" to "conhecido"))
         send(auth(writer), recorded).single()["status"].asString() shouldBe "APPLIED"
-        val absurd = Instant.parse("-300000-01-01T00:00:00Z")
+        // Absurdo, mas dentro do StorableRange: fora dele o lote inteiro é 400 já na leitura (M6 E20).
+        val absurd = Instant.parse("-4000-01-01T00:00:00Z")
 
         val replay = send(auth(writer), recorded.copy(deviceClock = absurd, occurredAt = absurd)).single()
         replay["status"].asString() shouldBe "APPLIED"
@@ -670,8 +725,9 @@ class OfflineSyncTest(
     fun `device times outside the plausible range are refused with a stable code`() {
         val writer = iam.createUserWith(notesRead(ALL), notesWrite())
         val now = clock.instant()
-        val farPast = Instant.parse("-300000-01-01T00:00:00Z")
-        val nearMin = Instant.MIN.plusSeconds(1)
+        // Dentro do StorableRange: fora dele o lote inteiro é 400 já na leitura (M6 E20), como no teste seguinte.
+        val farPast = Instant.parse("-4000-01-01T00:00:00Z")
+        val nearMin = StorableRange.MIN_INSTANT
         val farAhead = now.plus(Duration.ofDays(400))
         val beforeProduct = Instant.parse("2019-12-31T23:59:59Z")
         val results =

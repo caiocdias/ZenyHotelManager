@@ -117,6 +117,8 @@ data class RecordNotePayload(
     val text: String,
     /** Opcional e ignorado pelo handler: serve à leitura estrita de datas no payload (M6 E18). */
     val dueOn: LocalDate? = null,
+    /** Opcional e ignorado pelo handler: serve à leitura estrita de UUID no payload (M6 E20). */
+    val ref: UUID? = null,
 )
 
 /**
