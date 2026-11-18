@@ -87,6 +87,9 @@ class JpaStaffStore(
 
     override fun employee(id: EmployeeId): Employee? = employees.findById(id.value).orElse(null)
 
+    override fun employees(ids: Collection<EmployeeId>): List<Employee> =
+        employees.findAllById(ids.map { it.value }.distinct())
+
     override fun employeeForUpdate(id: EmployeeId): Employee? = employees.findForUpdate(id.value)
 
     override fun employeesForUpdate(departmentId: DepartmentId?): List<Employee> =

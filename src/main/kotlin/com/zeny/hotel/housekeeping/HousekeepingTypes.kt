@@ -64,9 +64,9 @@ enum class AssignmentPlanStatus {
 
 /**
  * Por que uma camareira com tarefa incluída ou removida não foi avisada na publicação do plano (D1-E03): `NO_USER`, o
- * colaborador não tem usuário vinculado (ou não foi achado na escala da data); `NOT_DELIVERED`, o aviso não chegou ao
- * painel (preferência desligada, usuário inativo ou que não recebe). O conjunto pode crescer: o cliente trata um valor
- * desconhecido sem falhar.
+ * colaborador não tem usuário vinculado no cadastro (o usuário vem do cadastro, não da escala); `NOT_DELIVERED`, o
+ * aviso não chegou ao painel (preferência desligada, usuário inativo ou que não recebe). O conjunto pode crescer: o
+ * cliente trata um valor desconhecido sem falhar.
  */
 enum class NotNotifiedReason {
     NO_USER,

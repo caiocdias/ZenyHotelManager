@@ -264,8 +264,10 @@ data class NotNotifiedResponse(
     @field:ExtensibleEnum
     @field:Schema(
         description =
-            "`NO_USER`: sem usuário vinculado; `NOT_DELIVERED`: o aviso não chegou ao painel (preferência " +
-                "desligada, usuário inativo ou que não recebe). Trate um valor desconhecido sem falhar.",
+            "`NO_USER`: o colaborador não tem usuário vinculado no cadastro (quem tem usuário é avisado mesmo " +
+                "fora da escala da data, como a camareira que perdeu a tarefa e saiu da escala); `NOT_DELIVERED`: o " +
+                "aviso não chegou ao painel (preferência desligada, usuário inativo ou que não recebe). Trate um " +
+                "valor desconhecido sem falhar.",
     )
     val reason: NotNotifiedReason,
 )

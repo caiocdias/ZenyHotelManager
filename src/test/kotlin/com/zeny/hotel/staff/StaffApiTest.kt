@@ -878,6 +878,24 @@ class StaffApiTest(
         StaffPermissions.permissions.none { it.sensitive } shouldBe true
     }
 
+    @Test
+    fun `the public API finds employees by id in batch, with the linked user, and skips unknown ids`() {
+        val department = staff.createDepartment()
+        val user = iam.createUser()
+        val ana = EmployeeId(staff.createEmployee(department, "Ana", user.id.value))
+        val bia = EmployeeId(staff.createEmployee(department, "Bia"))
+        val unknown = EmployeeId(UUID.randomUUID())
+
+        val found = staffApi.employees(listOf(ana, bia, unknown, ana))
+
+        found.keys shouldContainExactlyInAnyOrder listOf(ana, bia)
+        found.getValue(ana).userId shouldBe user.id
+        found.getValue(ana).name shouldBe "Ana"
+        found.getValue(ana).departmentId shouldBe DepartmentId(department)
+        found.getValue(bia).userId.shouldBeNull()
+        staffApi.employees(emptyList()) shouldBe emptyMap()
+    }
+
     private fun auditActions(
         entityType: String,
         entityId: UUID,

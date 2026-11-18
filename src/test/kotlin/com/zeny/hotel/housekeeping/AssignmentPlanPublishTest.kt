@@ -201,6 +201,25 @@ class AssignmentPlanPublishTest(
     }
 
     @Test
+    fun `an attendant who lost a task and left the schedule is still notified of the removal`() {
+        val (ana, anaUser) = attendantWithUser()
+        val (bia, biaUser) = attendantWithUser()
+        val task = roomTask()
+        plans.draft(date, listOf(ana, bia), listOf(task to ana))
+        plans.published(date)
+        plans.staff.record(ana, ScheduleEntryKind.DAY_OFF, date)
+
+        plans.draft(date, listOf(bia), listOf(task to bia))
+        val (body, _) = plans.published(date)
+
+        assigned(task) shouldBe (bia to 1)
+        notNotified(body).keys.filter { it in setOf(ana, bia) }.shouldBeEmpty()
+        panel(anaUser) shouldHaveSize 2
+        panel(anaUser).first()["body"].asString() shouldContain "Removidas"
+        panel(biaUser) shouldHaveSize 1
+    }
+
+    @Test
     fun `a republication leaves untouched an IN_PROGRESS task that is no longer in the draft (R2)`() {
         val (ana, _) = attendantWithUser()
         val started = roomTask()

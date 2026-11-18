@@ -93,5 +93,7 @@ class AssignmentPlansServiceTest {
         }
 
         override fun employeeOfUser(userId: UserId): EmployeeSummary? = null
+
+        override fun employees(ids: Collection<EmployeeId>): Map<EmployeeId, EmployeeSummary> = emptyMap()
     }
 }

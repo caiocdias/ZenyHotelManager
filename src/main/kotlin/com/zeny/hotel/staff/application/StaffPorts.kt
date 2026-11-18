@@ -35,6 +35,9 @@ interface StaffStore {
 
     fun employee(id: EmployeeId): Employee?
 
+    /** Os colaboradores de [ids] que existem, sem trava e em qualquer ordem. */
+    fun employees(ids: Collection<EmployeeId>): List<Employee>
+
     /** O colaborador travado para escrita (`SELECT … FOR UPDATE`) até o fim da transação. */
     fun employeeForUpdate(id: EmployeeId): Employee?
 

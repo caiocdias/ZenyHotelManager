@@ -306,7 +306,7 @@ class AssignmentPlansService(
             } + withdrawn.mapNotNull { write(it, null, 0, now) }
         plan.publish(now, actor.currentOrNull()?.userId)
         plans.update(plan)
-        val (notified, notNotified) = notify(date, changes, schedule.associateBy { it.id })
+        val (notified, notNotified) = notifyChanges(date, changes)
         realtime.publish(
             HousekeepingRealtime.TOPIC,
             RealtimeMessage(HousekeepingRealtime.ASSIGNMENT_PLAN, plan.id.value, plan.version),
@@ -373,18 +373,19 @@ class AssignmentPlansService(
 
     /**
      * Avisa cada camareira com tarefa incluída ou removida (D8-E03), uma notificação para cada, e devolve quantas foram
-     * avisadas e as que não foram: sem usuário vinculado (ou fora da escala da data, onde o usuário é achado),
-     * `NO_USER`; com o `notify` sem notificação criada, `NOT_DELIVERED`.
+     * avisadas e as que não foram: sem usuário vinculado, `NO_USER`; com o `notify` sem notificação criada,
+     * `NOT_DELIVERED`. O usuário vem do cadastro do colaborador (`StaffApi.employees`), não da escala: quem perdeu
+     * tarefa e saiu da escala também é avisado.
      */
-    private fun notify(
+    private fun notifyChanges(
         date: LocalDate,
         changes: List<AssigneeChange>,
-        employees: Map<EmployeeId, EmployeeSummary>,
     ): Pair<Int, List<NotNotifiedView>> {
         val included = changes.filter { it.after != null && it.after != it.before }.groupBy { checkNotNull(it.after) }
         val removed = changes.filter { it.before != null && it.after != it.before }.groupBy { checkNotNull(it.before) }
         val title = AssignmentNotice.title(date)
         val changed = (included.keys + removed.keys).sortedBy { it.value }
+        val employees = if (changed.isEmpty()) emptyMap() else staff.employees(changed)
         val notNotified =
             changed.mapNotNull { employee ->
                 val user =
