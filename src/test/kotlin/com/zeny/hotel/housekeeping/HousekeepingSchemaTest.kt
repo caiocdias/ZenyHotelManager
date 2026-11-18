@@ -201,10 +201,18 @@ class HousekeepingSchemaTest(
         }
 
         // Uma ativa por (local, tipo): a segunda ativa na mesma área é recusada; a inativa não conta.
-        insertSchedule(null, area, type, 7)
-        val duplicate = shouldThrow<DataAccessException> { insertSchedule(null, area, type, 7) }
-        (duplicate.mostSpecificCause as SQLException).sqlState shouldBe UNIQUE_VIOLATION
-        insertSchedule(null, area, type, 7, active = false)
+        try {
+            insertSchedule(null, area, type, 7)
+            val duplicate = shouldThrow<DataAccessException> { insertSchedule(null, area, type, 7) }
+            (duplicate.mostSpecificCause as SQLException).sqlState shouldBe UNIQUE_VIOLATION
+            insertSchedule(null, area, type, 7, active = false)
+        } finally {
+            // A faxina ativa numa área inexistente não fica para os outros testes (a E02 varre as vencidas).
+            owner
+                .sql("UPDATE housekeeping.scheduled_cleaning SET active = false WHERE cleaning_type_id = :type")
+                .param("type", type)
+                .update()
+        }
 
         val index =
             owner

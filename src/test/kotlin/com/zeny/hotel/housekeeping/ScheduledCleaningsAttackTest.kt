@@ -118,11 +118,20 @@ class ScheduledCleaningsAttackTest(
             }
             countSchedulesOf(type) shouldBe 0
 
-            val floor =
-                post(housekeeping.scheduleBody(type, roomId = housekeeping.createRoom(), lastDoneOn = "-4712-01-01"))
-                    .expectStatus(201)!!
-            floor["lastDoneOn"].asString() shouldBe "-4712-01-01"
-            floor["nextDueOn"].asString() shouldBe "-4712-01-08"
+            try {
+                val floor =
+                    post(
+                        housekeeping.scheduleBody(type, roomId = housekeeping.createRoom(), lastDoneOn = "-4712-01-01"),
+                    ).expectStatus(201)!!
+                floor["lastDoneOn"].asString() shouldBe "-4712-01-01"
+                floor["nextDueOn"].asString() shouldBe "-4712-01-08"
+            } finally {
+                // A faxina vencida em -4712-01-08 não fica ativa para os outros testes (a E02 varre as vencidas).
+                jdbc
+                    .sql("UPDATE housekeeping.scheduled_cleaning SET active = false WHERE cleaning_type_id = :type")
+                    .param("type", type)
+                    .update()
+            }
         }
 
     @Test
