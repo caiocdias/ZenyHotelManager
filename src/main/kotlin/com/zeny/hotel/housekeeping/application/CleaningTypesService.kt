@@ -65,7 +65,7 @@ interface CleaningTypeStore {
 
     fun flush()
 
-    /** Se há faxina programada ativa com o tipo (as faxinas programadas chegam na Task 3 da E01). */
+    /** Se há faxina programada ativa com o tipo (consulta nova a cada chamada: vê o que já foi confirmado). */
     fun hasActiveSchedules(id: CleaningTypeId): Boolean
 }
 
@@ -118,7 +118,8 @@ data class CleaningTypeCommand(
 /**
  * Tipos de limpeza (RF-GOV-01, M6 E01). Consultar exige `housekeeping.config.read`; escrever,
  * `housekeeping.config.manage`, conferida **antes** de qualquer recusa que revele estado (`404`, `409`, `400
- * …UNKNOWN_…`). A edição confere a versão (`If-Match`). Nada é apagado, só desativado.
+ * …UNKNOWN_…`, `422`). A edição confere a versão (`If-Match`). Nada é apagado, só desativado; um tipo com faxina
+ * programada ativa não é desativado ([deactivate]).
  *
  * Os tipos de UH dos créditos são conferidos pela `RoomsApi` (nunca pelas tabelas do `rooms`), só os novos no tipo:
  * inexistente `400 CLEANING_TYPE_UNKNOWN_ROOM_TYPE` (H16); desativado é aceito (D6). Um tipo ativo sem crédito para um
@@ -189,12 +190,23 @@ class CleaningTypesService(
         return cleaningType.view(activeRoomTypes())
     }
 
+    /**
+     * Desativa o tipo, recusado com faxina programada ativa nele (`422 CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`). A linha do
+     * tipo é travada antes da conferência, como na criação, na reativação e na troca de tipo da faxina: a operação que
+     * chega depois espera a outra confirmar e vê o resultado dela, então nunca sobra faxina ativa num tipo inativo.
+     */
     @Audited(HousekeepingAudit.DEACTIVATE_CLEANING_TYPE)
     @Transactional
     fun deactivate(id: CleaningTypeId): CleaningTypeView {
         authorization.require(HousekeepingPermissions.CONFIG_MANAGE)
-        val cleaningType = find(id)
+        val cleaningType = store.forUpdate(id) ?: throw notFound()
         audit.track(HousekeepingAudit.CLEANING_TYPE, id.value) { cleaningType.auditState() }
+        if (cleaningType.active && store.hasActiveSchedules(id)) {
+            throw BusinessRuleException(
+                HousekeepingErrorCodes.CLEANING_TYPE_HAS_ACTIVE_SCHEDULES,
+                "O tipo de limpeza tem faxina programada ativa; desative-a antes.",
+            )
+        }
         if (cleaningType.deactivate(clock.instant())) store.flush()
         return cleaningType.view(activeRoomTypes())
     }
@@ -271,12 +283,10 @@ class CleaningTypesService(
 
     private fun activeRoomTypes(): List<RoomTypeId> = rooms.activeRoomTypes().map { it.id }
 
-    private fun find(id: CleaningTypeId) =
-        store.cleaningType(id)
-            ?: throw NotFoundException(
-                HousekeepingErrorCodes.CLEANING_TYPE_NOT_FOUND,
-                "Tipo de limpeza não encontrado.",
-            )
+    private fun find(id: CleaningTypeId) = store.cleaningType(id) ?: throw notFound()
+
+    private fun notFound() =
+        NotFoundException(HousekeepingErrorCodes.CLEANING_TYPE_NOT_FOUND, "Tipo de limpeza não encontrado.")
 
     private fun codeInUse() =
         ConflictException(
@@ -299,6 +309,13 @@ internal object HousekeepingAudit {
     const val UPDATE_CLEANING_TYPE = "housekeeping.cleaning-type.update"
     const val DEACTIVATE_CLEANING_TYPE = "housekeeping.cleaning-type.deactivate"
     const val REACTIVATE_CLEANING_TYPE = "housekeeping.cleaning-type.reactivate"
+
+    const val SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning"
+
+    const val CREATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.create"
+    const val UPDATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.update"
+    const val DEACTIVATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.deactivate"
+    const val REACTIVATE_SCHEDULED_CLEANING = "housekeeping.scheduled-cleaning.reactivate"
 }
 
 internal fun CleaningType.auditState(): Map<String, Any?> =

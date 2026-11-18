@@ -17,6 +17,18 @@ value class CleaningTypeId(
     }
 }
 
+/** Id de uma faxina programada. */
+@JvmInline
+value class ScheduledCleaningId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): ScheduledCleaningId = ScheduledCleaningId(UuidV7.generate())
+    }
+}
+
 /**
  * Chave estável dos tipos de limpeza da carga inicial (D5 da M6 E01), que nunca muda: o gestor troca código, nome e
  * configuração e pode desativar o tipo, mas os outros módulos (e a geração de tarefas, E02) o acham pela chave. Os
@@ -73,4 +85,31 @@ object HousekeepingErrorCodes {
 
     /** 422: o modelo de checklist do vínculo nunca foi publicado. */
     val CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED = ErrorCode("CLEANING_TYPE_CHECKLIST_TEMPLATE_NOT_PUBLISHED")
+
+    /** 422: o tipo de limpeza está desativado (criar, reativar ou trocar o tipo de uma faxina programada). */
+    val CLEANING_TYPE_INACTIVE = ErrorCode("CLEANING_TYPE_INACTIVE")
+
+    /** 422: desativar um tipo de limpeza que tem faxina programada ativa. */
+    val CLEANING_TYPE_HAS_ACTIVE_SCHEDULES = ErrorCode("CLEANING_TYPE_HAS_ACTIVE_SCHEDULES")
+
+    /** 404: faxina programada inexistente. */
+    val SCHEDULED_CLEANING_NOT_FOUND = ErrorCode("SCHEDULED_CLEANING_NOT_FOUND")
+
+    /** 409: já há faxina programada ativa no mesmo local com o mesmo tipo de limpeza. */
+    val SCHEDULED_CLEANING_ALREADY_EXISTS = ErrorCode("SCHEDULED_CLEANING_ALREADY_EXISTS")
+
+    /** 400: a faxina programada precisa de exatamente um local, a UH (`roomId`) ou a área (`areaId`). */
+    val SCHEDULED_CLEANING_LOCATION_INVALID = ErrorCode("SCHEDULED_CLEANING_LOCATION_INVALID")
+
+    /** 400: a UH ou a área da faxina programada não existe (campo `roomId` ou `areaId`, H16). */
+    val SCHEDULED_CLEANING_UNKNOWN_LOCATION = ErrorCode("SCHEDULED_CLEANING_UNKNOWN_LOCATION")
+
+    /** 422: a UH ou a área da faxina programada está desativada. */
+    val SCHEDULED_CLEANING_LOCATION_INACTIVE = ErrorCode("SCHEDULED_CLEANING_LOCATION_INACTIVE")
+
+    /** 422: a última faxina (`lastDoneOn`) é posterior à data operacional. */
+    val SCHEDULED_CLEANING_LAST_DONE_IN_FUTURE = ErrorCode("SCHEDULED_CLEANING_LAST_DONE_IN_FUTURE")
+
+    /** 400: o tipo de limpeza da faxina programada não existe (campo `cleaningTypeId`, H16). */
+    val SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE = ErrorCode("SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE")
 }

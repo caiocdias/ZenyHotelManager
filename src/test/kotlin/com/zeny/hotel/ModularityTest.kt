@@ -192,9 +192,9 @@ class ModularityTest {
     }
 
     @Test
-    fun `housekeeping depends only on shared, rooms and checklists, and only on their public APIs`() {
+    fun `housekeeping depends only on shared, hotel, rooms and checklists, and only on their public APIs`() {
         val housekeeping = modules.getModuleByName("housekeeping").orElseThrow()
-        val allowed = setOf("shared", "rooms", "checklists")
+        val allowed = setOf("shared", "hotel", "rooms", "checklists")
         val dependencies =
             housekeeping
                 .getDirectDependencies(modules)
@@ -202,8 +202,9 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1 (camada Operação), M6 E01 Task 2: shared, rooms (os tipos de UH dos créditos, pela
-        // RoomsApi) e checklists (o vínculo ao modelo, pela ChecklistsApi), exatamente; hotel entra com a Task 3.
+        // ARCHITECTURE §3.1 (camada Operação), M6 E01: shared, hotel (a data operacional das faxinas programadas,
+        // pela HotelApi), rooms (os tipos de UH dos créditos e os locais das faxinas, pela RoomsApi) e checklists (o
+        // vínculo ao modelo, pela ChecklistsApi), exatamente.
         dependencies.toSet() shouldBe allowed
         HousekeepingModule::class.java
             .getAnnotation(ApplicationModule::class.java)

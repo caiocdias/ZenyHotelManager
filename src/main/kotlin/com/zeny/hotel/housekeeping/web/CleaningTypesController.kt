@@ -37,10 +37,11 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
-private const val HOUSEKEEPING_TAG = "housekeeping"
-private const val HOUSEKEEPING_TAG_DESCRIPTION = "Governança: tipos de limpeza e créditos por tipo de UH."
-private const val READ = "Exige `housekeeping.config.read`."
-private const val MANAGE = "Exige `housekeeping.config.manage`."
+internal const val HOUSEKEEPING_TAG = "housekeeping"
+internal const val HOUSEKEEPING_TAG_DESCRIPTION =
+    "Governança: tipos de limpeza, créditos por tipo de UH e faxinas programadas."
+internal const val READ = "Exige `housekeeping.config.read`."
+internal const val MANAGE = "Exige `housekeeping.config.manage`."
 private const val MAX_CREDITS = 200
 private const val MAX_CREDIT = 100L
 private const val MAX_PRIORITY = 5L
@@ -119,7 +120,9 @@ class CleaningTypesController(
     @Operation(
         operationId = "deactivateCleaningType",
         summary = "Desativar um tipo de limpeza",
-        description = "$MANAGE Nada é apagado; desativar de novo não muda nada.",
+        description =
+            "$MANAGE Nada é apagado; desativar de novo não muda nada. Com faxina programada ativa no tipo: 422 " +
+                "`CLEANING_TYPE_HAS_ACTIVE_SCHEDULES` (desative a faxina antes).",
     )
     fun deactivate(
         @PathVariable id: UUID,

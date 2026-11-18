@@ -67,8 +67,14 @@ class JpaCleaningTypeStore(
 
     override fun flush() = repository.flush()
 
-    /** Ainda não há faxinas programadas (Task 3 da E01): nenhum tipo está em uso por elas. */
-    override fun hasActiveSchedules(id: CleaningTypeId): Boolean = false
+    override fun hasActiveSchedules(id: CleaningTypeId): Boolean =
+        jdbc
+            .sql(
+                "SELECT EXISTS (SELECT 1 FROM housekeeping.scheduled_cleaning " +
+                    "WHERE cleaning_type_id = :id AND active)",
+            ).param("id", id.value)
+            .query(Boolean::class.java)
+            .single()
 
     /**
      * Violação da unicidade do código (`23505` na restrição `cleaning_type_code_uk`, reconhecida pelo campo

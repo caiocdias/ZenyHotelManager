@@ -15,8 +15,9 @@ import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 /**
- * Apoio dos testes do `housekeeping`: monta corpos e cria tipos de limpeza pela API, como o administrador, sempre com
- * código único (o banco é compartilhado, e os seis tipos da carga inicial nunca são alterados pelos testes).
+ * Apoio dos testes do `housekeeping`: monta corpos e cria tipos de limpeza e faxinas programadas pela API, como o
+ * administrador, sempre com código único (o banco é compartilhado, e os seis tipos da carga
+ * inicial nunca são alterados pelos testes).
  */
 class HousekeepingTestSupport(
     private val iam: IamTestSupport,
@@ -53,6 +54,31 @@ class HousekeepingTestSupport(
 
     fun createCleaningType(body: Map<String, Any?> = cleaningTypeBody()): UUID =
         with(iam) { UUID.fromString(call(POST, CLEANING_TYPES, asAdmin(), body).expectStatus(201)!!["id"].asString()) }
+
+    /** Uma UH nova, ativa, de um tipo de UH novo. */
+    fun createRoom(): UUID = rooms.createRoom(rooms.createRoomType())
+
+    /** O corpo de criação de uma faxina programada (o local é a UH [roomId] **ou** a área [areaId]). */
+    fun scheduleBody(
+        cleaningTypeId: UUID,
+        roomId: UUID? = null,
+        areaId: UUID? = null,
+        frequencyDays: Int? = 7,
+        lastDoneOn: String? = null,
+    ): Map<String, Any?> =
+        mapOf(
+            "roomId" to roomId,
+            "areaId" to areaId,
+            "cleaningTypeId" to cleaningTypeId,
+            "frequencyDays" to frequencyDays,
+            "lastDoneOn" to lastDoneOn,
+        )
+
+    /** Cria uma faxina programada como o administrador; numa UH nova se o corpo não diz o local. */
+    fun createSchedule(body: Map<String, Any?> = scheduleBody(createCleaningType(), roomId = createRoom())): UUID =
+        with(iam) {
+            UUID.fromString(call(POST, SCHEDULED_CLEANINGS, asAdmin(), body).expectStatus(201)!!["id"].asString())
+        }
 
     fun etagOf(path: String): String {
         val response: MockHttpServletResponse = iam.call(GET, path, iam.asAdmin())
@@ -111,6 +137,7 @@ class HousekeepingTestSupport(
 
     companion object {
         const val CLEANING_TYPES = "/api/v1/cleaning-types"
+        const val SCHEDULED_CLEANINGS = "/api/v1/scheduled-cleanings"
         private const val MAX_PAGES = 1000
 
         fun definition(code: PermissionCode) = HousekeepingPermissions.permissions.single { it.code == code }

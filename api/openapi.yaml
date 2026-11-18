@@ -41,7 +41,7 @@ tags:
   name: frontdesk
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
-- description: "Governança: tipos de limpeza e créditos por tipo de UH."
+- description: "Governança: tipos de limpeza, créditos por tipo de UH e faxinas programadas."
   name: housekeeping
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
@@ -2660,8 +2660,9 @@ paths:
       - housekeeping
   /api/v1/cleaning-types/{id}/deactivate:
     post:
-      description: Exige `housekeeping.config.manage`. Nada é apagado; desativar de
-        novo não muda nada.
+      description: "Exige `housekeeping.config.manage`. Nada é apagado; desativar\
+        \ de novo não muda nada. Com faxina programada ativa no tipo: 422 `CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`\
+        \ (desative a faxina antes)."
       operationId: deactivateCleaningType
       parameters:
       - in: path
@@ -12484,6 +12485,213 @@ paths:
       summary: Gerar a escala a partir dos padrões
       tags:
       - staff
+  /api/v1/scheduled-cleanings:
+    get:
+      description: Em ordem de próxima data (e id). Exige `housekeeping.config.read`.
+      operationId: listScheduledCleanings
+      parameters:
+      - description: Só as ativas (`true`) ou só as inativas (`false`); omita para
+          todas.
+        in: query
+        name: active
+        required: false
+        schema:
+          type: boolean
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar faxinas programadas
+      tags:
+      - housekeeping
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `SCHEDULED_CLEANING_LOCATION_INVALID`. A próxima\
+        \ data é `lastDoneOn + frequencyDays` ou, sem `lastDoneOn`, a data operacional.\
+        \ Exige `housekeeping.config.manage`. Local inexistente: 400 `SCHEDULED_CLEANING_UNKNOWN_LOCATION`;\
+        \ tipo inexistente: 400 `SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE`; local\
+        \ desativado: 422 `SCHEDULED_CLEANING_LOCATION_INACTIVE`; tipo desativado:\
+        \ 422 `CLEANING_TYPE_INACTIVE`; `lastDoneOn` depois da data operacional: 422\
+        \ `SCHEDULED_CLEANING_LAST_DONE_IN_FUTURE`; antes de `-4712-01-01`: 400 `VALIDATION_FAILED`.\
+        \ Já há uma faxina ativa no mesmo local com o mesmo tipo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`."
+      operationId: createScheduledCleaning
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledCleaningRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: Faxina programada.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Programar uma faxina
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}:
+    get:
+      description: "Exige `housekeeping.config.read`. Inexistente: 404 `SCHEDULED_CLEANING_NOT_FOUND`."
+      operationId: getScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma faxina programada
+      tags:
+      - housekeeping
+    put:
+      description: "Troca só o tipo de limpeza e a frequência e recalcula a próxima\
+        \ data; o local e a última faxina não mudam. A próxima data é `lastDoneOn\
+        \ + frequencyDays` ou, sem `lastDoneOn`, a data operacional. Exige `housekeeping.config.manage`.\
+        \ Exige também o `If-Match` (ausente: 428; versão diferente: 412). Tipo inexistente:\
+        \ 400 `SCHEDULED_CLEANING_UNKNOWN_CLEANING_TYPE`; tipo novo desativado (mesmo\
+        \ com a faxina desativada): 422 `CLEANING_TYPE_INACTIVE`; já há uma faxina\
+        \ ativa no mesmo local com o tipo novo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`."
+      operationId: updateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduledCleaningUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma faxina programada
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}/deactivate:
+    post:
+      description: Exige `housekeeping.config.manage`. Nada é apagado; desativar de
+        novo não muda nada.
+      operationId: deactivateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desativar uma faxina programada
+      tags:
+      - housekeeping
+  /api/v1/scheduled-cleanings/{id}/reactivate:
+    post:
+      description: "Exige `housekeeping.config.manage`. Mantém a próxima data antiga,\
+        \ mesmo vencida. Tipo desativado: 422 `CLEANING_TYPE_INACTIVE`; local desativado:\
+        \ 422 `SCHEDULED_CLEANING_LOCATION_INACTIVE`; já há outra ativa no mesmo local\
+        \ com o mesmo tipo: 409 `SCHEDULED_CLEANING_ALREADY_EXISTS`. Reativar uma\
+        \ faxina ativa não muda nada."
+      operationId: reactivateScheduledCleaning
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduledCleaningResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Reativar uma faxina programada
+      tags:
+      - housekeeping
   /api/v1/seasons:
     get:
       description: Em ordem de início. Exige `rates.plans.read`.
@@ -17744,6 +17952,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SchedulePatternResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageScheduledCleaningResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScheduledCleaningResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -26153,6 +26375,110 @@ components:
       - startsOn
       - updatedAt
       - weekdays
+    ScheduledCleaningRequest:
+      type: object
+      description: "Uma faxina programada nova, numa UH ou numa área comum (exatamente\
+        \ um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum; informe esta ou `roomId`, uma só."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+          maximum: 365
+          minimum: 1
+          nullable: true
+        lastDoneOn:
+          type: string
+          format: date
+          description: "A última faxina, até a data operacional e a partir de `-4712-01-01`;\
+            \ nula se nunca foi feita (a próxima data é então a data operacional)."
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - cleaningTypeId
+      - frequencyDays
+    ScheduledCleaningResponse:
+      type: object
+      description: Uma faxina programada.
+      properties:
+        active:
+          type: boolean
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum; nula numa faxina de UH.
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+        id:
+          type: string
+          format: uuid
+        lastDoneOn:
+          type: string
+          format: date
+          description: A última faxina; nula se nunca foi feita.
+          nullable: true
+        nextDueOn:
+          type: string
+          format: date
+          description: "A próxima data é `lastDoneOn + frequencyDays` ou, sem `lastDoneOn`,\
+            \ a data operacional. A reativação mantém a data antiga, mesmo vencida."
+        roomId:
+          type: string
+          format: uuid
+          description: A UH; nula numa faxina de área.
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - active
+      - cleaningTypeId
+      - createdAt
+      - frequencyDays
+      - id
+      - nextDueOn
+      - updatedAt
+    ScheduledCleaningUpdateRequest:
+      type: object
+      description: "Os dados editáveis de uma faxina programada: o tipo de limpeza\
+        \ e a frequência."
+      properties:
+        cleaningTypeId:
+          type: string
+          format: uuid
+          nullable: true
+        frequencyDays:
+          type: integer
+          format: int32
+          description: "A cada quantos dias a faxina se repete, de 1 a 365."
+          maximum: 365
+          minimum: 1
+          nullable: true
+      required:
+      - cleaningTypeId
+      - frequencyDays
     SeasonRequest:
       type: object
       description: "Uma temporada nomeada: atalho de período (até 366 dias) para a\

@@ -1,6 +1,7 @@
 package com.zeny.hotel.housekeeping
 
 import com.zeny.hotel.housekeeping.HousekeepingTestSupport.Companion.CLEANING_TYPES
+import com.zeny.hotel.housekeeping.HousekeepingTestSupport.Companion.SCHEDULED_CLEANINGS
 import com.zeny.hotel.housekeeping.HousekeepingTestSupport.Companion.definition
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
@@ -23,9 +24,10 @@ import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
 /**
- * Permissões e auditoria do `housekeeping` (M6 E01, Task 1): `housekeeping.config.read` e `housekeeping.config.manage`,
- * só de escopo `ALL`, não sensíveis, nos modelos Gerente e Governanta; a autorização antes de qualquer recusa que
- * revele estado; e a trilha de cada escrita.
+ * Permissões e auditoria do `housekeeping` (M6 E01, Tasks 1 e 3): `housekeeping.config.read` e
+ * `housekeeping.config.manage`, só de escopo `ALL`, não sensíveis, nos modelos Gerente e Governanta; a autorização
+ * antes de qualquer recusa que revele estado, nos tipos de limpeza e nas faxinas programadas; e a trilha de cada
+ * escrita.
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)
@@ -139,6 +141,95 @@ class HousekeepingPermissionsTest(
             val state = json.readTree(after)
             state["defaultPriority"].asInt() shouldBe 1
             state["credits"][roomType.toString()].asInt() shouldBe 5
+        }
+
+    @Test
+    fun `without manage the schedule writes are 403, before any 400, 404, 409 or 422`(): Unit =
+        with(iam) {
+            val reader = asTestUser(createUserWith(TestGrant(definition(HousekeepingPermissions.CONFIG_READ), ALL)))
+            val type = housekeeping.createCleaningType()
+            val room = housekeeping.createRoom()
+            val existing = housekeeping.createSchedule(housekeeping.scheduleBody(type, roomId = room))
+            val inactiveType = housekeeping.createCleaningType()
+            call(POST, "$CLEANING_TYPES/$inactiveType/deactivate", asAdmin()).ok()
+            val missing = UUID.randomUUID()
+            val refusedBodies =
+                listOf(
+                    housekeeping.scheduleBody(type, roomId = missing), // 400 UNKNOWN_LOCATION
+                    housekeeping.scheduleBody(missing, roomId = housekeeping.createRoom()), // 400 UNKNOWN_CLEANING_TYPE
+                    housekeeping.scheduleBody(type), // 400 LOCATION_INVALID
+                    housekeeping.scheduleBody(type, roomId = room, lastDoneOn = "-5000-01-01"), // 400 VALIDATION_FAILED
+                    housekeeping.scheduleBody(type, roomId = room, lastDoneOn = "9999-01-01"), // 422 LAST_DONE
+                    housekeeping.scheduleBody(inactiveType, roomId = housekeeping.createRoom()), // 422 INACTIVE
+                    housekeeping.scheduleBody(type, roomId = room), // 409 ALREADY_EXISTS
+                )
+            refusedBodies.forEach { body ->
+                withClue(body) { call(POST, SCHEDULED_CLEANINGS, reader, body).problem(403, "PERMISSION_DENIED") }
+            }
+            val edit = mapOf("cleaningTypeId" to missing, "frequencyDays" to 7)
+            call(PUT, "$SCHEDULED_CLEANINGS/$missing", reader, edit, ifMatch = "\"0\"")
+                .problem(403, "PERMISSION_DENIED")
+            call(PUT, "$SCHEDULED_CLEANINGS/$existing", reader, edit, ifMatch = "\"7\"")
+                .problem(403, "PERMISSION_DENIED")
+            listOf(missing, existing).forEach { id ->
+                call(POST, "$SCHEDULED_CLEANINGS/$id/deactivate", reader).problem(403, "PERMISSION_DENIED")
+                call(POST, "$SCHEDULED_CLEANINGS/$id/reactivate", reader).problem(403, "PERMISSION_DENIED")
+            }
+            // A desativação do tipo com faxina ativa (422) também vem depois da permissão.
+            call(POST, "$CLEANING_TYPES/$type/deactivate", reader).problem(403, "PERMISSION_DENIED")
+
+            // O leitor lê.
+            call(GET, "$SCHEDULED_CLEANINGS/$existing", reader).ok()["id"].asString() shouldBe existing.toString()
+            call(GET, SCHEDULED_CLEANINGS, reader).ok()
+        }
+
+    @Test
+    fun `without read the schedule reads are 403, before any not found`(): Unit =
+        with(iam) {
+            val manager = asTestUser(createUserWith(TestGrant(definition(HousekeepingPermissions.CONFIG_MANAGE), ALL)))
+            val nobody = asTestUser(createUser())
+            val existing = housekeeping.createSchedule()
+
+            listOf(manager, nobody).forEach { user ->
+                call(GET, SCHEDULED_CLEANINGS, user).problem(403, "PERMISSION_DENIED")
+                call(GET, "$SCHEDULED_CLEANINGS/$existing", user).problem(403, "PERMISSION_DENIED")
+                call(GET, "$SCHEDULED_CLEANINGS/${UUID.randomUUID()}", user).problem(403, "PERMISSION_DENIED")
+            }
+            // Quem só mantém escreve.
+            val body = housekeeping.scheduleBody(housekeeping.createCleaningType(), roomId = housekeeping.createRoom())
+            call(POST, SCHEDULED_CLEANINGS, manager, body).expectStatus(201)
+        }
+
+    @Test
+    fun `each schedule write records its action in the audit trail with the configuration snapshot`(): Unit =
+        with(iam) {
+            val type = housekeeping.createCleaningType()
+            val other = housekeeping.createCleaningType()
+            val id = housekeeping.createSchedule(housekeeping.scheduleBody(type, roomId = housekeeping.createRoom()))
+            val path = "$SCHEDULED_CLEANINGS/$id"
+            call(PUT, path, asAdmin(), mapOf("cleaningTypeId" to other, "frequencyDays" to 21), ifMatch = "\"0\"").ok()
+            call(POST, "$path/deactivate", asAdmin()).ok()
+            call(POST, "$path/reactivate", asAdmin()).ok()
+
+            housekeeping.auditActions("housekeeping.scheduled-cleaning", id) shouldContainExactly
+                listOf(
+                    "housekeeping.scheduled-cleaning.create",
+                    "housekeeping.scheduled-cleaning.update",
+                    "housekeeping.scheduled-cleaning.deactivate",
+                    "housekeeping.scheduled-cleaning.reactivate",
+                )
+            val after =
+                jdbc
+                    .sql(
+                        "SELECT after_state::text FROM audit.audit_entry WHERE entity_type = :type AND " +
+                            "entity_id = :id AND action = 'housekeeping.scheduled-cleaning.update'",
+                    ).param("type", "housekeeping.scheduled-cleaning")
+                    .param("id", id.toString())
+                    .query(String::class.java)
+                    .single()
+            val state = json.readTree(after)
+            state["cleaningTypeId"].asString() shouldBe other.toString()
+            state["frequencyDays"].asInt() shouldBe 21
         }
 
     private fun IamTestSupport.admin(

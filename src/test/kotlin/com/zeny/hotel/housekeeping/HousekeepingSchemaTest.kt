@@ -21,9 +21,10 @@ import java.sql.SQLException
 import java.util.UUID
 
 /**
- * O schema `housekeeping` da Task 1 (M6 E01): a carga inicial dos seis tipos da D5, a chave estável (`system_key`, que
- * o mapeamento nunca atualiza e que tem índice único parcial) e a recusa de DELETE em `cleaning_type`. Os testes nunca
- * alteram os seis tipos da carga.
+ * O schema `housekeeping` (M6 E01): a carga inicial dos seis tipos da D5, a chave estável (`system_key`, que o
+ * mapeamento nunca atualiza, que tem índice único parcial e que o banco não deixa trocar), a recusa de DELETE em
+ * `cleaning_type` e em `scheduled_cleaning` e as restrições da faxina programada (Task 3). Os testes nunca alteram os
+ * seis tipos da carga.
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)
@@ -141,8 +142,107 @@ class HousekeepingSchemaTest(
         ) shouldBe 1
     }
 
+    @Test
+    fun `the database refuses to change the key of a cleaning type`() {
+        val id = housekeeping.createCleaningType()
+
+        // Sem o trigger, o erro seria a unicidade da chave (23505); o trigger recusa antes.
+        val error =
+            shouldThrow<DataAccessException> {
+                owner
+                    .sql("UPDATE housekeeping.cleaning_type SET system_key = 'TURNDOWN' WHERE id = :id")
+                    .param("id", id)
+                    .update()
+            }
+        (error.mostSpecificCause as SQLException).sqlState shouldBe RESTRICT_VIOLATION
+        // As outras colunas seguem editáveis pelo papel da aplicação (desfeito no fim).
+        transactions.executeWithoutResult { status ->
+            jdbc
+                .sql("UPDATE housekeeping.cleaning_type SET name = 'Outro nome' WHERE id = :id")
+                .param("id", id)
+                .update() shouldBe 1
+            status.setRollbackOnly()
+        }
+    }
+
+    @Test
+    fun `the database refuses DELETE on scheduled cleanings, also for the owner`() {
+        val id = housekeeping.createSchedule()
+
+        val appError =
+            shouldThrow<DataAccessException> {
+                transactions.executeWithoutResult {
+                    jdbc.sql("DELETE FROM housekeeping.scheduled_cleaning WHERE id = :id").param("id", id).update()
+                }
+            }
+        (appError.mostSpecificCause as SQLException).sqlState shouldBe INSUFFICIENT_PRIVILEGE
+        val ownerError =
+            shouldThrow<DataAccessException> {
+                owner.sql("DELETE FROM housekeeping.scheduled_cleaning WHERE id = :id").param("id", id).update()
+            }
+        (ownerError.mostSpecificCause as SQLException).sqlState shouldBe RESTRICT_VIOLATION
+    }
+
+    @Test
+    fun `a scheduled cleaning has one location, a frequency from 1 to 365 and one active per location and type`() {
+        val type = housekeeping.createCleaningType()
+        val room = UUID.randomUUID()
+        val area = UUID.randomUUID()
+        val cases =
+            listOf(
+                Triple(room, area, 7) to CHECK_VIOLATION,
+                Triple(null, null, 7) to CHECK_VIOLATION,
+                Triple(room, null, 0) to CHECK_VIOLATION,
+                Triple(room, null, 366) to CHECK_VIOLATION,
+            )
+        cases.forEach { (row, state) ->
+            val error = shouldThrow<DataAccessException> { insertSchedule(row.first, row.second, type, row.third) }
+            (error.mostSpecificCause as SQLException).sqlState shouldBe state
+        }
+
+        // Uma ativa por (local, tipo): a segunda ativa na mesma área é recusada; a inativa não conta.
+        insertSchedule(null, area, type, 7)
+        val duplicate = shouldThrow<DataAccessException> { insertSchedule(null, area, type, 7) }
+        (duplicate.mostSpecificCause as SQLException).sqlState shouldBe UNIQUE_VIOLATION
+        insertSchedule(null, area, type, 7, active = false)
+
+        val index =
+            owner
+                .sql(
+                    "SELECT indexdef FROM pg_indexes WHERE schemaname = 'housekeeping' " +
+                        "AND indexname = 'scheduled_cleaning_active_uk'",
+                ).query(String::class.java)
+                .single()
+        index shouldContain "UNIQUE"
+        index shouldContain "WHERE active"
+    }
+
+    @Suppress("LongParameterList")
+    private fun insertSchedule(
+        room: UUID?,
+        area: UUID?,
+        type: UUID,
+        frequencyDays: Int,
+        active: Boolean = true,
+    ) = owner
+        .sql(
+            """
+            INSERT INTO housekeeping.scheduled_cleaning (id, room_id, area_id, cleaning_type_id, frequency_days,
+                last_done_on, next_due_on, active, created_at, updated_at, version)
+            VALUES (:id, :room, :area, :type, :frequency, NULL, current_date, :active, now(), now(), 0)
+            """.trimIndent(),
+        ).param("id", UUID.randomUUID())
+        .param("room", room)
+        .param("area", area)
+        .param("type", type)
+        .param("frequency", frequencyDays)
+        .param("active", active)
+        .update()
+
     private companion object {
         const val INSUFFICIENT_PRIVILEGE = "42501"
         const val RESTRICT_VIOLATION = "23001"
+        const val CHECK_VIOLATION = "23514"
+        const val UNIQUE_VIOLATION = "23505"
     }
 }
