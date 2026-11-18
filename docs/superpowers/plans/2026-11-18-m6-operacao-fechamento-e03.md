@@ -126,6 +126,26 @@ Decisões do orquestrador, sob a autorização noturna do usuário. São todas r
 - **D12-E03, posição publicada:** a tarefa grava `assigned_employee_id` e `assignment_position` na publicação. Assim, o app da camareira (E04) mantém a ordem publicada mesmo depois de um novo `suggest`.
 - **Adiados, com nota no handoff:** a lista `GET /housekeeping-tasks` com as tarefas abertas de datas anteriores e com a data no cursor fica para a E04, com o feed da camareira.
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas na rodada 2 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 12 Importantes, corrigidos em `e895acd`:
+  - `ModularityTest` da Task 1;
+  - garantia e término do algoritmo;
+  - janela de datas;
+  - fluxo do dia depois da publicação;
+  - ordem publicada;
+  - contrato do tempo real;
+  - concorrência;
+  - recusas inviáveis;
+  - tamanho da Task 2;
+  - limite do texto do aviso;
+  - "camareira" incluindo a governanta;
+  - early check-in.
+- **Rodada 1:** bloqueado por 2 Importantes, corrigidos em `77b3c40`: datas dos testes e definição de "retirada".
+- **Notas Menores da rodada 2:** cabeçalho do `AssignmentPlanPublishTest` e retorno do `PublishResult`. Já aplicadas neste texto.
+- **Pontos de usuário (autorização noturna):** D1, D2, D3 (H17), D6, D7, D9 e D11, tomadas pela opção recomendada. D7 e D11 precisam de registro do `arquiteto`: D7 na SPEC §8.4 e D11 como exceção à H16.
+
 ---
 
 ### Task 1: Algoritmo da sugestão e dívida da E02
@@ -271,7 +291,7 @@ Valem a janela de datas (D2-E03), as camareiras pela escala (D1-E03), o DND e a 
 - publica no tópico `housekeeping` (D9-E03).
 
 **Critérios de aceite:**
-- **`AssignmentPlanPublishTest`** (`@IntegrationTest`, data futura própria, só com as avulsas do teste):
+- **`AssignmentPlanPublishTest`** (`@IntegrationTest`, data futura da janela, com tolerância a plano e tarefas alheias, `employeeIds` só das próprias camareiras e afirmações só sobre o que é do teste, conforme as Global Constraints):
   - **primeira publicação:** as tarefas ficam `ASSIGNED`, com camareira e posição, e cada camareira com usuário ativo recebe uma `notifications.task-assigned`, conferida no painel dela;
   - **republicação sem mudança:** ninguém é avisado;
   - **tarefa movida de A para B:** só A e B são avisadas, e C não (Review Focus 3);
@@ -330,5 +350,5 @@ Valem a janela de datas (D2-E03), as camareiras pela escala (D1-E03), o DND e a 
 - Consome: `AssignmentPlansService` e `scheduledAttendants` (Task 2), `NotificationsApi.notify`, `NotificationsTypes.TASK_ASSIGNED` e `RealtimePublisher`.
 - Produz:
   - `HousekeepingTask.assign(employeeId, position)` e `unassign()`, só a partir de `PENDING` ou `ASSIGNED`;
-  - `AssignmentPlansService.publish(date, expectedVersion): PublishResult`, com a versão, a contagem de avisados e os ids sem usuário ativo;
+  - `AssignmentPlansService.publish(date, expectedVersion): PublishResult`, com a versão, a contagem de avisados e os não avisados (id e motivo `NO_USER` ou `NOT_DELIVERED`);
   - `HousekeepingRealtime.TOPIC`.
