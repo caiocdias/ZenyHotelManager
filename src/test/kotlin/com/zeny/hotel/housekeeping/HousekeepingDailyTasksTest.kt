@@ -107,8 +107,10 @@ class HousekeepingDailyTasksTest(
 
     @Test
     fun `the trail of the generated stayover and pre-arrival carries no guest nor reservation data`() {
-        val date = today
-        val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, date)
+        // Em D+1: a hospedada do check-in de hoje só tem permanência a partir de D+1, e a chegada de D+1 tem a
+        // pré-chegada.
+        val date = today.plusDays(1)
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, today)
         val plan = stays.planFor(type)
         val suffix = UUID.randomUUID().toString().takeLast(SUFFIX_LENGTH)
         val (staying, stayingHolder) =
