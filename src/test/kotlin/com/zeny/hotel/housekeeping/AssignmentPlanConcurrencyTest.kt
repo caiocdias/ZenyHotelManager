@@ -32,13 +32,14 @@ import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
 /**
- * Concorrência e criação do plano do dia (M6 E03, Task 2), no banco isolado do fechamento (H10), o único onde se acha
- * uma data da janela sem plano: o `GET` e o `PATCH` antes de existir plano (`404`); os dois primeiros `suggest`
+ * Concorrência e criação do plano do dia (M6 E03, Tasks 2 e 3), no banco isolado do fechamento (H10), o único onde se
+ * acha uma data da janela sem plano: o `GET` e o `PATCH` antes de existir plano (`404`); os dois primeiros `suggest`
  * simultâneos da mesma data (um cria o plano, o outro recebe `428` ou `412`, nunca `500`, pelo `INSERT … ON CONFLICT
- * DO NOTHING` + `SELECT … FOR UPDATE`); e dois `PATCH` com o mesmo `If-Match` (um passa, o outro dá `412`).
+ * DO NOTHING` + `SELECT … FOR UPDATE`); dois `PATCH` e duas publicações com o mesmo `If-Match` (uma passa, a outra dá
+ * `412`); e a falha otimista numa tarefa durante a publicação (`412`, nada gravado).
  *
- * Determinismo: uma sessão do dono segura a trava (a tabela em `EXCLUSIVE`, ou a linha do plano em `FOR UPDATE`) até as
- * duas requisições estarem esperando por ela (`pg_blocking_pids`); só então confirma.
+ * Determinismo: uma sessão do dono segura a trava (a tabela em `EXCLUSIVE`, a linha do plano em `FOR UPDATE` ou a linha
+ * da tarefa num `UPDATE`) até as requisições estarem esperando por ela (`pg_blocking_pids`); só então confirma.
  */
 @EndOfDayIntegrationTest
 @Import(EndOfDayRealStepsTestConfiguration::class)
@@ -102,6 +103,58 @@ class AssignmentPlanConcurrencyTest(
                 responses.map { it.status } shouldContainExactlyInAnyOrder listOf(200, 412)
             }
             responses.single { it.status == 412 }.let { with(iam) { it.problem(412, "PRECONDITION_FAILED") } }
+        } finally {
+            EndOfDayTestRuns.settle(context)
+        }
+    }
+
+    @Test
+    fun `two publications with the same If-Match, one passes and the other is 412 (Task 3)`() {
+        try {
+            val date = hotel.currentBusinessDate().plusDays(2)
+            val attendant = plans.attendant(date)
+            val task = plans.insertTask(date, area = UUID.randomUUID())
+            val etag = plans.draft(date, listOf(attendant), listOf(task to attendant))
+
+            val responses =
+                racing(
+                    "SELECT id FROM housekeeping.assignment_plan WHERE business_date = '$date' FOR UPDATE",
+                    date,
+                ) { plans.publish(date, etag) }
+
+            withClue(responses.map { it.getContentAsString(Charsets.UTF_8) }) {
+                responses.map { it.status } shouldContainExactlyInAnyOrder listOf(200, 412)
+            }
+            responses.single { it.status == 412 }.let { with(iam) { it.problem(412, "PRECONDITION_FAILED") } }
+            plans.etagOrNull(date) shouldBe responses.single { it.status == 200 }.getHeader(HttpHeaders.ETAG)
+            plans.task(task)["assignedEmployeeId"].asString() shouldBe "$attendant"
+        } finally {
+            EndOfDayTestRuns.settle(context)
+        }
+    }
+
+    @Test
+    fun `another write on a task during the publication is 412 and nothing is written (Task 3)`() {
+        try {
+            val date = hotel.currentBusinessDate().plusDays(2)
+            val attendant = plans.attendant(date)
+            val task = plans.insertTask(date, area = UUID.randomUUID())
+            val etag = plans.draft(date, listOf(attendant), listOf(task to attendant))
+
+            // A outra escrita segura a linha da tarefa até a publicação esperar por ela; depois, a versão não confere.
+            val response =
+                racing(
+                    "UPDATE housekeeping.housekeeping_task SET version = version + 1 WHERE id = '$task'",
+                    date,
+                    listOf { plans.publish(date, etag) },
+                ).single()
+
+            with(iam) { response.problem(412, "PRECONDITION_FAILED") }
+            plans.etagOrNull(date) shouldBe etag
+            plans.task(task).let {
+                it["status"].asString() shouldBe "PENDING"
+                it["assignedEmployeeId"].isNull shouldBe true
+            }
         } finally {
             EndOfDayTestRuns.settle(context)
         }
