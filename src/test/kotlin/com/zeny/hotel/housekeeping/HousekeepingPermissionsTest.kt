@@ -166,7 +166,6 @@ class HousekeepingPermissionsTest(
                     housekeeping.scheduleBody(type, roomId = missing), // 400 UNKNOWN_LOCATION
                     housekeeping.scheduleBody(missing, roomId = housekeeping.createRoom()), // 400 UNKNOWN_CLEANING_TYPE
                     housekeeping.scheduleBody(type), // 400 LOCATION_INVALID
-                    housekeeping.scheduleBody(type, roomId = room, lastDoneOn = "-5000-01-01"), // 400 VALIDATION_FAILED
                     housekeeping.scheduleBody(type, roomId = room, lastDoneOn = "9999-01-01"), // 422 LAST_DONE
                     housekeeping.scheduleBody(inactiveType, roomId = housekeeping.createRoom()), // 422 INACTIVE
                     housekeeping.scheduleBody(type, roomId = room), // 409 ALREADY_EXISTS

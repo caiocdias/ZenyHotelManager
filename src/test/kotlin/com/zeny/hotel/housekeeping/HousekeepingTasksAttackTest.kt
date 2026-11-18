@@ -163,7 +163,7 @@ class HousekeepingTasksAttackTest(
         }
 
     @Test
-    fun `a list date outside the storable range is an empty page, never 500 nor the -infinity rows`(): Unit =
+    fun `a list date outside the storable range is 400 INVALID_FORMAT, never 500`(): Unit =
         with(iam) {
             // Uma tarefa gravada em -infinity (o que o driver grava para uma data abaixo do piso) num local só dela.
             val room = UUID.randomUUID()
@@ -181,10 +181,15 @@ class HousekeepingTasksAttackTest(
                 .param("type", housekeeping.createCleaningType())
                 .update()
 
+            // A conversão do parâmetro recusa o que está fora do StorableRange (M6 E20), antes de qualquer consulta.
             listOf("-5000-01-01", "-4713-12-31", "+5874898-01-01", "+999999999-12-31").forEach { date ->
                 withClue(date) {
-                    call(GET, "$TASKS?date=$date&roomId=$room", asAdmin()).ok()["items"].size() shouldBe 0
-                    call(GET, "$TASKS?date=$date", asAdmin()).ok()["items"].size() shouldBe 0
+                    listOf("$TASKS?date=$date&roomId=$room", "$TASKS?date=$date").forEach { path ->
+                        val response = call(GET, path, asAdmin())
+                        response.status shouldBe 400
+                        json(response)["errors"][0]["field"].asString() shouldBe "date"
+                        json(response)["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
+                    }
                 }
             }
         }
@@ -202,8 +207,9 @@ class HousekeepingTasksAttackTest(
                         .problem(422, "HOUSEKEEPING_TASK_DATE_INVALID")
                 }
             }
+            // Fora do StorableRange, a leitura do corpo recusa antes da regra de negócio (M6 E20).
             post(housekeeping.taskBody(type, roomId = room, date = "-5000-01-01"))
-                .problem(422, "HOUSEKEEPING_TASK_DATE_INVALID")
+                .problem(400, "VALIDATION_FAILED")
             countTasksOf(room) shouldBe 0
         }
 
