@@ -61,7 +61,32 @@ class HousekeepingTaskSchemaTest(
                 "created_at",
                 "updated_at",
                 "version",
+                "assigned_employee_id",
+                "assignment_position",
             )
+    }
+
+    @Test
+    fun `the assignee goes with the position, never on a PENDING task, and the position starts at 1 (M6 E03)`() {
+        val room = UUID.randomUUID()
+        val employee = UUID.randomUUID()
+        val cases =
+            listOf(
+                "PENDING with assignee" to { insert(room = room, employee = employee, position = 1) },
+                "assignee without position" to { insert(room = room, status = "ASSIGNED", employee = employee) },
+                "position without assignee" to { insert(room = room, status = "ASSIGNED", position = 1) },
+                "position 0" to { insert(room = room, status = "ASSIGNED", employee = employee, position = 0) },
+            )
+        cases.forEach { (case, write) ->
+            withClue(case) {
+                val error = shouldThrow<DataAccessException> { write() }
+                (error.mostSpecificCause as SQLException).sqlState shouldBe CHECK_VIOLATION
+            }
+        }
+
+        insert(room = room, status = "ASSIGNED", employee = employee, position = 2)
+        insert(room = UUID.randomUUID(), status = "IN_PROGRESS", employee = employee, position = 1)
+        insert(room = UUID.randomUUID())
     }
 
     @Test
@@ -143,6 +168,8 @@ class HousekeepingTaskSchemaTest(
         priority: Int = 3,
         credits: Int = 0,
         schedule: UUID? = null,
+        employee: UUID? = null,
+        position: Int? = null,
     ): UUID {
         val id = UUID.randomUUID()
         owner
@@ -150,9 +177,9 @@ class HousekeepingTaskSchemaTest(
                 """
                 INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
                     source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
-                    created_at, updated_at, version)
+                    created_at, updated_at, version, assigned_employee_id, assignment_position)
                 VALUES (:id, :room, :area, :date, :type, :source, :status, :priority, :credits, FALSE, :schedule, NULL,
-                    NULL, now(), now(), 0)
+                    NULL, now(), now(), 0, :employee, :position)
                 """.trimIndent(),
             ).param("id", id)
             .param("room", room)
@@ -164,6 +191,8 @@ class HousekeepingTaskSchemaTest(
             .param("priority", priority)
             .param("credits", credits)
             .param("schedule", schedule)
+            .param("employee", employee)
+            .param("position", position)
             .update()
         return id
     }

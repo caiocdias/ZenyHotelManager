@@ -8,6 +8,7 @@ import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.staff.EmployeeId
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
@@ -117,5 +118,62 @@ class HousekeepingTaskDomainTest {
         shouldThrow<IllegalArgumentException> {
             HousekeepingTask.create(type, location, date, TaskSource.AD_HOC, false, 0, now, schedule)
         }
+    }
+
+    @Test
+    fun `assign gives the task to the attendant at the position, and unassign takes it back to PENDING (M6 E03)`() {
+        val task =
+            HousekeepingTask.create(
+                type,
+                TaskLocation.Room(RoomId(UUID.randomUUID())),
+                date,
+                TaskSource.AD_HOC,
+                false,
+                6,
+                now,
+            )
+        val ana = EmployeeId(UUID.randomUUID())
+        val bia = EmployeeId(UUID.randomUUID())
+        val later = now.plusSeconds(60)
+
+        task.assign(ana, 2, later)
+        task.status shouldBe TaskStatus.ASSIGNED
+        task.assignedEmployeeId shouldBe ana
+        task.assignmentPosition shouldBe 2
+        task.updatedAt shouldBe later
+
+        task.assign(bia, 1, later.plusSeconds(1))
+        task.assignedEmployeeId shouldBe bia
+        task.assignmentPosition shouldBe 1
+
+        task.unassign(later.plusSeconds(2))
+        task.status shouldBe TaskStatus.PENDING
+        task.assignedEmployeeId shouldBe null
+        task.assignmentPosition shouldBe null
+        task.updatedAt shouldBe later.plusSeconds(2)
+        shouldThrow<IllegalArgumentException> { task.assign(ana, 0, later) }
+    }
+
+    @Test
+    fun `a task that already moved on is neither assigned nor unassigned (Review Focus 4)`() {
+        val task =
+            HousekeepingTask.create(
+                type,
+                TaskLocation.Area(AreaId(UUID.randomUUID())),
+                date,
+                TaskSource.AD_HOC,
+                false,
+                0,
+                now,
+            )
+        task.assign(EmployeeId(UUID.randomUUID()), 1, now)
+        HousekeepingTask::class.java
+            .getDeclaredMethod("setStatus", TaskStatus::class.java)
+            .apply { isAccessible = true }
+            .invoke(task, TaskStatus.IN_PROGRESS)
+
+        shouldThrow<IllegalStateException> { task.assign(EmployeeId(UUID.randomUUID()), 1, now) }
+        shouldThrow<IllegalStateException> { task.unassign(now) }
+        task.status shouldBe TaskStatus.IN_PROGRESS
     }
 }

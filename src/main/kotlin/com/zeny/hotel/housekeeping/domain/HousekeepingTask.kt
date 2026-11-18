@@ -12,6 +12,7 @@ import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.staff.EmployeeId
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
 import jakarta.persistence.EnumType
@@ -111,12 +112,53 @@ class HousekeepingTask private constructor(
     var updatedAt: Instant = createdAt
         protected set
 
+    /** A camareira publicada (D12-E03); nula em `PENDING`. */
+    @Column(name = "assigned_employee_id")
+    var assignedEmployeeId: EmployeeId? = null
+        protected set
+
+    /** A posição publicada na ordem de execução da camareira, de 1 em diante; nula sem camareira. */
+    @Column(name = "assignment_position")
+    var assignmentPosition: Int? = null
+        protected set
+
     @Version
     var version: Long? = null
         protected set
 
     val location: TaskLocation
         get() = roomId?.let { TaskLocation.Room(it) } ?: TaskLocation.Area(checkNotNull(areaId))
+
+    /**
+     * Dá a tarefa à camareira [employeeId] na [position] (de 1 em diante) e a deixa `ASSIGNED` (publicação do plano do
+     * dia, M6 E03). Só a partir de `PENDING` ou `ASSIGNED`: a tarefa que já andou nunca é tocada (Review Focus 4).
+     */
+    fun assign(
+        employeeId: EmployeeId,
+        position: Int,
+        now: Instant,
+    ) {
+        require(position >= 1) { "Posição fora da ordem da camareira: $position" }
+        requireNotStarted()
+        status = TaskStatus.ASSIGNED
+        assignedEmployeeId = employeeId
+        assignmentPosition = position
+        updatedAt = now
+    }
+
+    /** Volta a tarefa a `PENDING`, sem camareira (D7-E03). Só a partir de `PENDING` ou `ASSIGNED`. */
+    fun unassign(now: Instant) {
+        requireNotStarted()
+        status = TaskStatus.PENDING
+        assignedEmployeeId = null
+        assignmentPosition = null
+        updatedAt = now
+    }
+
+    private fun requireNotStarted() =
+        check(status == TaskStatus.PENDING || status == TaskStatus.ASSIGNED) {
+            "A tarefa $id já andou ($status): a distribuição não a toca"
+        }
 
     override fun toString(): String = "HousekeepingTask(id=$id, source=$source, status=$status)"
 
