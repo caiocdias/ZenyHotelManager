@@ -34,8 +34,8 @@ data class AssignmentChange(
 /**
  * O plano do dia da distribuição (RF-GOV-03, D6-E03): um rascunho por data operacional, com os itens (cada tarefa no
  * máximo uma vez). A sugestão refaz os itens inteiros e o ajuste os muda; os dois voltam o plano a `DRAFT` e sobem a
- * [version] (a concorrência otimista do `If-Match`). As tarefas só mudam na publicação (Task 3). O plano nunca é
- * apagado.
+ * [version] (a concorrência otimista do `If-Match`). As tarefas só mudam na publicação ([publish]), que deixa o plano
+ * `PUBLISHED` e também sobe a versão. O plano nunca é apagado.
  */
 @Suppress("LongParameterList") // os campos do plano, lidos da persistência
 class AssignmentPlan(
@@ -46,8 +46,8 @@ class AssignmentPlan(
     items: List<AssignmentPlanItem>,
     val createdAt: Instant,
     updatedAt: Instant,
-    val publishedAt: Instant?,
-    val publishedBy: UserId?,
+    publishedAt: Instant?,
+    publishedBy: UserId?,
 ) {
     var status: AssignmentPlanStatus = status
         private set
@@ -59,6 +59,14 @@ class AssignmentPlan(
         private set
 
     var updatedAt: Instant = updatedAt
+        private set
+
+    /** Quando foi a última publicação; `null` se nunca foi publicado. */
+    var publishedAt: Instant? = publishedAt
+        private set
+
+    /** Quem fez a última publicação; `null` se nunca foi publicado (ou foi o sistema). */
+    var publishedBy: UserId? = publishedBy
         private set
 
     /** Os itens da sugestão: os de cada camareira, na ordem dela, e as sem camareira, na ordem da sugestão. */
@@ -101,6 +109,18 @@ class AssignmentPlan(
             },
             now,
         )
+    }
+
+    /** Marca o plano publicado por [by] (os itens já foram gravados nas tarefas) e sobe a versão. */
+    fun publish(
+        now: Instant,
+        by: UserId?,
+    ) {
+        status = AssignmentPlanStatus.PUBLISHED
+        version += 1
+        updatedAt = now
+        publishedAt = now
+        publishedBy = by
     }
 
     fun contains(taskId: HousekeepingTaskId): Boolean = items.any { it.taskId == taskId }

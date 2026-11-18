@@ -132,6 +132,10 @@ class JpaHousekeepingTaskStore(
                 .list(),
         )
 
+    override fun update(task: HousekeepingTask) {
+        repository.saveAndFlush(task)
+    }
+
     override fun lastTaskDate(
         roomId: RoomId,
         onOrBefore: LocalDate,

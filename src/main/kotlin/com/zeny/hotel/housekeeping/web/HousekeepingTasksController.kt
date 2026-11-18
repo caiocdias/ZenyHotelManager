@@ -186,6 +186,18 @@ data class HousekeepingTaskResponse(
     val scheduledCleaningId: UUID?,
     @field:Schema(description = NOTES_DESCRIPTION, nullable = true)
     val notes: String?,
+    @field:Schema(
+        description = "A camareira publicada pelo plano do dia; nula sem camareira (sempre nula em `PENDING`).",
+        nullable = true,
+    )
+    val assignedEmployeeId: UUID?,
+    @field:Schema(
+        description =
+            "A posição publicada na ordem de execução da camareira, de 1 em diante; nula sem camareira. Não muda " +
+                "com um novo rascunho do plano, só com a publicação seguinte.",
+        nullable = true,
+    )
+    val assignmentPosition: Int?,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -204,6 +216,8 @@ data class HousekeepingTaskResponse(
                 view.arrivalExpected,
                 view.scheduledCleaningId?.value,
                 view.notes,
+                view.assignedEmployeeId?.value,
+                view.assignmentPosition,
                 view.createdAt,
                 view.updatedAt,
             )

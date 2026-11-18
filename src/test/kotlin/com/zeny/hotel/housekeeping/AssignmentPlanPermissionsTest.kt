@@ -53,7 +53,7 @@ class AssignmentPlanPermissionsTest(
     }
 
     @Test
-    fun `without manage, suggest and PATCH are 403 before any 400, 404, 412, 422 or 428`(): Unit =
+    fun `without manage, suggest, PATCH and publish are 403 before any 400, 404, 412, 422 or 428`(): Unit =
         with(iam) {
             val reader =
                 asTestUser(createUserWith(TestGrant(definition(HousekeepingPermissions.TASKS_READ), ALL)))
@@ -72,6 +72,9 @@ class AssignmentPlanPermissionsTest(
                 plans.adjust(date, adjust, plans.etagOrNull(date), reader), // 400 UNKNOWN_TASK
                 plans.adjust(today.minusDays(1), adjust, "\"0\"", reader), // 422
                 plans.adjust(date, emptyMap(), "\"0\"", reader), // 400
+                plans.publish(date, null, reader), // 428
+                plans.publish(date, "\"999\"", reader), // 412
+                plans.publish(today.minusDays(1), "\"0\"", reader), // 422
             ).forEachIndexed { index, response ->
                 withClue(index) { response.problem(403, "PERMISSION_DENIED") }
             }

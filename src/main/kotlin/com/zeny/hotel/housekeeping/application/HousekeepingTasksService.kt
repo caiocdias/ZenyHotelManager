@@ -30,6 +30,7 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.StorableRange
+import com.zeny.hotel.staff.EmployeeId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -90,6 +91,12 @@ interface HousekeepingTaskStore {
         includePrevious: Boolean,
     ): List<HousekeepingTask>
 
+    /**
+     * Grava a mudança da tarefa já carregada nesta transação e a manda ao banco agora, conferindo a versão (o lock
+     * otimista): outra escrita que chegou antes faz falhar com `OptimisticLockingFailureException` (`412`).
+     */
+    fun update(task: HousekeepingTask)
+
     /** A data da última tarefa da UH até [onOrBefore] (inclusive), sem contar as `CANCELLED`; `null` se não há. */
     fun lastTaskDate(
         roomId: RoomId,
@@ -120,6 +127,8 @@ data class HousekeepingTaskView(
     val arrivalExpected: Boolean,
     val scheduledCleaningId: ScheduledCleaningId?,
     val notes: String?,
+    val assignedEmployeeId: EmployeeId?,
+    val assignmentPosition: Int?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
@@ -294,7 +303,10 @@ class HousekeepingTasksService(
     }
 }
 
-/** O retrato da trilha: ids, local, data, tipo, origem e estado, e o tamanho das `notes`, **sem** o texto (RN-13). */
+/**
+ * O retrato da trilha: ids, local, data, tipo, origem e estado, o tamanho das `notes`, **sem** o texto (RN-13), e a
+ * camareira e a posição publicadas, só pelo id dela.
+ */
 internal fun HousekeepingTask.auditState(): Map<String, Any?> =
     mapOf(
         "roomId" to roomId?.toString(),
@@ -308,6 +320,8 @@ internal fun HousekeepingTask.auditState(): Map<String, Any?> =
         "arrivalExpected" to arrivalExpected,
         "scheduledCleaningId" to scheduledCleaningId?.toString(),
         "notesLength" to (notes?.let { it.codePointCount(0, it.length) } ?: 0),
+        "assignedEmployeeId" to assignedEmployeeId?.toString(),
+        "assignmentPosition" to assignmentPosition,
     )
 
 internal fun HousekeepingTask.view() =
@@ -324,6 +338,8 @@ internal fun HousekeepingTask.view() =
         arrivalExpected,
         scheduledCleaningId,
         notes,
+        assignedEmployeeId,
+        assignmentPosition,
         createdAt,
         updatedAt,
         checkNotNull(version),

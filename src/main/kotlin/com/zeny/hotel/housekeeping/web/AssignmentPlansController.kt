@@ -3,10 +3,12 @@ package com.zeny.hotel.housekeeping.web
 import com.zeny.hotel.housekeeping.AssignmentPlanStatus
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.NotNotifiedReason
 import com.zeny.hotel.housekeeping.application.AssignmentAdjustment
 import com.zeny.hotel.housekeeping.application.AssignmentItemCommand
 import com.zeny.hotel.housekeeping.application.AssignmentPlanView
 import com.zeny.hotel.housekeeping.application.AssignmentPlansService
+import com.zeny.hotel.housekeeping.application.PublishResult
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ExtensibleEnum
@@ -47,8 +49,9 @@ private const val PLAN_SCHEDULE =
         "`ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`."
 
 /**
- * O plano do dia da distribuição das tarefas de governança (RF-GOV-03, M6 E03): a sugestão, a leitura e o ajuste.
- * Sugerir e ajustar exigem `housekeeping.assignments.manage`; ler, `housekeeping.tasks.read`. Não há `DELETE`.
+ * O plano do dia da distribuição das tarefas de governança (RF-GOV-03, M6 E03): a sugestão, a leitura, o ajuste e a
+ * publicação. Sugerir, ajustar e publicar exigem `housekeeping.assignments.manage`; ler, `housekeeping.tasks.read`. Não
+ * há `DELETE`.
  */
 @ApiV1Controller
 @RequestMapping("/assignment-plans")
@@ -108,6 +111,35 @@ class AssignmentPlansController(
         @Valid @RequestBody request: AssignmentAdjustRequest,
     ): ResponseEntity<AssignmentPlanResponse> =
         ok(plans.adjust(date, ifMatch?.let(ETags::expectedVersion), request.toAdjustment()))
+
+    @PostMapping("/{date}/publish")
+    @Operation(
+        operationId = "publishAssignmentPlan",
+        summary = "Publicar o plano do dia",
+        description =
+            "Grava o rascunho nas tarefas: cada tarefa com camareira fica `ASSIGNED`, com a camareira e a posição " +
+                "(`assignedEmployeeId` e `assignmentPosition`, que um novo rascunho não muda); a sem camareira e a " +
+                "retirada (`ASSIGNED` da data do plano, ou de antes no plano da data operacional, fora do rascunho) " +
+                "voltam a `PENDING`. A tarefa que já andou (fora de `PENDING` e `ASSIGNED`) nunca é tocada: o item " +
+                "dela com a mesma camareira é ignorado, inclusive a posição, e o item que a passaria a outra " +
+                "camareira recusa a publicação com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids das tarefas em " +
+                "`errors[].field`. O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`) só as camareiras " +
+                "com tarefa incluída ou removida; as não avisadas vêm em `notNotified`. Publica " +
+                "`housekeeping.assignment-plan` no tópico `housekeeping`. $PLAN_MANAGE Exige o `If-Match` (ausente: " +
+                "428; versão diferente, ou outra escrita numa tarefa durante a publicação: 412). $PLAN_WINDOW Sem " +
+                "plano na data: 404 `ASSIGNMENT_PLAN_NOT_FOUND`. $PLAN_SCHEDULE Nada é gravado quando a publicação " +
+                "é recusada.",
+    )
+    fun publish(
+        @Parameter(description = PLAN_DATE_PARAMETER) @PathVariable date: LocalDate,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+    ): ResponseEntity<AssignmentPlanPublicationResponse> {
+        val result = plans.publish(date, ifMatch?.let(ETags::expectedVersion))
+        return ResponseEntity
+            .ok()
+            .eTag(ETags.of(result.version))
+            .body(AssignmentPlanPublicationResponse.of(result))
+    }
 
     private fun ok(view: AssignmentPlanView): ResponseEntity<AssignmentPlanResponse> =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(AssignmentPlanResponse.of(view))
@@ -196,6 +228,47 @@ data class AssignmentPlanResponse(
             )
     }
 }
+
+@Schema(description = "A publicação do plano do dia.")
+data class AssignmentPlanPublicationResponse(
+    @field:Schema(description = "O plano publicado.")
+    val id: UUID,
+    @field:Schema(description = "A data operacional do plano.")
+    val date: LocalDate,
+    @field:ExtensibleEnum
+    @field:Schema(description = "O status do plano (trate um valor desconhecido sem falhar).")
+    val status: AssignmentPlanStatus,
+    @field:Schema(description = "A versão do plano depois da publicação (a mesma do `ETag`).")
+    val version: Long,
+    @field:Schema(description = "Quantas camareiras com tarefa incluída ou removida foram avisadas.")
+    val notified: Int,
+    @field:Schema(description = "As camareiras com tarefa incluída ou removida que não foram avisadas, e o motivo.")
+    val notNotified: List<NotNotifiedResponse>,
+) {
+    companion object {
+        fun of(result: PublishResult) =
+            AssignmentPlanPublicationResponse(
+                result.id.value,
+                result.date,
+                result.status,
+                result.version,
+                result.notified,
+                result.notNotified.map { NotNotifiedResponse(it.employeeId.value, it.reason) },
+            )
+    }
+}
+
+@Schema(description = "Uma camareira que não foi avisada da mudança nas tarefas dela.")
+data class NotNotifiedResponse(
+    val employeeId: UUID,
+    @field:ExtensibleEnum
+    @field:Schema(
+        description =
+            "`NO_USER`: sem usuário vinculado; `NOT_DELIVERED`: o aviso não chegou ao painel (preferência " +
+                "desligada, usuário inativo ou que não recebe). Trate um valor desconhecido sem falhar.",
+    )
+    val reason: NotNotifiedReason,
+)
 
 @Schema(description = "Uma tarefa do plano com camareira.")
 data class AssignmentPlanItemResponse(

@@ -63,6 +63,17 @@ enum class AssignmentPlanStatus {
 }
 
 /**
+ * Por que uma camareira com tarefa incluída ou removida não foi avisada na publicação do plano (D1-E03): `NO_USER`, o
+ * colaborador não tem usuário vinculado (ou não foi achado na escala da data); `NOT_DELIVERED`, o aviso não chegou ao
+ * painel (preferência desligada, usuário inativo ou que não recebe). O conjunto pode crescer: o cliente trata um valor
+ * desconhecido sem falhar.
+ */
+enum class NotNotifiedReason {
+    NO_USER,
+    NOT_DELIVERED,
+}
+
+/**
  * Status de uma tarefa de governança (SPEC §8.2.10). A tarefa nasce `PENDING` (E02); as transições são da E03 e da E04.
  * O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
  */

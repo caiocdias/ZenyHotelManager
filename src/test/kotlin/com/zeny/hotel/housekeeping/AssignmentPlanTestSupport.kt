@@ -40,13 +40,17 @@ class AssignmentPlanTestSupport(
                 .single { it.key == DepartmentKey.HOUSEKEEPING }
                 .id.value
 
-    /** Uma camareira nova no setor [department] (padrão: governança), escalada num turno do setor em [dates]. */
+    /**
+     * Uma camareira nova no setor [department] (padrão: governança), escalada num turno do setor em [dates] e vinculada
+     * ao usuário [userId], se houver.
+     */
     fun attendant(
         vararg dates: LocalDate,
         department: UUID = housekeepingDepartment,
         name: String = staff.unique("Camareira"),
+        userId: UUID? = null,
     ): UUID {
-        val employee = staff.createEmployee(department, name)
+        val employee = staff.createEmployee(department, name, userId)
         val shift = staff.createShift(department, LocalTime.of(7, 0), LocalTime.of(15, 0))
         dates.forEach { staff.record(employee, ScheduleEntryKind.SHIFT, it, shiftId = shift) }
         return employee
@@ -88,6 +92,58 @@ class AssignmentPlanTestSupport(
         auth: RequestPostProcessor = iam.asAdmin(),
     ): MockHttpServletResponse = iam.call(PATCH, "$PLANS/$date", auth, body, ifMatch)
 
+    /** A publicação com o `If-Match` dado (padrão: o do plano existente). */
+    fun publish(
+        date: LocalDate,
+        ifMatch: String? = etagOrNull(date),
+        auth: RequestPostProcessor = iam.asAdmin(),
+    ): MockHttpServletResponse = iam.call(POST, "$PLANS/$date/publish", auth, null, ifMatch)
+
+    /** A publicação que precisa passar: `200`, com o corpo e o `ETag`. */
+    fun published(date: LocalDate): Pair<JsonNode, String> {
+        val response = publish(date)
+        val body = with(iam) { response.ok() }
+        return body to response.getHeader(HttpHeaders.ETAG).shouldNotBeNull()
+    }
+
+    /**
+     * O rascunho exato do teste, tolerando o plano alheio: a sugestão restrita a [employees] e um ajuste que deixa no
+     * plano só as tarefas de [assignment], cada uma com a sua camareira (`null`: sem camareira), na ordem dada.
+     * Devolve o `ETag`.
+     */
+    fun draft(
+        date: LocalDate,
+        employees: List<UUID>,
+        assignment: List<Pair<UUID, UUID?>>,
+    ): String {
+        val (plan, etag) = suggested(date, employees)
+        val mine = assignment.map { it.first }.toSet()
+        val foreign = (itemsOf(plan).keys + unassignedOf(plan)).filterNot { it in mine }
+        val body =
+            mapOf(
+                "items" to assignment.map { (task, employee) -> mapOf("taskId" to task, "employeeId" to employee) },
+                "remove" to foreign,
+            )
+        val response = adjust(date, body, etag)
+        with(iam) { response.ok() }
+        return response.getHeader(HttpHeaders.ETAG).shouldNotBeNull()
+    }
+
+    /** A tarefa pela API (`GET /housekeeping-tasks/{id}`). */
+    fun task(id: UUID): JsonNode = with(iam) { call(GET, "$TASKS/$id", asAdmin()).ok() }
+
+    /** Muda o status da tarefa direto no banco (a tarefa que "andou", como na E04). */
+    fun setStatus(
+        task: UUID,
+        status: String,
+    ) {
+        jdbc
+            .sql("UPDATE housekeeping.housekeeping_task SET status = :status WHERE id = :id")
+            .param("status", status)
+            .param("id", task)
+            .update() shouldBe 1
+    }
+
     /** Uma tarefa gravada direto no banco (o papel da aplicação), com a origem e o status que a API não cria. */
     @Suppress("LongParameterList") // os campos da tarefa, com padrões
     fun insertTask(
@@ -100,6 +156,8 @@ class AssignmentPlanTestSupport(
         credits: Int = 1,
         arrivalExpected: Boolean = false,
         type: UUID = TOUCH_UP_TYPE,
+        employee: UUID? = null,
+        position: Int? = null,
     ): UUID {
         val id = UuidV7.generate()
         jdbc
@@ -107,9 +165,9 @@ class AssignmentPlanTestSupport(
                 """
                 INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
                     source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
-                    created_at, updated_at, version)
+                    created_at, updated_at, version, assigned_employee_id, assignment_position)
                 VALUES (:id, :room, :area, :date, :type, :source, :status, :priority, :credits, :arrival, NULL, NULL,
-                    NULL, now(), now(), 0)
+                    NULL, now(), now(), 0, :employee, :position)
                 """.trimIndent(),
             ).param("id", id)
             .param("room", room)
@@ -121,12 +179,15 @@ class AssignmentPlanTestSupport(
             .param("priority", priority)
             .param("credits", credits)
             .param("arrival", arrivalExpected)
+            .param("employee", employee)
+            .param("position", position)
             .update()
         return id
     }
 
     companion object {
         const val PLANS = "/api/v1/assignment-plans"
+        const val TASKS = "/api/v1/housekeeping-tasks"
 
         /** O tipo `TOUCH_UP` da carga (D5), só referenciado. */
         val TOUCH_UP_TYPE: UUID = UUID.fromString("01a1e8f2-f902-7002-8000-000000000003")

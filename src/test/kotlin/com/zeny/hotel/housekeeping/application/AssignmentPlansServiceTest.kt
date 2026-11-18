@@ -64,6 +64,9 @@ class AssignmentPlansServiceTest {
             mockk(),
             mockk(),
             mockk(),
+            mockk(),
+            mockk(),
+            mockk(),
         )
 
     private fun employee(

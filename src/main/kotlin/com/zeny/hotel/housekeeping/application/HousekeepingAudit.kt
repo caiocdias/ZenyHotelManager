@@ -25,4 +25,5 @@ internal object HousekeepingAudit {
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"
     const val ADJUST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.adjust"
+    const val PUBLISH_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.publish"
 }

@@ -51,13 +51,16 @@ class JdbcAssignmentPlanStore(
             jdbc
                 .sql(
                     """
-                    UPDATE housekeeping.assignment_plan SET status = :status, version = :version, updated_at = :now
+                    UPDATE housekeeping.assignment_plan SET status = :status, version = :version, updated_at = :now,
+                        published_at = :publishedAt, published_by = :publishedBy
                     WHERE id = :id AND version = :version - 1
                     """.trimIndent(),
                 ).param("id", plan.id.value)
                 .param("status", plan.status.name)
                 .param("version", plan.version)
                 .param("now", plan.updatedAt.utc())
+                .param("publishedAt", plan.publishedAt?.utc())
+                .param("publishedBy", plan.publishedBy?.value)
                 .update()
         check(updated == 1) { "Plano ${plan.id} não gravado: versão ${plan.version - 1} não confere" }
         jdbc

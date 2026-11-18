@@ -451,6 +451,8 @@ class HousekeepingTaskGenerationTest {
             includePrevious: Boolean,
         ): List<HousekeepingTask> = error("fora do teste")
 
+        override fun update(task: HousekeepingTask): Unit = error("fora do teste")
+
         override fun hasOpenTaskFor(scheduledCleaningId: ScheduledCleaningId): Boolean =
             saved.any {
                 it.scheduledCleaningId == scheduledCleaningId &&
