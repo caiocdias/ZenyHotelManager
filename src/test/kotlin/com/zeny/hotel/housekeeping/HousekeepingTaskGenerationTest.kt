@@ -32,6 +32,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Instant
@@ -239,6 +240,42 @@ class HousekeepingTaskGenerationTest {
     }
 
     @Test
+    fun `a stayover only for a guest who arrived before the date, read after the departures`() {
+        val day = DailyScenario()
+        day.types()
+        val arrivedToday = ReservationId(UUID.randomUUID())
+        val arrivedRoom = RoomId(UUID.randomUUID())
+        val leaving = ReservationId(UUID.randomUUID())
+        val leavingRoom = RoomId(UUID.randomUUID())
+        every { rooms.activeRooms(null) } returns
+            listOf(day.staying, day.arriving, arrivedRoom, leavingRoom).map {
+                RoomSummary(it, "$it", null, roomType, emptySet(), true)
+            }
+        // Em [date] a reserva que chegou hoje já está hospedada (a geração rodou depois do check-in), mas a permanência
+        // olha só quem chegou até a véspera, menos quem sai na data.
+        every { reservations.inHouse(date) } returns listOf(day.guest, arrivedToday)
+        every { reservations.assignedRooms(listOf(day.guest, arrivedToday)) } returns
+            mapOf(day.guest to day.staying, arrivedToday to arrivedRoom)
+        every { reservations.inHouse(date.minusDays(1)) } returns listOf(day.guest, leaving)
+        every { reservations.assignedRooms(listOf(day.guest, leaving)) } returns
+            mapOf(day.guest to day.staying, leaving to leavingRoom)
+        every { reservations.pendingDepartures(date) } returns listOf(leaving)
+
+        generation.generateForDate(date)
+
+        store.saved.filter { it.source == TaskSource.STAYOVER }.map { it.roomId } shouldBe listOf(day.staying)
+        // As saídas são lidas antes das hospedadas: um check-out entre as leituras não vira permanência.
+        verifyOrder {
+            reservations.pendingDepartures(date)
+            reservations.inHouse(date.minusDays(1))
+        }
+        verifyOrder {
+            reservations.pendingDepartures(date)
+            reservations.inHouse(date)
+        }
+    }
+
+    @Test
     fun `with both types inactive and nothing due the day records no change`() {
         DailyScenario().types(stayoverActive = false, preArrivalActive = false)
 
@@ -268,9 +305,9 @@ class HousekeepingTaskGenerationTest {
     private inner class DailyScenario {
         val staying = RoomId(UUID.randomUUID())
         val arriving = RoomId(UUID.randomUUID())
+        val guest = ReservationId(UUID.randomUUID())
 
         init {
-            val guest = ReservationId(UUID.randomUUID())
             val arrival = ReservationId(UUID.randomUUID())
             every { rooms.activeRooms(null) } returns
                 listOf(
@@ -279,7 +316,7 @@ class HousekeepingTaskGenerationTest {
                 )
             every { rooms.status(staying) } returns status(staying, OccupancyStatus.OCCUPIED, HousekeepingStatus.DIRTY)
             every { rooms.status(arriving) } returns status(arriving, OccupancyStatus.VACANT, HousekeepingStatus.CLEAN)
-            every { reservations.inHouse(date) } returns listOf(guest)
+            every { reservations.inHouse(date.minusDays(1)) } returns listOf(guest)
             every { reservations.assignedRooms(listOf(guest)) } returns mapOf(guest to staying)
             every { reservations.pendingArrivals(date) } returns listOf(arrival)
             every { reservations.assignedRooms(listOf(arrival)) } returns mapOf(arrival to arriving)

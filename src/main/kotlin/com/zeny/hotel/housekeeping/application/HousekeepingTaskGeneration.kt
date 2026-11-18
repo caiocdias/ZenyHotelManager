@@ -80,11 +80,15 @@ class HousekeepingTaskGeneration(
      * 1. as das faxinas programadas ativas vencidas até a data, com o tipo e o id da faxina, num local ativo, fora de
      *    OOO/OOS e sem tarefa aberta da faxina (Review Focus 5); a que colide com uma tarefa já existente do mesmo
      *    (local, data, tipo) não gera, com log `INFO`;
-     * 2. as permanências (`STAYOVER`): as UHs ativas com hospedada que não sai na data (D9-E02, Review Focus 3);
+     * 2. as permanências (`STAYOVER`): as UHs ativas com hospedada que chegou antes da data e não sai nela (D9-E02,
+     *    Review Focus 3); a que chegou na data só a partir do dia seguinte;
      * 3. as pré-chegadas (`PRE_ARRIVAL`, D3-E02): as UHs ativas, fora de OOO/OOS, sem hospedada, não Sujas, com
      *    chegada alocada na data e sem tarefa (fora as `CANCELLED`) há menos de
      *    `zeny.housekeeping.pre-arrival-after-days` dias. A UH que o check-out sujou não recebe, qualquer que seja a
      *    ordem dos eventos (Review Focus 1).
+     *
+     * O OOO/OOS e o status de governança das UHs são os de agora (`RoomsApi.status`, na data operacional), não os de
+     * [date]: o listener sempre gera para a data corrente; numa chamada direta com data futura, valem os de hoje.
      *
      * Rodar de novo não duplica nada (Review Focus 2). A guarda do avanço atrasado (D10-E02) é do listener.
      */
@@ -152,7 +156,9 @@ class HousekeepingTaskGeneration(
 
     /**
      * O retrato do dia: as UHs ativas (na ordem de número), as com chegada prevista, as ocupadas pela `reservations`
-     * (hospedadas) e, delas, as que ficam (a hospedada não sai na data).
+     * (hospedadas na data, inclusive quem chegou nela) e as que ficam: a hospedada que chegou **antes** da data (em
+     * `inHouse(date - 1)`) e não sai nela. Quem fez o check-in na data não recebe permanência nela, mesmo com a geração
+     * rodando depois do check-in (reentrega atrasada do outbox, restart): a UH acabou de ser preparada para a chegada.
      */
     private class Day(
         val date: LocalDate,
@@ -163,14 +169,16 @@ class HousekeepingTaskGeneration(
     )
 
     private fun dayOf(date: LocalDate): Day {
-        val hosted = reservations.assignedRooms(reservations.inHouse(date))
+        // As saídas antes das hospedadas: um check-out entre as leituras some das duas, sem virar permanência.
         val departing = reservations.pendingDepartures(date).toSet()
+        val hosted = reservations.assignedRooms(reservations.inHouse(date))
+        val arrivedBefore = reservations.assignedRooms(reservations.inHouse(date.minusDays(1)))
         return Day(
             date,
             rooms.activeRooms().associateBy { it.id },
             arrivalsByRoom(date),
             hosted.values.toSet(),
-            hosted.filterKeys { it !in departing }.values.toSet(),
+            arrivedBefore.filterKeys { it !in departing }.values.toSet(),
         )
     }
 

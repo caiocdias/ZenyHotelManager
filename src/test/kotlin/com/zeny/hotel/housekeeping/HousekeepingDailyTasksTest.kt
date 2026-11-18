@@ -62,8 +62,9 @@ class HousekeepingDailyTasksTest(
 
     @Test
     fun `an in-house room gets a STAYOVER, a vacant room none, and a guest leaving on the date none`() {
-        val date = today
-        val (type, rooms) = reservations.inventory.roomTypeWithRooms(3, date)
+        // As hospedadas fazem o check-in hoje (D): a permanência começa em D+1 (I1 da revisão final).
+        val date = today.plusDays(1)
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(3, today)
         val plan = stays.planFor(type)
         stays.inHouse(type, plan, rooms[0], departure = date.plusDays(2))
         stays.inHouse(type, plan, rooms[2], departure = date.plusDays(1))
@@ -87,6 +88,21 @@ class HousekeepingDailyTasksTest(
         tasksOf(rooms[1]).shouldBeEmpty()
         // A hospedada que sai em D+1 tem permanência em D, mas não em D+1 (Review Focus 3).
         tasksOf(rooms[2]).map { it.date to it.source } shouldBe listOf(date to "STAYOVER")
+    }
+
+    @Test
+    fun `a guest checked in on the date gets no STAYOVER on it, only from the next date on`() {
+        val date = today
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(1, date)
+        stays.inHouse(type, stays.planFor(type), rooms[0], departure = date.plusDays(3))
+
+        // Mesmo com a geração do dia rodando depois do check-in (reentrega atrasada do outbox, I1): a UH acabou de
+        // ser preparada para a chegada. Em D+1, a hospedada chegou na véspera e recebe a permanência.
+        generation.generateForDate(date)
+        tasksOf(rooms[0]).shouldBeEmpty()
+        generation.generateForDate(date.plusDays(1))
+
+        tasksOf(rooms[0]).map { it.date to it.source } shouldBe listOf(date.plusDays(1) to "STAYOVER")
     }
 
     @Test
@@ -161,8 +177,9 @@ class HousekeepingDailyTasksTest(
 
     @Test
     fun `in the day list the room with an arrival comes before the stayover`() {
-        val date = today
-        val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, date)
+        // Em D+1: a hospedada do check-in de hoje já tem permanência, e a chegada de D+1 tem a pré-chegada.
+        val date = today.plusDays(1)
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, today)
         val plan = stays.planFor(type)
         stays.inHouse(type, plan, rooms[0], departure = date.plusDays(2))
         clean(rooms[1])
