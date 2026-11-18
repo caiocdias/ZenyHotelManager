@@ -358,6 +358,56 @@ paths:
       summary: Ajustar o plano do dia
       tags:
       - housekeeping
+  /api/v1/assignment-plans/{date}/publish:
+    post:
+      description: "Grava o rascunho nas tarefas: cada tarefa com camareira fica `ASSIGNED`,\
+        \ com a camareira e a posição (`assignedEmployeeId` e `assignmentPosition`,\
+        \ que um novo rascunho não muda); a sem camareira e a retirada (`ASSIGNED`\
+        \ da data do plano, ou de antes no plano da data operacional, fora do rascunho)\
+        \ voltam a `PENDING`. A tarefa que já andou (fora de `PENDING` e `ASSIGNED`)\
+        \ nunca é tocada: o item dela com a mesma camareira é ignorado, inclusive\
+        \ a posição, e o item que a passaria a outra camareira recusa a publicaçã\
+        o com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids das tarefas em `errors[].field`.\
+        \ O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`) só as camareiras\
+        \ com tarefa incluída ou removida; as não avisadas vêm em `notNotified`. Publica\
+        \ `housekeeping.assignment-plan` no tópico `housekeeping`. Exige `housekeeping.assignments.manage`.\
+        \ Exige o `If-Match` (ausente: 428; versão diferente, ou outra escrita numa\
+        \ tarefa durante a publicação: 412). A data vai da data operacional até 7\
+        \ dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID` (o plano\
+        \ de uma data que ficou para trás está congelado). Sem plano na data: 404\
+        \ `ASSIGNMENT_PLAN_NOT_FOUND`. Só recebe tarefa quem está na escala da data\
+        \ no setor de governança; fora dela, ou colaborador inexistente, 422 `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`.\
+        \ Nada é gravado quando a publicação é recusada."
+      operationId: publishAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanPublicationResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Publicar o plano do dia
+      tags:
+      - housekeeping
   /api/v1/assignment-plans/{date}/suggest:
     post:
       description: "Refaz o rascunho inteiro do plano da data (cria o plano se ainda\
@@ -14813,6 +14863,45 @@ components:
       - employeeId
       - position
       - taskId
+    AssignmentPlanPublicationResponse:
+      type: object
+      description: A publicação do plano do dia.
+      properties:
+        date:
+          type: string
+          format: date
+          description: A data operacional do plano.
+        id:
+          type: string
+          format: uuid
+          description: O plano publicado.
+        notNotified:
+          type: array
+          description: "As camareiras com tarefa incluída ou removida que não foram\
+            \ avisadas, e o motivo."
+          items:
+            $ref: "#/components/schemas/NotNotifiedResponse"
+        notified:
+          type: integer
+          format: int32
+          description: Quantas camareiras com tarefa incluída ou removida foram avisadas.
+        status:
+          type: string
+          description: O status do plano (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - DRAFT
+          - PUBLISHED
+        version:
+          type: integer
+          format: int64
+          description: A versão do plano depois da publicação (a mesma do `ETag`).
+      required:
+      - date
+      - id
+      - notNotified
+      - notified
+      - status
+      - version
     AssignmentPlanResponse:
       type: object
       description: O plano do dia da distribuição.
@@ -20982,6 +21071,19 @@ components:
             \ na data: até a data operacional, com chegada até a data (inclusive a\
             \ atrasada); numa data futura, só a que chega exatamente nela. Numa á\
             rea, sempre `false`."
+        assignedEmployeeId:
+          type: string
+          format: uuid
+          description: A camareira publicada pelo plano do dia; nula sem camareira
+            (sempre nula em `PENDING`).
+          nullable: true
+        assignmentPosition:
+          type: integer
+          format: int32
+          description: "A posição publicada na ordem de execução da camareira, de\
+            \ 1 em diante; nula sem camareira. Não muda com um novo rascunho do plano,\
+            \ só com a publicação seguinte."
+          nullable: true
         cleaningTypeId:
           type: string
           format: uuid
@@ -21689,6 +21791,24 @@ components:
       - packages
       - ratePlanId
       - roomAmount
+    NotNotifiedResponse:
+      type: object
+      description: Uma camareira que não foi avisada da mudança nas tarefas dela.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        reason:
+          type: string
+          description: "`NO_USER`: sem usuário vinculado; `NOT_DELIVERED`: o aviso\
+            \ não chegou ao painel (preferência desligada, usuário inativo ou que\
+            \ não recebe). Trate um valor desconhecido sem falhar."
+          x-extensible-enum:
+          - NO_USER
+          - NOT_DELIVERED
+      required:
+      - employeeId
+      - reason
     NotificationPreferenceRequest:
       type: object
       description: A preferência para um tipo.

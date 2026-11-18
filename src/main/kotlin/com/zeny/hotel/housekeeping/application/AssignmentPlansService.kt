@@ -259,8 +259,9 @@ class AssignmentPlansService(
      * versão (`412`); depois, sem gravar nada se alguma falhar:
      *
      * - **tarefa que já andou** (fora de `PENDING` e `ASSIGNED`, Review Focus 4): nunca é tocada. O item dela com a
-     *   mesma camareira (inclusive com outra posição) é ignorado; o item que a passaria a outra camareira (ou a deixaria
-     *   sem camareira) recusa a publicação inteira, `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE` com os ids em `errors[]`;
+     *   mesma camareira (inclusive com outra posição) é ignorado; o item que a passaria a outra camareira (ou a
+     *   deixaria sem camareira) recusa a publicação inteira, `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE` com os ids em
+     *   `errors[]`;
      * - **escala** (Review Focus 1): toda camareira que o rascunho faria receber uma tarefa precisa estar na escala da
      *   data (`422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`). Os `employeeIds` da sugestão não são reconferidos.
      *
@@ -272,6 +273,7 @@ class AssignmentPlansService(
      */
     @Audited(HousekeepingAudit.PUBLISH_ASSIGNMENT_PLAN)
     @Transactional
+    @Suppress("ThrowsCount") // uma recusa por motivo
     fun publish(
         date: LocalDate,
         expectedVersion: Long?,
