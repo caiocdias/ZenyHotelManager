@@ -12,7 +12,7 @@
 **Referência do comportamento já documentado:** pela H15, a execução anterior desta etapa, que partiu da mesma base `5e06f16`, se perdeu, e esta refaz o mesmo comportamento. A nota do brain `ZenyHotelManager - Módulo housekeeping` é a referência, **salvo a D8, que a H16 substitui**. Ver também `ZenyHotelManager - Módulo checklists`, `ZenyHotelManager - Arquitetura e estrutura de módulos`, `ZenyHotelManager - Schemas, migrações e views de relatório`, `ZenyHotelManager - Segurança, autenticação e autorização`, `ZenyHotelManager - Auditoria` e `ZenyHotelManager - Convenções de API`.
 
 **Architecture:**
-- **Módulo:** `com.zeny.hotel.housekeeping`, na camada Operação, com `allowedDependencies = ["shared", "hotel", "rooms", "checklists"]`, um subconjunto da linha §3.1, sem aresta nova. Usa `rooms` e `checklists` só pelas APIs públicas.
+- **Módulo:** `com.zeny.hotel.housekeeping`, na camada Operação. No fim da etapa, `allowedDependencies = ["shared", "hotel", "rooms", "checklists"]`, um subconjunto da linha §3.1, sem aresta nova; a declaração cresce por fatia (Global Constraints). Usa `rooms` e `checklists` só pelas APIs públicas.
 - **Camadas:** `domain` com os agregados e as regras; `application` com os casos de uso e as portas; `infrastructure` com escrita por JPA e leitura por `JdbcClient`; `web` com os controllers.
 - **Banco:** schema `housekeeping` próprio, com migrações e grants.
 - **Checklists:** a `ChecklistsApi` ganha `template(id)` para o vínculo do tipo ao modelo.
@@ -22,11 +22,17 @@
 **Riscos:**
 - **autenticação ou autorização:** as permissões novas `housekeeping.config.read`/`manage` e os modelos de papel (Tasks 1 e 3);
 - **concorrência:** desativar um tipo com faxinas ativas, criar ou reativar uma faxina num tipo que está sendo desativado (Task 3);
-- **parsing de entrada externa não confiável:** os corpos de criação e edição, com listas de créditos e nomes (Tasks 1 e 3).
+- **parsing de entrada externa não confiável:** os corpos de criação e edição, com listas de créditos, nomes e o `lastDoneOn` (Tasks 1 e 3);
+- **migração ou escrita destrutiva de dados:** 4 migrações Flyway com schema, CHECKs, índices únicos parciais, o trigger que recusa DELETE e a carga inicial com a `key` estável (D5). Esse formato não se desfaz depois de aplicado (Tasks 1 e 3).
 
 ## Global Constraints
 
-- Grafo e camadas da ARCHITECTURE §3.1; o `ModularityTest` exige exatamente as dependências declaradas, e o módulo novo ganha o seu teste.
+- Grafo e camadas da ARCHITECTURE §3.1. O `ModularityTest` exige que as dependências usadas sejam **exatamente** as declaradas, e o módulo novo ganha o seu teste. A declaração cresce por fatia, sempre dentro da linha §3.1:
+  - Task 1: `["shared", "rooms"]`;
+  - Task 2: acrescenta `"checklists"`;
+  - Task 3: acrescenta `"hotel"`.
+
+  O teste do módulo acompanha cada fatia com a igualdade exata. Nenhum uso artificial entra para passar o teste.
 - Migrações no schema `housekeeping`, com timestamp posterior a `V2026_11_14_1000` (`outOfOrder` desligado): `V2026_11_17_1000` em diante. A ordem e os grants seguem o padrão do `endofday` (`create_*` e depois `grant_*_to_app_role`). Não há `DELETE` pela API, e o banco recusa DELETE nas tabelas que só se desativam.
 - **H16:** uma referência inexistente no corpo dá **`400`** com código `…UNKNOWN_…`. Isso vale para tipo de UH, modelo de checklist, local e tipo de limpeza. Uma referência existente que fere uma regra (contexto incompatível, inativa, não publicada) dá `422`.
 - O contrato é regenerado com `./gradlew updateOpenApi` na mesma mudança e nunca editado à mão. Enum de resposta que cresce sai como `x-extensible-enum`. O `pattern` precisa ser válido em ECMA-262. `.github/scripts/check-api-breaking.sh` não pode acusar `ERR`.
@@ -43,7 +49,7 @@
 2. **Créditos duplicados ou fora de faixa no mesmo corpo:** o mesmo `roomTypeId` duas vezes, `credits` 0, negativo ou acima de 100, e lista enorme (acima de 200 itens) dão `400` no campo, e nada é gravado. Teste na Task 1.
 3. **Modelo de checklist vinculado e depois desativado ou despublicado:** o vínculo continua, e só o momento do vínculo confere ativo e publicado. Teste na Task 2.
 4. **Desativar o tipo enquanto outra transação cria ou reativa uma faxina nele:** nunca sobra faxina ativa num tipo inativo, com a trava sempre na ordem faxina → tipo. Teste de corrida na Task 3.
-5. **`lastDoneOn` no futuro ou faxina reativada com `nextDueOn` vencido:** `lastDoneOn` posterior à data operacional dá `422`. A reativação mantém o `nextDueOn` antigo, e a E02 decide se o recalcula. Testes na Task 3.
+5. **`lastDoneOn` no futuro, abaixo do piso do banco, ou faxina reativada com `nextDueOn` vencido:** `lastDoneOn` posterior à data operacional dá `422`. Um `lastDoneOn` anterior a `StorableRange.MIN_DATE` (`-4712-01-01`; o pgjdbc o gravaria como `-infinity`) dá `400 VALIDATION_FAILED`, com `lastDoneOn` no campo (`INVALID_VALUE`). A reativação mantém o `nextDueOn` antigo, e a E02 decide se o recalcula. Testes na Task 3.
 
 ## Decisões herdadas (H15: refazer o comportamento documentado)
 
@@ -65,7 +71,9 @@ Valem como requisito. Um achado novo volta ao orquestrador, sem decisão de quem
 - **D6:** um tipo ativo sem crédito para um tipo de UH ativo aparece em `missingCreditRoomTypeIds`. Crédito para tipo de UH desativado é aceito.
 - **D7:** `nextDueOn = lastDoneOn + frequencyDays` ou, sem `lastDoneOn`, a data operacional (`HotelApi.currentBusinessDate()`). O `recordDone` do domínio nunca faz o `lastDoneOn` voltar (a E04 o usa).
 - **Faixas:** prioridade de 1 a 5; enxoval de 1 a 60 noites ou nulo; `credits` de 1 a 100; até 200 créditos por corpo; `frequencyDays` de 1 a 365. Os nomes recusam NUL (`400 HOUSEKEEPING_DATA_INVALID`).
-- **Reativação** da faixa: mantém o `nextDueOn` antigo. O PUT que troca o tipo exige tipo ativo mesmo com a faxina inativa.
+- **Reativação** da faxina: mantém o `nextDueOn` antigo e confere, como a criação, que o tipo e o local estão ativos (decisão do orquestrador na revisão do plano). O PUT que troca o tipo exige tipo ativo mesmo com a faxina inativa.
+- **Enxoval nulo** (`linenChangeEveryNights`) significa "sem regra de troca por noites", com troca só a pedido. A descrição do campo no contrato diz isso.
+- **Fica com a E02:** o N de "UH vaga há N dias" da pré-chegada, e o que gerar para um tipo da carga desativado.
 
 ---
 
@@ -96,28 +104,30 @@ O vínculo ao modelo de checklist é da Task 2: nesta fatia, o campo existe e s�
   - em nenhum desses casos algo é gravado (Review Focus 2).
 
   Verificação: `timeout 900 ./gradlew test --tests '*CleaningTypesApi*'`.
-- **Aviso de crédito faltante:** um tipo ativo sem crédito para um tipo de UH ativo devolve o id em `missingCreditRoomTypeIds`. Um tipo de UH criado depois aparece na próxima leitura (Review Focus 1).
-- **Carga inicial:** `HousekeepingSchemaTest` confere os seis tipos da tabela D5, com o `TURNDOWN` inativo. A `key` não muda por `PUT` (`updatable=false`), e o banco recusa DELETE em `cleaning_type`. Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingSchemaTest'`.
+- **Aviso de crédito faltante** (`CleaningTypesApiTest`): um tipo ativo sem crédito para um tipo de UH ativo devolve o id em `missingCreditRoomTypeIds`. Um tipo de UH criado depois aparece na próxima leitura (Review Focus 1). Verificação: `timeout 900 ./gradlew test --tests '*CleaningTypesApiTest'`.
+- **Carga inicial e banco:** `HousekeepingSchemaTest` confere:
+  - os seis tipos da tabela D5, com o `TURNDOWN` inativo;
+  - a `key` não muda por `PUT` (`updatable=false`), e há um índice único parcial em `system_key` (onde não é nulo), para a E02 buscar o tipo pela `key`;
+  - o banco recusa DELETE em `cleaning_type`, que entra em `NO_DELETE_TABLES` do `DatabaseRolesTest`. O papel da aplicação mantém DELETE só em `cleaning_type_credit`, porque o `PUT` substitui os créditos. Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingSchemaTest'`.
 - **Permissões e auditoria** (`HousekeepingPermissionsTest`):
   - sem `housekeeping.config.manage`, a escrita dá `403`; sem `housekeeping.config.read`, a leitura dá `403`;
-  - a autorização vem antes de `404`/`409`;
-  - as duas permissões são só de escopo `ALL`, não sensíveis, e entram nos modelos Gerente e Governanta;
+  - a autorização vem antes de `404`/`409` e antes dos `400 …UNKNOWN_…` e dos `422`, que revelariam se um tipo de UH, modelo ou local existe;
+  - as duas permissões são só de escopo `ALL`, não sensíveis, e entram nos modelos Gerente e Governanta pelo próprio objeto de permissões do módulo (`PermissionDefinition.templates`, como em `ChecklistsPermissions.kt`) e pelo `@Bean ModulePermissions` no `application`, sem editar `iam` nem `shared`;
   - os testes que fixam os grants dos modelos de papel (`AuthorizationTest` e afins) são atualizados;
   - cada escrita grava a trilha `housekeeping.cleaning-type.<create|update|deactivate|reactivate>`.
 
   Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingPermissionsTest' --tests 'com.zeny.hotel.iam.*'`.
-- **Módulos:** o `ModularityTest` declara o módulo novo com `["shared", "hotel", "rooms", "checklists"]`, e o `DatabaseRolesTest` conhece as tabelas novas. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest' --tests '*DatabaseRolesTest'`.
-- **Contrato:** `api/openapi.yaml` regenerado, com a tag `housekeeping` e `key` como `x-extensible-enum`. `./gradlew checkOpenApi` e `lint` verdes.
+- **Módulos:** o `ModularityTest` declara o módulo novo com `["shared", "rooms"]`, em igualdade exata, e o `DatabaseRolesTest` conhece as tabelas novas. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest' --tests '*DatabaseRolesTest'`.
+- **Contrato:** `api/openapi.yaml` regenerado, com a tag `housekeeping`, `key` como `x-extensible-enum` e a descrição do enxoval nulo. Verificação: `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
 - `src/main/kotlin/com/zeny/hotel/housekeeping/`: `HousekeepingModule.kt`, `HousekeepingPermissions.kt`, `HousekeepingTypes.kt`, `domain/CleaningType.kt`, `application/CleaningTypesService.kt`, `infrastructure/CleaningTypePersistence.kt` e `web/CleaningTypesController.kt`;
 - `src/main/resources/db/migration/housekeeping/` (`V2026_11_17_1000__create_cleaning_types.sql` e `V2026_11_17_1001__grant_cleaning_types_to_app_role.sql`);
-- o registro das permissões nos modelos de papel, onde o projeto já registra os de outros módulos;
 - `api/openapi.yaml`.
 
 Testes: `src/test/kotlin/com/zeny/hotel/housekeeping/` e os testes de grants e módulos citados.
 
-**Tamanho:** ~60 min; 10 arquivos de produção, sendo 2 SQL e o contrato gerado.
+**Tamanho:** ~60 min; 10 arquivos de produção, sendo 2 SQL e o contrato gerado. O campo do modelo de checklist entra nesta fatia como UUID opcional, que só aceita `null`; o tipo `ChecklistTemplateId` só aparece na Task 2.
 
 **Depende de:** nenhuma.
 
@@ -127,6 +137,7 @@ Testes: `src/test/kotlin/com/zeny/hotel/housekeeping/` e os testes de grants e m
 - `HousekeepingErrorCodes`, com os códigos desta fatia;
 - `HousekeepingPermissions.CONFIG_READ = "housekeeping.config.read"` e `CONFIG_MANAGE = "housekeeping.config.manage"`;
 - a porta `CleaningTypeStore`, com `forUpdate(id: CleaningTypeId): CleaningType?`, que faz `SELECT … FOR NO KEY UPDATE` (a Task 3 a usa para a trava);
+- a porta `CleaningTypeStore`, também com `hasActiveSchedules(id: CleaningTypeId): Boolean`. Na Task 1 ela devolve `false`, e a Task 3 a implementa contra `scheduled_cleaning`;
 - tabela `housekeeping.cleaning_type`, com `id`, `system_key`, `code`, `name`, `requires_inspection`, `default_priority`, `linen_change_every_nights`, `checklist_template_id` (sem FK entre schemas), `active` e `version`;
 - tabela `housekeeping.cleaning_type_credit`, com `cleaning_type_id`, `room_type_id` e `credits`.
 
@@ -144,18 +155,18 @@ Testes: `src/test/kotlin/com/zeny/hotel/housekeeping/` e os testes de grants e m
   - modelo válido é gravado, e `null` remove o vínculo.
 
   Verificação: `timeout 900 ./gradlew test --tests '*CleaningTypesChecklistLinkTest'`.
-- Um modelo vinculado que depois é desativado continua vinculado, e a leitura do tipo não falha (Review Focus 3).
-- O KDoc do tipo registra a precedência da E04 (D1).
-- `ModularityTest`, `checkOpenApi` e `lint` verdes.
+- Um modelo vinculado que depois é desativado continua vinculado, e a leitura do tipo não falha (Review Focus 3). Teste em `CleaningTypesChecklistLinkTest`; verificação: `timeout 900 ./gradlew test --tests '*CleaningTypesChecklistLinkTest'`.
+- O KDoc do tipo registra a precedência da E04 (D1); quem confere é a revisão da tarefa.
+- O `ModularityTest` passa a declarar `["shared", "rooms", "checklists"]`, em igualdade exata. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
 - `src/main/kotlin/com/zeny/hotel/checklists/ChecklistsApi.kt` e a implementação no `application` do `checklists`;
-- `src/main/kotlin/com/zeny/hotel/housekeeping/` (`application/CleaningTypesService.kt`, `HousekeepingTypes.kt`, `web/CleaningTypesController.kt`, se o campo mudar de descrição);
+- `src/main/kotlin/com/zeny/hotel/housekeeping/` (`HousekeepingModule.kt`, `application/CleaningTypesService.kt`, `HousekeepingTypes.kt` e `web/CleaningTypesController.kt`, se o campo mudar de descrição);
 - `api/openapi.yaml`.
 
 Testes: no `checklists` e `src/test/kotlin/com/zeny/hotel/housekeeping/CleaningTypesChecklistLinkTest.kt`.
 
-**Tamanho:** ~35 min; 5 arquivos de produção.
+**Tamanho:** ~35 min; 6 arquivos de produção.
 
 **Depende de:** Task 1.
 
@@ -172,7 +183,8 @@ Testes: no `checklists` e `src/test/kotlin/com/zeny/hotel/housekeeping/CleaningT
   - `POST /api/v1/scheduled-cleanings` com `roomId` **ou** `areaId` (exatamente um), `cleaningTypeId`, `frequencyDays` e `lastDoneOn` opcional dá `201`, com `nextDueOn = lastDoneOn + frequencyDays` ou, sem `lastDoneOn`, a data operacional;
   - `PUT /{id}` com `If-Match` muda só `cleaningTypeId` e `frequencyDays` e recalcula `nextDueOn`;
   - `/deactivate` e `/reactivate` funcionam;
-  - `GET` lista por cursor (`nextDueOn`, `id`), com o filtro `active`.
+  - `GET` lista por cursor (`nextDueOn`, `id`), com o filtro `active`;
+  - o `201` traz `Location` e `ETag`, e `GET /{id}` devolve a faxina com `ETag`.
 
   Verificação: `timeout 900 ./gradlew test --tests '*ScheduledCleaningsApiTest'`.
 - **Recusas** (`ScheduledCleaningsAttackTest`):
@@ -182,25 +194,28 @@ Testes: no `checklists` e `src/test/kotlin/com/zeny/hotel/housekeeping/CleaningT
   - tipo inativo dá `422 CLEANING_TYPE_INACTIVE`;
   - `lastDoneOn` depois da data operacional dá `422 SCHEDULED_CLEANING_LAST_DONE_IN_FUTURE`;
   - uma segunda faxina ativa no mesmo (local, tipo) dá `409 SCHEDULED_CLEANING_ALREADY_EXISTS`, pelo índice único parcial;
-  - `frequencyDays` fora de 1..365 dá `400` no campo.
+  - `frequencyDays` fora de 1..365 dá `400` no campo;
+  - `lastDoneOn` anterior a `-4712-01-01` dá `400 VALIDATION_FAILED`, com `lastDoneOn` no campo (Review Focus 5).
+
+  Verificação: `timeout 900 ./gradlew test --tests '*ScheduledCleaningsAttackTest'`.
 - **Desativação do tipo:** desativar um tipo com faxina ativa dá `422 CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`. O teste de corrida (Review Focus 4) desativa o tipo enquanto outra transação cria ou reativa uma faxina nele, e nunca sobra faxina ativa em tipo inativo. Verificação: `timeout 900 ./gradlew test --tests '*ScheduledCleanings*' --tests '*CleaningTypes*'`.
-- **Reativação:** a faxina reativada mantém o `nextDueOn` antigo (Review Focus 5). O `recordDone` do domínio tem teste de unidade: nunca faz o `lastDoneOn` voltar.
-- **Permissões e auditoria:** `housekeeping.config.read`/`manage`, como na Task 1, e trilha `housekeeping.scheduled-cleaning.<create|update|deactivate|reactivate>`. O banco recusa DELETE em `scheduled_cleaning`.
-- `ModularityTest`, `DatabaseRolesTest`, `checkOpenApi` e `lint` verdes.
+- **Reativação** (`ScheduledCleaningsApiTest`): a faxina reativada mantém o `nextDueOn` antigo, e a reativação com tipo ou local inativo dá `422` (Review Focus 5). O `recordDone` tem teste de unidade (`ScheduledCleaningDomainTest`): nunca faz o `lastDoneOn` voltar. Verificação: `timeout 900 ./gradlew test --tests '*ScheduledCleaningsApiTest' --tests '*ScheduledCleaningDomainTest'`.
+- **Permissões e auditoria** (`HousekeepingPermissionsTest`): `housekeeping.config.read`/`manage`, como na Task 1, com a autorização antes de `400`/`404`/`409`/`422`, e a trilha `housekeeping.scheduled-cleaning.<create|update|deactivate|reactivate>`. O banco recusa DELETE em `scheduled_cleaning` (`NO_DELETE_TABLES`). Verificação: `timeout 900 ./gradlew test --tests '*HousekeepingPermissionsTest' --tests '*DatabaseRolesTest'`.
+- O `ModularityTest` passa a declarar `["shared", "hotel", "rooms", "checklists"]`, em igualdade exata. Verificação: `timeout 900 ./gradlew test --tests 'com.zeny.hotel.ModularityTest'` e `timeout 900 ./gradlew checkOpenApi lint`.
 
 **Áreas tocadas:**
-- `src/main/kotlin/com/zeny/hotel/housekeeping/`: `domain/ScheduledCleaning.kt`, `application/ScheduledCleaningsService.kt`, `infrastructure/ScheduledCleaningPersistence.kt`, `web/ScheduledCleaningsController.kt`, e `application/CleaningTypesService.kt` para a regra de desativação;
+- `src/main/kotlin/com/zeny/hotel/housekeeping/`: `HousekeepingModule.kt`, `HousekeepingTypes.kt` (`ScheduledCleaningId` e os códigos `SCHEDULED_CLEANING_*`, `CLEANING_TYPE_INACTIVE` e `CLEANING_TYPE_HAS_ACTIVE_SCHEDULES`), `domain/ScheduledCleaning.kt`, `application/ScheduledCleaningsService.kt`, `infrastructure/ScheduledCleaningPersistence.kt`, `web/ScheduledCleaningsController.kt`, `application/CleaningTypesService.kt` (regra de desativação) e `infrastructure/CleaningTypePersistence.kt` (`hasActiveSchedules`);
 - `src/main/resources/db/migration/housekeeping/` (`V2026_11_17_1002__create_scheduled_cleanings.sql` e `V2026_11_17_1003__grant_scheduled_cleanings_to_app_role.sql`);
 - `api/openapi.yaml`.
 
 Testes: em `src/test/kotlin/com/zeny/hotel/housekeeping/`.
 
-**Tamanho:** ~60 min; 8 arquivos de produção, sendo 2 SQL e o contrato gerado.
+**Tamanho:** ~60 min; 11 arquivos de produção, sendo 2 SQL e o contrato gerado.
 
-**Depende de:** Task 1.
+**Depende de:** Task 1 e Task 2. As duas mexem em `CleaningTypesService.kt`, `HousekeepingTypes.kt` e `api/openapi.yaml`, então a execução é em série.
 
 **Interfaces:**
-- Consome: `CleaningTypeId`, `CleaningTypeStore.forUpdate` e as permissões (Task 1); `RoomsApi.room(id)`/`area(id)` e `HotelApi.currentBusinessDate()`.
+- Consome: `CleaningTypeId`, `CleaningTypeStore.forUpdate` e `hasActiveSchedules`, que esta fatia implementa, e as permissões (Task 1); `RoomsApi.room(id)`/`area(id)` e `HotelApi.currentBusinessDate()`.
 - Produz:
   - `ScheduledCleaningId`;
   - a porta `ScheduledCleaningStore`;
