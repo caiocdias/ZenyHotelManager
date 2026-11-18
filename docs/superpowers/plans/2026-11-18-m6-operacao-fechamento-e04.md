@@ -105,6 +105,12 @@ Decisões do orquestrador, sob a autorização noturna do usuário. Todas revis�
   - na publicação de um plano, o item de uma tarefa `DONE` ou `CANCELLED` é ignorado, e a publicação não é recusada. É ruling do orquestrador: com a execução, a saída do hóspede entre a sugestão e a publicação deixaria de travar a governanta;
   - o CHECK `ASSIGNED ⇒ camareira` **não** é endurecido nesta etapa, porque um teste do testador grava `ASSIGNED` sem camareira. A nota segue.
 
+## Revisão de arquitetura
+
+- **Veredito: bloqueado na rodada 0** (`revisor-arquitetura`, modelo opus), com 1 Crítico e 8 Importantes. O resumo está na seção "E04" do roadmap.
+- **Plano não executado.** Por decisão do usuário em 2026-11-18 (H18), a E04 volta a `#pendente` para o `arquiteto` dividi-la.
+- Este texto fica como ponto de partida, e as decisões D1 a D11 não valem como tomadas.
+
 ---
 
 ### Task 1: Máquina de estados e ações online
