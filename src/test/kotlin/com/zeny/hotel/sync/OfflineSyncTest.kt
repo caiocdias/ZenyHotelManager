@@ -13,7 +13,6 @@ import com.zeny.hotel.rooms.RoomsTestSupport
 import com.zeny.hotel.shared.PermissionScope
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.PermissionScope.OWN
-import com.zeny.hotel.shared.StorableRange
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.UuidV7Generator
 import com.zeny.hotel.shared.infrastructure.sync.OfflineCommandPurgeJob
@@ -523,25 +522,35 @@ class OfflineSyncTest(
         }
     }
 
-    /** O `occurredAt` e o `deviceClock` do envelope também passam pela faixa: fora dela o lote é `400` no campo. */
+    /**
+     * O envelope (`occurredAt` e `deviceClock`) mantém o formato estrito, mas fica fora da faixa do `StorableRange`
+     * (M6 E20): um instante absurdo é `REJECTED DEVICE_TIME_INVALID` só naquele comando, e o resto do lote segue.
+     */
     @Test
-    fun `an occurredAt or deviceClock outside the storable range makes the whole batch 400 on the field`() {
+    fun `an envelope instant outside the storable range rejects only that command with DEVICE_TIME_INVALID`() {
         val writer = iam.createUserWith(notesRead(ALL), notesWrite())
-        val command = command(SyncExample.RECORD, mapOf("text" to "faixa do relógio"))
+        val valid = command(SyncExample.RECORD, mapOf("text" to "válido no lote"))
+        val tooLate = command(SyncExample.RECORD, mapOf("text" to "occurredAt fora da faixa"))
+        val tooEarly = command(SyncExample.RECORD, mapOf("text" to "deviceClock fora da faixa"))
+        val bodies =
+            listOf(
+                tooLate.body() + ("occurredAt" to "+294277-01-01T00:00:00Z"),
+                valid.body(),
+                tooEarly.body() + ("deviceClock" to "-4713-12-31T23:59:59Z"),
+            )
 
-        listOf("occurredAt", "deviceClock").forEach { field ->
-            listOf("+294277-01-01T00:00:00Z", "-4713-12-31T23:59:59Z").forEach { value ->
-                val body = mapOf("commands" to listOf(command.body() + (field to value)))
-                val response = with(iam) { call(POST, "/api/v1/sync/commands", auth(writer), body) }
-                withClue("$field = $value: ${response.getContentAsString(Charsets.UTF_8)}") {
-                    response.status shouldBe 400
-                    val errors = iam.json(response)["errors"].values()
-                    errors.map { "${it["field"].asString()}:${it["code"].asString()}" } shouldBe
-                        listOf("commands[0].$field:INVALID_FORMAT")
-                }
-            }
-        }
-        noteCount(command.id()) shouldBe 0
+        val results =
+            with(iam) { call(POST, "/api/v1/sync/commands", auth(writer), mapOf("commands" to bodies)).ok() }["results"]
+                .values()
+                .toList()
+
+        results.map { it["status"].asString() } shouldContainExactly listOf("REJECTED", "APPLIED", "REJECTED")
+        results.map { it["code"]?.asString() }.filter { it?.isNotEmpty() == true } shouldContainExactly
+            listOf("DEVICE_TIME_INVALID", "DEVICE_TIME_INVALID")
+        noteCount(tooLate.id()) shouldBe 0
+        noteCount(valid.id()) shouldBe 1
+        noteCount(tooEarly.id()) shouldBe 0
+        storedCommand(tooLate.id()) shouldBe 0
     }
 
     @Test
@@ -700,8 +709,7 @@ class OfflineSyncTest(
         val writer = iam.createUserWith(notesRead(ALL), notesWrite())
         val recorded = command(SyncExample.RECORD, mapOf("text" to "conhecido"))
         send(auth(writer), recorded).single()["status"].asString() shouldBe "APPLIED"
-        // Absurdo, mas dentro do StorableRange: fora dele o lote inteiro é 400 já na leitura (M6 E20).
-        val absurd = Instant.parse("-4000-01-01T00:00:00Z")
+        val absurd = Instant.parse("-300000-01-01T00:00:00Z")
 
         val replay = send(auth(writer), recorded.copy(deviceClock = absurd, occurredAt = absurd)).single()
         replay["status"].asString() shouldBe "APPLIED"
@@ -725,9 +733,8 @@ class OfflineSyncTest(
     fun `device times outside the plausible range are refused with a stable code`() {
         val writer = iam.createUserWith(notesRead(ALL), notesWrite())
         val now = clock.instant()
-        // Dentro do StorableRange: fora dele o lote inteiro é 400 já na leitura (M6 E20), como no teste seguinte.
-        val farPast = Instant.parse("-4000-01-01T00:00:00Z")
-        val nearMin = StorableRange.MIN_INSTANT
+        val farPast = Instant.parse("-300000-01-01T00:00:00Z")
+        val nearMin = Instant.MIN.plusSeconds(1)
         val farAhead = now.plus(Duration.ofDays(400))
         val beforeProduct = Instant.parse("2019-12-31T23:59:59Z")
         val results =

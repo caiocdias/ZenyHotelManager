@@ -2,6 +2,7 @@ package com.zeny.hotel.shared.infrastructure.json
 
 import com.fasterxml.jackson.annotation.JsonFormat
 import com.zeny.hotel.shared.StorableRange
+import com.zeny.hotel.shared.UnboundedInstant
 import org.springframework.boot.jackson.autoconfigure.JsonMapperBuilderCustomizer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -9,6 +10,7 @@ import tools.jackson.core.JsonParser
 import tools.jackson.core.JsonToken
 import tools.jackson.core.Version
 import tools.jackson.databind.BeanDescription
+import tools.jackson.databind.BeanProperty
 import tools.jackson.databind.DeserializationConfig
 import tools.jackson.databind.DeserializationContext
 import tools.jackson.databind.JacksonModule
@@ -37,6 +39,10 @@ import java.util.UUID
  * A recusa é um erro de leitura no campo, que a API devolve como `400 VALIDATION_FAILED` com `INVALID_FORMAT`, e a
  * mensagem não repete o valor recebido. `null` e o campo ausente não passam por aqui e seguem como antes. A escrita
  * não muda.
+ *
+ * Exceção, só para o envelope de sincronização offline: o [Instant] de uma propriedade marcada com
+ * [UnboundedInstant] mantém o formato estrito e perde a checagem de faixa, para o comando fora do plausível ser
+ * recusado por comando (`DEVICE_TIME_INVALID`) e não derrubar o lote.
  *
  * Duas camadas nas datas: o [StrictScalar] confere o token e o texto antes de entregar ao deserializador do Jackson,
  * e a `leniency = false` nos dois tipos deixa esse deserializador também no modo estrito, como segunda barreira.
@@ -67,7 +73,7 @@ private interface ScalarRule {
 private fun isoRule(
     format: DateTimeFormatter,
     name: String,
-    inRange: (Any?) -> Boolean,
+    inRange: (Any?) -> Boolean = { true },
 ) = object : ScalarRule {
     override val expected = "o texto ISO-8601 de $name"
 
@@ -90,13 +96,17 @@ private val INT_RULE =
         override fun accepts(parser: JsonParser): Boolean = !parser.hasToken(JsonToken.VALUE_NUMBER_FLOAT)
     }
 
+private val INSTANT_RULE = isoRule(DateTimeFormatter.ISO_INSTANT, "Instant") { StorableRange.contains(it as Instant) }
+
+/** O [Instant] só no formato, sem a faixa: o das propriedades marcadas com [UnboundedInstant]. */
+private val UNBOUNDED_INSTANT_RULE = isoRule(DateTimeFormatter.ISO_INSTANT, "Instant")
+
 /** A regra por tipo. */
 private val RULES: Map<Class<*>, ScalarRule> =
     mapOf(
         LocalDate::class.java to
             isoRule(DateTimeFormatter.ISO_LOCAL_DATE, "LocalDate") { StorableRange.contains(it as LocalDate) },
-        Instant::class.java to
-            isoRule(DateTimeFormatter.ISO_INSTANT, "Instant") { StorableRange.contains(it as Instant) },
+        Instant::class.java to INSTANT_RULE,
         LocalTime::class.java to
             object : ScalarRule {
                 override val expected = "a hora HH:mm ou HH:mm:ss"
@@ -139,11 +149,28 @@ private class StrictScalarModule : JacksonModule() {
     }
 }
 
-/** Só deixa passar ao deserializador do Jackson o que a [rule] aceita. A recusa não repete o valor recebido. */
+/**
+ * Só deixa passar ao deserializador do Jackson o que a [rule] aceita. A recusa não repete o valor recebido. Numa
+ * propriedade marcada com [UnboundedInstant], o [Instant] perde só a checagem de faixa.
+ */
 private class StrictScalar(
     delegate: ValueDeserializer<*>,
     private val rule: ScalarRule,
 ) : DelegatingDeserializer(delegate) {
+    override fun createContextual(
+        context: DeserializationContext,
+        property: BeanProperty?,
+    ): ValueDeserializer<*> {
+        val contextual = super.createContextual(context, property)
+        return if (contextual is StrictScalar && rule === INSTANT_RULE &&
+            property?.getAnnotation(UnboundedInstant::class.java) != null
+        ) {
+            StrictScalar(contextual.getDelegatee(), UNBOUNDED_INSTANT_RULE)
+        } else {
+            contextual
+        }
+    }
+
     override fun newDelegatingInstance(newDelegatee: ValueDeserializer<*>): ValueDeserializer<*> =
         StrictScalar(newDelegatee, rule)
 
