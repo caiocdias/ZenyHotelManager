@@ -16787,7 +16787,8 @@ components:
         credits:
           type: array
           description: "Créditos por tipo de UH (até 200, cada tipo de UH uma vez\
-            \ só)."
+            \ só). Obrigatório, para que a edição nunca zere os créditos por omissã\
+            o: sem créditos, envie a lista vazia."
           items:
             $ref: "#/components/schemas/CleaningCreditRequest"
           maxItems: 200

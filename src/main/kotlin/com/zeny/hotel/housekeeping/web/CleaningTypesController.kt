@@ -180,12 +180,16 @@ data class CleaningTypeRequest(
         nullable = true,
     )
     val checklistTemplateId: UUID? = null,
-    @field:Schema(description = "Créditos por tipo de UH (até 200, cada tipo de UH uma vez só).")
+    @field:Schema(
+        description =
+            "Créditos por tipo de UH (até 200, cada tipo de UH uma vez só). Obrigatório, para que a edição nunca " +
+                "zere os créditos por omissão: sem créditos, envie a lista vazia.",
+    )
     @field:Size(max = MAX_CREDITS)
     val credits: List<
         @NotNull @Valid
         CleaningCreditRequest,
-    > = emptyList(),
+    >,
 ) {
     fun toCommand() =
         CleaningTypeCommand(

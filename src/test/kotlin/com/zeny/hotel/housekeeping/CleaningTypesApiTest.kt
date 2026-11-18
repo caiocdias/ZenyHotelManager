@@ -290,6 +290,53 @@ class CleaningTypesApiTest(
     }
 
     @Test
+    fun `omitting credits is a validation error on POST and PUT, while an explicit empty list is accepted`() {
+        val roomType = rooms.createRoomType()
+        val code = housekeeping.uniqueCode("OM")
+        val existing =
+            housekeeping.createCleaningType(
+                housekeeping.cleaningTypeBody(credits = listOf(housekeeping.credit(roomType, 2))),
+            )
+        val path = "$CLEANING_TYPES/$existing"
+        val existingCode = with(iam) { admin(GET, path).ok() }["code"].asString()
+
+        with(iam) {
+            val created =
+                admin(POST, CLEANING_TYPES, housekeeping.cleaningTypeBody(code = code) - "credits")
+                    .problem(400, "VALIDATION_FAILED")
+            created["errors"].values().map { it["field"].asString() to it["code"].asString() } shouldContain
+                ("credits" to "REQUIRED")
+            val updated =
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    housekeeping.cleaningTypeBody(code = existingCode) - "credits",
+                    ifMatch = "\"0\"",
+                ).problem(400, "VALIDATION_FAILED")
+            updated["errors"].values().map { it["field"].asString() to it["code"].asString() } shouldContain
+                ("credits" to "REQUIRED")
+        }
+        housekeeping.countByCode(code) shouldBe 0
+        housekeeping.etagOf(path) shouldBe "\"0\""
+        housekeeping.storedCredits(existing) shouldBe mapOf(roomType to 2)
+
+        // A lista vazia explícita continua aceita e, no PUT, tira os créditos.
+        val emptied =
+            with(iam) {
+                call(
+                    PUT,
+                    path,
+                    asAdmin(),
+                    housekeeping.cleaningTypeBody(code = existingCode, credits = emptyList()),
+                    ifMatch = "\"0\"",
+                ).ok()
+            }
+        emptied["credits"].isEmpty shouldBe true
+        housekeeping.storedCredits(existing) shouldBe emptyMap()
+    }
+
+    @Test
     fun `a null credit item is a validation error on POST and PUT, and nothing is written`() {
         val roomType = rooms.createRoomType()
         val code = housekeeping.uniqueCode("NC")
