@@ -42,7 +42,8 @@ private const val NOTES_DESCRIPTION =
         "documento, contato): a tarefa é vista por toda a governança."
 private const val ARRIVAL_DESCRIPTION =
     "Se a UH tinha chegada prevista na data: **retrato do momento da geração**. Alocação, cancelamento ou no-show " +
-        "posteriores não o atualizam. A avulsa nasce sem chegada prevista."
+        "posteriores não o atualizam. Chegada prevista é uma reserva confirmada com chegada até a data e a UH " +
+        "alocada; numa área, sempre `false`."
 
 /**
  * Tarefas de governança (RF-GOV-02, M6 E02): a lista do dia, a leitura e a solicitação avulsa da recepção. Consultar

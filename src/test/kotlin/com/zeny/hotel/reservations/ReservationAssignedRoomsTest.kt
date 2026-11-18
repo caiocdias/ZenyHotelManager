@@ -28,7 +28,7 @@ import java.util.UUID
 @Suppress("LongParameterList") // as portas que o teste usa
 class ReservationAssignedRoomsTest(
     @Autowired iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
+    @Autowired jdbc: JdbcClient,
     @Autowired private val hotelApi: HotelApi,
     @Autowired private val reservationsApi: ReservationsApi,
     @Autowired mockMvc: MockMvc,

@@ -323,6 +323,7 @@ internal object HousekeepingAudit {
     const val TASK = "housekeeping.task"
 
     const val REQUEST_TASK = "housekeeping.task.request"
+    const val GENERATE_TASK = "housekeeping.task.generate"
 }
 
 internal fun CleaningType.auditState(): Map<String, Any?> =

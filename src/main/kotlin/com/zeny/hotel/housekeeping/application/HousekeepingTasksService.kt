@@ -124,8 +124,8 @@ data class HousekeepingTaskView(
  * A avulsa, na ordem: o local exatamente um e as `notes` (`400`); o local (pela `RoomsApi`) e o tipo inexistentes, `400
  * …UNKNOWN_…` (H16); o local ou o tipo desativados, `422`; a data antes da operacional ou mais de [MAX_DAYS_AHEAD] dias
  * depois dela, `422`; uma tarefa já existente no mesmo (local, data, tipo), em qualquer status, `409` (D5-E02). Nasce
- * `PENDING`, `AD_HOC`, com a prioridade do tipo, os créditos do tipo para o tipo da UH (D2) e sem chegada prevista (a
- * Task 2 passa a calculá-la).
+ * `PENDING`, `AD_HOC`, com a prioridade do tipo, os créditos do tipo para o tipo da UH (D2) e a marca de chegada
+ * prevista na data da tarefa (D8-E02, [HousekeepingTaskGeneration.arrivalsByRoom]; numa área, sem marca).
  */
 @Service
 @Suppress("LongParameterList") // as portas que o caso de uso usa
@@ -133,6 +133,7 @@ class HousekeepingTasksService(
     private val store: HousekeepingTaskStore,
     private val cleaningTypes: CleaningTypeStore,
     private val rooms: RoomsApi,
+    private val generation: HousekeepingTaskGeneration,
     private val hotel: HotelApi,
     private val authorization: Authorization,
     private val actor: CurrentActor,
@@ -203,7 +204,7 @@ class HousekeepingTasksService(
                 location,
                 date,
                 TaskSource.AD_HOC,
-                arrivalExpected = false,
+                arrivalExpected = location is TaskLocation.Room && location.id in generation.arrivalsByRoom(date),
                 credits = HousekeepingTask.creditsFor(type, place.roomTypeId),
                 now = clock.instant(),
                 notes = notes,
