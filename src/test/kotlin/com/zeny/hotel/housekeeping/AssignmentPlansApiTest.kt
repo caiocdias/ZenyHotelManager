@@ -46,9 +46,9 @@ import java.util.UUID
 @Suppress("LongParameterList") // os apoios do contexto
 class AssignmentPlansApiTest(
     @Autowired private val iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
+    @Autowired jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
-    @Autowired private val staffApi: StaffApi,
+    @Autowired staffApi: StaffApi,
     @Autowired private val roomsApi: RoomsApi,
     @Autowired private val reservationsApi: ReservationsApi,
     @Autowired mockMvc: MockMvc,
@@ -95,9 +95,10 @@ class AssignmentPlansApiTest(
         val scheduled = plans.attendant(date)
         val dayOff = plans.attendant() // sem escala na data
         val otherDepartment = plans.attendant(date, department = plans.staff.createDepartment())
-        val task = housekeeping.createCleaningType().let {
-            id(housekeeping.requestTask(housekeeping.taskBody(it, housekeeping.createRoom(), date = "$date")))
-        }
+        val task =
+            housekeeping.createCleaningType().let {
+                id(housekeeping.requestTask(housekeeping.taskBody(it, housekeeping.createRoom(), date = "$date")))
+            }
 
         val all = with(iam) { plans.suggest(date, null).ok() }
         val employees = itemsOf(all).values.map { it.first }
@@ -186,14 +187,19 @@ class AssignmentPlansApiTest(
         unassignedOf(adjusted) shouldNotContain removed
         // As posições de cada camareira seguem de 1 a n.
         listOf(ana, bia).forEach { employee ->
-            itemsOf(adjusted).values.filter { it.first == employee }.map { it.second }.sorted() shouldBe
+            itemsOf(adjusted)
+                .values
+                .filter { it.first == employee }
+                .map { it.second }
+                .sorted() shouldBe
                 (1..itemsOf(adjusted).values.count { it.first == employee }).toList()
         }
         with(iam) { plans.plan(date).ok() } shouldBe adjusted
 
         // Um novo suggest sobre o plano existente exige If-Match.
         with(iam) {
-            iam.call(POST, "${AssignmentPlanTestSupport.PLANS}/$date/suggest", asAdmin(), mapOf("employeeIds" to null))
+            iam
+                .call(POST, "${AssignmentPlanTestSupport.PLANS}/$date/suggest", asAdmin(), mapOf("employeeIds" to null))
                 .problem(428, "PRECONDITION_REQUIRED")
         }
     }

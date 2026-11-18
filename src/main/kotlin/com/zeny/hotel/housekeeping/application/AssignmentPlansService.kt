@@ -179,7 +179,15 @@ class AssignmentPlansService(
             )
         }
         plan.adjust(
-            adjustment.items.map { AssignmentChange(it.taskId, it.employeeId?.let { id -> AttendantId(id.value) }, it.position) },
+            adjustment.items.map {
+                AssignmentChange(
+                    it.taskId,
+                    it.employeeId?.let { id ->
+                        AttendantId(id.value)
+                    },
+                    it.position,
+                )
+            },
             adjustment.remove.toSet(),
             clock.instant(),
         )
@@ -327,16 +335,15 @@ internal fun AssignmentPlan.auditState(): Map<String, Any?> =
             },
     )
 
-internal fun AssignmentPlan.view(): AssignmentPlanView {
-    val (assigned, unassigned) = items.partition { it.attendant != null }
-    return AssignmentPlanView(
+internal fun AssignmentPlan.view(): AssignmentPlanView =
+    AssignmentPlanView(
         id,
         businessDate,
         status,
         version,
-        assigned
-            .sortedWith(compareBy({ it.attendant!!.value }, { it.position }))
-            .map { AssignmentPlanItemView(it.taskId, EmployeeId(it.attendant!!.value), it.position) },
-        unassigned.sortedBy { it.position }.map { it.taskId },
+        items
+            .mapNotNull { item ->
+                item.attendant?.let { AssignmentPlanItemView(item.taskId, EmployeeId(it.value), item.position) }
+            }.sortedWith(compareBy({ it.employeeId.value }, { it.position })),
+        items.filter { it.attendant == null }.sortedBy { it.position }.map { it.taskId },
     )
-}

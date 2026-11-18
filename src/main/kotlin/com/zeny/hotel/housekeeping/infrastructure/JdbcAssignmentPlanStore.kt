@@ -105,44 +105,45 @@ class JdbcAssignmentPlanStore(
                 }.list()
         return row.plan(items)
     }
+}
 
-    private data class PlanRow(
-        val id: UUID,
-        val date: LocalDate,
-        val status: AssignmentPlanStatus,
-        val version: Long,
-        val createdAt: Instant,
-        val updatedAt: Instant,
-        val publishedAt: Instant?,
-        val publishedBy: UUID?,
-    ) {
-        fun plan(items: List<AssignmentPlanItem>) =
-            AssignmentPlan(
-                AssignmentPlanId(id),
-                date,
-                status,
-                version,
-                items,
-                createdAt,
-                updatedAt,
-                publishedAt,
-                publishedBy?.let(::UserId),
+private fun Instant.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
+
+/** Uma linha de `housekeeping.assignment_plan`. */
+private data class PlanRow(
+    val id: UUID,
+    val date: LocalDate,
+    val status: AssignmentPlanStatus,
+    val version: Long,
+    val createdAt: Instant,
+    val updatedAt: Instant,
+    val publishedAt: Instant?,
+    val publishedBy: UUID?,
+) {
+    fun plan(items: List<AssignmentPlanItem>) =
+        AssignmentPlan(
+            AssignmentPlanId(id),
+            date,
+            status,
+            version,
+            items,
+            createdAt,
+            updatedAt,
+            publishedAt,
+            publishedBy?.let(::UserId),
+        )
+
+    companion object {
+        fun of(rs: ResultSet) =
+            PlanRow(
+                rs.getObject("id", UUID::class.java),
+                rs.getObject("business_date", LocalDate::class.java),
+                AssignmentPlanStatus.valueOf(rs.getString("status")),
+                rs.getLong("version"),
+                rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
+                rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
+                rs.getObject("published_at", OffsetDateTime::class.java)?.toInstant(),
+                rs.getObject("published_by", UUID::class.java),
             )
-
-        companion object {
-            fun of(rs: ResultSet) =
-                PlanRow(
-                    rs.getObject("id", UUID::class.java),
-                    rs.getObject("business_date", LocalDate::class.java),
-                    AssignmentPlanStatus.valueOf(rs.getString("status")),
-                    rs.getLong("version"),
-                    rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
-                    rs.getObject("updated_at", OffsetDateTime::class.java).toInstant(),
-                    rs.getObject("published_at", OffsetDateTime::class.java)?.toInstant(),
-                    rs.getObject("published_by", UUID::class.java),
-                )
-        }
     }
-
-    private fun Instant.utc(): OffsetDateTime = atOffset(ZoneOffset.UTC)
 }

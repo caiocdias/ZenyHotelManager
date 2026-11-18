@@ -27,7 +27,7 @@ import java.util.UUID
 @Import(IamTestConfiguration::class)
 class AssignmentPlansAttackTest(
     @Autowired private val iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
+    @Autowired jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
     @Autowired staffApi: StaffApi,
 ) {
@@ -52,7 +52,7 @@ class AssignmentPlansAttackTest(
         }
 
     @Test
-    fun `an employee out of the schedule or unknown is 422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED, in suggest and PATCH`(): Unit =
+    fun `an employee out of the schedule or unknown is 422 EMPLOYEE_NOT_SCHEDULED, in suggest and PATCH`(): Unit =
         with(iam) {
             val date = hotel.currentBusinessDate().plusDays(7)
             val attendant = plans.attendant(date)
@@ -91,13 +91,21 @@ class AssignmentPlansAttackTest(
             refused.forEach { task ->
                 withClue(task) {
                     plans
-                        .adjust(date, mapOf("items" to listOf(mapOf("taskId" to task, "employeeId" to attendant))), etag)
-                        .problem(422, "ASSIGNMENT_TASK_NOT_ASSIGNABLE")
+                        .adjust(
+                            date,
+                            mapOf("items" to listOf(mapOf("taskId" to task, "employeeId" to attendant))),
+                            etag,
+                        ).problem(422, "ASSIGNMENT_TASK_NOT_ASSIGNABLE")
                 }
             }
             val unknown = mapOf("taskId" to UUID.randomUUID(), "employeeId" to attendant)
             plans.adjust(date, mapOf("items" to listOf(unknown)), etag).problem(400, "ASSIGNMENT_UNKNOWN_TASK")
-            plans.adjust(date, mapOf("remove" to listOf(UUID.randomUUID())), etag).problem(400, "ASSIGNMENT_UNKNOWN_TASK")
+            plans
+                .adjust(
+                    date,
+                    mapOf("remove" to listOf(UUID.randomUUID())),
+                    etag,
+                ).problem(400, "ASSIGNMENT_UNKNOWN_TASK")
             plans.etagOrNull(date) shouldBe etag
         }
 

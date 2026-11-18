@@ -43,11 +43,11 @@ tags:
   name: rates
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
-- description: "Autenticação, sessões por dispositivo e usuários."
-  name: iam
 - description: "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas\
     \ e tarefas."
   name: housekeeping
+- description: "Autenticação, sessões por dispositivo e usuários."
+  name: iam
 - description: Integração com a FNRH do Serpro.
   name: FNRH
 - description: "Tipos de UH, características, UHs e áreas comuns."
@@ -278,6 +278,135 @@ paths:
       summary: Reativar uma área comum
       tags:
       - rooms
+  /api/v1/assignment-plans/{date}:
+    get:
+      description: "Exige `housekeeping.tasks.read`. Sem plano na data: 404 `ASSIGNMENT_PLAN_NOT_FOUND`."
+      operationId: getAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar o plano do dia
+      tags:
+      - housekeeping
+    patch:
+      description: "Cada item de `items` leva a tarefa para a camareira (`employeeId`;\
+        \ nulo: fica no plano sem camareira) na posição dada (sem ela, no fim): move\
+        \ a tarefa que já está no plano ou acrescenta uma elegível, inclusive gerada\
+        \ depois da sugestão. `remove` tira tarefas do plano (diferente de deixá-las\
+        \ sem camareira). As posições de cada camareira voltam a ir de 1 a n. O plano\
+        \ volta a `DRAFT`. Exige `housekeeping.assignments.manage`. Exige o `If-Match`\
+        \ (ausente: 428; versão diferente: 412). A data vai da data operacional até\
+        \ 7 dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID` (o plano\
+        \ de uma data que ficou para trás está congelado). Sem plano na data: 404\
+        \ `ASSIGNMENT_PLAN_NOT_FOUND`. Tarefa inexistente: 400 `ASSIGNMENT_UNKNOWN_TASK`;\
+        \ tarefa que já andou (fora de `PENDING` e `ASSIGNED`) ou de outra data: 422\
+        \ `ASSIGNMENT_TASK_NOT_ASSIGNABLE`. Só recebe tarefa quem está na escala da\
+        \ data no setor de governança; fora dela, ou colaborador inexistente, 422\
+        \ `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Nenhuma mudança, ou a mesma tarefa\
+        \ duas vezes: 400 `HOUSEKEEPING_DATA_INVALID`."
+      operationId: adjustAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentAdjustRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Ajustar o plano do dia
+      tags:
+      - housekeeping
+  /api/v1/assignment-plans/{date}/suggest:
+    post:
+      description: "Refaz o rascunho inteiro do plano da data (cria o plano se ainda\
+        \ não há) e o deixa `DRAFT`; as tarefas só mudam na publicação. Entram as\
+        \ tarefas `PENDING` e `ASSIGNED` da data e, no plano da data operacional,\
+        \ também as de datas anteriores. A sugestão balanceia os créditos entre as\
+        \ camareiras escaladas (ou só as de `employeeIds`), agrupa por andar e põ\
+        e primeiro as UHs com chegada prevista (recalculada agora); a permanência\
+        \ de UH em \"Não perturbe\" fica sem camareira. Exige `housekeeping.assignments.manage`.\
+        \ A data vai da data operacional até 7 dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID`\
+        \ (o plano de uma data que ficou para trás está congelado). Só recebe tarefa\
+        \ quem está na escala da data no setor de governança; fora dela, ou colaborador\
+        \ inexistente, 422 `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Com o plano já existente,\
+        \ exige o `If-Match` (ausente: 428; versão diferente: 412)."
+      operationId: suggestAssignmentPlan
+      parameters:
+      - description: A data operacional do plano (YYYY-MM-DD).
+        in: path
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssignmentSuggestRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssignmentPlanResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Sugerir a distribuição das tarefas do dia
+      tags:
+      - housekeeping
   /api/v1/audit-entries:
     get:
       description: "Entradas da trilha, das mais recentes para as mais antigas, filtradas\
@@ -14618,6 +14747,127 @@ components:
       - kind
       - name
       - updatedAt
+    AssignmentAdjustRequest:
+      type: object
+      description: "O ajuste do plano: tarefas que vão para uma camareira e tarefas\
+        \ que saem do plano."
+      properties:
+        items:
+          type: array
+          description: As tarefas que vão para uma camareira (mover ou acrescentar).
+          items:
+            $ref: "#/components/schemas/AssignmentItemRequest"
+          maxItems: 500
+          minItems: 0
+          nullable: true
+        remove:
+          type: array
+          description: As tarefas que saem do plano.
+          items:
+            type: string
+            format: uuid
+            description: As tarefas que saem do plano.
+            nullable: true
+          maxItems: 500
+          minItems: 0
+          nullable: true
+    AssignmentItemRequest:
+      type: object
+      description: Uma tarefa que vai para uma camareira.
+      nullable: true
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+          description: "A camareira; nulo: a tarefa fica no plano sem camareira."
+          nullable: true
+        position:
+          type: integer
+          format: int32
+          description: "A posição na ordem da camareira, de 1 em diante; omita para\
+            \ o fim."
+          maximum: 1000
+          minimum: 1
+          nullable: true
+        taskId:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - taskId
+    AssignmentPlanItemResponse:
+      type: object
+      description: Uma tarefa do plano com camareira.
+      properties:
+        employeeId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          format: int32
+          description: "A posição na ordem de execução da camareira, de 1 em diante."
+        taskId:
+          type: string
+          format: uuid
+      required:
+      - employeeId
+      - position
+      - taskId
+    AssignmentPlanResponse:
+      type: object
+      description: O plano do dia da distribuição.
+      properties:
+        date:
+          type: string
+          format: date
+          description: A data operacional do plano.
+        id:
+          type: string
+          format: uuid
+        items:
+          type: array
+          description: "As tarefas com camareira, por camareira e posição (de 1 a\
+            \ n)."
+          items:
+            $ref: "#/components/schemas/AssignmentPlanItemResponse"
+        status:
+          type: string
+          description: O status do plano (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - DRAFT
+          - PUBLISHED
+        unassigned:
+          type: array
+          description: "As tarefas do plano sem camareira, na ordem da sugestão: sem\
+            \ camareira escalada ou permanência de UH em \"Não perturbe\"."
+          items:
+            type: string
+            format: uuid
+            description: "As tarefas do plano sem camareira, na ordem da sugestão:\
+              \ sem camareira escalada ou permanência de UH em \"Não perturbe\"."
+      required:
+      - date
+      - id
+      - items
+      - status
+      - unassigned
+    AssignmentSuggestRequest:
+      type: object
+      description: Os parâmetros da sugestão; o corpo pode faltar.
+      properties:
+        employeeIds:
+          type: array
+          description: Só estas camareiras recebem tarefas; precisam estar na escala
+            da data no setor de governança. Omita para todas as escaladas.
+          items:
+            type: string
+            format: uuid
+            description: Só estas camareiras recebem tarefas; precisam estar na escala
+              da data no setor de governança. Omita para todas as escaladas.
+            nullable: true
+          maxItems: 200
+          minItems: 0
+          nullable: true
     AttachGuestFileRequest:
       type: object
       description: O vínculo de um anexo já enviado (`POST /api/v1/files`) ao perfil.

@@ -39,16 +39,18 @@ class HousekeepingPermissionsTest(
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
 
     @Test
-    fun `the catalog has the four permissions, ALL only and not sensitive, config for manager and housekeeper`() {
+    fun `the catalog has the five permissions, ALL only and not sensitive, config for manager and housekeeper`() {
         HousekeepingPermissions.CONFIG_READ.value shouldBe "housekeeping.config.read"
         HousekeepingPermissions.CONFIG_MANAGE.value shouldBe "housekeeping.config.manage"
-        // As permissões das tarefas (E02) estão no HousekeepingTaskPermissionsTest.
+        // As permissões das tarefas (E02) estão no HousekeepingTaskPermissionsTest; a da distribuição (E03), no
+        // AssignmentPlanPermissionsTest.
         HousekeepingPermissions.permissions.map { it.code.value } shouldContainExactlyInAnyOrder
             listOf(
                 "housekeeping.config.read",
                 "housekeeping.config.manage",
                 "housekeeping.tasks.read",
                 "housekeeping.tasks.request",
+                "housekeeping.assignments.manage",
             )
         HousekeepingPermissions.permissions.forEach {
             withClue(it.code.value) {

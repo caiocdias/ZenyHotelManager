@@ -38,7 +38,8 @@ class AssignmentPlansServiceTest {
         val ana = employee("Ana")
         val bia = employee("Bia")
         val inactive = employee("Cida", active = false)
-        val staff = FakeStaff(listOf(reception, housekeeping), mapOf(housekeeping.id to listOf(ana, bia, inactive, ana)))
+        val staff =
+            FakeStaff(listOf(reception, housekeeping), mapOf(housekeeping.id to listOf(ana, bia, inactive, ana)))
 
         service(staff).scheduledAttendants(date) shouldContainExactly
             listOf(Attendant(AttendantId(ana.id.value), "Ana"), Attendant(AttendantId(bia.id.value), "Bia"))

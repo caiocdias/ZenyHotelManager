@@ -45,7 +45,7 @@ import javax.sql.DataSource
 @Suppress("LongParameterList") // os apoios do contexto
 class AssignmentPlanConcurrencyTest(
     @Autowired private val iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
+    @Autowired jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
     @Autowired private val context: ApplicationContext,
     @Autowired staffApi: StaffApi,
@@ -110,7 +110,9 @@ class AssignmentPlanConcurrencyTest(
     /** A primeira data da janela sem plano neste banco; sem nenhuma, falha com a explicação. */
     private fun freeDate(): LocalDate {
         val today = hotel.currentBusinessDate()
-        return (0L..WINDOW_DAYS).map { today.plusDays(it) }.firstOrNull { plans.etagOrNull(it) == null }
+        return (0L..WINDOW_DAYS)
+            .map { today.plusDays(it) }
+            .firstOrNull { plans.etagOrNull(it) == null }
             .shouldNotBeNull { "Todas as datas da janela ($today a +$WINDOW_DAYS) já têm plano no banco isolado." }
     }
 
@@ -162,7 +164,9 @@ class AssignmentPlanConcurrencyTest(
     ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(WAIT_SECONDS)
         while (blockedBy(holder) < expected) {
-            withClue("uma requisição de $date terminou sem esperar a trava") { futures.none { it.isDone } shouldBe true }
+            withClue(
+                "uma requisição de $date terminou sem esperar a trava",
+            ) { futures.none { it.isDone } shouldBe true }
             check(System.nanoTime() < deadline) { "As requisições não chegaram a esperar a sessão $holder" }
             Thread.sleep(POLL_MILLIS)
         }

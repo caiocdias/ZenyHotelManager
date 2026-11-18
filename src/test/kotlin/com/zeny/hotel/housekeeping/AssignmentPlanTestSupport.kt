@@ -34,7 +34,11 @@ class AssignmentPlanTestSupport(
     val staff = StaffTestSupport(iam)
 
     val housekeepingDepartment: UUID
-        get() = staffApi.departments().single { it.key == DepartmentKey.HOUSEKEEPING }.id.value
+        get() =
+            staffApi
+                .departments()
+                .single { it.key == DepartmentKey.HOUSEKEEPING }
+                .id.value
 
     /** Uma camareira nova no setor [department] (padrão: governança), escalada num turno do setor em [dates]. */
     fun attendant(
@@ -134,7 +138,8 @@ class AssignmentPlanTestSupport(
                     (UUID.fromString(it["employeeId"].asString()) to it["position"].asInt())
             }
 
-        fun unassignedOf(plan: JsonNode): List<UUID> = plan["unassigned"].values().map { UUID.fromString(it.asString()) }
+        fun unassignedOf(plan: JsonNode): List<UUID> =
+            plan["unassigned"].values().map { UUID.fromString(it.asString()) }
 
         /** As tarefas da camareira, na ordem de execução. */
         fun orderOf(

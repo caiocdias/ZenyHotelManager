@@ -65,8 +65,9 @@ class AssignmentPlansController(
                 "só mudam na publicação. Entram as tarefas `PENDING` e `ASSIGNED` da data e, no plano da data " +
                 "operacional, também as de datas anteriores. A sugestão balanceia os créditos entre as camareiras " +
                 "escaladas (ou só as de `employeeIds`), agrupa por andar e põe primeiro as UHs com chegada prevista " +
-                "(recalculada agora); a permanência de UH em \"Não perturbe\" fica sem camareira. $PLAN_MANAGE $PLAN_WINDOW " +
-                "$PLAN_SCHEDULE Com o plano já existente, exige o `If-Match` (ausente: 428; versão diferente: 412).",
+                "(recalculada agora); a permanência de UH em \"Não perturbe\" fica sem camareira. $PLAN_MANAGE " +
+                "$PLAN_WINDOW $PLAN_SCHEDULE Com o plano já existente, exige o `If-Match` (ausente: 428; versão " +
+                "diferente: 412).",
     )
     fun suggest(
         @Parameter(description = PLAN_DATE_PARAMETER) @PathVariable date: LocalDate,
@@ -91,14 +92,15 @@ class AssignmentPlansController(
         operationId = "adjustAssignmentPlan",
         summary = "Ajustar o plano do dia",
         description =
-            "Cada item de `items` leva a tarefa para a camareira (`employeeId`; nulo: fica no plano sem camareira) na " +
-                "posição dada (sem ela, no fim): move a tarefa que já está no plano ou acrescenta uma elegível, " +
-                "inclusive gerada depois da sugestão. `remove` tira tarefas do plano (diferente de deixá-las sem " +
-                "camareira). As posições de cada camareira voltam a ir de 1 a n. O plano volta a `DRAFT`. $PLAN_MANAGE " +
-                "Exige o `If-Match` (ausente: 428; versão diferente: 412). $PLAN_WINDOW Sem plano na data: 404 " +
-                "`ASSIGNMENT_PLAN_NOT_FOUND`. Tarefa inexistente: 400 `ASSIGNMENT_UNKNOWN_TASK`; tarefa que já " +
-                "andou (fora de `PENDING` e `ASSIGNED`) ou de outra data: 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`. " +
-                "$PLAN_SCHEDULE Nenhuma mudança, ou a mesma tarefa duas vezes: 400 `HOUSEKEEPING_DATA_INVALID`.",
+            "Cada item de `items` leva a tarefa para a camareira (`employeeId`; nulo: fica no plano sem " +
+                "camareira) na posição dada (sem ela, no fim): move a tarefa que já está no plano ou acrescenta uma " +
+                "elegível, inclusive gerada depois da sugestão. `remove` tira tarefas do plano (diferente de " +
+                "deixá-las sem camareira). As posições de cada camareira voltam a ir de 1 a n. O plano volta a " +
+                "`DRAFT`. $PLAN_MANAGE Exige o `If-Match` (ausente: 428; versão diferente: 412). $PLAN_WINDOW Sem " +
+                "plano na data: 404 `ASSIGNMENT_PLAN_NOT_FOUND`. Tarefa inexistente: 400 `ASSIGNMENT_UNKNOWN_TASK`; " +
+                "tarefa que já andou (fora de `PENDING` e `ASSIGNED`) ou de outra data: 422 " +
+                "`ASSIGNMENT_TASK_NOT_ASSIGNABLE`. $PLAN_SCHEDULE Nenhuma mudança, ou a mesma tarefa duas vezes: " +
+                "400 `HOUSEKEEPING_DATA_INVALID`.",
     )
     fun adjust(
         @Parameter(description = PLAN_DATE_PARAMETER) @PathVariable date: LocalDate,
@@ -122,15 +124,19 @@ data class AssignmentSuggestRequest(
     )
     val employeeIds: List<UUID?>? = null,
 ) {
-    fun employees(): List<EmployeeId>? = employeeIds?.let { ids -> ids.map { EmployeeId(it ?: throw nullId("employeeIds")) } }
+    fun employees(): List<EmployeeId>? =
+        employeeIds?.let { ids ->
+            ids.map {
+                EmployeeId(it ?: throw nullId("employeeIds"))
+            }
+        }
 }
 
 @Schema(description = "O ajuste do plano: tarefas que vão para uma camareira e tarefas que saem do plano.")
 data class AssignmentAdjustRequest(
-    @field:Valid
     @field:Size(max = MAX_CHANGES)
     @field:Schema(description = "As tarefas que vão para uma camareira (mover ou acrescentar).", nullable = true)
-    val items: List<AssignmentItemRequest?>? = null,
+    val items: List<@Valid AssignmentItemRequest?>? = null,
     @field:Size(max = MAX_CHANGES)
     @field:Schema(description = "As tarefas que saem do plano.", nullable = true)
     val remove: List<UUID?>? = null,

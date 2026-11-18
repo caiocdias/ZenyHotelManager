@@ -11,7 +11,8 @@ import com.zeny.hotel.shared.TemplateGrant
  * Permissões do módulo `housekeeping` (RF-ACS-02, M6 E01 a E03). A configuração da governança (tipos de limpeza e
  * faxinas programadas) e as tarefas não têm dono, então só aceitam o escopo `ALL`, e nenhuma é sensível. Sugestões aos
  * modelos (SPEC §3.1): o Gerente ("toda a operação") e a Governanta consultam e mantêm a configuração; o Gerente, a
- * Governanta e a Recepção consultam as tarefas e solicitam a avulsa; o Gerente e a Governanta distribuem as tarefas (E03).
+ * Governanta e a Recepção consultam as tarefas e solicitam a avulsa; o Gerente e a Governanta distribuem as tarefas
+ * (E03).
  */
 object HousekeepingPermissions : ModulePermissions {
     override val module = "housekeeping"
