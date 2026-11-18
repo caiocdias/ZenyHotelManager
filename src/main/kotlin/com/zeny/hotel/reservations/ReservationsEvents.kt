@@ -29,7 +29,7 @@ data class AvailabilityChanged(
  * (iguais no day use), para [adults] adultos e [children] crianças, vendida no [channel] pela [origin]. Publicado por
  * `reservations` pelo outbox na transação da criação, um por reserva. Só ids, datas, contagens e situações: nada de
  * hóspede, pedido especial nem preço (quem consome relê a reserva pela `ReservationsApi`). Escutado pela distribuição
- * (M8), pela FNRH (M5) e pela governança (M6).
+ * (M8) e pela FNRH (M5).
  */
 data class ReservationCreated(
     val reservationId: UUID,
@@ -80,7 +80,7 @@ data class ReservationChanged(
  * expiração a cancelou, sem multa), com a multa lançada na conta ([penaltyCharged]) ou isentada
  * ([penaltyWaived]). As unidades das noites a partir da data operacional voltaram ao inventário. Publicado por
  * `reservations` pelo outbox na transação do cancelamento. Sem hóspede, observação nem valores. Escutado pela
- * distribuição (M8) e pela governança (M6).
+ * distribuição (M8) e pela FNRH (M5).
  */
 data class ReservationCancelled(
     val reservationId: UUID,
@@ -142,7 +142,7 @@ data class ReservationConfirmed(
  * O check-in da reserva [reservationId] foi feito (SPEC §8.3, RF-REC-01): a reserva está `IN_HOUSE` na UH [roomId], do
  * tipo [roomTypeId], de [arrival] a [departure], com [guestCount] hóspedes ([adults] adultos e [children] crianças
  * reservados), na data operacional [businessDate]. Publicado por `reservations` pelo outbox na transação do check-in.
- * Escutado pela FNRH (M5 E08) e pela governança (M6).
+ * Escutado pela FNRH (M5 E08).
  */
 data class GuestCheckedIn(
     val reservationId: UUID,
@@ -164,7 +164,7 @@ data class GuestCheckedIn(
 /**
  * O check-in da reserva [reservationId] foi desfeito na mesma data operacional [businessDate] (SPEC §8.4, ação
  * sensível no `frontdesk`): a reserva voltou a `CONFIRMED`, com a UH [roomId] ainda alocada. Publicado por
- * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08) e pela governança (M6).
+ * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08).
  */
 data class GuestCheckInUndone(
     val reservationId: UUID,
@@ -180,7 +180,8 @@ data class GuestCheckInUndone(
  * O check-out da reserva [reservationId] foi feito (SPEC §8.3, RF-REC-06) na data operacional [businessDate]: a
  * reserva está `CHECKED_OUT` e a alocação da UH [roomId] foi encerrada. No check-out antecipado ([early]), a saída
  * passou de [previousDeparture] a [departure] e as noites seguintes voltaram ao inventário. Publicado por
- * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08) e pela governança (M6).
+ * `reservations` pelo outbox na transação. Escutado pela FNRH (M5 E08) e pela governança (M6 E02: a tarefa de saída
+ * na UH, na [businessDate]).
  */
 data class GuestCheckedOut(
     val reservationId: UUID,

@@ -55,6 +55,20 @@ class JdbcRoomAssignmentStore(
             .optional()
             .orElse(null)
 
+    override fun activeRooms(reservationIds: Collection<ReservationId>): Map<ReservationId, RoomId> {
+        if (reservationIds.isEmpty()) return emptyMap()
+        return jdbc
+            .sql(
+                "SELECT reservation_id, room_id FROM reservations.room_assignment " +
+                    "WHERE reservation_id IN (:ids) AND released_at IS NULL",
+            ).param("ids", reservationIds.map { it.value }.distinct())
+            .query { rs, _ ->
+                ReservationId(rs.getObject("reservation_id", UUID::class.java)) to
+                    RoomId(rs.getObject("room_id", UUID::class.java))
+            }.list()
+            .toMap()
+    }
+
     override fun history(reservationId: ReservationId): List<RoomAssignmentSummary> =
         jdbc
             .sql(
