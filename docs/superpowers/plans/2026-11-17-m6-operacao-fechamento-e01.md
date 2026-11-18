@@ -22,7 +22,7 @@
 **Riscos:**
 - **autenticação ou autorização:** as permissões novas `housekeeping.config.read`/`manage` e os modelos de papel (Tasks 1 e 3);
 - **concorrência:** desativar um tipo com faxinas ativas, criar ou reativar uma faxina num tipo que está sendo desativado (Task 3);
-- **parsing de entrada externa não confiável:** os corpos de criação e edição, com listas de créditos, nomes e o `lastDoneOn` (Tasks 1 e 3);
+- **parsing de entrada externa não confiável:** os corpos de criação e edição, com listas de créditos, nomes, o `checklistTemplateId` e o `lastDoneOn` (Tasks 1, 2 e 3);
 - **migração ou escrita destrutiva de dados:** 4 migrações Flyway com schema, CHECKs, índices únicos parciais, o trigger que recusa DELETE e a carga inicial com a `key` estável (D5). Esse formato não se desfaz depois de aplicado (Tasks 1 e 3).
 
 ## Global Constraints
@@ -74,6 +74,20 @@ Valem como requisito. Um achado novo volta ao orquestrador, sem decisão de quem
 - **Reativação** da faxina: mantém o `nextDueOn` antigo e confere, como a criação, que o tipo e o local estão ativos (decisão do orquestrador na revisão do plano). O PUT que troca o tipo exige tipo ativo mesmo com a faxina inativa.
 - **Enxoval nulo** (`linenChangeEveryNights`) significa "sem regra de troca por noites", com troca só a pedido. A descrição do campo no contrato diz isso.
 - **Fica com a E02:** o N de "UH vaga há N dias" da pré-chegada, e o que gerar para um tipo da carga desativado.
+
+## Revisão de arquitetura
+
+- **Veredito:** aprovado com notas na rodada 1 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 4 Importantes:
+  - o `ModularityTest` da Task 1 dependia de usos que só chegam nas Tasks 2 e 3;
+  - havia critérios sem teste nem comando;
+  - as Áreas e a dependência da Task 3 estavam incompletas;
+  - `Riscos:` não tinha migração, e faltava piso para o `lastDoneOn`.
+
+  Os 4 Importantes e os 5 Menores foram corrigidos em `6878467`.
+- **Notas Menores da rodada 1:**
+  - N1: a conferência do local ativo na reativação é regra nova em relação à execução perdida, e vai ao handoff como decisão;
+  - N2: a Task 2 entra no risco de parsing, já aplicado neste texto.
 
 ---
 
