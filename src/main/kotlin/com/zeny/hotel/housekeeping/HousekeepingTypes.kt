@@ -216,7 +216,8 @@ object HousekeepingErrorCodes {
 
     /**
      * 422: o colaborador não está na escala do setor de governança na data (ou fora dos `employeeIds` da sugestão).
-     * Um colaborador inexistente dá o mesmo código (D11-E03, exceção à H16: a `StaffApi` não busca colaborador por id).
+     * Um colaborador inexistente dá o mesmo código (D11-E03, exceção à H16: a validação é pela escala da data e não
+     * distingue colaborador inexistente de não escalado).
      */
     val ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED = ErrorCode("ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED")
 
