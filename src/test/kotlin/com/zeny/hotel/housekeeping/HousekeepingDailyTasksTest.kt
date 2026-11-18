@@ -18,6 +18,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Import
@@ -86,6 +87,33 @@ class HousekeepingDailyTasksTest(
         tasksOf(rooms[1]).shouldBeEmpty()
         // A hospedada que sai em D+1 tem permanência em D, mas não em D+1 (Review Focus 3).
         tasksOf(rooms[2]).map { it.date to it.source } shouldBe listOf(date to "STAYOVER")
+    }
+
+    @Test
+    fun `the trail of the generated stayover and pre-arrival carries no guest nor reservation data`() {
+        val date = today
+        val (type, rooms) = reservations.inventory.roomTypeWithRooms(2, date)
+        val plan = stays.planFor(type)
+        val suffix = UUID.randomUUID().toString().takeLast(SUFFIX_LENGTH)
+        val (staying, stayingHolder) =
+            stays.inHouse(type, plan, rooms[0], departure = date.plusDays(2), name = "Hóspede Fica $suffix")
+        clean(rooms[1])
+        val (arriving, arrivingHolder) = stays.reservation(type, plan, arrival = date, name = "Hóspede Chega $suffix")
+        assign(arriving, rooms[1])
+
+        generation.generateForDate(date)
+
+        val stayover = tasksOn(rooms[0], date).single()
+        val preArrival = tasksOn(rooms[1], date).single()
+        stayover.source shouldBe "STAYOVER"
+        preArrival.source shouldBe "PRE_ARRIVAL"
+        // RN-13: só ids do local e do tipo, a data e a origem; nada do hóspede nem da reserva.
+        listOf(stayover.id, preArrival.id).forEach { task ->
+            val trail = generateTrail(task)
+            listOf(suffix, stayingHolder.toString(), arrivingHolder.toString(), staying.value.toString())
+                .plus(arriving.value.toString())
+                .forEach { trail shouldNotContain it }
+        }
     }
 
     // --- Pré-chegada ----------------------------------------------------------------------------------------------
@@ -425,6 +453,16 @@ class HousekeepingDailyTasksTest(
             .query(UUID::class.java)
             .single()
 
+    /** O retrato (antes e depois) da entrada `housekeeping.task.generate` da tarefa, como texto. */
+    private fun generateTrail(task: UUID): String =
+        jdbc
+            .sql(
+                "SELECT coalesce(before_state::text, '') || coalesce(after_state::text, '') FROM audit.audit_entry " +
+                    "WHERE action = 'housekeeping.task.generate' AND entity_id = :id",
+            ).param("id", task.toString())
+            .query(String::class.java)
+            .single()
+
     /** A tarefa tem uma entrada `housekeeping.task.generate` na trilha, com o ator sistema. */
     private fun generatedBySystem(task: UUID): Boolean =
         jdbc
@@ -434,4 +472,8 @@ class HousekeepingDailyTasksTest(
             ).param("id", task.toString())
             .query(Int::class.java)
             .single() == 1
+
+    private companion object {
+        const val SUFFIX_LENGTH = 12
+    }
 }

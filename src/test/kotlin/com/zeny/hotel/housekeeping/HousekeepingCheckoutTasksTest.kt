@@ -28,6 +28,9 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * As tarefas de saída geradas pelos eventos (M6 E02, Task 2; RF-GOV-02): o check-out e a troca de UH reais, pela
@@ -127,6 +130,31 @@ class HousekeepingCheckoutTasksTest(
         val task = tasksOf(room.value).single()
         task.source shouldBe "CHECKOUT"
         task.arrivalExpected shouldBe false
+        housekeeping.auditActions("housekeeping.task", task.id) shouldBe listOf("housekeeping.task.generate")
+    }
+
+    @Test
+    fun `concurrent deliveries of the same check-out create one task, one trail entry and no exception`() {
+        val room = RoomId(housekeeping.createRoom())
+        val start = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(CONCURRENT_DELIVERIES)
+        val results =
+            try {
+                val futures =
+                    (1..CONCURRENT_DELIVERIES).map {
+                        pool.submit<Boolean> {
+                            start.await()
+                            generation.generateCheckout(room, today, TaskSource.CHECKOUT)
+                        }
+                    }
+                start.countDown()
+                futures.map { it.get(TIMEOUT_SECONDS, TimeUnit.SECONDS) }
+            } finally {
+                pool.shutdownNow()
+            }
+
+        results.count { it } shouldBe 1
+        val task = tasksOf(room.value).single()
         housekeeping.auditActions("housekeeping.task", task.id) shouldBe listOf("housekeeping.task.generate")
     }
 
@@ -233,5 +261,6 @@ class HousekeepingCheckoutTasksTest(
 
     private companion object {
         const val TIMEOUT_SECONDS = 30L
+        const val CONCURRENT_DELIVERIES = 4
     }
 }
