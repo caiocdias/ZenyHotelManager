@@ -439,10 +439,11 @@ sequenceDiagram
 
 ## 10. Tempo real
 
-- Endpoint `GET /api/v1/stream?topics=rooms,tasks,tabs,production,notifications,end-of-day`, via SSE.
+- Endpoint `GET /api/v1/stream?topics=rooms,housekeeping,tasks,tabs,production,notifications,end-of-day`, via SSE.
 - O payload é mínimo (`type`, `id`, `version`): o cliente aplica a mudança ou rebusca o recurso.
 - Os eventos são filtrados por permissão e escopo do usuário conectado.
 - O tópico `notifications` é pessoal: não exige permissão, e cada usuário recebe só as mensagens das próprias notificações.
+- O tópico `housekeeping` (M6 E03, D9-E03) exige `housekeeping.tasks.read`. Leva `housekeeping.assignment-plan` (o `id` e a versão do plano do dia) só na publicação do plano; a sugestão e o ajuste não publicam. A E04 o reaproveita para as mensagens das tarefas de governança.
 - Reconexão com `Last-Event-ID`, a partir de um buffer circular em memória. Se o ID já saiu do buffer, o servidor responde `reset` e o cliente recarrega.
 - O broadcaster roda em processo, já que há uma única instância. Se um dia houver mais de uma, o caminho é PostgreSQL `LISTEN/NOTIFY`.
 - **Segundo SSE, o do agente de impressão** (M5 E10): `GET /api/v1/print-agents/me/jobs/stream`, autenticado pelo token do agente (§8.1). Ele **não usa o broadcaster em processo**: o `Last-Event-ID` é a posição persistida do job (sem buffer em memória) e cada conexão consulta a fila no banco a cada `zeny.printing.delivery-poll-interval` (1 s): a entrega e a reivindicação (`FOR UPDATE SKIP LOCKED`) valem com uma ou várias instâncias, mas o registro de conexões (um stream por agente, o limite de long-polls, o despejo e o encerramento na parada) fica em memória e vale por instância. Alternativas descartadas: um sinal em memória no `afterCommit` com consulta de segurança (dois caminhos de entrega para testar, sem ganho para um hotel) e o `LISTEN/NOTIFY` (peça nova de runtime e conexão dedicada). O formato do evento e o protocolo estão em §14.

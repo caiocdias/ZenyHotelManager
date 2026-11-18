@@ -445,7 +445,8 @@ class AssignmentPlanPublishTest(
         jdbc
             .sql(
                 "SELECT action, before_state::text AS before, after_state::text AS after FROM audit.audit_entry " +
-                    "WHERE entity_type = 'housekeeping.task' AND entity_id = :id AND action LIKE 'housekeeping.assignment-plan.%' " +
+                    "WHERE entity_type = 'housekeeping.task' AND entity_id = :id " +
+                    "AND action LIKE 'housekeeping.assignment-plan.%' " +
                     "ORDER BY occurred_at, id",
             ).param("id", task.toString())
             .query { rs, _ ->
