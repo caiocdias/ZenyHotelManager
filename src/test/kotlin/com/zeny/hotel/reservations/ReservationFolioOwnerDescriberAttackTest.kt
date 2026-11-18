@@ -345,7 +345,18 @@ class ReservationFolioOwnerDescriberAttackTest(
         value: Int,
     ): Int = bytes.count { it.toInt() == value }
 
-    private fun auditCount(): Long = jdbc.sql("SELECT count(*) FROM audit.audit_entry").query(Long::class.java).single()
+    /**
+     * As entradas da trilha dos módulos que a descrição e o PDF da conta exercem. Os listeners assíncronos de outros
+     * módulos (a geração de tarefas da governança, as rotinas de checklist) gravam entradas depois de avanços de data
+     * de outros testes, e uma contagem global cairia entre as duas leituras.
+     */
+    private fun auditCount(): Long =
+        jdbc
+            .sql(
+                "SELECT count(*) FROM audit.audit_entry WHERE split_part(action, '.', 1) IN " +
+                    "('reservations', 'billing', 'guests', 'printing', 'files', 'frontdesk')",
+            ).query(Long::class.java)
+            .single()
 
     private companion object {
         const val SUFFIX_LENGTH = 12

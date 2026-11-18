@@ -163,7 +163,16 @@ class BusinessDateTest(
             .optional()
             .orElse(null)
 
-    private fun auditCount(): Int = jdbc.sql("SELECT count(*) FROM audit.audit_entry").query(Int::class.java).single()
+    /**
+     * As entradas da trilha do próprio `hotel`: os listeners assíncronos de outros módulos (a geração de tarefas da
+     * governança, as rotinas de checklist) gravam entradas depois de avanços de data de outros testes, e uma contagem
+     * global cairia entre as duas leituras.
+     */
+    private fun auditCount(): Int =
+        jdbc
+            .sql("SELECT count(*) FROM audit.audit_entry WHERE action LIKE 'hotel.%' OR entity_type LIKE 'hotel.%'")
+            .query(Int::class.java)
+            .single()
 
     private fun lastAuditAction(): String =
         jdbc
