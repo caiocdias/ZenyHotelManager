@@ -18,9 +18,10 @@ import kotlin.random.Random
  * A sugestão da distribuição (M6 E03, Task 1; D4-E03, D5-E03 e Review Focus 2), sem Spring: só as camareiras dadas
  * recebem tarefas; a diferença de créditos entre a mais e a menos carregada nunca passa do maior crédito de uma tarefa;
  * os andares inteiros ficam com uma camareira quando isso já cumpre o limite; as chegadas vêm primeiro; o DND tira só a
- * `STAYOVER`; a saída não depende da ordem da entrada; e o algoritmo termina em todos os casos (`@Timeout`).
+ * `STAYOVER`; a saída não depende da ordem da entrada; e o algoritmo termina em todos os casos (`@Timeout` em outra
+ * thread, que interrompe o teste mesmo com o laço sem ponto de interrupção).
  */
-@Timeout(10)
+@Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class AssignmentSuggesterTest {
     private var nextTask = 0L
 
@@ -65,6 +66,17 @@ class AssignmentSuggesterTest {
         scenarios.forEach { (name, input) ->
             withClue(name) { assertBalanced(input.first, input.second) }
         }
+    }
+
+    @Test
+    fun `a spread exactly equal to the largest credit keeps the whole floors`() {
+        val first = floor("1", 5, 5)
+        val second = floor("2", 3, 2)
+
+        val suggestion = AssignmentSuggester.suggest(first + second, listOf(ana, bia))
+
+        suggestion.byAttendant shouldBe
+            mapOf(ana.id to first.map { it.taskId }, bia.id to second.map { it.taskId })
     }
 
     @Test
@@ -163,6 +175,33 @@ class AssignmentSuggesterTest {
             shuffled shouldBe expected
             shuffled.byAttendant.keys.toList() shouldBe expected.byAttendant.keys.toList()
         }
+    }
+
+    @Test
+    fun `two tasks in the same room are ordered by id, whatever the input order`() {
+        val first = task(floor = "1", credits = 2, source = TaskSource.STAYOVER, room = "101")
+        val second = task(floor = "1", credits = 3, source = TaskSource.SCHEDULED, room = "101")
+        val other = task(floor = "2", credits = 4, room = "201")
+        val tasks = listOf(second, other, first)
+        val expected = AssignmentSuggester.suggest(tasks, listOf(ana, bia))
+
+        expected.byAttendant.values.single { first.taskId in it } shouldContainExactly
+            listOf(first.taskId, second.taskId)
+        val random = Random(11)
+        repeat(SHUFFLES) {
+            AssignmentSuggester.suggest(tasks.shuffled(random), listOf(bia, ana)) shouldBe expected
+        }
+    }
+
+    @Test
+    fun `a repeated attendant id is one attendant, and every task is still assigned`() {
+        val tasks = floor("1", 4, 2) + floor("2", 3)
+
+        val suggestion = AssignmentSuggester.suggest(tasks, listOf(ana, ana.copy(name = "Zuleica")))
+
+        suggestion.byAttendant.keys shouldBe setOf(ana.id)
+        suggestion.byAttendant.getValue(ana.id).shouldContainExactlyInAnyOrder(tasks.map { it.taskId })
+        suggestion.unassigned.shouldBeEmpty()
     }
 
     @Test
