@@ -21,9 +21,10 @@ import java.util.UUID
  *
  * - **Escopo:** com `ALL`, todas; com `OWN`, só as da camareira vinculada ao usuário (`StaffApi.employeeOfUser`,
  *   filtrando por `assigned_employee_id`, a única fonte da posse atual). Usuário sem colaborador não recebe nenhuma.
- *   A tarefa que sai da camareira (reatribuída ou retirada) vai a ela como *tombstone* gravado pela publicação do plano.
- * - **Itens:** as tarefas abertas ([OPEN]), de qualquer data (o cursor é a posição, não a data), com a `version` que é o
- *   `ETag` do `If-Match` online; as demais (`PENDING`, `AWAITING_INSPECTION`, `DONE`, `CANCELLED`) vão como
+ *   A tarefa que sai da camareira (reatribuída ou retirada) vai a ela como *tombstone* gravado pela publicação do
+ *   plano.
+ * - **Itens:** as tarefas abertas ([OPEN]), de qualquer data (o cursor é a posição, não a data), com a `version` que
+ *   é o `ETag` do `If-Match` online; as demais (`PENDING`, `AWAITING_INSPECTION`, `DONE`, `CANCELLED`) vão como
  *   *tombstone*. Sem as `notes` (texto livre da recepção) nem dado de hóspede ou de reserva (RN-13).
  */
 @Component

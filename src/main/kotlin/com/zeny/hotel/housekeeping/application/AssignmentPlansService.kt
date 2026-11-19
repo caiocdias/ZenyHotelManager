@@ -270,10 +270,10 @@ class AssignmentPlansService(
      * Grava em cada tarefa do rascunho a camareira e a posição (`ASSIGNED`), ou a volta a `PENDING` sem camareira; a
      * tarefa já igual ao item não muda. A tarefa **retirada** (D7-E03: `ASSIGNED`, dentro do conteúdo do plano pela
      * D2-E03 e fora do rascunho) volta a `PENDING`. Uma falha otimista numa tarefa (outra escrita chegou antes) dá
-     * `412`. A tarefa que passa a uma camareira grava a posse ([HousekeepingTaskStore.recordAssignment], D3-E19); a que sai de uma
-     * camareira (reatribuída ou retirada) vai como *tombstone* da fonte offline `housekeeping-tasks` ao usuário dela
-     * (D6-E19). O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída ou removida
-     * (não a que só mudou de posição) e publica a mensagem no tópico `housekeeping`.
+     * `412`. A tarefa que passa a uma camareira grava a posse ([HousekeepingTaskStore.recordAssignment], D3-E19); a
+     * que sai de uma camareira (reatribuída ou retirada) vai como *tombstone* da fonte offline `housekeeping-tasks` ao
+     * usuário dela (D6-E19). O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída
+     * ou removida (não a que só mudou de posição) e publica a mensagem no tópico `housekeeping`.
      */
     @Audited(HousekeepingAudit.PUBLISH_ASSIGNMENT_PLAN)
     @Transactional

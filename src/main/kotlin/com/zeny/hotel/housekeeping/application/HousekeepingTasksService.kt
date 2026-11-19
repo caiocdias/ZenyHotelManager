@@ -58,7 +58,8 @@ data class TaskFilter(
     val source: TaskSource? = null,
 )
 
-/** Persistência das tarefas de governança, na transação corrente. */
+/** Persistência das tarefas de governança e da posse delas (D3-E19), na transação corrente. */
+@Suppress("TooManyFunctions") // uma operação por método; a posse fica junto da tarefa
 interface HousekeepingTaskStore {
     fun task(id: HousekeepingTaskId): HousekeepingTask?
 

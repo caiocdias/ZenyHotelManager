@@ -34,8 +34,9 @@ import java.util.UUID
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)
+@Suppress("LongParameterList") // os apoios do contexto
 class AssignmentPlanOwnershipTest(
-    @Autowired private val iam: IamTestSupport,
+    @Autowired iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
     @Autowired private val store: HousekeepingTaskStore,
@@ -90,7 +91,8 @@ class AssignmentPlanOwnershipTest(
                 jdbc
                     .sql(
                         "SELECT a.employee_id, a.assigned_at = t.updated_at AS same_instant " +
-                            "FROM housekeeping.task_assignment a JOIN housekeeping.housekeeping_task t ON t.id = a.task_id " +
+                            "FROM housekeeping.task_assignment a " +
+                            "JOIN housekeeping.housekeeping_task t ON t.id = a.task_id " +
                             "WHERE a.task_id = :task",
                     ).param("task", task)
                     .query { rs, _ -> rs.getObject(1, UUID::class.java) to rs.getBoolean(2) }

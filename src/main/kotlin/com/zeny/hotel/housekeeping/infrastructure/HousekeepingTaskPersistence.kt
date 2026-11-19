@@ -32,6 +32,7 @@ interface HousekeepingTaskJpaRepository : JpaRepository<HousekeepingTask, UUID>
  * `housekeeping`; o *tombstone* de escopo pela porta `OfflineTombstones` do `shared`.
  */
 @Component
+@Suppress("TooManyFunctions") // a porta das tarefas e da posse delas (D3-E19): uma operação por método
 class JpaHousekeepingTaskStore(
     private val entityManager: EntityManager,
     private val jdbc: JdbcClient,
@@ -176,7 +177,8 @@ class JpaHousekeepingTaskStore(
     ): Boolean =
         jdbc
             .sql(
-                "SELECT EXISTS (SELECT 1 FROM $TASK_ASSIGNMENT_TABLE WHERE task_id = :task AND employee_id = :employee)",
+                "SELECT EXISTS (SELECT 1 FROM $TASK_ASSIGNMENT_TABLE " +
+                    "WHERE task_id = :task AND employee_id = :employee)",
             ).param("task", taskId.value)
             .param("employee", employeeId.value)
             .query(Boolean::class.java)
