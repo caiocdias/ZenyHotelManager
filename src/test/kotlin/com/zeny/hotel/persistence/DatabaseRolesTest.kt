@@ -294,6 +294,7 @@ class DatabaseRolesTest(
                 "housekeeping.lost_and_found_item",
                 "housekeeping.damage_report",
                 "maintenance.work_order",
+                "maintenance.work_order_attachment",
             )
     }
 }

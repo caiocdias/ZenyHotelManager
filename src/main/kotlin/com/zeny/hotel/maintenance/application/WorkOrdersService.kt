@@ -99,6 +99,36 @@ data class NewWorkOrder(
     val dueAt: Instant?,
 )
 
+/** A edição (`PUT`): todos os campos editáveis, os três custos inclusive; o caso de uso a passa ao domínio. */
+data class WorkOrderUpdate(
+    val roomId: RoomId?,
+    val areaId: AreaId?,
+    val category: WorkOrderCategory,
+    val priority: WorkOrderPriority,
+    val description: String?,
+    val assigneeEmployeeId: EmployeeId?,
+    val thirdPartyName: String?,
+    val dueAt: Instant?,
+    val laborCost: Money,
+    val thirdPartyCost: Money,
+    val partsCost: Money,
+) {
+    internal fun toEdit() =
+        WorkOrderEdit(
+            roomId,
+            areaId,
+            category,
+            priority,
+            description,
+            assigneeEmployeeId,
+            thirdPartyName,
+            dueAt,
+            laborCost,
+            thirdPartyCost,
+            partsCost,
+        )
+}
+
 /** A conclusão: notas opcionais e os custos que o técnico informa agora (os nulos mantêm o gravado). */
 data class WorkOrderCompletion(
     val notes: String?,
@@ -252,10 +282,11 @@ class WorkOrdersService(
     @Transactional
     fun update(
         id: WorkOrderId,
-        edit: WorkOrderEdit,
+        update: WorkOrderUpdate,
         expectedVersion: Long,
     ): WorkOrderView =
         act(id, expectedVersion) { order, now ->
+            val edit = update.toEdit()
             // Confere a edição e as referências com os valores novos antes de mudar o agregado.
             order.checkUpdate(edit)
             if (edit.roomId != order.roomId || edit.areaId != order.areaId) {

@@ -12,9 +12,9 @@ import com.zeny.hotel.maintenance.application.WorkOrderAttachments
 import com.zeny.hotel.maintenance.application.WorkOrderCompletion
 import com.zeny.hotel.maintenance.application.WorkOrderFilter
 import com.zeny.hotel.maintenance.application.WorkOrderRoomBlockRequest
+import com.zeny.hotel.maintenance.application.WorkOrderUpdate
 import com.zeny.hotel.maintenance.application.WorkOrderView
 import com.zeny.hotel.maintenance.application.WorkOrdersService
-import com.zeny.hotel.maintenance.domain.WorkOrderEdit
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.RoomId
@@ -189,7 +189,7 @@ class WorkOrdersController(
     ): ResponseEntity<WorkOrderResponse> {
         val expected = ETags.expectedVersion(ifMatch)
         val edit =
-            WorkOrderEdit(
+            WorkOrderUpdate(
                 request.roomId?.let(::RoomId),
                 request.areaId?.let(::AreaId),
                 request.category,
