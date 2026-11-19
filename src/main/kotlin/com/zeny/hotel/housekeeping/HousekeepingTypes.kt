@@ -227,6 +227,19 @@ object HousekeepingErrorCodes {
     /** 422: iniciar uma tarefa de data posterior à data operacional (D11-E04). */
     val HOUSEKEEPING_TASK_NOT_DUE = ErrorCode("HOUSEKEEPING_TASK_NOT_DUE")
 
+    /**
+     * 422 (recusa do comando offline `housekeeping.start-task`, D1-E19): a versão do checklist que o aparelho informou
+     * não existe ou não é de um modelo do contexto `HOUSEKEEPING`; nenhuma execução é aberta.
+     */
+    val HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID = ErrorCode("HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID")
+
+    /**
+     * Alerta do comando offline `housekeeping.start-task` (D1-E19, RN-22): o aparelho abriu o checklist de um modelo
+     * diferente do que a tarefa usa agora (ou a tarefa não usa modelo nenhum); a execução abriu com a versão do
+     * aparelho e a trilha registra o modelo esperado e o recebido.
+     */
+    val HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH = ErrorCode("HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH")
+
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")
 

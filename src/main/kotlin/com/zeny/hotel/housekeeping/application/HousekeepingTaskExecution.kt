@@ -6,7 +6,10 @@ import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
+import com.zeny.hotel.checklists.ChecklistVersionId
+import com.zeny.hotel.checklists.ChecklistVersionView
 import com.zeny.hotel.checklists.ChecklistsApi
+import com.zeny.hotel.checklists.ChecklistsErrorCodes
 import com.zeny.hotel.checklists.SubjectAttributes
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
@@ -25,11 +28,13 @@ import com.zeny.hotel.shared.Actor
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.FieldViolationCodes
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.OfflineCommandWarning
 import com.zeny.hotel.shared.OwnedResource
 import com.zeny.hotel.shared.RealtimeMessage
 import com.zeny.hotel.shared.RealtimePublisher
@@ -79,11 +84,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
-    ): HousekeepingTaskView =
-        act(taskId, actor, expectedVersion) {
-            it.start(at, hotel.currentBusinessDate())
-            it.openChecklist(openChecklist(it, actor))
-        }
+    ): HousekeepingTaskView = startTask(taskId, actor, at, expectedVersion, deviceChecklistVersion = null).view
 
     @Audited(HousekeepingAudit.PAUSE_TASK)
     @Transactional
@@ -92,7 +93,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
-    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.pause(at) }
+    ): HousekeepingTaskView = pauseTask(taskId, actor, at, expectedVersion)
 
     @Audited(HousekeepingAudit.RESUME_TASK)
     @Transactional
@@ -101,7 +102,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
-    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.resume(at) }
+    ): HousekeepingTaskView = resumeTask(taskId, actor, at, expectedVersion)
 
     /**
      * Recusa a tarefa pelo [reason]. Por não perturbe numa tarefa de UH, liga o sinal na UH pela operação condicional
@@ -115,15 +116,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
-    ): HousekeepingTaskView =
-        act(taskId, actor, expectedVersion) { task ->
-            task.refuse(reason, at)
-            if (reason == RefusalReason.DO_NOT_DISTURB) {
-                task.roomId?.let {
-                    rooms.setServiceFlagIfOccupied(it, GuestServiceFlag.DO_NOT_DISTURB, RoomStatusSource.TASK)
-                }
-            }
-        }
+    ): HousekeepingTaskView = refuseTask(taskId, reason, actor, at, expectedVersion)
 
     @Audited(HousekeepingAudit.RETRY_TASK)
     @Transactional
@@ -132,7 +125,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
-    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.retry(at) }
+    ): HousekeepingTaskView = retryTask(taskId, actor, at, expectedVersion)
 
     /**
      * Conclui a tarefa `IN_PROGRESS` (SPEC §8.4, D3, D5, D6, D7 e D10 da E04), numa transação só e na ordem de trava
@@ -162,10 +155,94 @@ class HousekeepingTaskExecution(
         at: Instant,
         expectedVersion: Long?,
         photoPolicy: ChecklistPhotoPolicy,
+    ): HousekeepingTaskView =
+        completeTask(taskId, answers, foundOccupancy, foundGuestCount, actor, at, expectedVersion, photoPolicy)
+
+    // --- As ações sem trilha nem transação próprias ---------------------------------------------------------------
+    // Os métodos públicos acima as envolvem para as ações online; os comandos offline (E19) as chamam direto, na
+    // transação e na trilha do próprio handler (uma entrada por comando, com a ação `…-offline`).
+
+    /**
+     * O início ([start]), com a versão do checklist que o aparelho tem ([deviceChecklistVersion], D1-E19), que precisa
+     * ser de um modelo `HOUSEKEEPING` (`422 HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID`, sem abrir execução). Do modelo
+     * que a tarefa usa agora, abre essa versão, com o alerta `CHECKLIST_VERSION_OUTDATED` se não for a vigente; de outro
+     * modelo, ou numa tarefa sem modelo, abre a do aparelho assim mesmo (RN-22), com o alerta
+     * `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido na trilha.
+     */
+    internal fun startTask(
+        taskId: HousekeepingTaskId,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+        deviceChecklistVersion: ChecklistVersionId?,
+    ): HousekeepingTaskStart {
+        val warnings = mutableListOf<OfflineCommandWarning>()
+        val remarks = mutableMapOf<String, Any?>()
+        val view =
+            act(taskId, actor, expectedVersion, remarks) {
+                val device = deviceChecklistVersion?.let(::deviceVersion)
+                it.start(at, hotel.currentBusinessDate())
+                it.openChecklist(openChecklist(it, actor, device, warnings, remarks))
+            }
+        return HousekeepingTaskStart(view, warnings)
+    }
+
+    internal fun pauseTask(
+        taskId: HousekeepingTaskId,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.pause(at) }
+
+    internal fun resumeTask(
+        taskId: HousekeepingTaskId,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.resume(at) }
+
+    internal fun refuseTask(
+        taskId: HousekeepingTaskId,
+        reason: RefusalReason,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): HousekeepingTaskView =
+        act(taskId, actor, expectedVersion) { task ->
+            task.refuse(reason, at)
+            if (reason == RefusalReason.DO_NOT_DISTURB) {
+                task.roomId?.let {
+                    rooms.setServiceFlagIfOccupied(it, GuestServiceFlag.DO_NOT_DISTURB, RoomStatusSource.TASK)
+                }
+            }
+        }
+
+    internal fun retryTask(
+        taskId: HousekeepingTaskId,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): HousekeepingTaskView = act(taskId, actor, expectedVersion) { it.retry(at) }
+
+    /**
+     * A conclusão ([complete]). O instante vale a partir da última transição da tarefa (D2-E19): um [at] anterior, o do
+     * aparelho corrigido, não grava nada antes dela (checklist, observação, faxina e tarefa).
+     */
+    @Suppress("LongParameterList") // a ação, a observação, o ator, o instante e a versão
+    internal fun completeTask(
+        taskId: HousekeepingTaskId,
+        answers: List<ChecklistAnswerInput>?,
+        foundOccupancy: OccupancyStatus?,
+        foundGuestCount: Int?,
+        actor: Actor,
+        requestedAt: Instant,
+        expectedVersion: Long?,
+        photoPolicy: ChecklistPhotoPolicy,
     ): HousekeepingTaskView {
         authorization.require(HousekeepingPermissions.TASKS_EXECUTE)
         val task = requireActsOn(store.findForUpdate(taskId), actor)
         expectedVersion?.let { requireCurrentVersion(it, checkNotNull(task.version)) }
+        val at = task.lastTransitionAt?.let { maxOf(requestedAt, it) } ?: requestedAt
         val remarks = mutableMapOf<String, Any?>()
         audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() + remarks }
         task.requireCompletable()
@@ -224,25 +301,78 @@ class HousekeepingTaskExecution(
         return task
     }
 
-    /** A execução do checklist da tarefa iniciada agora (D5-E04), ou `null` sem modelo que valha. */
+    /**
+     * A versão do checklist informada pelo aparelho (D1-E19): publicada e de um modelo `HOUSEKEEPING`, senão `422
+     * HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID` (o payload vem do aparelho, entrada não confiável).
+     */
+    private fun deviceVersion(id: ChecklistVersionId): ChecklistVersionView =
+        checklists.version(id)?.takeIf { it.context == ChecklistContext.HOUSEKEEPING }
+            ?: throw BusinessRuleException(
+                HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID,
+                "A versão do checklist informada não existe ou não é de um modelo de governança.",
+            )
+
+    /**
+     * A execução do checklist da tarefa iniciada agora (D5-E04), ou `null` sem modelo que valha: a versão do aparelho
+     * ([device], D1-E19), se informada, senão a vigente do modelo da tarefa. Os alertas vão a [warnings] e o desvio de
+     * modelo, a [remarks] (a trilha).
+     */
     private fun openChecklist(
         task: HousekeepingTask,
         actor: Actor,
+        device: ChecklistVersionView?,
+        warnings: MutableList<OfflineCommandWarning>,
+        remarks: MutableMap<String, Any?>,
     ): ChecklistExecutionId? {
-        val type = checkNotNull(cleaningTypes.cleaningType(task.cleaningTypeId))
-        val version =
-            type.checklistTemplateId?.let { checklists.currentVersion(ChecklistTemplateId(it)) }
-                ?: checklists.resolveTemplate(
-                    ChecklistContext.HOUSEKEEPING,
-                    SubjectAttributes(
-                        roomTypeId = task.roomId?.let { rooms.room(it)?.roomTypeId?.value },
-                        cleaningTypeId = task.cleaningTypeId.value,
-                        areaId = task.areaId?.value,
-                    ),
-                )
-                ?: return null
+        val current = currentChecklistVersion(task)
+        val version = device ?: current ?: return null
+        device?.let { compareWithCurrent(it, current, warnings, remarks) }
         val subject = ChecklistSubject(CHECKLIST_SUBJECT_TYPE, task.id.value)
         return checklists.startExecution(version.id, subject, actor.userId, checkNotNull(task.lastTransitionAt)).id
+    }
+
+    /**
+     * Compara a versão do aparelho ([device]) com a vigente do modelo da tarefa ([current], D1-E19): do mesmo modelo e
+     * já substituída, `CHECKLIST_VERSION_OUTDATED`; de outro modelo (ou sem modelo na tarefa),
+     * `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido na trilha.
+     */
+    private fun compareWithCurrent(
+        device: ChecklistVersionView,
+        current: ChecklistVersionView?,
+        warnings: MutableList<OfflineCommandWarning>,
+        remarks: MutableMap<String, Any?>,
+    ) {
+        if (current != null && device.templateId == current.templateId) {
+            if (device.id != current.id) {
+                warnings +=
+                    OfflineCommandWarning(
+                        ChecklistsErrorCodes.CHECKLIST_VERSION_OUTDATED,
+                        "O checklist usou a versão ${device.number} do modelo, já substituída; ela ficou guardada.",
+                    )
+            }
+            return
+        }
+        remarks["expectedChecklistTemplateId"] = current?.templateId?.toString()
+        remarks["receivedChecklistTemplateId"] = device.templateId.toString()
+        warnings +=
+            OfflineCommandWarning(
+                HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH,
+                "O aparelho abriu o checklist de outro modelo; a execução ficou com ele e a troca foi registrada.",
+            )
+    }
+
+    /** A versão vigente do modelo da tarefa (D5-E04): a do vínculo do tipo, senão a que vale para ela, senão nenhuma. */
+    private fun currentChecklistVersion(task: HousekeepingTask): ChecklistVersionView? {
+        val type = checkNotNull(cleaningTypes.cleaningType(task.cleaningTypeId))
+        return type.checklistTemplateId?.let { checklists.currentVersion(ChecklistTemplateId(it)) }
+            ?: checklists.resolveTemplate(
+                ChecklistContext.HOUSEKEEPING,
+                SubjectAttributes(
+                    roomTypeId = task.roomId?.let { rooms.room(it)?.roomTypeId?.value },
+                    cleaningTypeId = task.cleaningTypeId.value,
+                    areaId = task.areaId?.value,
+                ),
+            )
     }
 
     /**
@@ -264,16 +394,18 @@ class HousekeepingTaskExecution(
         if (schedule.recordDone(task.businessDate, at)) scheduledCleanings.flush()
     }
 
+    /** Uma ação com as notas da trilha em [remarks], que entram no retrato "depois" (D1-E19: o desvio de modelo). */
     private fun act(
         taskId: HousekeepingTaskId,
         actor: Actor,
         expectedVersion: Long?,
+        remarks: Map<String, Any?> = emptyMap(),
         transition: (HousekeepingTask) -> Unit,
     ): HousekeepingTaskView {
         authorization.require(HousekeepingPermissions.TASKS_EXECUTE)
         val task = requireActsOn(store.findForUpdate(taskId), actor)
         expectedVersion?.let { requireCurrentVersion(it, checkNotNull(task.version)) }
-        audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() }
+        audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() + remarks }
         transition(task)
         save(task)
         return task.view()
@@ -288,6 +420,12 @@ class HousekeepingTaskExecution(
         )
     }
 }
+
+/** O resultado do início ([HousekeepingTaskExecution.startTask]): a tarefa e os alertas do checklist do aparelho. */
+internal data class HousekeepingTaskStart(
+    val view: HousekeepingTaskView,
+    val warnings: List<OfflineCommandWarning>,
+)
 
 /** Os dados de entrada da conclusão que dependem da tarefa (`400 VALIDATION_FAILED` no campo). */
 private fun requireCompletionInput(

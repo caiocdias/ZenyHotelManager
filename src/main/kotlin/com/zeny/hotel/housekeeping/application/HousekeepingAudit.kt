@@ -27,6 +27,14 @@ internal object HousekeepingAudit {
     const val RETRY_TASK = "housekeeping.task.retry"
     const val COMPLETE_TASK = "housekeeping.task.complete"
 
+    // Os comandos offline da execução (M6 E19): uma entrada por comando, com o retrato da tarefa.
+    const val START_TASK_OFFLINE = "housekeeping.task.start-offline"
+    const val PAUSE_TASK_OFFLINE = "housekeeping.task.pause-offline"
+    const val RESUME_TASK_OFFLINE = "housekeeping.task.resume-offline"
+    const val REFUSE_TASK_OFFLINE = "housekeeping.task.refuse-offline"
+    const val RETRY_TASK_OFFLINE = "housekeeping.task.retry-offline"
+    const val COMPLETE_TASK_OFFLINE = "housekeeping.task.complete-offline"
+
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"
