@@ -42,7 +42,7 @@ class HousekeepingPermissionsTest(
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
 
     @Test
-    fun `the catalog has the seven permissions, not sensitive, config for manager and housekeeper`() {
+    fun `the catalog has the ten permissions, not sensitive, config for manager and housekeeper`() {
         HousekeepingPermissions.CONFIG_READ.value shouldBe "housekeeping.config.read"
         HousekeepingPermissions.CONFIG_MANAGE.value shouldBe "housekeeping.config.manage"
         // As permissões das tarefas (E02) estão no HousekeepingTaskPermissionsTest; a da distribuição (E03), no
@@ -56,11 +56,17 @@ class HousekeepingPermissionsTest(
                 "housekeeping.assignments.manage",
                 "housekeeping.tasks.execute",
                 "housekeeping.inspections.perform",
+                "housekeeping.occurrences.report",
+                "housekeeping.lostfound.manage",
+                "housekeeping.damages.manage",
             )
         HousekeepingPermissions.permissions.forEach {
             withClue(it.code.value) {
-                // Só a execução (E04, D1) tem dono: a camareira atribuída, com OWN.
-                it.scopes shouldBe if (it.code == HousekeepingPermissions.TASKS_EXECUTE) setOf(OWN, ALL) else setOf(ALL)
+                // Só a execução (E04, D1) e o registro de ocorrências (E06, D1) têm dono, com OWN.
+                val owned =
+                    it.code == HousekeepingPermissions.TASKS_EXECUTE ||
+                        it.code == HousekeepingPermissions.OCCURRENCES_REPORT
+                it.scopes shouldBe if (owned) setOf(OWN, ALL) else setOf(ALL)
                 it.sensitive shouldBe false
             }
         }
@@ -88,6 +94,33 @@ class HousekeepingPermissionsTest(
                     listOf("ADMINISTRATOR" to "ALL", "MANAGER" to "ALL", "HOUSEKEEPER" to "ALL")
             }
         }
+    }
+
+    @Test
+    fun `the occurrence permissions go to the reporting and managing templates, the attendant only with OWN`() {
+        HousekeepingPermissions.OCCURRENCES_REPORT.value shouldBe "housekeeping.occurrences.report"
+        HousekeepingPermissions.LOSTFOUND_MANAGE.value shouldBe "housekeeping.lostfound.manage"
+        HousekeepingPermissions.DAMAGES_MANAGE.value shouldBe "housekeeping.damages.manage"
+        definition(HousekeepingPermissions.OCCURRENCES_REPORT).templates shouldBe
+            mapOf(
+                RoleTemplate.MANAGER to TemplateGrant(ALL),
+                RoleTemplate.HOUSEKEEPER to TemplateGrant(ALL),
+                RoleTemplate.RECEPTIONIST to TemplateGrant(ALL),
+                RoleTemplate.ROOM_ATTENDANT to TemplateGrant(OWN),
+            )
+
+        definition(HousekeepingPermissions.LOSTFOUND_MANAGE).templates shouldBe
+            mapOf(
+                RoleTemplate.MANAGER to TemplateGrant(ALL),
+                RoleTemplate.HOUSEKEEPER to TemplateGrant(ALL),
+                RoleTemplate.RECEPTIONIST to TemplateGrant(ALL),
+            )
+
+        definition(HousekeepingPermissions.DAMAGES_MANAGE).templates shouldBe
+            mapOf(
+                RoleTemplate.MANAGER to TemplateGrant(ALL),
+                RoleTemplate.RECEPTIONIST to TemplateGrant(ALL),
+            )
     }
 
     @Test
