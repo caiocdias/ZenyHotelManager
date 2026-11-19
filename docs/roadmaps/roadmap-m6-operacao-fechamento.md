@@ -2311,7 +2311,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - Notas para a próxima etapa:
   - **E08:** o `origin = CHECKLIST` já aparece no enum de entrada do `POST`, que o recusa. A OS por checklist entra pela E08.
   - **Período vigente:** um período que terminou sozinho continua "vigente" até a OS concluir ou cancelar, e a liberação então só o encerra. Prorrogar ou encurtar o período fica no `rooms` (`PUT` do período).
-  - **`responsible` do período:** fica com o nome de quem era o responsável quando o bloqueio foi aberto (cortado em 120 caracteres). Esse nome e o motivo "OS <número>" vão para a trilha do `rooms`.
+  - **`responsible` do período:** fica com o nome de quem era o responsável quando o bloqueio foi aberto (cortado em 120 caracteres). Esse nome e o motivo "OS OS-AAAA-NNNNNN" (o número da OS) vão para a trilha do `rooms`.
   - **Ordem das recusas:** o `400` de texto acima do limite em `hold`, `complete` e `cancel` (sem bloqueio) sai depois do `412`/`409`.
   - **OWN no download:** o `OWN` do download no `files` é "quem enviou", não o dono da OS (KDoc das finalidades).
   - **Concorrência:** o `rooms` responde `412 PRECONDITION_FAILED` quando perde a corrida otimista no período (liberação manual × conclusão da OS); a convenção da E21 seria `409 CONCURRENT_UPDATE` (dívida do `rooms`, para o `arquiteto`).
