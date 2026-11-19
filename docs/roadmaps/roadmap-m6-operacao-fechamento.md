@@ -228,7 +228,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
-| E05 | Inspeção e liberação da UH | #pendente | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
+| E05 | Inspeção e liberação da UH | #em-andamento | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 | E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
@@ -1830,7 +1830,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E05 — Inspeção e liberação da UH — #pendente
+## E05 — Inspeção e liberação da UH — #em-andamento
 
 **Objetivo:** implementar a inspeção (RF-GOV-06): a supervisora executa o checklist de inspeção, aprova (UH Inspecionada, tarefa `DONE`) ou reprova (UH Suja, tarefa `REJECTED` de volta à camareira com os itens apontados); inspeção voluntária de UH Limpa; aviso em tempo real à recepção quando a UH fica pronta (RF-GOV-07), por SSE e por notificação de UH liberada (RF-NOT-01).
 
