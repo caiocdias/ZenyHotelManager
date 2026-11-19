@@ -132,9 +132,9 @@ class WorkOrderConcurrencyAttackTest(
         withClue(responses.map { it.status to text(it) }) {
             responses.forEach { it.status shouldNotBe 500 }
             // A conclusão vence, ou perde a corrida pelo período (412/409 retentável, ordem intacta); a liberação à mão
-            // sempre responde 200 (ou 409 retentável).
+            // responde 200 ou perde a corrida otimista do rooms (409/412 retentável).
             responses[0].status shouldBeIn listOf(200, 409, 412)
-            responses[1].status shouldBeIn listOf(200, 409)
+            responses[1].status shouldBeIn listOf(200, 409, 412)
         }
         if (responses[0].status != 200) {
             support.order(order)["status"].asString() shouldBe "OPEN"
