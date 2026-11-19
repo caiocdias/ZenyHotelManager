@@ -238,7 +238,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E07 | Ordens de serviço corretivas e OOO/OOS | #em-andamento | — | `WorkOrder` com estados, custos, anexos e bloqueio da UH |
+| E07 | Ordens de serviço corretivas e OOO/OOS | #concluida | — | `WorkOrder` com estados, custos, anexos e bloqueio da UH |
 | E08 | OS por checklist e app offline da manutenção | #pendente | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
 
 **Relatórios**
@@ -2191,7 +2191,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E07 — Ordens de serviço corretivas e OOO/OOS — #em-andamento
+## E07 — Ordens de serviço corretivas e OOO/OOS — #concluida
 
 **Objetivo:** criar o módulo `maintenance` com a OS corretiva (RF-MAN-01, RF-MAN-02, RF-MAN-03): local, categoria, prioridade, descrição, anexos, origem, responsável interno ou terceiro; estados aberta, em andamento, aguardando peça/terceiro, concluída, cancelada; custos de mão de obra, terceiros e peças informadas; bloqueio da UH em OOO/OOS via `rooms` e retorno como Suja ao concluir.
 
@@ -2211,13 +2211,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Testes de domínio cobrem as transições da OS (aberta, em andamento, aguardando, concluída, cancelada), válidas e inválidas.
-- [ ] OS com anexo grava o anexo via `files` e o devolve só por URL assinada.
-- [ ] Pedido de OOO sem aprovação → `403` `APPROVAL_REQUIRED`; em UH ocupada → erro com `code` estável (RN-07); com aprovação → UH em OOO pelo período.
-- [ ] Concluir a OS encerra o OOO/OOS e deixa a UH Suja.
-- [ ] OS de prioridade urgente gera notificação para a manutenção.
-- [ ] Técnico com escopo `OWN` lista só as próprias OS.
-- [ ] `maintenance` não depende de `inventory` (`ModularityTest`); build, testes e contrato passam.
+- [x] Testes de domínio cobrem as transições da OS (aberta, em andamento, aguardando, concluída, cancelada), válidas e inválidas.
+- [x] OS com anexo grava o anexo via `files` e o devolve só por URL assinada.
+- [x] Pedido de OOO sem aprovação → `403` `APPROVAL_REQUIRED`; em UH ocupada → erro com `code` estável (RN-07); com aprovação → UH em OOO pelo período.
+- [x] Concluir a OS encerra o OOO/OOS e deixa a UH Suja.
+- [x] OS de prioridade urgente gera notificação para a manutenção.
+- [x] Técnico com escopo `OWN` lista só as próprias OS.
+- [x] `maintenance` não depende de `inventory` (`ModularityTest`); build, testes e contrato passam.
 
 **Validação obrigatória:**
 
@@ -2236,12 +2236,86 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e07.md`, com 3 fatias. Revisão de arquitetura: aprovada na rodada 2 (`revisor-arquitetura`, opus).
+  - Rodada 0: bloqueada por 9 Importantes:
+    - um enum publicado do `rooms` que mudaria (`RoomStatusSource.MAINTENANCE`);
+    - `ModularityTest` exato desde a Task 1;
+    - escopo `OWN` incoerente com o aviso e o download;
+    - liberação do OOO no cancelamento sem step-up;
+    - `PUT` que troca o local com bloqueio;
+    - campos do `POST`;
+    - permissão dos anexos;
+    - `origin` extensível;
+    - risco de dado pessoal.
+  - Rodada 1: bloqueada por 1 Importante, o campo desconhecido no `POST`, que o projeto ignora em vez de recusar.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `3518950` (início e plano) a `1d47a14`.
+  - **Task 1** (módulo, OS, estados e `OWN`): `be79007`, `b70b5c7` e `e4ca973` (desenvolvedor), mais `fb2c18a` (testador, lista exata do Gerente no `AuthorizationTest`).
+  - **Task 2** (anexos e aviso urgente, com os Menores da Task 1): `0ec6831` e `31bba11`.
+  - **Task 3** (bloqueio da UH, com os Menores da Task 2): `3d17cbd`, e a rodada 1 em `eece126` (400 de período incoerente antes do step-up).
+  - **Fim da etapa:**
+    - `8c1c3d8`, rodada 1: o gate acusou o `web` usando um tipo do `domain` e a tabela de anexos fora de `NO_DELETE_TABLES`;
+    - `a02d96e`, rodada 2: a aprovação do OOO passou a ficar presa à UH, achado Importante da revisão final;
+    - testador: `8d578e2` (`WorkOrderStageAttackTest`, 7; `WorkOrderNoChangeAttackTest`, 4; `AssignmentPlanEarlyArrivalTest` com a espera pela quiescência do inventário), `2976624` (`WorkOrderConcurrencyAttackTest`, 4: mesmo `If-Match`, conclusão × liberação manual, dois bloqueios) e `cdb690f` (correções de teste do gate: o 412 do `rooms` na corrida e a colisão do sentinela `1337` com o sufixo aleatório nos testes de PDF do M5); `1d47a14` (orquestrador, D7 do plano).
+  - Cada fatia passou por desenvolvedor → verificação mecânica (exit 0) → `revisor-seguranca`.
+- Entregue:
+  - **Módulo `maintenance`** (`com.zeny.hotel.maintenance`, schema `maintenance`, camada Operação). `allowedDependencies` são `shared, hotel, rooms, staff, files, notifications`, subconjunto da linha da §3.1, que não muda. Sem `checklists`, que entra na E08, e sem `inventory`.
+  - **Permissões:** `maintenance.workorders.read` (`ALL`/`OWN`), `maintenance.workorders.request` (`ALL`) e `maintenance.workorders.manage` (`ALL`/`OWN`). Gerente e Manutenção recebem as três com `ALL`; Governanta e Recepcionista, `request` e `read`. Dono `OWN` = quem abriu + o usuário do colaborador responsável.
+  - **OS** (`/api/v1/work-orders`):
+    - número `OS-AAAA-NNNNNN` (ano da data operacional);
+    - local `roomId` **ou** `areaId`;
+    - `category`, `priority`, `origin` e `status` como `x-extensible-enum`; o `POST` recusa `origin = CHECKLIST`, reservado à E08;
+    - descrição, responsável (`staff`) ou terceiro (texto), prazo;
+    - custos de mão de obra, terceiros e peças (0,00 a 99999,99);
+    - estados `OPEN → IN_PROGRESS ⇄ ON_HOLD → DONE`, e `CANCELLED` de qualquer não final, com `If-Match`, `409 WORK_ORDER_TRANSITION_NOT_ALLOWED`, `400 UNKNOWN_*` e `422 *_INACTIVE`.
+    - O `POST` ignora responsável, terceiro e custos (só o `PUT`, com `manage`, os aceita).
+    - Texto livre fora da trilha.
+    - Tabela sem `DELETE`.
+  - **Anexos:**
+    - finalidades comuns `maintenance.work-order-photo` (JPEG/PNG, reencode sem EXIF) e `maintenance.work-order-document` (PDF), até 10 MB;
+    - `POST /{id}/attachments` (`request` na OS que abriu e no arquivo que ele mesmo enviou, ou `manage`);
+    - `POST /{id}/attachments/{fileId}/detach` (`manage`), que marca `detached_at`;
+    - nenhum dos dois muda a versão nem o `ETag` da OS.
+  - **Aviso urgente:** `notifications.urgent-work-order` ao criar ou passar a `URGENT`, a quem tem `manage`, menos o ator. Leva número, local e categoria, sem a descrição.
+  - **Bloqueio da UH:** `POST /{id}/room-block` `{kind, startsOn, endsOn}`.
+    - OOO com `requireOrApproval` (`maintenance.work-order.block-room`, `rooms.outoforder.manage`, recurso `maintenance.work-order:<id>/rooms.room:<roomId>`); OOS com `rooms.outofservice.manage`.
+    - Abertura pela `RoomsApi.openOutOfOrder` com `returnStatus = DIRTY`.
+    - Concluir libera sem step-up (RF-MAN-03), com origem `MANUAL`. Cancelar com bloqueio vigente pede o step-up que o `rooms` pede.
+    - O `PUT` não troca o local com bloqueio vigente (`409 WORK_ORDER_LOCATION_LOCKED`).
+    - O período incoerente dá `400 OUT_OF_ORDER_PERIOD_INVALID` antes de qualquer autorização.
+- Revisão final: `revisor-seguranca`, opus. Bloqueada por 2 Importantes, ambos fechados:
+  - gate verde ausente no HEAD (processual), resolvido com o gate r2 verde;
+  - o recurso da aprovação sem a UH, corrigido em `a02d96e`.
+
+  Há também 3 Menores, que estão no handoff. Re-revisões escopadas de `8c1c3d8..2976624` e `2976624..1d47a14`: aprovadas (`revisor-seguranca`, opus), sem achado novo.
+- Gate de integração (`./gradlew build`):
+  - em `eece126`: 2 falhas reais, corrigidas;
+  - em `8c1c3d8`: 1 falha intermitente em `AssignmentPlanEarlyArrivalTest` (E22, `INVENTORY_DATE_OUT_OF_HORIZON` por data avançada no banco compartilhado). A 2ª rodada passou: `BUILD SUCCESSFUL`, 4686 testes, 0 falhas.
+  - final em `1d47a14`: `BUILD SUCCESSFUL`, 4702 testes e 0 falhas (antes, em `2976624`, 2 falhas de teste corrigidas em `cdb690f`).
+- Verificação mecânica: `check_test_integrity.py --base 19aee02`, exit 0, sem apontamentos.
+- Scanner: `osv-scanner`, lockfiles sem mudança, 0 Critical e 0 High.
+- `check-api-breaking.sh`: sem `ERR`.
+- Critérios verificados:
+  - transições da OS: `WorkOrderTest`;
+  - anexo via `files` e URL assinada: `WorkOrderAttachmentsTest`;
+  - OOO sem aprovação dá `403 APPROVAL_REQUIRED`, em UH ocupada dá `422 OUT_OF_ORDER_ROOM_OCCUPIED`, com aprovação a UH fica em OOO pelo período: `WorkOrderRoomBlockTest`;
+  - concluir encerra o OOO/OOS e deixa a UH Suja: mesmo teste;
+  - OS urgente gera aviso: `WorkOrderUrgentNoticeTest`;
+  - técnico `OWN` lista só as suas: `WorkOrderPermissionsTest`, com uma role própria;
+  - `maintenance` sem `inventory`: `ModularityTest`; build, testes e contrato pelo gate.
+- Decisões para o usuário, tomadas pela opção recomendada e revisáveis:
+  - **U1:** a OS libera o OOO com origem `MANUAL` no histórico da UH. Assim o enum publicado `RoomStatusSource` não muda nem a restrição do banco (precedentes M4 H6 e M5 H13); a trilha `maintenance.*` guarda a proveniência.
+  - **U2:** o modelo Manutenção tem `read` e `manage` `ALL`, sem fila invisível. O `OWN` fica para roles do administrador.
+  - **U3:** concluir libera o OOO sem step-up; cancelar com bloqueio vigente pede o step-up do `rooms`. Na prática, quem tem `manage` pode concluir em vez de cancelar e liberar o OOO sem aprovação: o usuário confirma se a aprovação no cancelamento protege o que ele espera.
+  - **U4:** a OS final não aceita mudança de custo.
+  - **Códigos de permissão sem hífen** (`maintenance.workorders.*`), porque o `PermissionCode` não aceita hífen.
+- Notas para a próxima etapa:
+  - **E08:** o `origin = CHECKLIST` já aparece no enum de entrada do `POST`, que o recusa. A OS por checklist entra pela E08.
+  - **Período vigente:** um período que terminou sozinho continua "vigente" até a OS concluir ou cancelar, e a liberação então só o encerra. Prorrogar ou encurtar o período fica no `rooms` (`PUT` do período).
+  - **`responsible` do período:** fica com o nome de quem era o responsável quando o bloqueio foi aberto (cortado em 120 caracteres). Esse nome e o motivo "OS <número>" vão para a trilha do `rooms`.
+  - **Ordem das recusas:** o `400` de texto acima do limite em `hold`, `complete` e `cancel` (sem bloqueio) sai depois do `412`/`409`.
+  - **OWN no download:** o `OWN` do download no `files` é "quem enviou", não o dono da OS (KDoc das finalidades).
+  - **Concorrência:** o `rooms` responde `412 PRECONDITION_FAILED` quando perde a corrida otimista no período (liberação manual × conclusão da OS); a convenção da E21 seria `409 CONCURRENT_UPDATE` (dívida do `rooms`, para o `arquiteto`).
+  - **Avisar o front desktop:** módulo novo `/api/v1/work-orders` e o cabeçalho `X-Approval-Token` em `room-block` e `cancel`.
 
 ---
 
