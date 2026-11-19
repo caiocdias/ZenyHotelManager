@@ -15299,6 +15299,7 @@ components:
       required:
       - holderGuestId
       - origin
+      - reservations
     BookingResponse:
       type: object
       description: Uma reserva agrupadora com as reservas e os alertas da lista de
@@ -17664,6 +17665,7 @@ components:
       required:
       - context
       - name
+      - sections
     CreateGuestRequest:
       type: object
       description: "Um perfil novo: os dados, os documentos e, opcionalmente, os dados\
@@ -22170,6 +22172,7 @@ components:
       required:
       - from
       - limit
+      - roomTypeIds
       - to
     OverbookingLimitResponse:
       type: object
@@ -22905,6 +22908,7 @@ components:
           nullable: true
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
       required:
+      - children
       - oneAdult
     PrintAgentIdentityResponse:
       type: object
@@ -24011,6 +24015,7 @@ components:
       - guaranteePolicyId
       - mealPlan
       - name
+      - packageIds
       - roomTypeIds
     RatePriceChangeResponse:
       type: object
@@ -24471,6 +24476,8 @@ components:
             $ref: "#/components/schemas/ChecklistAnswerDto"
           maxItems: 300
           minItems: 0
+      required:
+      - answers
     ReservationCancelRequest:
       type: object
       description: "O cancelamento: o motivo, uma observação opcional (texto livre\
@@ -24550,7 +24557,9 @@ components:
       required:
       - adults
       - arrival
+      - childAges
       - departure
+      - nightlyRates
       - ratePlanId
       - roomTypeId
       - segment
@@ -25891,6 +25900,7 @@ components:
           type: string
           nullable: true
       required:
+      - allocations
       - cutoffDate
       - name
     RoomBlockRequest:
@@ -25923,6 +25933,7 @@ components:
           format: uuid
           nullable: true
       required:
+      - allocations
       - cutoffDate
       - name
       - ratePlanId
@@ -26688,6 +26699,7 @@ components:
             $ref: "#/components/schemas/BlockReservationDto"
       required:
       - origin
+      - reservations
     RoutingRuleCreateRequest:
       type: object
       description: "Uma regra de roteamento nova: a conta de origem (fixa depois)\
@@ -26949,6 +26961,7 @@ components:
       - kind
       - shiftId
       - startsOn
+      - weekdays
     SchedulePatternResponse:
       type: object
       description: Um padrão de escala de um colaborador.
@@ -28680,6 +28693,7 @@ components:
       required:
       - code
       - name
+      - serviceChargeApplies
     TransferRequest:
       type: object
       description: Transferir lançamentos inteiros (o que ainda resta de cada um)
@@ -28812,7 +28826,9 @@ components:
           maxItems: 30
           minItems: 0
       required:
+      - applicability
       - name
+      - sections
     UpdateShiftRequest:
       type: object
       description: Nome e horários de um turno.

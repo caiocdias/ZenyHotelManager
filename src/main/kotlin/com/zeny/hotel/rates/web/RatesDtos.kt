@@ -68,7 +68,7 @@ data class RatePlanUpdateRequest(
     val roomTypeIds: List<UUID> = emptyList(),
     @field:Schema(description = "Pacotes do plano (o conjunto inteiro).")
     @field:Size(max = MAX_PACKAGES)
-    val packageIds: List<UUID> = emptyList(),
+    val packageIds: List<UUID>,
     @field:NotNull
     val cancellationPolicyId: UUID?,
     @field:NotNull
@@ -360,7 +360,7 @@ data class PackageResponse(
     val price: Money,
     val pricing: PackagePricing,
     val postingRhythm: PackagePostingRhythm,
-    val includedInRate: Boolean,
+    val includedInRate: Boolean = false,
     val transactionCodeId: UUID,
     val active: Boolean,
     val createdAt: Instant,

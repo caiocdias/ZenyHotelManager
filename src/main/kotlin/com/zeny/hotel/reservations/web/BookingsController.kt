@@ -136,7 +136,7 @@ data class BookingRequest(
     val origin: ReservationOrigin?,
     @field:Schema(description = "Id externo (o número da OTA), de 1 a 60 caracteres.")
     val externalId: String? = null,
-    val reservations: List<@Valid ReservationRequest> = emptyList(),
+    val reservations: List<@Valid ReservationRequest>,
 ) {
     fun toNew() =
         NewBooking(

@@ -45,12 +45,12 @@ data class ReservationChangeRequest(
     @field:Min(1)
     val adults: Int?,
     @field:Schema(description = "A idade de cada criança na chegada, em anos completos.")
-    val childAges: List<Int> = emptyList(),
+    val childAges: List<Int>,
     @field:NotNull
     val segment: MarketSegment?,
     @field:Schema(description = "Pedidos especiais (texto livre, até 1000 caracteres; nunca vai à trilha).")
     val specialRequests: String? = null,
-    val nightlyRates: List<@Valid NightlyRateRequest> = emptyList(),
+    val nightlyRates: List<@Valid NightlyRateRequest>,
 ) {
     fun toChange() =
         ReservationChange(

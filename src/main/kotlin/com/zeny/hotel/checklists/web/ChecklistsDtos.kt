@@ -52,7 +52,7 @@ data class CreateChecklistTemplateRequest(
     val applicability: List<@Valid ApplicabilityRuleDto> = emptyList(),
     @field:Schema(description = "As seções, na ordem de exibição (de 1 a 30).")
     @field:Size(max = MAX_SECTIONS)
-    val sections: List<@Valid ChecklistSectionDto> = emptyList(),
+    val sections: List<@Valid ChecklistSectionDto>,
 ) {
     fun toCommand() = ChecklistTemplateCommand(name, content(applicability, sections))
 }
@@ -66,10 +66,10 @@ data class UpdateChecklistTemplateRequest(
             "Regras de aplicabilidade (RF-CHK-04); vale qualquer uma. Vazio: o modelo geral do contexto.",
     )
     @field:Size(max = MAX_RULES)
-    val applicability: List<@Valid ApplicabilityRuleDto> = emptyList(),
+    val applicability: List<@Valid ApplicabilityRuleDto>,
     @field:Schema(description = "As seções, na ordem de exibição (de 1 a 30).")
     @field:Size(max = MAX_SECTIONS)
-    val sections: List<@Valid ChecklistSectionDto> = emptyList(),
+    val sections: List<@Valid ChecklistSectionDto>,
 ) {
     fun toCommand() = ChecklistTemplateCommand(name, content(applicability, sections))
 }
