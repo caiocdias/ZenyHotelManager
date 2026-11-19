@@ -47,6 +47,11 @@ internal object HousekeepingAudit {
     /** A inspeção voluntária de uma UH, sem tarefa (D4-E05). */
     const val INSPECT_ROOM = "housekeeping.inspection.inspect-room"
 
+    // Os comandos offline da inspeção (D7-E05): uma entrada por entidade do comando, com a ação `…-offline`.
+    const val START_INSPECTION_OFFLINE = "housekeeping.inspection.start-offline"
+    const val COMPLETE_INSPECTION_OFFLINE = "housekeeping.inspection.complete-offline"
+    const val INSPECT_ROOM_OFFLINE = "housekeeping.inspection.inspect-room-offline"
+
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"

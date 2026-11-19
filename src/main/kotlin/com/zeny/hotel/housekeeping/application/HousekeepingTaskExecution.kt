@@ -183,7 +183,10 @@ class HousekeepingTaskExecution(
         val remarks = mutableMapOf<String, Any?>()
         val view =
             act(taskId, actor, expectedVersion, remarks) {
-                val device = deviceChecklistVersion?.let(::deviceVersion)
+                val device =
+                    deviceChecklistVersion?.let { version ->
+                        checklists.deviceVersion(version, ChecklistContext.HOUSEKEEPING)
+                    }
                 it.start(at, hotel.currentBusinessDate())
                 it.openChecklist(openChecklist(it, actor, device, warnings, remarks))
             }
@@ -311,17 +314,6 @@ class HousekeepingTaskExecution(
     }
 
     /**
-     * A versão do checklist informada pelo aparelho (D1-E19): publicada e de um modelo `HOUSEKEEPING`, senão `422
-     * HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID` (o payload vem do aparelho, entrada não confiável).
-     */
-    private fun deviceVersion(id: ChecklistVersionId): ChecklistVersionView =
-        checklists.version(id)?.takeIf { it.context == ChecklistContext.HOUSEKEEPING }
-            ?: throw BusinessRuleException(
-                HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID,
-                "A versão do checklist informada não existe ou não é de um modelo de governança.",
-            )
-
-    /**
      * A execução do checklist da tarefa iniciada agora (D5-E04), ou `null` sem modelo que valha: a versão do aparelho
      * ([device], D1-E19), se informada, senão a vigente do modelo da tarefa. Os alertas vão a [warnings] e o desvio de
      * modelo, a [remarks] (a trilha).
@@ -335,39 +327,9 @@ class HousekeepingTaskExecution(
     ): ChecklistExecutionId? {
         val current = currentChecklistVersion(task)
         val version = device ?: current ?: return null
-        device?.let { compareWithCurrent(it, current, warnings, remarks) }
+        device?.let { compareDeviceVersion(it, current, warnings, remarks) }
         val subject = ChecklistSubject(CHECKLIST_SUBJECT_TYPE, task.id.value)
         return checklists.startExecution(version.id, subject, actor.userId, checkNotNull(task.lastTransitionAt)).id
-    }
-
-    /**
-     * Compara a versão do aparelho ([device]) com a vigente do modelo da tarefa ([current], D1-E19): do mesmo modelo e
-     * já substituída, `CHECKLIST_VERSION_OUTDATED`; de outro modelo (ou sem modelo na tarefa),
-     * `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido na trilha.
-     */
-    private fun compareWithCurrent(
-        device: ChecklistVersionView,
-        current: ChecklistVersionView?,
-        warnings: MutableList<OfflineCommandWarning>,
-        remarks: MutableMap<String, Any?>,
-    ) {
-        if (current != null && device.templateId == current.templateId) {
-            if (device.id != current.id) {
-                warnings +=
-                    OfflineCommandWarning(
-                        ChecklistsErrorCodes.CHECKLIST_VERSION_OUTDATED,
-                        "O checklist usou a versão ${device.number} do modelo, já substituída; ela ficou guardada.",
-                    )
-            }
-            return
-        }
-        remarks["expectedChecklistTemplateId"] = current?.templateId?.toString()
-        remarks["receivedChecklistTemplateId"] = device.templateId.toString()
-        warnings +=
-            OfflineCommandWarning(
-                HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH,
-                "O aparelho abriu o checklist de outro modelo; a execução ficou com ele e a troca foi registrada.",
-            )
     }
 
     /** A versão vigente do modelo da tarefa (D5-E04): a do vínculo do tipo, senão a que vale para ela, ou nenhuma. */
@@ -486,6 +448,54 @@ private fun requireCompletionInput(
         }
     throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
 }
+
+/**
+ * Compara a versão do aparelho ([device]) com a vigente do modelo da tarefa ([current]; D1-E19, e D7-E05 na
+ * inspeção): do mesmo modelo e já substituída, `CHECKLIST_VERSION_OUTDATED`; de outro modelo (ou sem modelo na
+ * tarefa), `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido em [remarks] (a trilha).
+ */
+internal fun compareDeviceVersion(
+    device: ChecklistVersionView,
+    current: ChecklistVersionView?,
+    warnings: MutableList<OfflineCommandWarning>,
+    remarks: MutableMap<String, Any?>,
+) {
+    if (current != null && device.templateId == current.templateId) {
+        if (device.id != current.id) {
+            warnings +=
+                OfflineCommandWarning(
+                    ChecklistsErrorCodes.CHECKLIST_VERSION_OUTDATED,
+                    "O checklist usou a versão ${device.number} do modelo, já substituída; ela ficou guardada.",
+                )
+        }
+        return
+    }
+    remarks["expectedChecklistTemplateId"] = current?.templateId?.toString()
+    remarks["receivedChecklistTemplateId"] = device.templateId.toString()
+    warnings +=
+        OfflineCommandWarning(
+            HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH,
+            "O aparelho abriu o checklist de outro modelo; a execução ficou com ele e a troca foi registrada.",
+        )
+}
+
+/**
+ * A versão do checklist informada pelo aparelho (D1-E19; D7-E05 na inspeção): publicada e de um modelo do [context],
+ * senão `422 HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID` (o payload vem do aparelho, entrada não confiável).
+ */
+internal fun ChecklistsApi.deviceVersion(
+    id: ChecklistVersionId,
+    context: ChecklistContext,
+): ChecklistVersionView =
+    version(id)?.takeIf { it.context == context }
+        ?: throw BusinessRuleException(
+            HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID,
+            if (context == ChecklistContext.INSPECTION) {
+                "A versão do checklist informada não existe ou não é de um modelo de inspeção."
+            } else {
+                "A versão do checklist informada não existe ou não é de um modelo de governança."
+            },
+        )
 
 /** O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere). */
 private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.task"

@@ -110,9 +110,11 @@ class HousekeepingRoomInspectionApiTest(
     @Test
     fun `an unknown room is 400 HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM on the field`(): Unit =
         with(iam) {
-            inspect(RoomId(UUID.randomUUID()), asTestUser(support.inspector()))
-                .problem(400, "HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM")["errors"][0]["field"]
-                .asString() shouldBe "roomId"
+            val error =
+                inspect(RoomId(UUID.randomUUID()), asTestUser(support.inspector()))
+                    .problem(400, "HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM")["errors"][0]
+            error["field"].asString() shouldBe "roomId"
+            error["code"].asString() shouldBe "HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM"
         }
 
     private fun cleanRoom(requiresInspection: Boolean): RoomId =

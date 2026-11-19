@@ -381,23 +381,29 @@ class CompleteHousekeepingTaskHandler(
                     expectedVersion = null,
                     ChecklistPhotoPolicy.TOLERATE,
                 )
-            photoWarnings(completion)
+            offlinePhotoWarnings(completion.missingPhotos, completion.rejectedPhotos)
         }
     }
-
-    /** Os alertas das fotos que ficaram de fora (H10, RN-22: aplicado com alerta), os mesmos do `checklists`. */
-    private fun photoWarnings(completion: HousekeepingTaskCompletion): List<OfflineCommandWarning> =
-        completion.missingPhotos.map {
-            OfflineCommandWarning(
-                ChecklistsErrorCodes.CHECKLIST_PHOTO_MISSING,
-                "A foto do item \"$it\" ainda não chegou ao servidor; a resposta ficou sem ela.",
-            )
-        } +
-            completion.rejectedPhotos.map {
-                OfflineCommandWarning(
-                    ChecklistsErrorCodes.CHECKLIST_PHOTO_INVALID,
-                    "A foto do item \"$it\" não serve (outra finalidade, outro autor ou outro registro); a " +
-                        "resposta ficou sem ela.",
-                )
-            }
 }
+
+/**
+ * Os alertas das fotos que ficaram de fora de uma conclusão offline pela política `TOLERATE` (H10, RN-22: aplicado com
+ * alerta), os mesmos do `checklists`: a que ainda não chegou ([missing]) e a que não serve ([rejected]).
+ */
+internal fun offlinePhotoWarnings(
+    missing: List<String>,
+    rejected: List<String>,
+): List<OfflineCommandWarning> =
+    missing.map {
+        OfflineCommandWarning(
+            ChecklistsErrorCodes.CHECKLIST_PHOTO_MISSING,
+            "A foto do item \"$it\" ainda não chegou ao servidor; a resposta ficou sem ela.",
+        )
+    } +
+        rejected.map {
+            OfflineCommandWarning(
+                ChecklistsErrorCodes.CHECKLIST_PHOTO_INVALID,
+                "A foto do item \"$it\" não serve (outra finalidade, outro autor ou outro registro); a resposta " +
+                    "ficou sem ela.",
+            )
+        }
