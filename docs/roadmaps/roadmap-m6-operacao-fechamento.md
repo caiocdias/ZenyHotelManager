@@ -227,7 +227,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
-| E19 | Comandos offline, conflito RN-22 e feed da camareira | #pendente | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
+| E19 | Comandos offline, conflito RN-22 e feed da camareira | #em-andamento | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #pendente | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 | E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
@@ -1685,7 +1685,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E19 — Comandos offline, conflito RN-22 e feed da camareira — #pendente
+## E19 — Comandos offline, conflito RN-22 e feed da camareira — #em-andamento
 
 **Objetivo:** levar a execução da E04 para o app da camareira offline (RF-GOV-04, RN-22, ARCHITECTURE §6.2 e §9): comandos offline das mesmas ações, conflito RN-22 registrado e sinalizado com histórico de posse (H18 b) e o feed das tarefas da camareira sem dado de hóspede (RN-13).
 
