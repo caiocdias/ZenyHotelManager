@@ -1,5 +1,7 @@
 package com.zeny.hotel.housekeeping.infrastructure
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.housekeeping.HousekeepingOffline
 import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.TaskStatus
@@ -26,11 +28,15 @@ import java.util.UUID
  * - **Itens:** as tarefas abertas ([OPEN]), de qualquer data (o cursor é a posição, não a data), com a `version` que
  *   é o `ETag` do `If-Match` online; as demais (`PENDING`, `AWAITING_INSPECTION`, `DONE`, `CANCELLED`) vão como
  *   *tombstone*. Sem as `notes` (texto livre da recepção) nem dado de hóspede ou de reserva (RN-13).
+ * - **Itens reprovados** (D7-E05): cada item leva as chaves reprovadas da última inspeção reprovada da tarefa (a
+ *   única fonte delas, como na resposta online) e a versão do checklist de inspeção dessa inspeção (pela
+ *   `ChecklistsApi`), para o aparelho exibir os itens; sem reprovação, a lista vazia e a versão nula.
  */
 @Component
 class HousekeepingTaskOfflineSource(
     private val jdbc: JdbcClient,
     private val staff: StaffApi,
+    private val checklists: ChecklistsApi,
 ) : OfflineChangeSource {
     override val source = HousekeepingOffline.TASKS
 
@@ -45,8 +51,15 @@ class HousekeepingTaskOfflineSource(
                 """
                 SELECT t.id, t.room_id, t.area_id, t.cleaning_type_id, t.business_date, t.status, t.priority,
                        t.assignment_position, t.arrival_expected, t.checklist_execution_id, t.refusal_reason,
-                       t.has_conflict, t.version, ${OfflineChangeRequest.positionColumns("t")}
+                       t.has_conflict, t.version, r.rejected_items, r.checklist_execution_id AS inspection_execution_id,
+                       ${OfflineChangeRequest.positionColumns("t")}
                 FROM housekeeping.housekeeping_task t
+                LEFT JOIN LATERAL (
+                    SELECT i.rejected_items, i.checklist_execution_id FROM $INSPECTION_TABLE i
+                    WHERE i.task_id = t.id AND i.status = 'COMPLETED' AND i.result = 'REJECTED'
+                    ORDER BY i.completed_at DESC, i.id DESC
+                    LIMIT 1
+                ) r ON true
                 WHERE ${OfflineChangeRequest.window("t")}
                   AND (CAST(:employee AS uuid) IS NULL OR t.assigned_employee_id = CAST(:employee AS uuid))
                 ORDER BY t.change_xid, t.change_seq
@@ -79,13 +92,24 @@ class HousekeepingTaskOfflineSource(
                 checklistExecutionId = rs.getObject("checklist_execution_id", UUID::class.java),
                 refusalReason = rs.getString("refusal_reason")?.let(RefusalReason::valueOf),
                 hasConflict = rs.getBoolean("has_conflict"),
+                rejectedItems = rejectedItems(rs),
+                inspectionChecklistVersionId =
+                    rs
+                        .getObject("inspection_execution_id", UUID::class.java)
+                        ?.let { checklists.execution(ChecklistExecutionId(it))?.versionId?.value },
             ),
         )
     }
 
+    /** As chaves da última reprovação (`text[]`), ou nenhuma sem reprovação. */
+    private fun rejectedItems(rs: ResultSet): List<String> =
+        rs.getArray("rejected_items")?.let { items -> (items.array as Array<*>).map { it.toString() } }.orEmpty()
+
     /**
      * O que o app da camareira recebe de cada tarefa (RN-13): sem `notes` nem dado de hóspede ou de reserva.
      * [hasConflict]: um comando offline de uma ex-dona virou conflito (D4-E19); o app sinaliza a tarefa.
+     * [rejectedItems] e [inspectionChecklistVersionId]: as chaves reprovadas e a versão do checklist de inspeção da
+     * última reprovação (D7-E05); vazia e nula sem reprovação.
      */
     data class OfflineTask(
         val roomId: UUID?,
@@ -99,6 +123,8 @@ class HousekeepingTaskOfflineSource(
         val checklistExecutionId: UUID?,
         val refusalReason: RefusalReason?,
         val hasConflict: Boolean,
+        val rejectedItems: List<String>,
+        val inspectionChecklistVersionId: UUID?,
     )
 
     private companion object {
