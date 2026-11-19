@@ -106,6 +106,31 @@ interface HousekeepingTaskStore {
      */
     fun update(task: HousekeepingTask)
 
+    /**
+     * Grava a posse (D3-E19): a tarefa [taskId] passou à camareira [employeeId] em [at], no histórico só de inserção
+     * `housekeeping.task_assignment`. A camareira atual e a retirada vêm da própria tarefa.
+     */
+    fun recordAssignment(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+        at: Instant,
+    )
+
+    /** Se a camareira [employeeId] já foi dona da tarefa [taskId], atual ou antiga (o histórico de posse, D3-E19). */
+    fun wasAssignedTo(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+    ): Boolean
+
+    /**
+     * A tarefa [taskId] saiu do escopo `OWN` dos [users] na fonte offline `housekeeping-tasks` (D6-E19): o *tombstone*
+     * vai só a eles; quem tem `ALL` continua com a tarefa.
+     */
+    fun recordLeftScope(
+        taskId: HousekeepingTaskId,
+        users: Set<UserId>,
+    )
+
     /** A data da última tarefa da UH até [onOrBefore] (inclusive), sem contar as `CANCELLED`; `null` se não há. */
     fun lastTaskDate(
         roomId: RoomId,

@@ -1,5 +1,6 @@
 package com.zeny.hotel.housekeeping.infrastructure
 
+import com.zeny.hotel.housekeeping.HousekeepingOffline
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.ScheduledCleaningId
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskStore
@@ -7,12 +8,18 @@ import com.zeny.hotel.housekeeping.application.TaskFilter
 import com.zeny.hotel.housekeeping.application.TaskPageKey
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.shared.OfflineTombstones
+import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.staff.EmployeeId
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
+import java.time.Instant
 import java.time.LocalDate
+import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
 
@@ -20,14 +27,16 @@ interface HousekeepingTaskJpaRepository : JpaRepository<HousekeepingTask, UUID>
 
 /**
  * As tarefas de governança: a leitura por JPA; a gravação (`INSERT … ON CONFLICT DO NOTHING` na unicidade por local,
- * data e tipo, para que a tarefa repetida não aborte a transação de quem gera) e as páginas por `JdbcClient`, sempre
- * parametrizadas e só no schema `housekeeping`.
+ * data e tipo, para que a tarefa repetida não aborte a transação de quem gera), as páginas e o histórico de posse (só
+ * `INSERT` e `SELECT` em `housekeeping.task_assignment`, D3-E19) por `JdbcClient`, sempre parametrizadas e só no schema
+ * `housekeeping`; o *tombstone* de escopo pela porta `OfflineTombstones` do `shared`.
  */
 @Component
 class JpaHousekeepingTaskStore(
     private val entityManager: EntityManager,
     private val jdbc: JdbcClient,
     private val repository: HousekeepingTaskJpaRepository,
+    private val tombstones: OfflineTombstones,
 ) : HousekeepingTaskStore {
     override fun task(id: HousekeepingTaskId): HousekeepingTask? = repository.findById(id.value).orElse(null)
 
@@ -145,6 +154,41 @@ class JpaHousekeepingTaskStore(
         repository.saveAndFlush(task)
     }
 
+    override fun recordAssignment(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+        at: Instant,
+    ) {
+        jdbc
+            .sql(
+                "INSERT INTO $TASK_ASSIGNMENT_TABLE (id, task_id, employee_id, assigned_at) " +
+                    "VALUES (:id, :task, :employee, :at)",
+            ).param("id", UuidV7.generate())
+            .param("task", taskId.value)
+            .param("employee", employeeId.value)
+            .param("at", OffsetDateTime.ofInstant(at, ZoneOffset.UTC))
+            .update()
+    }
+
+    override fun wasAssignedTo(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+    ): Boolean =
+        jdbc
+            .sql(
+                "SELECT EXISTS (SELECT 1 FROM $TASK_ASSIGNMENT_TABLE WHERE task_id = :task AND employee_id = :employee)",
+            ).param("task", taskId.value)
+            .param("employee", employeeId.value)
+            .query(Boolean::class.java)
+            .single()
+
+    override fun recordLeftScope(
+        taskId: HousekeepingTaskId,
+        users: Set<UserId>,
+    ) {
+        if (users.isNotEmpty()) tombstones.record(HousekeepingOffline.TASKS, taskId.value, leftScopeOf = users)
+    }
+
     override fun lastTaskDate(
         roomId: RoomId,
         onOrBefore: LocalDate,
@@ -159,3 +203,6 @@ class JpaHousekeepingTaskStore(
             .list()
             .single() // o max() devolve sempre uma linha, nula sem tarefa
 }
+
+/** O histórico de posse das tarefas (D3-E19), só de inserção. */
+internal const val TASK_ASSIGNMENT_TABLE = "housekeeping.task_assignment"

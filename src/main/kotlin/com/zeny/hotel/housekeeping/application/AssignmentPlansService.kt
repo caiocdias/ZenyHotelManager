@@ -270,7 +270,9 @@ class AssignmentPlansService(
      * Grava em cada tarefa do rascunho a camareira e a posição (`ASSIGNED`), ou a volta a `PENDING` sem camareira; a
      * tarefa já igual ao item não muda. A tarefa **retirada** (D7-E03: `ASSIGNED`, dentro do conteúdo do plano pela
      * D2-E03 e fora do rascunho) volta a `PENDING`. Uma falha otimista numa tarefa (outra escrita chegou antes) dá
-     * `412`. O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída ou removida
+     * `412`. A tarefa que passa a uma camareira grava a posse ([HousekeepingTaskStore.recordAssignment], D3-E19); a que sai de uma
+     * camareira (reatribuída ou retirada) vai como *tombstone* da fonte offline `housekeeping-tasks` ao usuário dela
+     * (D6-E19). O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída ou removida
      * (não a que só mudou de posição) e publica a mensagem no tópico `housekeeping`.
      */
     @Audited(HousekeepingAudit.PUBLISH_ASSIGNMENT_PLAN)
@@ -308,6 +310,7 @@ class AssignmentPlansService(
                 val item = items.getValue(task.id)
                 write(task, item.attendant?.let { EmployeeId(it.value) }, item.position, now)
             } + withdrawn.mapNotNull { write(it, null, 0, now) }
+        recordScopeExits(changes)
         plan.publish(now, actor.currentOrNull()?.userId)
         plans.update(plan)
         val (notified, notNotified) = notifyChanges(date, changes)
@@ -353,7 +356,8 @@ class AssignmentPlansService(
 
     /**
      * Grava na tarefa a camareira [employee] na [position] (`null`: volta a `PENDING`), acompanhada na trilha; a tarefa
-     * que já está assim não muda. Devolve a mudança, ou `null` se nada mudou.
+     * que já está assim não muda. Quando a tarefa passa a outra camareira, grava a posse (D3-E19; mudar só a posição
+     * não grava). Devolve a mudança, ou `null` se nada mudou.
      */
     private fun write(
         task: HousekeepingTask,
@@ -372,7 +376,22 @@ class AssignmentPlansService(
         audit.track(HousekeepingAudit.TASK, task.id.value) { task.auditState() }
         if (employee == null) task.unassign(now) else task.assign(employee, position, now)
         tasks.update(task)
+        if (employee != null && employee != before) tasks.recordAssignment(task.id, employee, now)
         return AssigneeChange(task, before, employee, position)
+    }
+
+    /**
+     * A tarefa que saiu de uma camareira (reatribuída a outra ou retirada) sai do escopo `OWN` do usuário dela na fonte
+     * `housekeeping-tasks` (D6-E19): o *tombstone* vai só a ele, e quem tem `ALL` continua com a tarefa. O usuário vem
+     * do cadastro do colaborador (`StaffApi.employees`); a camareira sem usuário não tem aparelho a avisar.
+     */
+    private fun recordScopeExits(changes: List<AssigneeChange>) {
+        val exits = changes.filter { it.before != null && it.after != it.before }
+        if (exits.isEmpty()) return
+        val users = staff.employees(exits.mapNotNull { it.before }.distinct())
+        exits.forEach { exit ->
+            users[exit.before]?.userId?.let { tasks.recordLeftScope(exit.task.id, setOf(it)) }
+        }
     }
 
     /**
