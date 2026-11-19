@@ -228,7 +228,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
-| E05 | Inspeção e liberação da UH | #em-andamento | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
+| E05 | Inspeção e liberação da UH | #concluida | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 | E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
@@ -1830,7 +1830,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E05 — Inspeção e liberação da UH — #em-andamento
+## E05 — Inspeção e liberação da UH — #concluida
 
 **Objetivo:** implementar a inspeção (RF-GOV-06): a supervisora executa o checklist de inspeção, aprova (UH Inspecionada, tarefa `DONE`) ou reprova (UH Suja, tarefa `REJECTED` de volta à camareira com os itens apontados); inspeção voluntária de UH Limpa; aviso em tempo real à recepção quando a UH fica pronta (RF-GOV-07), por SSE e por notificação de UH liberada (RF-NOT-01).
 
@@ -1844,13 +1844,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Aprovação → UH Inspecionada e tarefa `DONE`; UH vaga e sem OOO passa a pronta para check-in (RN-05).
-- [ ] Reprovação → UH Suja, tarefa `REJECTED` com os itens reprovados, camareira notificada; refazer leva a `IN_PROGRESS`.
-- [ ] Inspeção voluntária de UH Limpa → Inspecionada.
-- [ ] Inspeção sem a permissão própria → `403`.
-- [ ] Cliente inscrito no tópico de UHs do SSE recebe o evento quando a UH fica pronta.
-- [ ] Inspeção offline funciona pelo mesmo padrão de comandos offline da E19.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Aprovação → UH Inspecionada e tarefa `DONE`; UH vaga e sem OOO passa a pronta para check-in (RN-05).
+- [x] Reprovação → UH Suja, tarefa `REJECTED` com os itens reprovados, camareira notificada; refazer leva a `IN_PROGRESS`.
+- [x] Inspeção voluntária de UH Limpa → Inspecionada.
+- [x] Inspeção sem a permissão própria → `403`.
+- [x] Cliente inscrito no tópico de UHs do SSE recebe o evento quando a UH fica pronta.
+- [x] Inspeção offline funciona pelo mesmo padrão de comandos offline da E19.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1869,12 +1869,79 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e05.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). Na rodada 0 foi bloqueada por 7 Importantes:
+  - o código de permissão do `frontdesk` citado como texto;
+  - a inspeção offline sem fonte e os itens reprovados fora do feed;
+  - o ciclo da `Inspection` indefinido;
+  - a rota e o código da voluntária;
+  - o gatilho do aviso de UH liberada;
+  - o `housekeeping.task` nas transições;
+  - testes sem nome.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `a0f5f5d` (início) a `7715d3d`.
+  - **Task 1** (permissão, agregado e aprovação): `a606944` e `d826adb` (desenvolvedor), `f4887b6` (testador, listas exatas).
+  - **Task 2** (reprovação, voluntária e UH liberada): `ccfaad6` e `9b8c502`, mais a rodada 1 em `1d34f94` (desenvolvedor).
+  - **Task 3** (offline e fonte do inspetor): `f7701d1` e `ce8388e`, mais a rodada 1 em `12ebdf1` (desenvolvedor).
+  - **Rodada final:** `20327b2` (desenvolvedor: trilha da tarefa no início da inspeção, regex única `CHECKLIST_ITEM_KEY`, itens de `rejectedItems` não anuláveis no contrato).
+  - **Testador da etapa:** `5f90891` (`HousekeepingInspectionAttackTest`, 9; `HousekeepingInspectionCheckoutRaceTest`, 1) e `7715d3d` (aprovação em UH em OOO sem aviso), só `src/test`, sem defeito de produção.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`. A Task 1 foi aprovada sem Importante. A Task 2 teve 1 Importante, a UH desconhecida na voluntária sem o código `…UNKNOWN_…` (H16). A Task 3 teve 1 Importante, a correção do `answeredAt` duplicada entre os handlers. Os dois foram corrigidos nas rodadas.
+- Entregue:
+  - **Permissão** `housekeeping.inspections.perform`, só `ALL`, no Gerente e na Governanta.
+  - **Agregado `Inspection`:**
+    - tabela `housekeeping.inspection`, com status `IN_PROGRESS`/`COMPLETED`, resultado, `rejected_items text[]` e o inspetor (quem concluiu);
+    - índice único parcial (uma inspeção aberta por tarefa), CHECKs de coerência e recusa a DELETE.
+  - **Início e conclusão online** (`POST /api/v1/housekeeping-tasks/{id}/inspection/start|complete`, com `If-Match`):
+    - o `start` muda a `version` e publica `housekeeping.task`;
+    - um segundo `start` dá `409 HOUSEKEEPING_INSPECTION_ALREADY_OPEN`;
+    - o `complete` sem `start` só é aceito sem modelo `INSPECTION`; com modelo, dá `409 HOUSEKEEPING_INSPECTION_NOT_STARTED`;
+    - aprovar leva a tarefa a `DONE`, com a UH pela `RoomsApi.markInspectedIfPending`;
+    - reprovar leva a tarefa a `REJECTED`, com a UH pela `rejectInspectionIfPending`; os itens são validados contra a versão do checklist (ao menos um com modelo, nenhum sem modelo) e gravados por `createArrayOf`;
+    - as operações condicionais decidem com a linha travada e devolvem o status antes e depois.
+  - **Inspeção voluntária** (`POST /api/v1/room-inspections`):
+    - só aprova, sem checklist, pela `markInspectedIfClean`;
+    - UH com pendência dá `409 HOUSEKEEPING_INSPECTION_USE_TASK`;
+    - UH não Limpa dá `409 HOUSEKEEPING_ROOM_NOT_CLEAN`;
+    - UH inexistente dá `400 HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM`.
+  - **Aviso de UH liberada** (`notifications.room-released`):
+    - sai só na passagem de não pronta para pronta, decidida com a linha travada;
+    - vale na aprovação e na conclusão da E04 de tipo sem inspeção, que agora usa a variante `markCleanIfDirtyWithStatus`;
+    - vai a quem tem `housekeeping.tasks.read`, menos quem agiu;
+    - o SSE da UH pronta é o `rooms.room-status`, que o `rooms` já publicava.
+  - **Aviso de reprovação** (`notifications.inspection-rejected`): vai à camareira atribuída, com a UH e a contagem de itens; sem usuário, é omitido.
+  - **Offline:**
+    - comandos `housekeeping.start-inspection` (o `commandId` vira o id da inspeção, com a versão do checklist do aparelho e os alertas da E19), `housekeeping.complete-inspection` e `housekeeping.inspect-room`;
+    - fonte `housekeeping-inspections` (inspetor, `ALL`) com as tarefas `AWAITING_INSPECTION`;
+    - `rejectedItems` e `inspectionChecklistVersionId` no feed `housekeeping-tasks`;
+    - os helpers da versão do aparelho e a correção do `answeredAt` ficaram num ponto só.
+  - A ARCHITECTURE §6.2, §9 e §10 registram os comandos, a fonte e as transições.
+- Revisão final: `revisor-seguranca` (opus) sobre `dab21ad..12ebdf1`: aprovado com ressalvas, 0 Crítico e 0 Importante, 5 Menores. Os Menores M1 (o início da inspeção não registrava a tarefa na trilha), M3 (regex da chave copiada) e M4 (itens anuláveis no contrato) e a recomendação do teste de UH em OOO foram corrigidos na rodada final; M2 e M5 ficam como notas. A re-revisão escopada (`12ebdf1..7715d3d`) saiu limpa, "Ready to merge: Yes", com 2 Menores de força de teste (notas abaixo).
+- Verificação: `./gradlew build` em `7715d3d`: BUILD SUCCESSFUL, 4547 testes, 0 falhas (16m22s). `check_test_integrity.py --base dab21ad`: sem apontamentos. `check-api-breaking.sh`: nenhuma mudança `ERR`. `osv-scanner` (426 + 74 pacotes): 0 Critical, 0 High, 2 Medium e 3 Low, os mesmos de antes (lockfiles sem mudança).
+- Critérios verificados:
+  - **Aprovação:** `HousekeepingInspectionApiTest`.
+  - **Permissão:** `HousekeepingInspectionPermissionsTest`.
+  - **Reprovação:** `HousekeepingInspectionRejectionApiTest`.
+  - **Voluntária:** `HousekeepingRoomInspectionApiTest`.
+  - **UH liberada:** `HousekeepingRoomReleasedTest`.
+  - **`rooms`:** `RoomsApiInspectionOperationsTest`.
+  - **Offline:** `HousekeepingInspectionOfflineTest` e `HousekeepingInspectionFeedTest`.
+  - **Ataque:** `HousekeepingInspectionAttackTest` e `HousekeepingInspectionCheckoutRaceTest` (testador).
+  - **SSE:** `rooms.room-status` no tópico `rooms`, em `HousekeepingRoomReleasedTest`.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **(a) D5:** o aviso de UH liberada vai a quem tem `housekeeping.tasks.read` (Recepção, Governanta e Gerente), e não só à recepção pela permissão de check-in do `frontdesk`. O roadmap proíbe `housekeeping` → `frontdesk`, e mudar isso seria decisão de fronteira de módulo.
+  - **(b) D4:** a inspeção voluntária é sem checklist e só aprova; nunca avisa UH liberada, porque a UH Limpa sem pendência já estava pronta. Isto corrige a D5 do plano, que listava a voluntária entre os gatilhos do aviso; a chamada a `notifyIfReleased` nela ficou como defesa.
+  - **(c) D3:** a inspeção não tem dono. Qualquer inspetor conclui a aberta por outro, mas a foto obrigatória precisa ser de quem iniciou o checklist, e o `inspectorId` é quem concluiu.
+  - **(d)** Reprovar uma UH ocupada, Limpa e com pendência a leva a Suja.
+  - **(e)** `rejectedItems` segue com a última reprovação depois de um refazer aprovado, e aparece no feed em qualquer status aberto.
+  - **(f)** A inspeção offline reutiliza os códigos `HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID` e `…TEMPLATE_MISMATCH`.
+  - **(g) Review Focus 2:** a reprovação de uma tarefa cuja UH já não tem inspeção pendente (já Inspecionada, ou Limpa sem pendência, H18 d) deixa a UH como está, e ela pode seguir pronta para check-in. A armadilha do roadmap pedia "a UH nunca fica pronta com a inspeção reprovada"; a alternativa é a reprovação levar a UH a Suja também nesse caso.
+- Notas para a próxima etapa:
+  - **Para o `arquiteto`:**
+    - desvios da SPEC §8.2.10 na `Inspection`: sem `notes`; tarefa e checklist anuláveis; o inspetor é usuário, não colaborador;
+    - a fonte do inspetor não traz o id da inspeção aberta;
+    - o feed da camareira faz uma consulta `checklists.execution` por linha com reprovação;
+    - um `commandId` igual ao id de uma inspeção existente vira `FAILED` no lote do próprio aparelho.
+  - **Testes (Menores da re-revisão):** `HousekeepingInspectionCheckoutRaceTest` só confere que a UH existe (afirmar `DIRTY` e `VACANT`) e a corrida por `CountDownLatch` não garante a intercalação; o teste de dois inícios simultâneos espera `blockedBy >= 1`, não 2, e o perdedor recebe 412 pela versão.
+  - **E06 e E08:** o padrão D7 da E19 se repete aqui, com o aviso de UH liberada centralizado em `RoomReleaseNotices`.
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E05 - 43fe5d8e.md`.
 
 ---
 
