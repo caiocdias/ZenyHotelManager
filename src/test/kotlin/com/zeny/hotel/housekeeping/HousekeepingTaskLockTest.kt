@@ -46,7 +46,9 @@ import java.util.concurrent.atomic.AtomicInteger
 /**
  * A ordem de trava da execução da tarefa (M6 E04, Task 3; D9 da E04: tarefa, execução do checklist, UH, faxina
  * programada): ações concorrentes na mesma tarefa, e a conclusão concorrente com o `rooms` e com a edição da faxina, se
- * enfileiram sem deadlock, e a segunda vê o que a primeira confirmou.
+ * serializam (a segunda espera a trava da primeira) e terminam sem `500` nem `409 CONCURRENT_UPDATE`, e a segunda vê o
+ * que a primeira confirmou. Cada corrida exercita uma ordem de chegada; o teste não prova a ausência de ciclo de trava
+ * em toda intercalação possível.
  *
  * - **Ação × conclusão** na mesma tarefa: a segunda espera a trava da tarefa e vê o estado novo (`412` com a versão
  *   lida antes, `409 HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED` sem versão, como o offline da E19), nunca `500` nem
@@ -59,11 +61,13 @@ import java.util.concurrent.atomic.AtomicInteger
  *   (a faxina é relida com a trava); a edição que espera a conclusão dá `412` (a conclusão registrou a faxina feita).
  *
  * Determinístico, sem espera cega (padrão do `ScheduledCleaningsTypeLockTest`): a primeira operação roda numa
- * transação que fica aberta depois dela; a segunda começa noutra thread, e o teste espera (com prazo) que a sessão dela
- * fique bloqueada pela da primeira (`pg_blocking_pids`) com a relação disputada entre as travadas. Só então a primeira
- * confirma. Os casos de uso rodam direto, cada um como o seu usuário; toda transação das threads tem `lock_timeout`,
- * todo latch tem prazo, e o `finally` solta o latch e encerra as threads. As tarefas daqui não têm checklist (os
- * modelos gerais de governança são neutralizados antes de cada teste).
+ * transação que fica aberta depois dela; a segunda começa noutra thread, e o teste espera (com prazo) que a sessão
+ * dela esteja de fato **esperando** uma trava da primeira: bloqueada por ela (`pg_blocking_pids`), com
+ * `wait_event_type = 'Lock'` e uma trava não concedida (a espera de linha é em `transactionid`, não na relação),
+ * depois de ter tocado a relação disputada. Só então a primeira confirma. Os casos de uso rodam direto, cada um
+ * como o seu usuário; toda transação das threads tem `lock_timeout`, todo latch tem prazo, e o `finally` solta o
+ * latch e encerra as threads. As tarefas daqui não têm checklist (os modelos gerais de governança são neutralizados
+ * antes de cada teste).
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)
@@ -275,8 +279,8 @@ class HousekeepingTaskLockTest(
     }
 
     /**
-     * Espera, com prazo, alguma sessão bloqueada pela sessão [holder] (`pg_blocking_pids`) e com [relation] entre as
-     * relações travadas; [contender] não pode terminar antes disso.
+     * Espera, com prazo, alguma sessão esperando uma trava da sessão [holder] ([waitingOn]); [contender] não pode
+     * terminar antes disso.
      */
     private fun awaitBlocked(
         holder: Int,
@@ -284,7 +288,7 @@ class HousekeepingTaskLockTest(
         contender: Future<*>,
     ) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LATCH_SECONDS)
-        while (blockedOn(holder, relation) == 0) {
+        while (waitingOn(holder, relation) == 0) {
             withClue("a segunda operação terminou sem esperar a trava de $relation: ${contender.resultText()}") {
                 contender.isDone shouldBe false
             }
@@ -296,7 +300,13 @@ class HousekeepingTaskLockTest(
 
     private fun Future<*>.resultText(): String = if (isDone) runCatching { get() }.toString() else "em andamento"
 
-    private fun blockedOn(
+    /**
+     * Sessões esperando uma trava **não concedida** (`wait_event_type = 'Lock'`, `NOT granted`) e bloqueadas pela
+     * sessão [holder] (`pg_blocking_pids`), que já tocaram [relation]. A espera de uma linha (`FOR UPDATE`, `FOR NO
+     * KEY UPDATE`) fica em `transactionid` (relação nula), por isso a trava não concedida não é filtrada pela relação
+     * (padrão do `HousekeepingTaskLockAttackTest`).
+     */
+    private fun waitingOn(
         holder: Int,
         relation: String,
     ): Int =
@@ -305,6 +315,8 @@ class HousekeepingTaskLockTest(
                 """
                 SELECT count(*) FROM pg_stat_activity a
                 WHERE a.datname = current_database() AND :holder = ANY (pg_blocking_pids(a.pid))
+                  AND a.wait_event_type = 'Lock'
+                  AND EXISTS (SELECT 1 FROM pg_locks l WHERE l.pid = a.pid AND NOT l.granted)
                   AND EXISTS (SELECT 1 FROM pg_locks l
                               WHERE l.pid = a.pid AND l.relation = CAST(:relation AS regclass))
                 """.trimIndent(),
