@@ -3,6 +3,7 @@ package com.zeny.hotel.housekeeping.web
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.InspectionResult
 import com.zeny.hotel.housekeeping.InspectionStatus
+import com.zeny.hotel.housekeeping.application.CHECKLIST_ITEM_KEY
 import com.zeny.hotel.housekeeping.application.HousekeepingInspections
 import com.zeny.hotel.housekeeping.application.InspectionOutcome
 import com.zeny.hotel.housekeeping.application.InspectionView
@@ -12,6 +13,7 @@ import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.ETags
 import com.zeny.hotel.shared.ExtensibleEnum
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
@@ -97,7 +99,7 @@ class HousekeepingInspectionsController(
                 HousekeepingTaskId(id),
                 checkNotNull(request.result),
                 request.answers?.map { it.toInput() },
-                request.rejectedItems.orEmpty().filterNotNull(),
+                request.rejectedItems.orEmpty(),
                 actor.current(),
                 clock.instant(),
                 expected,
@@ -145,16 +147,20 @@ data class HousekeepingInspectionCompleteRequest(
     )
     val answers: List<@Valid HousekeepingChecklistAnswerRequest>?,
     @field:Size(max = MAX_ANSWERS)
-    @field:Schema(
-        description =
-            "As chaves dos itens reprovados do checklist de inspeção: na reprovação com checklist, pelo menos uma; " +
-                "vazio ou ausente na aprovação e na reprovação sem checklist.",
-        nullable = true,
+    // A descrição e o nulo só na lista: os itens não são anuláveis (item nulo ou vazio, 400 no campo).
+    @field:ArraySchema(
+        arraySchema =
+            Schema(
+                description =
+                    "As chaves dos itens reprovados do checklist de inspeção: na reprovação com checklist, pelo " +
+                        "menos uma; vazio ou ausente na aprovação e na reprovação sem checklist.",
+                nullable = true,
+            ),
     )
     val rejectedItems: List<
         @NotBlank
-        @Pattern(regexp = ITEM_KEY)
-        String?,
+        @Pattern(regexp = CHECKLIST_ITEM_KEY)
+        String,
     >?,
 )
 
@@ -241,6 +247,3 @@ data class HousekeepingInspectionResponse(
 }
 
 private const val MAX_ANSWERS = 300
-
-/** A chave de um item de checklist (a regra do `checklists`). */
-private const val ITEM_KEY = "[a-z0-9][a-z0-9_-]{0,39}"

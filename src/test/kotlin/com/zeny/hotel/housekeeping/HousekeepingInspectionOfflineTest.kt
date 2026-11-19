@@ -109,6 +109,22 @@ class HousekeepingInspectionOfflineTest(
     }
 
     @Test
+    fun `start-inspection records the task in the trail once, with the offline action`() {
+        val (task, _) = support.awaitingInspection(support.cleaningType())
+        val now = Instant.now()
+
+        val result =
+            sync(
+                iam.asTestUser(support.inspector()),
+                command("start-inspection", mapOf("taskId" to task), now, now),
+            ).single()
+
+        result["status"].asString() shouldBe "APPLIED"
+        housekeeping.auditActions("housekeeping.task", task).takeLast(2) shouldContainExactly
+            listOf("housekeeping.task.complete", "housekeeping.inspection.start-offline")
+    }
+
+    @Test
     fun `a batch with start-inspection and complete-inspection rejects like the online actions`() {
         val type = support.cleaningType()
         support.inspectionTemplate(type)

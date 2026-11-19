@@ -160,8 +160,7 @@ data class HousekeepingOfflineAnswerPayload(
         }
 
     private companion object {
-        /** O formato das chaves de item e de opção do `checklists` (`ChecklistContentRules.KEY`). */
-        val KEY = Regex("[a-z0-9][a-z0-9_-]{0,39}")
+        val KEY = Regex(CHECKLIST_ITEM_KEY)
 
         /** Os limites de resposta do `checklists` (`ChecklistAnswers`), que não os expõe a outros módulos. */
         val MAX_QUANTITY = BigDecimal("999999")

@@ -21419,11 +21419,7 @@ components:
             ão e na reprovação sem checklist."
           items:
             type: string
-            description: "As chaves dos itens reprovados do checklist de inspeção:\
-              \ na reprovação com checklist, pelo menos uma; vazio ou ausente na aprovaç\
-              ão e na reprovação sem checklist."
             minLength: 1
-            nullable: true
             pattern: "[a-z0-9][a-z0-9_-]{0,39}"
           maxItems: 300
           minItems: 0

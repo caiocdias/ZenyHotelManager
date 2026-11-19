@@ -218,12 +218,18 @@ class HousekeepingInspections(
                 "A tarefa já tem uma inspeção aberta: conclua-a.",
             )
         }
+        // A tarefa na trilha (a versão sobe pelo touch): o retrato "depois" leva a inspeção aberta agora.
+        var opened: InspectionId? = null
+        audit.track(HousekeepingAudit.TASK, task.id.value) {
+            task.executionAuditState() + ("openInspectionId" to opened?.toString())
+        }
         val warnings = mutableListOf<OfflineCommandWarning>()
         val remarks = mutableMapOf<String, Any?>()
         val current = inspectionChecklist(task)
         val device = deviceChecklistVersion?.let { checklists.deviceVersion(it, ChecklistContext.INSPECTION) }
         device?.let { compareDeviceVersion(it, current, warnings, remarks) }
         val inspection = open(task, actor, at, device ?: current, inspectionId, remarks)
+        opened = inspection.id
         tasks.touch(task)
         publish(task)
         return InspectionStart(InspectionOutcome(inspection.view(), task.view(), roomChanged = null), warnings)

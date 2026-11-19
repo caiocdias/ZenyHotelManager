@@ -45,15 +45,12 @@ data class CompleteInspectionPayload(
     @field:Size(max = MAX_ITEMS)
     val rejectedItems: List<
         @NotBlank
-        @Pattern(regexp = ITEM_KEY)
+        @Pattern(regexp = CHECKLIST_ITEM_KEY)
         String?,
     >? = null,
 ) {
     private companion object {
         const val MAX_ITEMS = 300
-
-        /** O formato das chaves de item do `checklists` (`ChecklistContentRules.KEY`). */
-        const val ITEM_KEY = "[a-z0-9][a-z0-9_-]{0,39}"
     }
 }
 

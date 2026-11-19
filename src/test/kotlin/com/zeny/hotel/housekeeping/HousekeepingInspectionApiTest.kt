@@ -222,6 +222,24 @@ class HousekeepingInspectionApiTest(
             inspectionRow(task)["status"] shouldBe "IN_PROGRESS"
         }
 
+    @Test
+    fun `starting the inspection records the task in the trail, with the open inspection`(): Unit =
+        with(iam) {
+            val (task, _) = awaitingInspection(inspectedType())
+
+            val (_, response) = execution.acted(task, "inspection/start", inspector())
+
+            val inspection = json(response)["inspection"]["id"].asString()
+            housekeeping.auditActions("housekeeping.task", task).last() shouldBe "housekeeping.inspection.start"
+            jdbc
+                .sql(
+                    "SELECT after_state ->> 'openInspectionId' FROM audit.audit_entry WHERE entity_type = " +
+                        "'housekeeping.task' AND entity_id = :id AND action = 'housekeeping.inspection.start'",
+                ).param("id", task.toString())
+                .query(String::class.java)
+                .single() shouldBe inspection
+        }
+
     // --- Apoio -------------------------------------------------------------------------------------------
 
     /** Um tipo de limpeza novo que exige inspeção. */
