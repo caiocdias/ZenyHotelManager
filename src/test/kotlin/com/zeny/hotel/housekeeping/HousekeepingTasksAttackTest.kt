@@ -163,23 +163,10 @@ class HousekeepingTasksAttackTest(
         }
 
     @Test
-    fun `a list date outside the storable range is 400 INVALID_FORMAT, never 500`(): Unit =
+    fun `a list date outside the storable range is 400 INVALID_FORMAT on the parameter, never 500`(): Unit =
         with(iam) {
-            // Uma tarefa gravada em -infinity (o que o driver grava para uma data abaixo do piso) num local só dela.
+            // Nenhuma tarefa é gravada: a conversão do parâmetro recusa o valor antes de qualquer consulta ao banco.
             val room = UUID.randomUUID()
-            owner
-                .sql(
-                    """
-                    INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
-                        source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
-                        created_at, updated_at, version)
-                    VALUES (:id, :room, NULL, '-infinity', :type, 'AD_HOC', 'PENDING', 3, 0, FALSE, NULL, NULL, NULL,
-                        now(), now(), 0)
-                    """.trimIndent(),
-                ).param("id", UUID.randomUUID())
-                .param("room", room)
-                .param("type", housekeeping.createCleaningType())
-                .update()
 
             // A conversão do parâmetro recusa o que está fora do StorableRange (M6 E20), antes de qualquer consulta.
             listOf("-5000-01-01", "-4713-12-31", "+5874898-01-01", "+999999999-12-31").forEach { date ->
@@ -208,8 +195,10 @@ class HousekeepingTasksAttackTest(
                 }
             }
             // Fora do StorableRange, a leitura do corpo recusa antes da regra de negócio (M6 E20).
-            post(housekeeping.taskBody(type, roomId = room, date = "-5000-01-01"))
-                .problem(400, "VALIDATION_FAILED")
+            val refused =
+                post(housekeeping.taskBody(type, roomId = room, date = "-5000-01-01")).problem(400, "VALIDATION_FAILED")
+            refused.field() shouldBe "date"
+            refused["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
             countTasksOf(room) shouldBe 0
         }
 

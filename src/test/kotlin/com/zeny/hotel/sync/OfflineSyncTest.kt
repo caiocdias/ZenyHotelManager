@@ -551,6 +551,44 @@ class OfflineSyncTest(
         noteCount(valid.id()) shouldBe 1
         noteCount(tooEarly.id()) shouldBe 0
         storedCommand(tooLate.id()) shouldBe 0
+        storedCommand(tooEarly.id()) shouldBe 0
+        storedCommand(valid.id()) shouldBe 1
+    }
+
+    /**
+     * O envelope sem a faixa continua estrito no formato (M6 E20): época numérica ou em texto e `""` em `occurredAt` ou
+     * `deviceClock` recusam o lote inteiro com `400 INVALID_FORMAT` no campo, e nenhum comando do lote é aplicado nem
+     * guardado (só o fora da faixa em formato ISO é recusado por comando).
+     */
+    @Test
+    fun `an envelope instant that is not ISO text refuses the whole batch with 400 on the field`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        listOf<Any>(1_763_028_000, 1_763_028_000_000, "1763028000", "").forEach { bad ->
+            listOf("occurredAt", "deviceClock").forEach { field ->
+                withClue("$field=$bad") {
+                    val first = command(SyncExample.RECORD, mapOf("text" to "lote $field $bad primeiro"))
+                    val second = command(SyncExample.RECORD, mapOf("text" to "lote $field $bad segundo"))
+                    val response =
+                        with(iam) {
+                            call(
+                                POST,
+                                "/api/v1/sync/commands",
+                                auth(writer),
+                                mapOf("commands" to listOf(first.body(), second.body() + (field to bad))),
+                            )
+                        }
+                    response.status shouldBe 400
+                    val problem = iam.json(response)
+                    problem["code"].asString() shouldBe "VALIDATION_FAILED"
+                    problem["errors"].values().map { "${it["field"].asString()}:${it["code"].asString()}" } shouldBe
+                        listOf("commands[1].$field:INVALID_FORMAT")
+                    noteCount(first.id()) shouldBe 0
+                    noteCount(second.id()) shouldBe 0
+                    storedCommand(first.id()) shouldBe 0
+                    storedCommand(second.id()) shouldBe 0
+                }
+            }
+        }
     }
 
     @Test

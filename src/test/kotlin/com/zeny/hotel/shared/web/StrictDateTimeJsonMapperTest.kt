@@ -1,6 +1,7 @@
 package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.shared.StorableRange
+import com.zeny.hotel.shared.UnboundedInstant
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
@@ -219,6 +220,106 @@ class StrictDateTimeJsonMapperTest(
     @Test
     fun `an integer as text is still read in an Int or Long field`() {
         readNumbers("""{"count":"7","total":"8"}""") shouldBe Numbers(count = 7, total = 8)
+    }
+
+    /**
+     * Uma propriedade `@UnboundedInstant` (o envelope offline) perde só a faixa, e a vizinha sem a anotação, no mesmo
+     * objeto, a mantém: a anotação não vaza para o tipo nem para as outras propriedades.
+     */
+    @Test
+    fun `an UnboundedInstant property reads outside the range while its neighbour without it refuses`() {
+        val outside = listOf("+294277-01-01T00:00:00Z", "-4713-12-31T23:59:59Z")
+
+        outside.forEach { value ->
+            withClue(value) {
+                readEnvelope("""{"free":"$value","bound":"2026-11-13T10:00:00Z"}""") shouldBe
+                    Envelope(free = Instant.parse(value), bound = Instant.parse("2026-11-13T10:00:00Z"))
+                outcomeOf<Envelope>("""{"free":"2026-11-13T10:00:00Z","bound":"$value"}""") shouldBe refused("bound")
+            }
+        }
+    }
+
+    @Test
+    fun `an UnboundedInstant property keeps the strict ISO format`() {
+        val bodies =
+            listOf("1763028000", "1763028000000", "\"1763028000\"", "\"\"", "\"2026-11-13\"", "{}", "true")
+                .map { """{"free":$it}""" }
+
+        bodies.associateWith { outcomeOf<Envelope>(it) } shouldBe bodies.associateWith { refused("free") }
+    }
+
+    /**
+     * Primitivo não anulável sem valor padrão, aninhado ou numa lista, ausente ou `null`: `REQUIRED` no campo com o
+     * caminho completo; `""` nele segue `INVALID_FORMAT` (M6 E20).
+     */
+    @Test
+    fun `a missing or null primitive, nested or in a list, is REQUIRED on the full path`() {
+        val cases =
+            listOf(
+                """{"band":{"label":"x"}}""" to "band.min",
+                """{"band":{"min":null,"label":"x"}}""" to "band.min",
+                """{"bands":[{"min":1,"label":"x"},{"label":"x"}]}""" to "bands[1].min",
+                """{"bands":[{"min":1,"label":"x"},{"min":null,"label":"x"}]}""" to "bands[1].min",
+                """{"bands":[{"min":1,"label":"x","open":null}]}""" to "bands[0].open",
+            )
+
+        cases.associate { (json, _) -> json to outcomeOf<Primitives>(json) } shouldBe
+            cases.associate { (json, field) -> json to "recusado: ${FieldViolations.required(field)}" }
+        outcomeOf<Primitives>("""{"bands":[{"min":"","label":"x"}]}""") shouldBe refused("bands[0].min")
+        outcomeOf<Primitives>("""{"bands":[{"min":1.5,"label":"x"}]}""") shouldBe refused("bands[0].min")
+        readPrimitives("""{"bands":[{"min":1,"label":"x"}],"band":{"min":0,"label":"y","open":true}}""") shouldBe
+            Primitives(bands = listOf(Band(1, "x")), band = Band(0, "y", true))
+    }
+
+    data class Envelope(
+        @param:UnboundedInstant
+        @field:UnboundedInstant
+        val free: Instant? = null,
+        val bound: Instant? = null,
+    )
+
+    data class Band(
+        val min: Int,
+        val label: String,
+        val open: Boolean = false,
+    )
+
+    data class Primitives(
+        val band: Band? = null,
+        val bands: List<Band>? = null,
+    )
+
+    private fun readEnvelope(json: String): Envelope = jsonMapper.readValue<Envelope>(json)
+
+    private fun readPrimitives(json: String): Primitives = jsonMapper.readValue<Primitives>(json)
+
+    private inline fun <reified T : Any> outcomeOf(json: String): String =
+        try {
+            "lido: ${jsonMapper.readValue<T>(json)}"
+        } catch (error: DatabindException) {
+            val violation =
+                FieldViolations.of(
+                    HttpMessageNotReadableException("corpo ilegível", error, MockHttpInputMessage(json.toByteArray())),
+                )
+            "recusado: $violation"
+        }
+
+    /**
+     * `""` num `Int` ou `Long` anulável: o Jackson o lê como `null` e o campo perde o valor em silêncio (o mesmo
+     * defeito que a E20 fecha no UUID). O contrato da etapa não o cita, mas a regra "`""` não vira `null`" vale aqui.
+     */
+    @Test
+    fun `an empty text in an Int or Long field is refused and does not become null`() {
+        val bodies =
+            listOf(
+                """{"count":""}""" to "count",
+                """{"total":""}""" to "total",
+                """{"slot":{"count":""}}""" to "slot.count",
+                """{"counts":[1,""]}""" to "counts[1]",
+            )
+
+        bodies.associate { (json, _) -> json to outcomeNumbers(json) } shouldBe
+            bodies.associate { (json, field) -> json to refused(field) }
     }
 
     data class Numbers(

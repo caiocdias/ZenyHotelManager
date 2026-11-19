@@ -15,6 +15,8 @@ import org.springframework.http.HttpMethod.GET
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+import java.net.URI
 
 /**
  * Datas e instantes estritos em query string e caminho (M6 E20; ARCHITECTURE §7, "Datas e valores"): só o texto
@@ -32,6 +34,11 @@ class StrictParametersApiTest(
     fun `the dueOn of the traces list accepts only an ISO date inside the storable range`() =
         shouldRefuseOnlyTheInvalid("/api/v1/traces", "dueOn", REFUSED_DATES, ACCEPTED_DATES)
 
+    /**
+     * O teto exato da faixa (`+5874897-12-31`) fica de fora dos aceitos deste endpoint de propósito: o serviço da
+     * pré-autorização que expira soma dias ao `to` e dá 500 nesse extremo, defeito conhecido e pendente na rodada de
+     * correção da E20. Quando for corrigido, o teto entra em `ACCEPTED_DATES` como nos demais parâmetros.
+     */
     @Test
     fun `the to of the expiring pre-authorizations accepts only an ISO date inside the storable range`() =
         shouldRefuseOnlyTheInvalid(
@@ -104,6 +111,28 @@ class StrictParametersApiTest(
         answer(bothInvalid) shouldBe invalidFormat("from")
         answer(firstInvalid) shouldBe invalidFormat("from")
         bothValid.status shouldNotBe 500
+    }
+
+    /**
+     * A URL crua, como o cliente a manda: o `+` do ano com sinal vai como `%2B` e o servidor o decodifica; o `+` sem
+     * codificação é espaço (a data vira `" 5874898-01-01"`), recusado do mesmo modo. O teto exato `%2B5874897-12-31`
+     * passa da conversão.
+     */
+    @Test
+    fun `a signed year in the raw query is decoded from percent-encoding, and the exact ceiling passes`() {
+        fun raw(query: String): MockHttpServletResponse =
+            mockMvc
+                .perform(MockMvcRequestBuilders.get(URI.create("/api/v1/traces?$query")).with(iam.asAdmin()))
+                .andReturn()
+                .response
+
+        answer(raw("dueOn=%2B5874898-01-01")) shouldBe invalidFormat("dueOn")
+        answer(raw("dueOn=%2B999999999-12-31")) shouldBe invalidFormat("dueOn")
+        answer(raw("dueOn=-4713-12-31")) shouldBe invalidFormat("dueOn")
+        answer(raw("dueOn=+5874898-01-01")) shouldBe invalidFormat("dueOn")
+        val onlyMine = "&departmentId=${UuidV7.generate()}"
+        shouldPassConversion(raw("dueOn=%2B5874897-12-31$onlyMine"))
+        shouldPassConversion(raw("dueOn=-4712-01-01$onlyMine"))
     }
 
     private fun shouldRefuseOnlyTheInvalid(
