@@ -284,15 +284,18 @@ class EndOfDayRunsApiAttackTest(
             runIds() shouldBe before
         }
 
+    /** Os extremos do `LocalDate` estão fora do StorableRange: a leitura do corpo os recusa (M6 E20), sem executar. */
     @Test
-    fun `the extremes of LocalDate are a DATE_MISMATCH and never reach a 500`() =
+    fun `the extremes of LocalDate are 400 INVALID_FORMAT on businessDate and never reach a 500`() =
         settled {
             val auth = asUser(manager().id.value)
             val before = runIds()
 
             listOf("+999999999-12-31", "-999999999-01-01").forEach { value ->
                 withClue("businessDate = $value") {
-                    post(auth, """{"businessDate":"$value"}""").problem(409, "END_OF_DAY_DATE_MISMATCH")
+                    val problem = post(auth, """{"businessDate":"$value"}""").problem(400, "VALIDATION_FAILED")
+                    problem["errors"][0]["field"].asString() shouldBe "businessDate"
+                    problem["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
                 }
             }
 
