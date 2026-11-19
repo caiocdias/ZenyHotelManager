@@ -103,6 +103,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 | H19 | **Confirmadas pelo usuário em 2026-11-18 (entrevista do fim do lote E18–E03), pelas opções recomendadas:** (a) a transição `ASSIGNED → PENDING` da E03 (D7, recolher tarefa sem passá-la a outra camareira) fica, e o `arquiteto` a registra na SPEC §8.4; (b) a governança **não** escuta os eventos de reserva (D6 da E02): o plano do dia sai do avanço da data e a E03 recalcula a chegada; o `arquiteto` alinha a SPEC §8.3 e a ARCHITECTURE §6.1; (c) a exceção à H16 da E03 (D11: colaborador inexistente dá `422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`, validação pela escala) fica e é registrada; (d) o early check-in (H17) fica com o `arquiteto`, que decide a etapa que leva o dado ao `reservations`. | Mudar qualquer uma pede etapa de manutenção. **Registradas em 2026-11-18 pelo `arquiteto`:** (a) na SPEC §8.4; (b) na SPEC §8.3 e na ARCHITECTURE §6.1; (c) na ARCHITECTURE §7, linha "Erros"; (d) na H20 e na E22. | E02, E03 e o `arquiteto` |
 | H20 | **Decidida pelo usuário em 2026-11-18 (entrevista do `arquiteto` na revisão do roadmap), pelas opções recomendadas:** (a) o early check-in entra numa **etapa nova do M6, antes do gate** (**E22**), porque a RF-GOV-03 é da Fase 1, que o gate declara encerrada; (b) o `reservations` guarda a **hora prevista de chegada**, opcional, no fuso do hotel; o early é derivado (chegada prevista antes do `checkInTime` da política), e a hora também ordena as chegadas. É o mesmo dado que as OTAs mandam (M8); (c) as pendências transversais da E18 e da E01 rodam **antes da E04** (**E20** e **E21**, no bloco "Manutenção transversal"), para que a E04, a E19 e as etapas E05 a E09 já nasçam sobre elas, como fez a E18; (d) o contrato passa a marcar `required` em **todos** os schemas de request com campo que o servidor exige. O `oasdiff` acusa `ERR` nessa mudança, e ela é aceita **uma única vez**, na E20, registrada na ARCHITECTURE §7: o servidor não muda de comportamento (já recusa o campo faltando) e nenhum cliente está em produção. **Cumprida pela E20 em 2026-11-19, sem usar a quebra:** o contrato já marcava `required` pela Bean Validation e pelas propriedades não anuláveis; a regra única tirou 34 `required` de campos com valor padrão e não acrescentou nenhum (handoff da E20, D1). | Voltar atrás em (b) depois do M8 pede migração do dado das OTAs; em (d), outra quebra no contrato. | E20, E21, E22, E04 |
 | H21 | **Decidida pelo `arquiteto` em 2026-11-18 (revisão do roadmap), revisável:** (a) a divisão da E04 mantém o ID **E04** para a parte online (máquina de estados, ações e conclusão) e cria a **E19** para a offline. Os nomes "E04a" e "E04b" sugeridos não passam no verificador do roadmap, que só aceita `E` seguido de dígitos, e a regra da skill é não reutilizar nem renumerar IDs; (b) as pendências transversais viram **duas** etapas, a E20 (entrada estrita: corpo, query, caminho e `required`) e a E21 (erros de trava, logs dos jobs, filtro do ShedLock e `JOSEException`), para cada uma caber em até 3 fatias de ~60 min; a E04 mostrou o custo de uma etapa grande demais; (c) `40P01` (deadlock) e `55P03` (`lock_timeout`) que escapam de um caso de uso dão **`409 CONCURRENT_UPDATE`**, retentável e sem a mensagem do banco (ARCHITECTURE §7); o tratamento próprio do `endofday` continua; (d) a leitura estrita da E20 inclui `LocalTime` (só `HH:mm` ou `HH:mm:ss`), que já está na política do hotel, nos recados e nos checklists e que a E22 vai usar; (e) E05 e E06 passam a depender da E19, porque repetem o padrão offline dela; (f) **Revisão humana**: sim na E04 (contrato `OWN` da camareira e máquina de estados que a E05 e a E19 repetem), na E19 (padrão offline repetido por E05, E06 e E08, RN-22 e RN-13) e na E20 (contrato de todos os requests); não na E21 e na E22; (g) a SPEC §8.3 dizia que `HousekeepingTaskCompleted` é consumido por UHs para mudar o status; desde o M2, o status muda pela chamada síncrona da governança à `RoomsApi` (ARCHITECTURE §6.2, H3). A linha foi corrigida na mesma revisão. | (a) e (b) só mudam a organização; (c) é contrato novo, mas só substitui um 500; (d) recusa um formato leniente que nenhum cliente em produção usa. | E04, E05, E06, E19, E20, E21, E22 |
+| H23 | **Decidida pelo usuário em 2026-11-19 (entrevista de abertura do lote E22–E23), pelas opções recomendadas:** (a) a E09 não cabe num plano de até 3 fatias de ~60 min e é **dividida** pelo `orquestrador`, como a H21 fez com a E04: a E09 fica com as views, o painel do dia, os relatórios de governança e manutenção, a exportação CSV/XLSX e o relatório de pendências; a etapa nova **E23** fica com o snapshot `DailyStatistics` e o arquivo dos PDFs da data (gravação pelo servidor na `FilesApi`, templates, índice e endpoint de arquivo); a E13 passa a depender da E23; (b) a biblioteca XLSX da H7 é a **fastexcel** (`org.dhatim:fastexcel` na produção e `fastexcel-reader` só nos testes), pelo catálogo; (c) os PDFs arquivados, que trazem nome de hóspede, são **anexo sensível** do `files` (cifrados no bucket, servidos só pelo servidor com token e trilha), o que fecha a dúvida da H6. | (a) só muda a organização; (b) trocar de biblioteca é local ao `reporting`; (c) voltar a anexo comum é configuração da finalidade, mas expõe nome de hóspede em claro no armazenamento. | E09, E23, E13 |
 | H22 | **Confirmadas pelo usuário em 2026-11-19 (entrevista do fim do lote E20–E06), pelas opções recomendadas:** (a) E21 D4: a chave de idempotência é liberada no `409 CONCURRENT_UPDATE`, e o reenvio com a mesma chave executa de novo (ARCHITECTURE §7); (b) E05 D5: o aviso `notifications.room-released` vai a quem tem `housekeeping.tasks.read`, menos quem agiu, sem aresta `housekeeping → frontdesk`; (c) E19 D4: `housekeeping.task_conflict` guarda só o resumo sem texto livre e sem vincular as fotos; (d) E19 D3: `housekeeping.task_assignment` guarda só as atribuições, sem a saída nem o motivo (a trilha de auditoria cobre a retirada). As demais "Decisões para o usuário" do lote seguem tomadas pela opção recomendada e revisáveis nos handoffs. | Decisões de arquitetura do lote; nenhuma muda código. | E05, E19, E21 |
 
 **Notas herdadas do M2** (sincronização do roadmap do M2 com o código do M1, 2026-10-15; conferir de novo na sincronização deste marco):
@@ -231,7 +232,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #concluida | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #concluida | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
-| E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
+| E22 | Hora prevista de chegada e prioridade do early check-in | #em-andamento | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
 **Manutenção**
 
@@ -244,8 +245,9 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E09 | Relatórios operacionais e painel do dia | #pendente | E05, E08 | Views `report_*`, painel, relatórios, CSV/XLSX, `DailyStatistics`, arquivo de PDFs |
-| E13 | Snapshot e arquivo do fechamento | #pendente | E09, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
+| E09 | Relatórios operacionais e painel do dia | #pendente | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
+| E23 | Snapshot diário e arquivo dos PDFs | #pendente | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
+| E13 | Snapshot e arquivo do fechamento | #pendente | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
 
@@ -2071,7 +2073,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E22 — Hora prevista de chegada e prioridade do early check-in — #pendente
+## E22 — Hora prevista de chegada e prioridade do early check-in — #em-andamento
 
 **Objetivo:** guardar na reserva a hora prevista de chegada (H20 b) e devolver à sugestão de distribuição da E03 a prioridade do early check-in que a H17 adiou (RF-GOV-03, item 2: "prioriza UHs com chegada prevista ou early check-in").
 
@@ -2226,30 +2228,24 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ## E09 — Relatórios operacionais e painel do dia — #pendente
 
-**Objetivo:** criar o módulo `reporting` com o painel do dia (RF-REL-01), os relatórios operacionais de governança e manutenção (RF-REL-06, RF-GOV-11), o snapshot `DailyStatistics` (SPEC §8.2.9), a exportação CSV/XLSX (RF-REL-07), a geração e o arquivo de PDFs por data e o relatório de pendências do fechamento (RF-FEC-04), consultando só views `report_*` publicadas pelos módulos (ARCHITECTURE §11).
+**Objetivo:** criar o módulo `reporting` com o painel do dia (RF-REL-01), os relatórios operacionais de governança e manutenção (RF-REL-06, RF-GOV-11), a exportação CSV/XLSX (RF-REL-07) e o relatório de pendências do fechamento (RF-FEC-04), consultando só views `report_*` publicadas pelos módulos (ARCHITECTURE §11). O snapshot `DailyStatistics` e o arquivo dos PDFs saíram para a E23 (H23 a).
 
-**Por que agora:** o fechamento (E13) gera o snapshot e os PDFs por meio de `reporting`, e a gerência precisa do painel na operação.
+**Por que agora:** a gerência precisa do painel na operação, e a E23 (snapshot e PDFs do fechamento) nasce sobre o `reporting` e as views desta etapa.
 
 **Dependências:** E05, E08. Independente de E10; E09, E10 e E11 tocam `api/openapi.yaml` (conflito se rodarem em branches separadas).
 
 **Escopo:**
 
 - Views `report_*` (migrações nos schemas donos, como parte da API de cada módulo): `rooms` (status), `reservations` (chegadas, saídas, hospedados, ocupação futura), `housekeeping` (tarefas, tempos, créditos, reprovações), `maintenance` (OS por estado, categoria e tempo), `billing` (contas com saldo de hóspedes que saíram, caixas abertos). `fnrh.report_submissions` vem da M5 E08.
-- `reporting` (a criar): `GET /api/v1/reports/day-panel`, relatórios de governança e manutenção com filtros, exportação `?format=csv|xlsx` (H7), relatório de pendências.
-- API pública para o fechamento: `snapshotDailyStatistics(date)` (UHs disponíveis, OOO, vendidas, cortesias, uso da casa, chegadas, saídas, no-shows, cancelamentos, receitas por departamento; regras de Q-15 — H9) e `archiveDayReports(date)` (PDFs renderizados por `printing` e guardados em `files`, com índice por data no schema `reporting` — H6, H7), ambos idempotentes por data.
-- `GET /api/v1/reports/archive?date=…` e download dos PDFs arquivados por URL assinada de `files`.
-- Arestas `reporting` → `printing` e `reporting` → `files` acrescentadas à tabela da ARCHITECTURE §3.1.
+- `reporting` (a criar): `GET /api/v1/reports/day-panel`, relatórios de governança e manutenção com filtros, exportação `?format=csv|xlsx` (H7 e H23 b: fastexcel), relatório de pendências.
 
-**Fora de escopo:** KPIs comparativos e relatórios gerenciais (M10).
+**Fora de escopo:** KPIs comparativos e relatórios gerenciais (M10); snapshot `DailyStatistics`, PDFs, arquivo por data e as arestas `reporting` → `printing` e `reporting` → `files` (E23).
 
 **Critérios de aceite:**
 
 - [ ] `GET /api/v1/reports/day-panel` devolve chegadas, saídas, hospedados, UHs por status e ocupação de hoje e dos próximos dias, conferidos contra dados semeados.
 - [ ] Relatórios de governança (UHs e créditos por camareira, tempo médio por tipo, taxa de reprovação) e de manutenção (OS por estado, categoria e tempo) conferidos contra dados semeados.
 - [ ] `?format=csv` e `?format=xlsx` geram arquivos que, relidos no teste, têm as mesmas linhas da resposta JSON.
-- [ ] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15.
-- [ ] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data; `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas.
-- [ ] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
 - [ ] Relatório de pendências lista contas com saldo de hóspedes que saíram, caixas não fechados e FNRH pendentes.
 - [ ] Teste de arquitetura confirma que `reporting` não referencia classes nem tabelas internas de outros módulos.
 - [ ] Nenhum relatório operacional de governança ou manutenção expõe dados pessoais de hóspede.
@@ -2262,7 +2258,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** H6, H7 e H9; ARCHITECTURE §11 ("Leitura para relatórios") e a convenção das views na nota `ZenyHotelManager - Schemas, migrações e views de relatório` (nome, contrato no comentário da migração, `GRANT SELECT`/`REVOKE` por view, coluna publicada que não muda de sentido). As views publicadas no M2 a M4 foram feitas para o `reporting` deste marco ler (ver a mesma nota); prova de "só as views" num teste que roda as consultas com um papel que só tem `SELECT` nas views (padrão do `ChecklistReportsTest`). Período em datas convertido no fuso do hotel. H7: a biblioteca XLSX entra no catálogo `gradle/libs.versions.toml`, sem versão literal no build, com os lockfiles regravados e o scanner sem High/Critical novo. H6: a `FilesApi` não grava conteúdo pelo servidor; a gravação é acréscimo desta etapa. Os PDFs seguem o modelo dono + `printing` da M5 E11 (`ModuleDocumentTemplates`, templates em `templates/reporting/`). O formato antigo pedia `ModularityTest` mais uma regra ArchUnit para "`reporting` não referencia classes de outros módulos". Armadilhas do formato antigo: snapshot recalculado gerando duplicata; regra de cortesia e uso da casa diferente de Q-15; dados pessoais em relatório operacional.
+**Notas para o plano:** H7, H9 e H23; ARCHITECTURE §11 ("Leitura para relatórios") e a convenção das views na nota `ZenyHotelManager - Schemas, migrações e views de relatório` (nome, contrato no comentário da migração, `GRANT SELECT`/`REVOKE` por view, coluna publicada que não muda de sentido). As views publicadas no M2 a M4 foram feitas para o `reporting` deste marco ler (ver a mesma nota); prova de "só as views" num teste que roda as consultas com um papel que só tem `SELECT` nas views (padrão do `ChecklistReportsTest`). Período em datas convertido no fuso do hotel. H7: a biblioteca XLSX (fastexcel, H23 b) entra no catálogo `gradle/libs.versions.toml`, sem versão literal no build, com os lockfiles regravados e o scanner sem High/Critical novo. O formato antigo pedia `ModularityTest` mais uma regra ArchUnit para "`reporting` não referencia classes de outros módulos". Armadilhas do formato antigo: dados pessoais em relatório operacional.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -2281,17 +2277,70 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
+## E23 — Snapshot diário e arquivo dos PDFs — #pendente
+
+**Objetivo:** dar ao `reporting` a API pública que o fechamento (E13) chama: o snapshot `DailyStatistics` da data (SPEC §8.2.9) e o arquivo dos PDFs da data em `files`, com a listagem e o download por URL assinada (H6). Saiu da E09 na divisão da H23 (a).
+
+**Por que agora:** a E13 encaixa o snapshot e o arquivo no fechamento e precisa desta API; a E09 deixa o `reporting` e as views prontos.
+
+**Dependências:** E09 (sem paralelismo com ela).
+
+**Escopo:**
+
+- `snapshotDailyStatistics(date)` na API pública do `reporting` (UHs disponíveis, OOO, vendidas, cortesias, uso da casa, chegadas, saídas, no-shows, cancelamentos, receitas por departamento; regras de Q-15, H9), idempotente por data, lendo só views `report_*` (as da E09 e as que faltarem, nos módulos donos).
+- `archiveDayReports(date)`: PDFs da data montados pelo `reporting` e renderizados por `printing` (modelo dono + `printing` da M5 E11, `ModuleDocumentTemplates`, templates em `templates/reporting/`) e guardados em `files` como **anexo sensível** (H23 c), com índice por data no schema `reporting`, idempotente por data.
+- Acréscimo mínimo ao `files` (H6): gravação de conteúdo pelo servidor, com finalidade própria do `reporting`, cifrada por ser sensível.
+- `GET /api/v1/reports/archive?date=…` lista os PDFs da data e devolve as URLs assinadas de `files` (com a trilha do anexo sensível).
+- Arestas `reporting` → `printing` e `reporting` → `files` acrescentadas à tabela da ARCHITECTURE §3.1 (se ainda não estiverem).
+
+**Fora de escopo:** chamar o snapshot e o arquivo no fechamento (E13); KPIs (M10).
+
+**Critérios de aceite:**
+
+- [ ] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15 (H9), conferidos contra dados semeados.
+- [ ] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data, como anexo sensível (cifrado no bucket).
+- [ ] `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas; o download confere a permissão e vai para a trilha.
+- [ ] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
+- [ ] `reporting` continua sem referenciar classes nem tabelas internas de outros módulos (`ModularityTest` e teste de arquitetura).
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- Comandos oficiais de build e teste (tabela do `CLAUDE.md`) → sucesso.
+- Verificação do contrato (`./gradlew checkOpenApi`, tabela do `CLAUDE.md`) → sucesso.
+
+**Revisão humana:** não
+
+**Notas para o plano:** H6, H7, H9 e H23; handoff da E09. A `FilesApi` não grava conteúdo pelo servidor e `readContent` só lê anexo comum (D-E11-7, nota `ZenyHotelManager - Módulo files`): a gravação de anexo sensível pelo servidor é o acréscimo desta etapa. Notas `ZenyHotelManager - Módulo printing` (documento do dono) e `ZenyHotelManager - Schemas, migrações e views de relatório`. Armadilhas do formato antigo: snapshot recalculado gerando duplicata; regra de cortesia e uso da casa diferente de Q-15; PDF com nome de hóspede em claro no armazenamento.
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Renderização de PDF lenta: a E13 mede a duração na métrica da E10.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
 ## E13 — Snapshot e arquivo do fechamento — #pendente
 
 **Objetivo:** acrescentar ao fechamento, antes do avanço da data, as etapas de snapshot de `DailyStatistics` e de arquivo dos PDFs da data (RF-FEC-02), pela API pública de `reporting`.
 
-**Por que agora:** `reporting` só existe depois da E09; o motor e as etapas financeiras já rodam desde a E11, e estas duas se encaixam neles sem mexer em dinheiro.
+**Por que agora:** a API de snapshot e arquivo do `reporting` só existe depois da E23; o motor e as etapas financeiras já rodam desde a E11, e estas duas se encaixam neles sem mexer em dinheiro.
 
-**Dependências:** E09, E11.
+**Dependências:** E23 (que depende da E09), E11.
 
 **Escopo:** `endofday` chama `snapshotDailyStatistics(date)` e `archiveDayReports(date)` do `reporting`, ambas idempotentes por data, numa posição anterior ao avanço; pendências da E09 registradas como `EndOfDayIssue`.
 
-**Fora de escopo:** os relatórios em si (E09); pendências de notas rejeitadas e ARI (M7, M8).
+**Fora de escopo:** os relatórios em si (E09) e a API de snapshot e arquivo (E23); pendências de notas rejeitadas e ARI (M7, M8).
 
 **Critérios de aceite:**
 
@@ -2307,7 +2356,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** o `endofday` depende de `reporting` por exceção registrada na tabela da ARCHITECTURE §3.1, na mesma camada; não amplie essa aresta além da API de snapshot e arquivo. Leia os handoffs de E09 e E11.
+**Notas para o plano:** o `endofday` depende de `reporting` por exceção registrada na tabela da ARCHITECTURE §3.1, na mesma camada; não amplie essa aresta além da API de snapshot e arquivo. Leia os handoffs de E09, E23 e E11.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -2332,7 +2381,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** marca o fim da Fase 1 da SPEC ("o hotel opera a hospedagem") e é o critério de entrada do M7.
 
-**Dependências:** E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 (cobrem transitivamente todas as demais, inclusive E04 e E19 pela E06; sem paralelismo).
+**Dependências:** E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 (cobrem transitivamente todas as demais, inclusive E04 e E19 pela E06 e E09 e E23 pela E13; sem paralelismo).
 
 **Escopo:**
 
@@ -2390,3 +2439,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-18 — fim do lote E18–E03 (`orquestrador`): E18, E01, E02 e E03 `#concluida` (refação de E18 e E01 pela H15); H17 (early check-in adiado, decisão do orquestrador sob autorização noturna) e H18 (E04 volta a `#pendente` para o `arquiteto` dividir; conflito RN-22, `notes` e UH limpa decididos pelo usuário). Nenhuma outra etapa mudou de tag.
 - 2026-11-18 — entrevista final do lote: H19 (D7 e D11 da E03, D6 da E02 e H17 confirmadas pelo usuário, com registros a cargo do `arquiteto`).
 - 2026-11-18 — revisão do `arquiteto` (skill `development-roadmap`, modo atualização; `main` em `f992696`), com o código conferido para as etapas tocadas ("Base técnica do próprio M6" em "Contexto confirmado"). **Divisão da E04** (H18 a, H21 a): a E04 manteve o ID com a máquina de estados, as ações online e a conclusão, e a etapa nova **E19** ficou com os comandos offline, o histórico de posse, o conflito RN-22 e o feed; os achados da revisão do plano tentado foram distribuídos entre as duas. E05 e E06 passaram a depender da E19 (H21 e). **Manutenção transversal** (H20 c e d, H21 b a d): etapas novas **E20** (entrada estrita no corpo, na query e no caminho, `LocalTime`, inteiro e UUID estritos e `required` nos requests, com a quebra única do `oasdiff` aceita pelo usuário) e **E21** (`409 CONCURRENT_UPDATE` para `40P01`/`55P03`, logs dos quatro jobs, filtro do ShedLock e `JOSEException` do FCM), no bloco "Manutenção transversal", para rodarem antes da E04. **Early check-in** (H17, H20 a e b): etapa nova **E22** (hora prevista de chegada na reserva e prioridade do early na sugestão), dependente de E03 e E20. Hipóteses novas H20 (decisões do usuário na entrevista desta revisão) e H21 (decisões do `arquiteto`); H17 a H19 anotadas com o encaminhamento. A definição global de pronto ganhou o early, o conflito RN-22 e o item da E20 e da E21; o gate passou a depender de E20, E21 e E22. Revisão humana: sim na E04, na E19 e na E20. Na mesma revisão, a SPEC (§8.2.6 hora prevista de chegada; §8.3 governança sem os eventos de reserva e de check-in, e `HousekeepingTaskCompleted` sem consumidor de status; §8.4 `ASSIGNED → PENDING`) e a ARCHITECTURE (§6.1 sem o "atualizar plano do dia"; §7 com a regra da H16 e a exceção D11, o `required` com a quebra única e o `409 CONCURRENT_UPDATE`) foram alinhadas, e o `docs/roadmaps/README.md` passou a contar 22 etapas no M6. Nenhuma etapa concluída mudou de tag ou conteúdo; nenhuma foi renumerada nem removida.
+- 2026-11-19 — entrevista de abertura do lote E22–E23 (`orquestrador`): H23 decidida pelo usuário (divisão da E09 na E09 e na etapa nova **E23**, snapshot diário e arquivo dos PDFs; fastexcel para o XLSX; PDFs arquivados como anexo sensível). A E13 passa a depender da E23 (e não mais direto da E09). O M6 passa a ter 23 etapas. Nenhuma tag mudou.
