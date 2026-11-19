@@ -4,6 +4,7 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestUser
+import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderRequest
 import com.zeny.hotel.rooms.RoomId
@@ -130,6 +131,40 @@ class HousekeepingRoomReleasedTest(
                     released(reader, room).shouldBeEmpty()
                 }
             }
+        }
+
+    @Test
+    fun `approving the inspection of a room out of order inspects it but releases nothing (Review Focus 4)`(): Unit =
+        with(iam) {
+            val receptionist = execution.userWithTemplate(RoleTemplate.RECEPTIONIST)
+            val inspector = support.inspector()
+            val (task, room) = support.awaitingInspection(support.cleaningType())
+            val today = hotelApi.currentBusinessDate()
+            roomsApi.openOutOfOrder(
+                room,
+                OutOfOrderKind.OUT_OF_ORDER,
+                OutOfOrderRequest(today, today.plusDays(2), "Vazamento", "Manutenção"),
+            )
+
+            val body =
+                json(
+                    execution
+                        .acted(
+                            task,
+                            "inspection/complete",
+                            asTestUser(inspector),
+                            support.complete("APPROVED"),
+                        ).second,
+                )
+
+            body["task"]["status"].asString() shouldBe "DONE"
+            roomsApi.status(room).shouldNotBeNull().let {
+                it.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+                it.inspectionPending shouldBe false
+            }
+            roomsApi.status(room).shouldNotBeNull().readyForCheckIn shouldBe false
+            released(receptionist, room).shouldBeEmpty()
+            released(inspector, room).shouldBeEmpty()
         }
 
     // --- Apoio -------------------------------------------------------------------------------------------
