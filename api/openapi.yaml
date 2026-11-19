@@ -26308,6 +26308,13 @@ components:
           type: string
           format: date
           nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel (`HH:mm` ou\
+            \ `HH:mm:ss`). Como os pedidos especiais, a alteração substitui: ausente\
+            \ ou nula apaga a hora."
+          nullable: true
         nightlyRates:
           type: array
           items:
@@ -26711,6 +26718,13 @@ components:
           type: string
           format: date
           nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel (`HH:mm` ou\
+            \ `HH:mm:ss`); opcional. Mais tarde, a recepção a ajusta pela alteraçã\
+            o."
+          nullable: true
         guests:
           type: array
           items:
@@ -26821,6 +26835,12 @@ components:
           format: date
           description: Até quando a política pede o depósito (N dias antes da chegada);
             nulo fora de `DEPOSIT`.
+          nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel; nula sem\
+            \ ela."
           nullable: true
         folioId:
           type: string
@@ -26987,6 +27007,12 @@ components:
         departure:
           type: string
           format: date
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel; nula sem\
+            \ ela."
+          nullable: true
         guaranteeMethod:
           type: string
           description: "A garantia recebida na confirmação da pré-reserva; nula sem\

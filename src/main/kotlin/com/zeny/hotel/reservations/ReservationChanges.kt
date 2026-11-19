@@ -13,13 +13,15 @@ import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 /**
  * A alteração de uma reserva (M4 E08; RF-RES-05): a estadia inteira como deve ficar (tipo de UH, plano, chegada,
  * saída, adultos e a idade de cada criança na chegada), o segmento, os pedidos especiais (texto livre, até 1000; nulo
  * apaga) e as diárias editadas ([nightlyRates], só nas noites que a alteração recalcula). As noites mantidas guardam o
- * preço congelado (RN-14).
+ * preço congelado (RN-14). A hora prevista de chegada ([expectedArrivalTime], hora local do hotel; nulo apaga, como os
+ * pedidos especiais) não entra na estadia: mudar só ela não recalcula nada.
  */
 data class ReservationChange(
     val roomTypeId: RoomTypeId,
@@ -31,6 +33,7 @@ data class ReservationChange(
     val segment: MarketSegment,
     val specialRequests: String? = null,
     val nightlyRates: List<NightlyRateOverride> = emptyList(),
+    val expectedArrivalTime: LocalTime? = null,
 )
 
 /**
@@ -162,7 +165,8 @@ data class HistoryStayGuest(
 /**
  * O retrato de uma reserva no histórico (H10 do M3): a situação, a estadia, o segmento, as noites com o preço, os
  * totais, as políticas copiadas pelo id e a versão, a garantia recebida (E09) e, cancelada, o motivo e a multa. Sem
- * texto livre (os pedidos especiais só como [hasSpecialRequests]) nem dado de hóspede.
+ * texto livre (os pedidos especiais só como [hasSpecialRequests]) nem dado de hóspede; a hora prevista de chegada
+ * ([expectedArrivalTime], M6 E22) não é sensível e entra.
  */
 data class ReservationState(
     val status: ReservationStatus,
@@ -193,6 +197,8 @@ data class ReservationState(
     val roomId: RoomId? = null,
     /** Os hóspedes da estadia com os dados de check-in (M5 E01). */
     val stayGuests: List<HistoryStayGuest> = emptyList(),
+    /** A hora prevista de chegada (M6 E22); nula sem ela e nos retratos gravados antes dela. */
+    val expectedArrivalTime: LocalTime? = null,
 )
 
 /**

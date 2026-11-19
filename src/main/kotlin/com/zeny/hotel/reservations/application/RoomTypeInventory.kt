@@ -148,6 +148,7 @@ internal object ReservationsAudit {
             "children" to reservation.childAges.size,
             "segment" to reservation.segment.name,
             "hasSpecialRequests" to (reservation.specialRequests != null),
+            "expectedArrivalTime" to reservation.expectedArrivalTime?.toString(),
             "guestIds" to reservation.guests.map { it.guestId.toString() },
             "primaryGuestId" to
                 reservation.guests
@@ -270,6 +271,7 @@ internal object ReservationsAudit {
             childAges = reservation.childAges,
             segment = reservation.segment,
             hasSpecialRequests = reservation.specialRequests != null,
+            expectedArrivalTime = reservation.expectedArrivalTime,
             nights =
                 reservation.nightlyRates.map {
                     HistoryNight(it.date, it.ratePlanId, it.roomAmount, it.amount, it.overridden)

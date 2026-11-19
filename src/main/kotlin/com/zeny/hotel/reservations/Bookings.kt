@@ -19,6 +19,7 @@ import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 /** Id de uma reserva agrupadora (`Booking`, RF-RES-03): a compra com uma ou mais reservas. */
@@ -108,7 +109,8 @@ data class NewBooking(
 /**
  * Uma reserva a criar: o tipo de UH, o plano, a chegada e a saída (iguais = day use, H5), os adultos e a idade de cada
  * criança na chegada, o segmento, os pedidos especiais (texto livre, até 1000), os hóspedes da estadia (vazio = o
- * titular como principal; senão, exatamente um principal) e as diárias editadas ([nightlyRates], só as que mudam).
+ * titular como principal; senão, exatamente um principal), as diárias editadas ([nightlyRates], só as que mudam) e a
+ * hora prevista de chegada ([expectedArrivalTime], hora local do hotel; opcional).
  */
 data class NewReservation(
     val roomTypeId: RoomTypeId,
@@ -121,6 +123,7 @@ data class NewReservation(
     val specialRequests: String? = null,
     val guests: List<NewStayGuest> = emptyList(),
     val nightlyRates: List<NightlyRateOverride> = emptyList(),
+    val expectedArrivalTime: LocalTime? = null,
 )
 
 /** Um hóspede da estadia: o perfil e se é o principal. */
@@ -259,6 +262,11 @@ data class ReservationSummary(
     val checkIn: StayTransitionRecord? = null,
     /** O check-out (M5 E01): só numa reserva encerrada. */
     val checkOut: StayTransitionRecord? = null,
+    /**
+     * A hora prevista de chegada (M6 E22): hora local do hotel, sem data nem fuso, até segundos; um palpite do hóspede
+     * que a recepção ajusta pela alteração (nulo apaga). A governança a lê para ordenar as UHs de quem chega cedo.
+     */
+    val expectedArrivalTime: LocalTime? = null,
 ) {
     val dayUse: Boolean get() = arrival == departure
 

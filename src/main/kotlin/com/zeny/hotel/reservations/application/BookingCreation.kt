@@ -210,6 +210,7 @@ class BookingCreation(
             childAges = request.childAges,
             segment = request.segment,
             specialRequests = request.specialRequests,
+            expectedArrivalTime = request.expectedArrivalTime,
             guests = StayGuests.resolve(request.guests, context.holder) { context.resolved.getValue(it) },
             nightlyRates = draft.nights,
             roomTotal = roomTotal,

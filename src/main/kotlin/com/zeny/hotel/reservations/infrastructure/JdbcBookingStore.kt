@@ -129,7 +129,7 @@ class JdbcBookingStore(
                 """
                 INSERT INTO reservations.reservation (id, code, booking_id, status, provisional_until, room_type_id,
                     rate_plan_id, arrival, departure, adults, child_ages, segment, special_requests,
-                    cancellation_policy_id, cancellation_policy_name, cancellation_policy_version,
+                    expected_arrival_time, cancellation_policy_id, cancellation_policy_name, cancellation_policy_version,
                     cancellation_deadline_hours, cancellation_penalty_type, cancellation_penalty_percent,
                     cancellation_penalty_nights, cancellation_penalty_amount, guarantee_policy_id,
                     guarantee_policy_name,
@@ -137,7 +137,8 @@ class JdbcBookingStore(
                     room_total, additional_packages_total, total, folio_id, approval_id, approved_by, version,
                     created_at, created_by, updated_at, block_id, rate_plan_category)
                 VALUES (:id, :code, :bookingId, :status, :provisionalUntil, :roomTypeId, :ratePlanId, :arrival,
-                    :departure, :adults, CAST(:childAges AS integer[]), :segment, :specialRequests, :cancellationId,
+                    :departure, :adults, CAST(:childAges AS integer[]), :segment, :specialRequests, :expectedArrivalTime,
+                    :cancellationId,
                     :cancellationName, :cancellationVersion, :deadlineHours, :penaltyType, :penaltyPercent,
                     :penaltyNights, :penaltyAmount, :guaranteeId, :guaranteeName, :guaranteeVersion, :guaranteeType,
                     :depositPercent, :dueDaysBefore, :roomTotal, :additionalTotal, :total, :folioId, :approvalId,
@@ -158,6 +159,7 @@ class JdbcBookingStore(
             .param("childAges", reservation.childAges.joinToString(",", "{", "}"))
             .param("segment", reservation.segment.name)
             .param("specialRequests", reservation.specialRequests)
+            .param("expectedArrivalTime", reservation.expectedArrivalTime)
             .param("cancellationId", cancellation.policyId.value)
             .param("cancellationName", cancellation.name)
             .param("cancellationVersion", cancellation.version)
@@ -323,6 +325,7 @@ class JdbcBookingStore(
                         rate_plan_category = :ratePlanCategory, arrival = :arrival,
                         departure = :departure, adults = :adults, child_ages = CAST(:childAges AS integer[]),
                         segment = :segment, special_requests = :specialRequests,
+                        expected_arrival_time = :expectedArrivalTime,
                         cancellation_policy_id = :cancellationId, cancellation_policy_name = :cancellationName,
                         cancellation_policy_version = :cancellationVersion,
                         cancellation_deadline_hours = :deadlineHours, cancellation_penalty_type = :penaltyType,
@@ -359,6 +362,7 @@ class JdbcBookingStore(
                 .param("childAges", reservation.childAges.joinToString(",", "{", "}"))
                 .param("segment", reservation.segment.name)
                 .param("specialRequests", reservation.specialRequests)
+                .param("expectedArrivalTime", reservation.expectedArrivalTime)
                 .param("cancellationId", cancellation.policyId.value)
                 .param("cancellationName", cancellation.name)
                 .param("cancellationVersion", cancellation.version)
@@ -796,6 +800,7 @@ class JdbcBookingStore(
         childAges = intArray(rs, "child_ages"),
         segment = MarketSegment.valueOf(rs.getString("segment")),
         specialRequests = rs.getString("special_requests"),
+        expectedArrivalTime = rs.getObject("expected_arrival_time", LocalTime::class.java),
         guests = guests,
         nightlyRates = nights,
         roomTotal = rs.requiredMoney("room_total"),
@@ -963,6 +968,7 @@ private data class StoredState(
     val checkOut: StoredStamp? = null,
     val roomId: UUID? = null,
     val stayGuests: List<StoredStayGuest> = emptyList(),
+    val expectedArrivalTime: String? = null,
 ) {
     fun toState() =
         ReservationState(
@@ -1006,6 +1012,7 @@ private data class StoredState(
             checkOut = checkOut?.toRecord(),
             roomId = roomId?.let(::RoomId),
             stayGuests = stayGuests.map { it.toGuest() },
+            expectedArrivalTime = expectedArrivalTime?.let(LocalTime::parse),
         )
 
     data class StoredStamp(
@@ -1124,6 +1131,7 @@ private data class StoredState(
                 checkOut = state.checkOut?.let(StoredStamp::of),
                 roomId = state.roomId?.value,
                 stayGuests = state.stayGuests.map(StoredStayGuest::of),
+                expectedArrivalTime = state.expectedArrivalTime?.toString(),
             )
     }
 }

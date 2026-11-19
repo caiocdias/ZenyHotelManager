@@ -349,6 +349,7 @@ object ReservationFields {
             if (before.childAges != after.childAges) add("childAges")
             if (before.segment != after.segment) add("segment")
             if (before.specialRequests != after.specialRequests) add("specialRequests")
+            if (before.expectedArrivalTime != after.expectedArrivalTime) add("expectedArrivalTime")
             if (before.nightlyRates != after.nightlyRates) add("nightlyRates")
             if (before.cancellationTerms != after.cancellationTerms) add("cancellationTerms")
             if (before.guaranteeTerms != after.guaranteeTerms) add("guaranteeTerms")
