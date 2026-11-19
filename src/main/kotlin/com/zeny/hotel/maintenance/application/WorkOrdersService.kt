@@ -273,11 +273,12 @@ class WorkOrdersService(
      * Abre a ordem de um item de checklist "não ok" (D2-E08): origem `CHECKLIST`, prioridade `NORMAL`, aberta por quem
      * executou, em `openedAt`, sem permissão nem aviso (o sistema abre, sem requisição). Idempotente pela execução de
      * referência e o item: a reentrega do evento e a execução registrada à parte do mesmo item devolvem a ordem já
-     * gravada, sem outra entrada na trilha. O local é conferido por quem chama.
+     * gravada, sem outra entrada na trilha. `internal`, só do ouvinte do módulo: não confere permissão
+     * nem local (o ouvinte confere a UH ou a área pela `RoomsApi`).
      */
     @Audited(MaintenanceAudit.OPEN_WORK_ORDER_FROM_CHECKLIST)
     @Transactional
-    fun openFromChecklist(draft: ChecklistWorkOrderDraft): WorkOrderView {
+    internal fun openFromChecklist(draft: ChecklistWorkOrderDraft): WorkOrderView {
         store.findByChecklistItem(draft.link.referenceExecutionId, draft.link.itemKey)?.let {
             audit.noChanges()
             return viewOf(it)

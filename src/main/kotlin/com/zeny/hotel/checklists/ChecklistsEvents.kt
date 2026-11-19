@@ -56,3 +56,20 @@ data class ChecklistTriggeredAction(
     val category: String? = null,
     val note: String? = null,
 )
+
+/**
+ * O texto de uma ocorrência aberta por esta ação: o [label] do item, a categoria e a observação da ação (os presentes,
+ * nesta ordem), sem NUL e aparados, separados por " - " e cortados em [maxCodePoints] code points. Quem abre a
+ * ocorrência (governança, manutenção) passa o limite do próprio registro.
+ */
+fun ChecklistTriggeredAction.describe(
+    label: String,
+    maxCodePoints: Int,
+): String {
+    val text =
+        listOf(label, category, note)
+            .mapNotNull { part -> part?.replace("\u0000", "")?.trim()?.takeIf { it.isNotEmpty() } }
+            .joinToString(" - ")
+    if (text.codePointCount(0, text.length) <= maxCodePoints) return text
+    return text.substring(0, text.offsetByCodePoints(0, maxCodePoints))
+}

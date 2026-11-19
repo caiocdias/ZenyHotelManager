@@ -7,6 +7,7 @@ import com.zeny.hotel.checklists.ChecklistVersionId
 import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ItemActionType
 import com.zeny.hotel.checklists.OccurrenceKind
+import com.zeny.hotel.checklists.describe
 import com.zeny.hotel.maintenance.WorkOrderCategory
 import com.zeny.hotel.maintenance.domain.WorkOrder
 import com.zeny.hotel.maintenance.domain.WorkOrderChecklistLink
@@ -71,7 +72,7 @@ class MaintenanceChecklistListener(
                     roomId = location.roomId?.let(::RoomId),
                     areaId = location.areaId?.let(::AreaId),
                     category = categoryOf(action),
-                    description = description(labels[action.itemKey] ?: action.itemKey, action),
+                    description = action.describe(labels[action.itemKey] ?: action.itemKey, WorkOrder.MAX_DESCRIPTION),
                     openedBy = UserId(event.executorId),
                     openedAt = event.completedAt,
                     link =
@@ -101,21 +102,5 @@ class MaintenanceChecklistListener(
 
     private companion object {
         val log: Logger = LoggerFactory.getLogger(MaintenanceChecklistListener::class.java)
-
-        const val NUL = "\u0000"
-
-        /** O rótulo, a categoria e a observação presentes, nesta ordem, separados por " - ", até o limite da ordem. */
-        fun description(
-            label: String,
-            action: ChecklistTriggeredAction,
-        ): String {
-            val text =
-                listOf(label, action.category, action.note)
-                    .mapNotNull { part -> part?.replace(NUL, "")?.trim()?.takeIf { it.isNotEmpty() } }
-                    .joinToString(" - ")
-            val limit = WorkOrder.MAX_DESCRIPTION
-            if (text.codePointCount(0, text.length) <= limit) return text
-            return text.substring(0, text.offsetByCodePoints(0, limit))
-        }
     }
 }
