@@ -306,11 +306,11 @@ sequenceDiagram
   participant LN as linen
   participant MT as maintenance
 
-  M->>S: POST /api/v1/sync/commands [CompleteHousekeepingTask{commandId,…}]
+  M->>S: POST /api/v1/sync/commands [housekeeping.complete-task{commandId, taskId, answers,…}]
   S->>S: commandId já processado? → devolve resultado anterior
-  S->>HK: handler registrado para o comando
-  HK->>CK: complete(execution, answers, occurredAt)
-  HK->>RM: markClean(room, requiresInspection)
+  S->>HK: handler registrado para o comando (posse decidida com a tarefa travada)
+  HK->>CK: completeExecutionIfOpen(execution, answers, occurredAt) — o checklist conclui por dentro do comando
+  HK->>RM: markCleanIfDirty(room, requiresInspection)
   CK-->>OB: ChecklistCompleted (com ações)
   HK-->>OB: HousekeepingTaskCompleted
   S-->>M: resultados por comando
@@ -318,6 +318,8 @@ sequenceDiagram
   OB-)LN: LinenExchange → em uso ↔ suja
   OB-)MT: OpenOccurrence(MAINTENANCE) → nova OS
 ```
+
+A conclusão offline é o comando `housekeeping.complete-task` (M6 E19), irmão de `housekeeping.start-task`, `pause-task`, `resume-task`, `refuse-task` e `retry-task`: o checklist da tarefa é concluído pela própria conclusão da tarefa, na mesma transação, e não por um comando `checklists.*` à parte. O aparelho conhece as tarefas pela fonte `housekeeping-tasks` (§9).
 
 ### 6.3 Aprovação de superior (step-up)
 
@@ -417,6 +419,7 @@ sequenceDiagram
   - versões de checklist aplicáveis;
   - catálogos (insumos ligados a ações, tipos de enxoval).
 - O cursor é um número de sequência global de alterações (`change_seq`) gravado nas tabelas sincronizáveis. Exclusões viajam como *tombstones*.
+- A fonte `housekeeping-tasks` (M6 E19, permissão `housekeeping.tasks.execute`) entrega as tarefas abertas (`ASSIGNED`, `IN_PROGRESS`, `PAUSED`, `REJECTED`, `REFUSED`), de qualquer data, com a `version` que é o `ETag` online; com `OWN`, só as da camareira vinculada ao usuário. Sem `notes` nem dado de hóspede ou de reserva (RN-13). A tarefa que deixa de ser aberta vira *tombstone*; a que sai da camareira (reatribuída ou retirada na publicação do plano) vai como *tombstone* só ao usuário dela, e quem tem `ALL` continua com a tarefa. A troca do vínculo usuário ↔ colaborador no `staff` não reenvia o feed.
 
 **Upload** (`POST /api/v1/sync/commands`):
 
