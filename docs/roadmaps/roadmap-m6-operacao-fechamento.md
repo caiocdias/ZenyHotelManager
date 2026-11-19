@@ -217,7 +217,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
 | E20 | Entrada estrita no corpo, na query e no caminho, e `required` no contrato | #concluida | — | Datas e instantes fora do alcance do banco recusados no corpo; query e caminho só ISO; `LocalTime`, inteiro e UUID estritos; `required` nos schemas de request |
-| E21 | Erros de trava e logs restantes | #pendente | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
+| E21 | Erros de trava e logs restantes | #em-andamento | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
 
 **Governança**
 
@@ -973,7 +973,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E21 — Erros de trava e logs restantes — #pendente
+## E21 — Erros de trava e logs restantes — #em-andamento
 
 **Objetivo:** fechar as pendências de erro e de log que a E18 e a E01 deixaram para o `arquiteto`: (1) `40P01` (deadlock) e `55P03` (`lock_timeout`) que escapam de um caso de uso viram 500 no `ApiExceptionHandler`, e passam a dar `409 CONCURRENT_UPDATE` (H21 c); (2) quatro jobs ainda logam a própria falha com a mensagem (`OutboxMetrics`, `FileOrphanPurgeJob`, `ProvisionalReservations` e `InventoryHorizonJob`); (3) o logger `JdbcTemplateStorageAccessor` do ShedLock está em `OFF` (decisão (d) da E18), o que também esconde o "Unlock failed after 10 attempts"; (4) `FcmPushGateway.requestAccessToken` não captura a `JOSEException` de `SignedJWT.sign`.
 
