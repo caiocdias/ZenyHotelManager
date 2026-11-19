@@ -3,6 +3,7 @@ package com.zeny.hotel.shared.web
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.ErrorCodes
+import com.zeny.hotel.shared.ExceptionClasses
 import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
 import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.Idempotent
@@ -177,7 +178,7 @@ internal class IdempotencyFilter(
             } catch (ex: Exception) {
                 // A resposta já existe: a chave fica IN_PROGRESS (409 IDEMPOTENCY_KEY_IN_USE) até vencer. Só a
                 // classe vai ao log: a mensagem e a causa de uma falha do banco trazem nomes e valores (§16).
-                log.error("Falha ao liberar a chave de idempotência {}: {}", reservation.id, ex.javaClass.name)
+                log.error("Falha ao liberar a chave de idempotência {}: {}", reservation.id, ExceptionClasses.chain(ex))
             }
         }
         buffered.copyBodyToResponse()

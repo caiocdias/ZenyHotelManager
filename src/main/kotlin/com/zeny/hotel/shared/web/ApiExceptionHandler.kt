@@ -2,6 +2,7 @@ package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.ErrorCodes
+import com.zeny.hotel.shared.ExceptionClasses
 import com.zeny.hotel.shared.FieldViolation
 import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
@@ -110,7 +111,7 @@ class ApiExceptionHandler(
         log.warn(
             "Conflito de concorrência no banco em {}: {} (SQLSTATE {})",
             describe(request),
-            ex.javaClass.name,
+            ExceptionClasses.chain(ex),
             sqlState,
         )
         Counter
