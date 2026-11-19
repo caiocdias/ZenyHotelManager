@@ -8,7 +8,6 @@ import com.zeny.hotel.maintenance.MaintenanceErrorCodes
 import com.zeny.hotel.maintenance.MaintenanceFilePurposes
 import com.zeny.hotel.maintenance.MaintenancePermissions
 import com.zeny.hotel.maintenance.WorkOrderId
-import com.zeny.hotel.maintenance.domain.WorkOrder
 import com.zeny.hotel.maintenance.domain.WorkOrderAction
 import com.zeny.hotel.maintenance.domain.WorkOrderRules
 import com.zeny.hotel.shared.AuditContext
@@ -99,7 +98,7 @@ class WorkOrderAttachments(
         fileId: FileId,
     ): WorkOrderView {
         val manager = authorization.grantOrNull(MaintenancePermissions.MANAGE) != null
-        val order = loadForAttach(id, manager)
+        val order = workOrders.loadLockedForNote(id, manager)
         order.requireAttachable(WorkOrderAction.ATTACH)
         val summary =
             files.find(fileId)
@@ -169,23 +168,5 @@ class WorkOrderAttachments(
                     "`maintenance.workorders.manage`, ter sido enviado por quem o vincula.",
             )
         }
-    }
-
-    /**
-     * A ordem travada para vincular: quem tem `manage` ([manager]) a carrega no escopo dele; quem não tem exige
-     * `request` e só a ordem que abriu. A ordem alheia e a inexistente dão o mesmo `403` de quem não tem `manage`
-     * (sem revelar se a ordem existe).
-     */
-    private fun loadForAttach(
-        id: WorkOrderId,
-        manager: Boolean,
-    ): WorkOrder {
-        if (manager) return workOrders.loadLocked(id, MaintenancePermissions.MANAGE)
-        authorization.require(MaintenancePermissions.REQUEST)
-        val order = workOrders.lockedOrNull(id)
-        if (order == null || order.openedBy != actor.current().userId) {
-            authorization.require(MaintenancePermissions.MANAGE)
-        }
-        return checkNotNull(order) { "A ordem ausente passou pela exigência de manage" }
     }
 }

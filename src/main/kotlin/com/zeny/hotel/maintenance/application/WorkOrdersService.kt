@@ -198,6 +198,8 @@ data class WorkOrderView(
     val version: Long,
     /** Os anexos vigentes, em ordem de vínculo; a versão da ordem não os cobre. */
     val attachments: List<WorkOrderAttachmentView>,
+    /** As observações, em ordem de registro; a versão da ordem não as cobre. */
+    val notes: List<WorkOrderNoteView>,
 )
 
 /**
@@ -225,6 +227,7 @@ class WorkOrdersService(
     private val hotel: HotelApi,
     private val numbers: DocumentNumberGenerator,
     private val attachments: WorkOrderAttachmentStore,
+    private val notes: WorkOrderNoteStore,
     private val blocks: WorkOrderRoomBlocks,
     private val notifications: NotificationsApi,
     private val tombstones: OfflineTombstones,
@@ -240,7 +243,18 @@ class WorkOrdersService(
      */
     @Audited(MaintenanceAudit.OPEN_WORK_ORDER)
     @Transactional
-    fun open(command: NewWorkOrder): WorkOrderView {
+    fun open(command: NewWorkOrder): WorkOrderView = openAt(WorkOrderId.new(), command, at = null)
+
+    /**
+     * A abertura de [command] com o id [id] e o instante [at] (sem [at], agora), dentro do caso de uso auditado de quem
+     * chama (o comando offline passa o `commandId` como id e o `occurredAt` corrigido). As recusas do [open]; um id que
+     * já é de uma ordem: `409 WORK_ORDER_ID_IN_USE`, sem sobrescrever.
+     */
+    internal fun openAt(
+        id: WorkOrderId,
+        command: NewWorkOrder,
+        at: Instant?,
+    ): WorkOrderView {
         authorization.require(MaintenancePermissions.REQUEST)
         WorkOrderRules.requireOneLocation(command.roomId, command.areaId)
         WorkOrderRules.freeText("description", command.description, WorkOrder.MAX_DESCRIPTION)
@@ -248,10 +262,15 @@ class WorkOrdersService(
             throw WorkOrderRules.invalid("origin", "A origem CHECKLIST é reservada ao pedido por item de checklist.")
         }
         requireLocation(command.roomId, command.areaId)
-        val now = now()
+        if (store.find(id) != null) {
+            throw ConflictException(
+                MaintenanceErrorCodes.WORK_ORDER_ID_IN_USE,
+                "O identificador já é de uma ordem de serviço existente.",
+            )
+        }
         val order =
             WorkOrder.open(
-                WorkOrderId.new(),
+                id,
                 numbers.next(WORK_ORDER_NUMBER, hotel.currentBusinessDate().year),
                 command.roomId,
                 command.areaId,
@@ -261,12 +280,12 @@ class WorkOrdersService(
                 command.origin,
                 command.dueAt,
                 actor.current().userId,
-                now,
+                at?.truncatedTo(ChronoUnit.MICROS) ?: now(),
             )
         store.insert(order)
         audit.created(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
         if (order.priority == WorkOrderPriority.URGENT) notifyUrgent(order)
-        return view(order, emptyList())
+        return viewOf(order)
     }
 
     /**
@@ -327,8 +346,10 @@ class WorkOrdersService(
             CursorPage.fromRows(store.page(scoped, after, page.limit + 1), page.limit) {
                 PageCursor.of(it.openedAt.toString(), it.id.toString())
             }
-        val attached = attachments.active(rows.items.map { it.id })
-        return rows.map { view(it, attached[it.id].orEmpty()) }
+        val ids = rows.items.map { it.id }
+        val attached = attachments.active(ids)
+        val noted = notes.of(ids)
+        return rows.map { view(it, attached[it.id].orEmpty(), noted[it.id].orEmpty()) }
     }
 
     @Transactional(readOnly = true)
@@ -372,7 +393,17 @@ class WorkOrdersService(
     fun start(
         id: WorkOrderId,
         expectedVersion: Long,
-    ): WorkOrderView = act(id, expectedVersion) { order, now -> order.start(now) }
+    ): WorkOrderView = startAt(id, expectedVersion, at = null)
+
+    /**
+     * As ações com o instante [at] (o `occurredAt` corrigido do comando offline, nunca antes da última mudança da
+     * ordem, D5-E08) e sem versão quando [expectedVersion] é `null`, dentro do caso de uso auditado de quem chama.
+     */
+    internal fun startAt(
+        id: WorkOrderId,
+        expectedVersion: Long?,
+        at: Instant?,
+    ): WorkOrderView = act(id, expectedVersion, at) { order, now -> order.start(now) }
 
     /** Põe a ordem em espera (aguardando peça ou terceiro), com o motivo obrigatório (até 500). */
     @Audited(MaintenanceAudit.HOLD_WORK_ORDER)
@@ -381,14 +412,27 @@ class WorkOrdersService(
         id: WorkOrderId,
         reason: String?,
         expectedVersion: Long,
-    ): WorkOrderView = act(id, expectedVersion) { order, now -> order.hold(reason, now) }
+    ): WorkOrderView = holdAt(id, reason, expectedVersion, at = null)
+
+    internal fun holdAt(
+        id: WorkOrderId,
+        reason: String?,
+        expectedVersion: Long?,
+        at: Instant?,
+    ): WorkOrderView = act(id, expectedVersion, at) { order, now -> order.hold(reason, now) }
 
     @Audited(MaintenanceAudit.RESUME_WORK_ORDER)
     @Transactional
     fun resume(
         id: WorkOrderId,
         expectedVersion: Long,
-    ): WorkOrderView = act(id, expectedVersion) { order, now -> order.resume(now) }
+    ): WorkOrderView = resumeAt(id, expectedVersion, at = null)
+
+    internal fun resumeAt(
+        id: WorkOrderId,
+        expectedVersion: Long?,
+        at: Instant?,
+    ): WorkOrderView = act(id, expectedVersion, at) { order, now -> order.resume(now) }
 
     /** Conclui a ordem, com notas e custos opcionais. */
     @Audited(MaintenanceAudit.COMPLETE_WORK_ORDER)
@@ -397,8 +441,15 @@ class WorkOrdersService(
         id: WorkOrderId,
         completion: WorkOrderCompletion,
         expectedVersion: Long,
+    ): WorkOrderView = completeAt(id, completion, expectedVersion, at = null)
+
+    internal fun completeAt(
+        id: WorkOrderId,
+        completion: WorkOrderCompletion,
+        expectedVersion: Long?,
+        at: Instant?,
     ): WorkOrderView =
-        act(id, expectedVersion) { order, now ->
+        act(id, expectedVersion, at) { order, now ->
             order.complete(completion.notes, completion.laborCost, completion.thirdPartyCost, completion.partsCost, now)
             blocks.release(order)
         }
@@ -442,16 +493,21 @@ class WorkOrdersService(
             order.blockRoom(blocks.open(order, request, approvalToken).id, now)
         }
 
-    /** A ação [change] na ordem travada: permissão e escopo, trava, `404`, versão (`412`) e a regra do domínio. */
+    /**
+     * A ação [change] na ordem travada: permissão e escopo, trava, `404`, versão (`412`, só com [expectedVersion]) e a
+     * regra do domínio. O instante é [at] (o do comando offline) ou agora, e nunca anterior à última mudança da ordem
+     * (`updatedAt`, que anda em toda ação, edição e bloqueio): os instantes da ordem não andam para trás (D5-E08).
+     */
     private fun act(
         id: WorkOrderId,
-        expectedVersion: Long,
+        expectedVersion: Long?,
+        at: Instant? = null,
         change: (WorkOrder, Instant) -> Unit,
     ): WorkOrderView {
         val order = load(id, MaintenancePermissions.MANAGE, lock = true)
-        requireCurrentVersion(expectedVersion, order.version)
+        expectedVersion?.let { requireCurrentVersion(it, order.version) }
         audit.track(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
-        change(order, now())
+        change(order, at?.truncatedTo(ChronoUnit.MICROS)?.let { maxOf(it, order.updatedAt) } ?: now())
         store.update(order)
         return viewOf(order)
     }
@@ -465,9 +521,31 @@ class WorkOrdersService(
     /** A ordem [id] travada, ou `null` se não existe; a permissão é de quem chama (sem escopo). */
     internal fun lockedOrNull(id: WorkOrderId): WorkOrder? = store.findForUpdate(id)
 
-    /** A ordem para a resposta, com os anexos vigentes dela. */
+    /**
+     * A ordem [id] travada para vincular um anexo ou registrar uma observação: quem tem `manage` ([manager]) a carrega
+     * no escopo dele; quem não tem exige `request` e só a ordem que abriu. A ordem alheia e a inexistente dão o mesmo
+     * `403` de quem não tem `manage` (sem revelar se a ordem existe).
+     */
+    internal fun loadLockedForNote(
+        id: WorkOrderId,
+        manager: Boolean,
+    ): WorkOrder {
+        if (manager) return loadLocked(id, MaintenancePermissions.MANAGE)
+        authorization.require(MaintenancePermissions.REQUEST)
+        val order = lockedOrNull(id)
+        if (order == null || order.openedBy != actor.current().userId) {
+            authorization.require(MaintenancePermissions.MANAGE)
+        }
+        return checkNotNull(order) { "A ordem ausente passou pela exigência de manage" }
+    }
+
+    /** A ordem para a resposta, com os anexos vigentes e as observações dela. */
     internal fun viewOf(order: WorkOrder): WorkOrderView =
-        view(order, attachments.active(listOf(order.id))[order.id].orEmpty())
+        view(
+            order,
+            attachments.active(listOf(order.id))[order.id].orEmpty(),
+            notes.of(listOf(order.id))[order.id].orEmpty(),
+        )
 
     /**
      * Avisa quem tem `manage`, menos o ator (D6): o número, o local (número da UH ou nome da área) e a categoria. Sem
@@ -580,6 +658,7 @@ class WorkOrdersService(
     private fun view(
         order: WorkOrder,
         attached: List<WorkOrderAttachmentRow>,
+        noted: List<WorkOrderNoteRow>,
     ) = WorkOrderView(
         order.id,
         order.number.toString(),
@@ -607,6 +686,7 @@ class WorkOrdersService(
         order.updatedAt,
         order.version,
         attached.map { WorkOrderAttachmentView(it.fileId, it.purpose) },
+        noted.map { WorkOrderNoteView(it.id, it.text, it.authorId, it.createdAt) },
     )
 
     private companion object {

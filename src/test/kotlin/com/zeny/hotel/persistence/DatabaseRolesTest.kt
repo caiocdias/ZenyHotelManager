@@ -145,6 +145,7 @@ class DatabaseRolesTest(
         appendOnlyTables shouldContain "iam.approval_use"
         appendOnlyTables shouldContain "housekeeping.task_assignment"
         appendOnlyTables shouldContain "housekeeping.task_conflict"
+        appendOnlyTables shouldContain "maintenance.work_order_note"
 
         tables shouldContainAll NO_DELETE_TABLES
 

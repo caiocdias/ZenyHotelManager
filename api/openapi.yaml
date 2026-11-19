@@ -15860,6 +15860,47 @@ paths:
       summary: Pôr uma ordem de serviço em espera
       tags:
       - maintenance
+  /api/v1/work-orders/{id}/notes:
+    post:
+      description: "Texto livre de 1 a 1000 caracteres (400 no campo `text` se vazio\
+        \ ou maior). **Não escreva dado de hóspede.** Com `maintenance.workorders.manage`\
+        \ (no escopo dele) ou, sem ela, com `maintenance.workorders.request` na ordem\
+        \ que o próprio usuário abriu; a ordem alheia é 403 `PERMISSION_DENIED` ou\
+        \ `RESOURCE_OUT_OF_SCOPE`, e a inexistente 404 `WORK_ORDER_NOT_FOUND` (com\
+        \ `OWN`, 403). Ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`.\
+        \ Só se insere: a observação não se edita nem se apaga, e não muda a versã\
+        o nem o `ETag` da ordem. Responde a ordem com a lista de `notes`; o texto\
+        \ não vai à trilha de auditoria."
+      operationId: addWorkOrderNote
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderNoteRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: Observação registrada; a resposta é a ordem.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar uma observação na ordem de serviço
+      tags:
+      - maintenance
   /api/v1/work-orders/{id}/resume:
     post:
       description: "`ON_HOLD` volta a `IN_PROGRESS`; o motivo da espera sai. Exige\
@@ -31567,6 +31608,41 @@ components:
           nullable: true
       required:
       - reason
+    WorkOrderNoteRequest:
+      type: object
+      description: Uma observação na ordem de serviço.
+      properties:
+        text:
+          type: string
+          description: "A observação, de 1 a 1000 caracteres. **Não escreva dado de\
+            \ hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 1000
+          minLength: 1
+          nullable: true
+      required:
+      - text
+    WorkOrderNoteResponse:
+      type: object
+      description: "Uma observação da ordem de serviço: texto livre do operador, de\
+        \ quem e quando."
+      properties:
+        authorId:
+          type: string
+          format: uuid
+          description: O usuário que registrou a observação.
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+      required:
+      - authorId
+      - createdAt
+      - id
+      - text
     WorkOrderOpenRequest:
       type: object
       description: "A abertura de uma ordem de serviço, numa UH ou numa área comum\
@@ -31688,6 +31764,12 @@ components:
           description: Valor em reais (BRL) como decimal com até 2 casas.
           example: "123.45"
           pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        notes:
+          type: array
+          description: "As observações, em ordem de registro. A versão e o `ETag`\
+            \ da ordem não cobrem esta lista (registrar uma observação não os muda)."
+          items:
+            $ref: "#/components/schemas/WorkOrderNoteResponse"
         number:
           type: string
           description: "O número legível, `OS-<ano>-NNNNNN`."
@@ -31764,6 +31846,7 @@ components:
       - description
       - id
       - laborCost
+      - notes
       - number
       - openedAt
       - openedBy

@@ -33,6 +33,7 @@ enum class WorkOrderAction {
     ATTACH,
     DETACH,
     BLOCK_ROOM,
+    NOTE,
 }
 
 /** `409 WORK_ORDER_TRANSITION_NOT_ALLOWED`, com o estado em `workOrderStatus` e a ação em `action`. */

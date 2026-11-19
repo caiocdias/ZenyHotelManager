@@ -11,6 +11,8 @@ import com.zeny.hotel.maintenance.application.WorkOrderAttachmentView
 import com.zeny.hotel.maintenance.application.WorkOrderAttachments
 import com.zeny.hotel.maintenance.application.WorkOrderCompletion
 import com.zeny.hotel.maintenance.application.WorkOrderFilter
+import com.zeny.hotel.maintenance.application.WorkOrderNoteView
+import com.zeny.hotel.maintenance.application.WorkOrderNotes
 import com.zeny.hotel.maintenance.application.WorkOrderRoomBlockRequest
 import com.zeny.hotel.maintenance.application.WorkOrderUpdate
 import com.zeny.hotel.maintenance.application.WorkOrderView
@@ -55,6 +57,7 @@ internal const val MAINTENANCE_TAG_DESCRIPTION = "Manutenção: ordens de servi�
 // Os limites dos textos (os do domínio, que os confere), só para o contrato.
 private const val MAX_DESCRIPTION = 2000
 private const val MAX_REASON = 500
+private const val MAX_NOTE = 1000
 private const val MAX_THIRD_PARTY = 200
 private const val TEXT_WARNING =
     "**Não escreva dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
@@ -90,6 +93,7 @@ private const val ACTION_RULES =
 class WorkOrdersController(
     private val workOrders: WorkOrdersService,
     private val attachments: WorkOrderAttachments,
+    private val notes: WorkOrderNotes,
 ) {
     @GetMapping
     @Operation(
@@ -349,6 +353,31 @@ class WorkOrdersController(
         @PathVariable fileId: UUID,
     ): ResponseEntity<WorkOrderResponse> = respond(attachments.detach(WorkOrderId(id), FileId(fileId)))
 
+    @PostMapping("/{id}/notes")
+    @Operation(
+        operationId = "addWorkOrderNote",
+        summary = "Registrar uma observação na ordem de serviço",
+        description =
+            "Texto livre de 1 a 1000 caracteres (400 no campo `text` se vazio ou maior). **Não escreva dado de " +
+                "hóspede.** Com `maintenance.workorders.manage` (no escopo dele) ou, sem ela, com " +
+                "`maintenance.workorders.request` na ordem que o próprio usuário abriu; a ordem alheia é 403 " +
+                "`PERMISSION_DENIED` ou `RESOURCE_OUT_OF_SCOPE`, e a inexistente 404 `WORK_ORDER_NOT_FOUND` (com " +
+                "`OWN`, 403). Ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`. Só se insere: a " +
+                "observação não se edita nem se apaga, e não muda a versão nem o `ETag` da ordem. Responde a ordem " +
+                "com a lista de `notes`; o texto não vai à trilha de auditoria.",
+    )
+    @ApiResponse(responseCode = "201", description = "Observação registrada; a resposta é a ordem.")
+    fun addNote(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: WorkOrderNoteRequest,
+    ): ResponseEntity<WorkOrderResponse> {
+        val view = notes.add(WorkOrderId(id), request.text)
+        return ResponseEntity
+            .created(URI.create("/api/v1/work-orders/${view.id}"))
+            .eTag(ETags.of(view.version))
+            .body(WorkOrderResponse.of(view))
+    }
+
     private fun respond(view: WorkOrderView) =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(WorkOrderResponse.of(view))
 }
@@ -463,6 +492,26 @@ data class WorkOrderRoomBlockBody(
     val endsOn: LocalDate?,
 )
 
+@Schema(description = "Uma observação na ordem de serviço.")
+data class WorkOrderNoteRequest(
+    @field:NotBlank
+    @field:Schema(description = "A observação, de 1 a 1000 caracteres. $TEXT_WARNING", maxLength = MAX_NOTE)
+    val text: String?,
+)
+
+@Schema(description = "Uma observação da ordem de serviço: texto livre do operador, de quem e quando.")
+data class WorkOrderNoteResponse(
+    val id: UUID,
+    val text: String,
+    @field:Schema(description = "O usuário que registrou a observação.")
+    val authorId: UUID,
+    val createdAt: Instant,
+) {
+    companion object {
+        fun of(view: WorkOrderNoteView) = WorkOrderNoteResponse(view.id, view.text, view.authorId, view.createdAt)
+    }
+}
+
 @Schema(description = "O cancelamento de uma ordem de serviço.")
 data class WorkOrderCancelRequest(
     @field:NotBlank
@@ -523,6 +572,12 @@ data class WorkOrderResponse(
                 "desvincular não os mudam).",
     )
     val attachments: List<WorkOrderAttachmentResponse>,
+    @field:Schema(
+        description =
+            "As observações, em ordem de registro. A versão e o `ETag` da ordem não cobrem esta lista (registrar uma " +
+                "observação não os muda).",
+    )
+    val notes: List<WorkOrderNoteResponse>,
 ) {
     companion object {
         fun of(view: WorkOrderView) =
@@ -552,6 +607,7 @@ data class WorkOrderResponse(
                 view.outOfOrderId?.value,
                 view.updatedAt,
                 view.attachments.map(WorkOrderAttachmentResponse::of),
+                view.notes.map(WorkOrderNoteResponse::of),
             )
     }
 }

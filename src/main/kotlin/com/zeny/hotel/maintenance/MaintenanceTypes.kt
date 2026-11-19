@@ -105,4 +105,7 @@ object MaintenanceErrorCodes {
 
     /** 409: o local da ordem não muda enquanto há um bloqueio da UH vigente. */
     val WORK_ORDER_LOCATION_LOCKED = ErrorCode("WORK_ORDER_LOCATION_LOCKED")
+
+    /** 409: o id da ordem ou da observação (o `commandId` de um comando offline) já é de um registro existente. */
+    val WORK_ORDER_ID_IN_USE = ErrorCode("WORK_ORDER_ID_IN_USE")
 }
