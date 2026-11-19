@@ -51,6 +51,9 @@ import java.time.Instant
 interface InspectionStore {
     fun insert(inspection: Inspection)
 
+    /** A inspeção pelo id, ou `null` (o ouvinte das ocorrências do checklist, D5-E06). */
+    fun find(id: InspectionId): Inspection?
+
     /** A inspeção aberta (`IN_PROGRESS`) da tarefa, com a linha travada, ou `null`. */
     fun openForUpdate(taskId: HousekeepingTaskId): Inspection?
 
@@ -364,7 +367,12 @@ class HousekeepingInspections(
         val at = task.lastTransitionAt?.let { maxOf(requestedAt, it) } ?: requestedAt
         val execution =
             version?.let {
-                checklists.startExecution(it.id, ChecklistSubject(CHECKLIST_SUBJECT_TYPE, id.value), actor.userId, at)
+                checklists.startExecution(
+                    it.id,
+                    ChecklistSubject(INSPECTION_CHECKLIST_SUBJECT, id.value),
+                    actor.userId,
+                    at,
+                )
             }
         val roomId = checkNotNull(task.roomId) { "A tarefa ${task.id} aguarda inspeção sem UH" }
         val inspection = Inspection.start(id, task.id, roomId, execution?.id, actor.userId, at)
@@ -510,8 +518,11 @@ private fun requireAnswersFit(
     throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
 }
 
-/** O tipo do sujeito da execução do checklist de inspeção (o `checklists` não o confere). */
-private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.inspection"
+/**
+ * O tipo do sujeito da execução do checklist de inspeção (o `checklists` não o confere); o ouvinte das ocorrências o
+ * reconhece no `ChecklistCompleted` (D5-E06).
+ */
+internal const val INSPECTION_CHECKLIST_SUBJECT = "housekeeping.inspection"
 
 internal fun Inspection.view() =
     InspectionView(

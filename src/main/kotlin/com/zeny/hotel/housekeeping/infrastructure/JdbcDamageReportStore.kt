@@ -64,6 +64,20 @@ class JdbcDamageReportStore(
 
     override fun findForUpdate(id: DamageReportId): DamageReport? = byId(id, lock = true)
 
+    override fun findByChecklistItem(
+        execution: ChecklistExecutionId,
+        itemKey: String,
+    ): DamageReport? =
+        jdbc
+            .sql(
+                "SELECT * FROM $DAMAGE_REPORT_TABLE WHERE checklist_execution_id = :execution " +
+                    "AND checklist_item_key = :itemKey",
+            ).param("execution", execution.value)
+            .param("itemKey", itemKey)
+            .query { rs, _ -> report(rs) }
+            .optional()
+            .orElse(null)
+
     override fun update(report: DamageReport) {
         val review = report.review
         val updated =

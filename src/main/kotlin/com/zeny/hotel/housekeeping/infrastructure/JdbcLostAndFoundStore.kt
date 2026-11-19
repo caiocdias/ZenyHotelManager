@@ -21,7 +21,8 @@ import java.util.UUID
 
 /**
  * Os achados e perdidos (D2-E06) por `JdbcClient`, sempre parametrizados e só em `housekeeping.lost_and_found_item`:
- * `INSERT`, a leitura (com a linha travada, `FOR UPDATE`, nas ações), o `UPDATE` do destino com a versão e a página da
+ * `INSERT`, a leitura (com a linha travada, `FOR UPDATE`, nas ações; pela origem do checklist, na reentrega), o
+ * `UPDATE` do destino com a versão, a marcação do aviso de vencido (`expiry_notified_at`, fora da versão) e a página da
  * listagem, com o escopo e o filtro de vencidos na própria consulta. Nunca apaga.
  */
 @Component
@@ -63,6 +64,37 @@ class JdbcLostAndFoundStore(
     override fun find(id: LostAndFoundItemId): LostAndFoundItem? = byId(id, lock = false)
 
     override fun findForUpdate(id: LostAndFoundItemId): LostAndFoundItem? = byId(id, lock = true)
+
+    override fun findByChecklistItem(
+        execution: ChecklistExecutionId,
+        itemKey: String,
+    ): LostAndFoundItem? =
+        jdbc
+            .sql(
+                "SELECT * FROM $LOST_AND_FOUND_TABLE WHERE checklist_execution_id = :execution " +
+                    "AND checklist_item_key = :itemKey",
+            ).param("execution", execution.value)
+            .param("itemKey", itemKey)
+            .query { rs, _ -> item(rs) }
+            .optional()
+            .orElse(null)
+
+    override fun markExpiryNotices(
+        cutoff: Instant,
+        at: Instant,
+    ): List<LostAndFoundItem> =
+        jdbc
+            .sql(
+                """
+                UPDATE $LOST_AND_FOUND_TABLE SET expiry_notified_at = :at
+                WHERE $EXPIRED AND expiry_notified_at IS NULL
+                RETURNING *
+                """.trimIndent(),
+            ).param("at", utc(at))
+            .param("cutoff", utc(cutoff))
+            .query { rs, _ -> item(rs) }
+            .list()
+            .sortedWith(compareBy({ it.foundAt }, { it.id.value }))
 
     override fun update(item: LostAndFoundItem) {
         val updated =

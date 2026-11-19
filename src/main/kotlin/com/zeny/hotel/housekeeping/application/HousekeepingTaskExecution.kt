@@ -326,7 +326,7 @@ class HousekeepingTaskExecution(
         val current = currentChecklistVersion(task)
         val version = device ?: current ?: return null
         device?.let { compareDeviceVersion(it, current, warnings, remarks) }
-        val subject = ChecklistSubject(CHECKLIST_SUBJECT_TYPE, task.id.value)
+        val subject = ChecklistSubject(TASK_CHECKLIST_SUBJECT, task.id.value)
         return checklists.startExecution(version.id, subject, actor.userId, checkNotNull(task.lastTransitionAt)).id
     }
 
@@ -447,8 +447,11 @@ private fun requireCompletionInput(
     throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
 }
 
-/** O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere). */
-private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.task"
+/**
+ * O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere); o ouvinte das ocorrências o
+ * reconhece no `ChecklistCompleted` (D5-E06).
+ */
+internal const val TASK_CHECKLIST_SUBJECT = "housekeeping.task"
 
 /** O retrato da trilha da execução: o da tarefa ([auditState], sem o texto das `notes`) e os dados da execução. */
 internal fun HousekeepingTask.executionAuditState(): Map<String, Any?> =

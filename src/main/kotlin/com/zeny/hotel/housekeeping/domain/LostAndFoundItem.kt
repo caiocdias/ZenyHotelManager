@@ -198,6 +198,7 @@ class LostAndFoundItem private constructor(
          * Um item novo, `STORED`, achado em [foundAt] na UH [roomId] **ou** na área [areaId] (os dois ou nenhum, `400
          * HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID`), registrado por [reportedBy]. A existência do local é do caso de
          * uso; a [description] é obrigatória e o [storagePlace] opcional, aparados (`400 HOUSEKEEPING_DATA_INVALID`).
+         * Só a origem `CHECKLIST` leva a execução e o item ([checklistExecutionId], [checklistItemKey]).
          */
         @Suppress("LongParameterList") // os dados do registro
         fun register(
@@ -210,9 +211,14 @@ class LostAndFoundItem private constructor(
             foundAt: Instant,
             source: OccurrenceSource,
             now: Instant,
+            checklistExecutionId: ChecklistExecutionId? = null,
+            checklistItemKey: String? = null,
         ): LostAndFoundItem {
             HousekeepingRules.requireOneLocation(roomId, areaId)
-            require(source != OccurrenceSource.CHECKLIST) { "O registro do checklist leva a execução e o item" }
+            require(
+                (source == OccurrenceSource.CHECKLIST) == (checklistExecutionId != null) &&
+                    (checklistExecutionId == null) == (checklistItemKey == null),
+            ) { "Só o registro do checklist leva a execução e o item, e leva os dois" }
             return LostAndFoundItem(
                 id,
                 roomId,
@@ -222,8 +228,8 @@ class LostAndFoundItem private constructor(
                 foundAt,
                 reportedBy,
                 source,
-                null,
-                null,
+                checklistExecutionId,
+                checklistItemKey,
                 LostAndFoundStatus.STORED,
                 null,
                 null,

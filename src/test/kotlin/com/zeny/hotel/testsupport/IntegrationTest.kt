@@ -16,8 +16,8 @@ import org.springframework.test.context.ContextConfiguration
  *
  * As propriedades de teste acrescentam as migrações só de teste (`db/testmigration`) e adiam os jobs de reprocessamento
  * e de expurgo do outbox, o expurgo de anexos órfãos, a rotação de chaves dos documentos de hóspede, o horizonte do
- * inventário e a expiração das pré-reservas, para que os testes os disparem quando quiserem. Para autenticar uma
- * requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
+ * inventário, a expiração das pré-reservas e o aviso do prazo de guarda dos achados, para que os testes os disparem
+ * quando quiserem. Para autenticar uma requisição do `MockMvc` com um usuário de id conhecido, use [asUser].
  *
  * Os contextos `@IntegrationTest` compartilhados registram as etapas reais do fechamento do dia, inertes só pelo
  * `initial-delay PT24H` do job: nenhum teste no banco compartilhado pode **executar** o fechamento. Um
@@ -37,6 +37,7 @@ import org.springframework.test.context.ContextConfiguration
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
         PRINTING_MAINTENANCE_DEFERRED,
+        LOST_FOUND_EXPIRY_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
@@ -99,3 +100,9 @@ const val FNRH_SEND_DEFERRED = "zeny.fnrh.submissions.initial-delay=PT24H"
  * compartilhado, e um contexto com o relógio adiantado ([MutableClock]) mexeria nos jobs de outros testes.
  */
 const val PRINTING_MAINTENANCE_DEFERRED = "zeny.printing.maintenance-initial-delay=PT24H"
+
+/**
+ * O aviso do prazo de guarda dos achados só roda quando o teste o chama: ele marca e avisa todos os itens vencidos do
+ * banco compartilhado, e o teste do job confere os avisos dos próprios itens.
+ */
+const val LOST_FOUND_EXPIRY_DEFERRED = "zeny.housekeeping.lost-found-expiry.initial-delay=PT24H"

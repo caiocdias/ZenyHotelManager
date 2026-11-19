@@ -363,6 +363,11 @@ zeny:
   # última tarefa dela (fora as canceladas) tem pre-arrival-after-days dias ou mais (de 1 a 30; fora disso o boot recusa).
   housekeeping:
     pre-arrival-after-days: 3
+    # Prazo de guarda dos achados (M6 E06, D3): o LostAndFoundExpiryJob, sob trava do ShedLock, avisa uma vez cada item
+    # guardado que venceu a quem gere os achados; não dá destino ao item.
+    lost-found-expiry:
+      interval: P1D
+      initial-delay: PT5M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

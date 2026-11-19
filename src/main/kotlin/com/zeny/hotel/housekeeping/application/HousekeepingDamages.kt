@@ -10,6 +10,7 @@ import com.zeny.hotel.billing.PostingId
 import com.zeny.hotel.billing.PostingSource
 import com.zeny.hotel.billing.TransactionCodeId
 import com.zeny.hotel.billing.TransactionCodeKind
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.DamageReportId
 import com.zeny.hotel.housekeeping.DamageReportStatus
@@ -63,6 +64,12 @@ interface DamageReportStore {
     /** Grava a revisão, a cobrança ou a dispensa do dano travado e sobe a versão; a nova já vale em [report]. */
     fun update(report: DamageReport)
 
+    /** O dano registrado pelo item [itemKey] da execução de checklist [execution], ou `null` (D5-E06). */
+    fun findByChecklistItem(
+        execution: ChecklistExecutionId,
+        itemKey: String,
+    ): DamageReport?
+
     /** Até [limit] danos depois de [after], do fato mais recente ao mais antigo; [ownerId], só os dele. */
     fun page(
         ownerId: UUID?,
@@ -83,7 +90,8 @@ data class DamageReportRegistration(
  * Um dano a registrar pelas entradas sem autorização própria (o registro online depois da permissão, o comando offline
  * e o ouvinte do checklist da Task 3): o [id] (no offline, o `commandId`), o instante do fato [occurredAt] e, quando
  * vem de uma tarefa de governança, a origem dela ([taskSource]): a de saída (`CHECKOUT`) e a de troca de UH
- * (`ROOM_MOVE`) nunca vinculam a reserva (D4-E06).
+ * (`ROOM_MOVE`) nunca vinculam a reserva (D4-E06). Na origem `CHECKLIST`, a execução e o item
+ * ([checklistExecutionId], [checklistItemKey]): um dano só por item de execução (D5-E06).
  */
 data class DamageReportDraft(
     val id: DamageReportId,
@@ -95,6 +103,8 @@ data class DamageReportDraft(
     val reportedBy: UserId,
     val source: OccurrenceSource,
     val taskSource: TaskSource? = null,
+    val checklistExecutionId: ChecklistExecutionId? = null,
+    val checklistItemKey: String? = null,
 )
 
 /** A revisão de um dano: o valor final, o código de lançamento e a reserva vinculada (nula retira o vínculo). */
@@ -190,11 +200,18 @@ class HousekeepingDamages(
 
     /**
      * Registra o dano [draft] **sem conferir permissão** (quem chama já se autorizou ou é o próprio sistema): a entrada
-     * do comando offline e do ouvinte do checklist. Mesmas regras do [register], com o instante do fato do rascunho.
+     * do ouvinte do checklist. Mesmas regras do [register], com o instante do fato do rascunho; a origem do checklist
+     * já registrada (a reentrega do evento) devolve o dano gravado, sem outro.
      */
     @Audited(HousekeepingAudit.REGISTER_DAMAGE_REPORT)
     @Transactional
-    fun record(draft: DamageReportDraft): DamageReportView = view(insert(draft), showLinks = false)
+    fun record(draft: DamageReportDraft): DamageReportView = recordOffline(draft)
+
+    /**
+     * O registro do [draft] dentro do caso de uso auditado de quem chama (o comando offline, que já conferiu a
+     * permissão): a resposta não leva a reserva nem a conta (RN-13).
+     */
+    internal fun recordOffline(draft: DamageReportDraft): DamageReportView = view(insert(draft), showLinks = false)
 
     @Transactional(readOnly = true)
     fun list(page: PageParams): CursorPage<DamageReportView> {
@@ -299,6 +316,13 @@ class HousekeepingDamages(
     ): DamageReportView = act(id, expectedVersion) { report, by, at -> report.waive(reason, by, at) }
 
     private fun insert(draft: DamageReportDraft): DamageReport {
+        val execution = draft.checklistExecutionId
+        if (execution != null) {
+            store.findByChecklistItem(execution, checkNotNull(draft.checklistItemKey))?.let {
+                audit.noChanges()
+                return it
+            }
+        }
         val now = clock.instant()
         requireLocationExists(draft.roomId, draft.areaId)
         val report =
@@ -313,6 +337,8 @@ class HousekeepingDamages(
                 draft.source,
                 suggestedReservation(draft),
                 now,
+                draft.checklistExecutionId,
+                draft.checklistItemKey,
             )
         store.insert(report)
         audit.created(HousekeepingAudit.DAMAGE_REPORT, report.id.value) { report.auditState() }

@@ -63,6 +63,12 @@ internal object HousekeepingAudit {
     const val DONATE_LOST_FOUND_ITEM = "housekeeping.lost-found-item.donate"
     const val CHANGE_LOST_FOUND_STORAGE_PLACE = "housekeeping.lost-found-item.change-storage-place"
 
+    /** O registro offline de um achado (`housekeeping.report-lost-found`, D6-E06). */
+    const val REGISTER_LOST_FOUND_ITEM_OFFLINE = "housekeeping.lost-found-item.register-offline"
+
+    /** O aviso do prazo de guarda pelo job (D3-E06): a marca `expiryNotifiedAt` de cada item avisado. */
+    const val NOTIFY_LOST_FOUND_EXPIRY = "housekeeping.lost-found-item.notify-expiry"
+
     /**
      * Um dano (M6 E06): retrato com a descrição e o motivo da dispensa só pelo tamanho; ids, valores e estado.
      */
@@ -72,6 +78,9 @@ internal object HousekeepingAudit {
     const val REVIEW_DAMAGE_REPORT = "housekeeping.damage-report.review"
     const val CHARGE_DAMAGE_REPORT = "housekeeping.damage-report.charge"
     const val WAIVE_DAMAGE_REPORT = "housekeeping.damage-report.waive"
+
+    /** O registro offline de um dano (`housekeeping.report-damage`, D6-E06). */
+    const val REGISTER_DAMAGE_REPORT_OFFLINE = "housekeeping.damage-report.register-offline"
 
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 

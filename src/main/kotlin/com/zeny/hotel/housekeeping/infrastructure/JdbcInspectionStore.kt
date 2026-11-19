@@ -50,6 +50,14 @@ class JdbcInspectionStore(
             .update()
     }
 
+    override fun find(id: InspectionId): Inspection? =
+        jdbc
+            .sql("SELECT * FROM $INSPECTION_TABLE WHERE id = :id")
+            .param("id", id.value)
+            .query { rs, _ -> inspection(rs) }
+            .optional()
+            .orElse(null)
+
     override fun openForUpdate(taskId: HousekeepingTaskId): Inspection? =
         jdbc
             .sql("SELECT * FROM $INSPECTION_TABLE WHERE task_id = :task AND status = 'IN_PROGRESS' FOR UPDATE")

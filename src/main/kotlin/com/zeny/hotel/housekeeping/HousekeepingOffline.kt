@@ -25,6 +25,14 @@ import com.zeny.hotel.shared.OfflineSource
  * - [COMPLETE_INSPECTION], com o `taskId`, o `result`, as respostas (`answers`) e os itens reprovados
  *   (`rejectedItems`); sem início, numa tarefa sem modelo de inspeção, o `commandId` é o id da inspeção;
  * - [INSPECT_ROOM], a inspeção voluntária, com o `roomId`; o `commandId` é o id da inspeção.
+ *
+ * O registro de ocorrências (M6 E06, D6), pela camareira com `housekeeping.occurrences.report` (qualquer escopo), com o
+ * `commandId` como id do registro e o `occurredAt` corrigido como o instante do fato; sem fonte de download (o aparelho
+ * só envia), e a revisão, a cobrança e o destino ficam online:
+ * - [REPORT_LOST_FOUND], o achado: `roomId` **ou** `areaId`, `description` e, opcional, `storagePlace`;
+ * - [REPORT_DAMAGE], o dano: `roomId` **ou** `areaId`, `description` e, opcional, `estimatedCost` (texto decimal como
+ *   na API online, até 2 casas: número JSON ou mais casas dão `COMMAND_PAYLOAD_INVALID`; de 0 a 99999.99). O resultado
+ *   não leva a reserva vinculada (RN-13).
  */
 object HousekeepingOffline {
     val TASKS = OfflineSource("housekeeping-tasks", HousekeepingPermissions.TASKS_EXECUTE)
@@ -41,4 +49,7 @@ object HousekeepingOffline {
     val START_INSPECTION = OfflineCommandType("housekeeping.start-inspection")
     val COMPLETE_INSPECTION = OfflineCommandType("housekeeping.complete-inspection")
     val INSPECT_ROOM = OfflineCommandType("housekeeping.inspect-room")
+
+    val REPORT_LOST_FOUND = OfflineCommandType("housekeeping.report-lost-found")
+    val REPORT_DAMAGE = OfflineCommandType("housekeeping.report-damage")
 }

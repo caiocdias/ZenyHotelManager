@@ -322,6 +322,8 @@ class NotificationsApiTest(
                     ReservationsNotificationTypes.types + HousekeepingNotificationTypes.types
             ).map { it.code.value }
                 .sorted()
+        HousekeepingNotificationTypes.types.map { it.code.value } shouldContainExactly
+            listOf("housekeeping.task-conflict", "housekeeping.lost-found-expired")
         defaults.forEach {
             it["inApp"].asBoolean() shouldBe true
             it["push"].asBoolean() shouldBe true

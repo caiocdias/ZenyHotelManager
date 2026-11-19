@@ -317,11 +317,22 @@ sequenceDiagram
   OB-)INV: ConsumeStock → saída do carrinho
   OB-)LN: LinenExchange → em uso ↔ suja
   OB-)MT: OpenOccurrence(MAINTENANCE) → nova OS
+  OB-)HK: OpenOccurrence(LOST_AND_FOUND, DAMAGE) → achado, dano (M6 E06)
 ```
 
 A conclusão offline é o comando `housekeeping.complete-task` (M6 E19), irmão de `housekeeping.start-task`, `pause-task`, `resume-task`, `refuse-task` e `retry-task`: o checklist da tarefa é concluído pela própria conclusão da tarefa, na mesma transação, e não por um comando `checklists.*` à parte. O aparelho conhece as tarefas pela fonte `housekeeping-tasks` (§9).
 
 A inspeção offline (M6 E05, D7) segue o mesmo caminho, pelo mesmo caso de uso da inspeção online: `housekeeping.start-inspection` (`taskId` e, opcional, o `checklistVersionId` de inspeção que o aparelho tem, com os alertas da E19; o `commandId` vira o id da inspeção), `housekeeping.complete-inspection` (`taskId`, `result`, `answers` com o `answeredAt` corrigido e `rejectedItems`; sem início, numa tarefa sem modelo de inspeção, abre e conclui com o `commandId` como id) e `housekeeping.inspect-room` (a inspeção voluntária, `roomId`). A conclusão leva a tarefa `AWAITING_INSPECTION → DONE` (UH Limpa com inspeção pendente a Inspecionada, `markInspectedIfPending`) ou `AWAITING_INSPECTION → REJECTED` (UH a Suja, `rejectInspectionIfPending`), com o checklist de inspeção concluído por dentro dela e as fotos toleradas com alerta. Exigem `housekeeping.inspections.perform`; a tarefa já inspecionada online dá `REJECTED` com `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`, sem segunda inspeção. O inspetor conhece as tarefas pela fonte `housekeeping-inspections` (§9).
+
+Os achados e os danos (M6 E06) chegam ao `housekeeping` por dois caminhos offline:
+
+- **Registro direto** pela camareira: os comandos `housekeeping.report-lost-found` (`roomId` ou `areaId`, `description`, `storagePlace` opcional) e `housekeeping.report-damage` (`roomId` ou `areaId`, `description`, `estimatedCost` opcional, em texto decimal como na API online, até 2 casas e 99999.99), com `housekeeping.occurrences.report` (D6). O `commandId` vira o id do registro, com origem `OFFLINE`, e o `occurredAt` corrigido é o instante do fato. No dano, esse instante decide o vínculo sugerido à reserva da UH. O resultado do comando não traz a reserva nem o hóspede (RN-13).
+- **Ação do checklist:** o ouvinte `HousekeepingOccurrenceListener` (D5) recebe o `ChecklistCompleted` e trata as ações `OPEN_OCCURRENCE` de tipo `LOST_AND_FOUND` e `DAMAGE`. O sujeito da execução precisa ser uma tarefa (`housekeeping.task`) ou uma inspeção (`housekeeping.inspection`) da governança, ou ainda a UH (`rooms.room`) ou a área (`rooms.area`) de uma rotina. O ouvinte registra:
+  - a origem `CHECKLIST`, com o executor como quem registrou;
+  - o `completedAt` como instante do fato;
+  - a descrição com o rótulo do item, a `category` e a `note` da ação, até 500 caracteres.
+
+  Ele é idempotente por execução, item e tipo (índice único da origem em cada tabela), e a reentrega não duplica. Uma execução à parte de uma rotina (`duplicateOf`) cria o próprio registro. O dano que vem de uma tarefa `CHECKOUT` ou `ROOM_MOVE` nunca vincula reserva. Outros sujeitos são ignorados com log, e também a UH inexistente e a rotina sem local.
 
 ### 6.3 Aprovação de superior (step-up)
 
@@ -434,6 +445,7 @@ sequenceDiagram
 
 - Se a tarefa concluída offline foi reatribuída ou cancelada, a execução é registrada e sinalizada para a governanta (RN-22).
 - Registros criados offline (achados, OS) usam o UUID do cliente como ID.
+- Achados e danos (M6 E06, D6) entram pelos comandos `housekeeping.report-lost-found` e `housekeeping.report-damage` (§6.2), sem fonte de download: o aparelho só envia. A revisão, a cobrança e o destino ficam online. O custo estimado do dano passa pela entrada estrita: em número JSON ou com mais de 2 casas, `REJECTED COMMAND_PAYLOAD_INVALID`.
 
 **Relógio**: o servidor calcula a defasagem do dispositivo no início de cada sincronização e corrige o `occurredAt` dentro de uma tolerância configurada.
 
@@ -560,6 +572,7 @@ Uma exceção que escapa de um job, inclusive a falha da trava do ShedLock com o
 | Expiração de pré-reservas | 5 min |
 | Envio das submissões à FNRH (`fnrh-submissions-send`, M5 E08): a cabeça da fila de cada reserva, com backoff de 1 min a 1 h e `FAILED` na 8ª tentativa | 1 min |
 | Manutenção da fila de impressão (`printing-jobs-maintenance`, M5 E10): reenvio dos `SENT` sem confirmação e o limite de tentativas, validade dos `PENDING`, jobs de impressora inativa ou de agente desativado e expurgo do conteúdo | 1 min |
+| Aviso do prazo de guarda dos achados (`housekeeping-lost-found-expiry`, M6 E06): avisa uma vez cada item guardado e vencido a quem tem `housekeeping.lostfound.manage` (tipo `housekeeping.lost-found-expired`, só com o id, a UH ou área e a data em que foi achado), sem dar destino ao item | Diário |
 | Renovação de pré-autorizações perto do vencimento | No fechamento |
 | Geração de preventivas, faxinas programadas e rotinas de checklist | Após `BusinessDateAdvanced` |
 | Alertas de estoque mínimo | Por evento, com consolidação diária |

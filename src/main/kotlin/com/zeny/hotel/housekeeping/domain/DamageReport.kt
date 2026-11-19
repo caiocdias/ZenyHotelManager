@@ -234,6 +234,7 @@ class DamageReport private constructor(
          * nenhum, `400 HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID`), registrado por [reportedBy], com a reserva sugerida
          * [reservation] (nula numa área). A existência do local e o vínculo são do caso de uso; a [description] é
          * obrigatória, aparada, e o [estimatedCost] opcional, de 0 a [MAX_AMOUNT] (`400 HOUSEKEEPING_DATA_INVALID`).
+         * Só a origem `CHECKLIST` leva a execução e o item ([checklistExecutionId], [checklistItemKey]).
          */
         @Suppress("LongParameterList") // os dados do registro
         fun register(
@@ -247,9 +248,14 @@ class DamageReport private constructor(
             source: OccurrenceSource,
             reservation: ReservationId?,
             now: Instant,
+            checklistExecutionId: ChecklistExecutionId? = null,
+            checklistItemKey: String? = null,
         ): DamageReport {
             HousekeepingRules.requireOneLocation(roomId, areaId)
-            require(source != OccurrenceSource.CHECKLIST) { "O registro do checklist leva a execução e o item" }
+            require(
+                (source == OccurrenceSource.CHECKLIST) == (checklistExecutionId != null) &&
+                    (checklistExecutionId == null) == (checklistItemKey == null),
+            ) { "Só o registro do checklist leva a execução e o item, e leva os dois" }
             require(reservation == null || roomId != null) { "Dano de área não tem reserva" }
             requireEstimatedCost(estimatedCost)
             return DamageReport(
@@ -261,8 +267,8 @@ class DamageReport private constructor(
                 occurredAt,
                 reportedBy,
                 source,
-                null,
-                null,
+                checklistExecutionId,
+                checklistItemKey,
                 reservation,
                 DamageReportStatus.REPORTED,
                 null,

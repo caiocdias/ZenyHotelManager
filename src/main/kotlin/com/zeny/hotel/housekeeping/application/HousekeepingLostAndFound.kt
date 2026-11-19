@@ -1,7 +1,9 @@
 package com.zeny.hotel.housekeeping.application
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
+import com.zeny.hotel.housekeeping.HousekeepingNotificationTypes
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
 import com.zeny.hotel.housekeeping.LostAndFoundItemId
 import com.zeny.hotel.housekeeping.LostAndFoundStatus
@@ -9,6 +11,8 @@ import com.zeny.hotel.housekeeping.OccurrenceSource
 import com.zeny.hotel.housekeeping.domain.HousekeepingRules
 import com.zeny.hotel.housekeeping.domain.LostAndFoundAction
 import com.zeny.hotel.housekeeping.domain.LostAndFoundItem
+import com.zeny.hotel.notifications.NotificationRecipients
+import com.zeny.hotel.notifications.NotificationsApi
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomsApi
@@ -29,6 +33,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /** A chave da ordenação da lista de achados: quando foi achado (desc) e id (desc). */
@@ -59,6 +64,21 @@ interface LostAndFoundStore {
     /** Grava o destino ou o local de guarda do item travado e sobe a versão; a nova já vale em [item] na volta. */
     fun update(item: LostAndFoundItem)
 
+    /** O item registrado pelo item [itemKey] da execução de checklist [execution], ou `null` (D5-E06). */
+    fun findByChecklistItem(
+        execution: ChecklistExecutionId,
+        itemKey: String,
+    ): LostAndFoundItem?
+
+    /**
+     * Marca o aviso de vencido (`expiry_notified_at` = [at]) dos itens guardados achados antes de [cutoff] ainda não
+     * avisados e os devolve, do achado mais antigo ao mais novo (D3-E06): cada item só é devolvido uma vez.
+     */
+    fun markExpiryNotices(
+        cutoff: Instant,
+        at: Instant,
+    ): List<LostAndFoundItem>
+
     /** Até [limit] itens de [query] depois de [after], de quando foi achado (desc) e id (desc). */
     fun page(
         query: LostAndFoundQuery,
@@ -73,6 +93,24 @@ data class LostAndFoundRegistration(
     val areaId: AreaId?,
     val description: String?,
     val storagePlace: String?,
+)
+
+/**
+ * Um achado a registrar pelas entradas sem autorização própria (o comando offline e o ouvinte do checklist, D5 e
+ * D6-E06): o [id] (no offline, o `commandId`), o instante [foundAt] (o `occurredAt` corrigido, ou o `completedAt` do
+ * checklist) e, na origem `CHECKLIST`, a execução e o item ([checklistExecutionId], [checklistItemKey]).
+ */
+data class LostAndFoundDraft(
+    val id: LostAndFoundItemId,
+    val roomId: RoomId?,
+    val areaId: AreaId?,
+    val description: String?,
+    val storagePlace: String?,
+    val foundAt: Instant,
+    val reportedBy: UserId,
+    val source: OccurrenceSource,
+    val checklistExecutionId: ChecklistExecutionId? = null,
+    val checklistItemKey: String? = null,
 )
 
 /**
@@ -123,6 +161,7 @@ class HousekeepingLostAndFound(
     private val actor: CurrentActor,
     private val audit: AuditContext,
     private val clock: Clock,
+    private val notifications: NotificationsApi,
 ) {
     /**
      * Registra um item achado agora, `STORED`, com origem `MANUAL`. Local inexistente: `400
@@ -132,23 +171,69 @@ class HousekeepingLostAndFound(
     @Transactional
     fun register(registration: LostAndFoundRegistration): LostAndFoundItemView {
         authorization.require(HousekeepingPermissions.OCCURRENCES_REPORT)
-        val now = clock.instant()
         val item =
-            LostAndFoundItem.register(
-                LostAndFoundItemId.new(),
-                registration.roomId,
-                registration.areaId,
-                registration.description,
-                registration.storagePlace,
-                actor.current().userId,
-                now,
-                OccurrenceSource.MANUAL,
-                now,
+            insert(
+                LostAndFoundDraft(
+                    LostAndFoundItemId.new(),
+                    registration.roomId,
+                    registration.areaId,
+                    registration.description,
+                    registration.storagePlace,
+                    clock.instant(),
+                    actor.current().userId,
+                    OccurrenceSource.MANUAL,
+                ),
             )
-        requireLocationExists(item)
-        store.insert(item)
-        audit.created(HousekeepingAudit.LOST_FOUND_ITEM, item.id.value) { item.auditState() }
         return Expiry.current(hotel).view(item, showReturnedTo = canManage())
+    }
+
+    /**
+     * Registra o achado [draft] **sem conferir permissão** (o sistema): a entrada do ouvinte do checklist. Mesmas
+     * regras do [register]; a origem do checklist já registrada (a reentrega do evento) devolve o item gravado, sem
+     * outro.
+     */
+    @Audited(HousekeepingAudit.REGISTER_LOST_FOUND_ITEM)
+    @Transactional
+    fun record(draft: LostAndFoundDraft): LostAndFoundItemView = recordOffline(draft)
+
+    /**
+     * O registro do [draft] dentro do caso de uso auditado de quem chama (o comando offline, que já conferiu a
+     * permissão): a resposta não leva o "a quem".
+     */
+    internal fun recordOffline(draft: LostAndFoundDraft): LostAndFoundItemView =
+        Expiry.current(hotel).view(insert(draft), showReturnedTo = false)
+
+    /**
+     * O aviso do prazo de guarda (D3-E06), pelo job diário: marca os itens guardados e vencidos ainda não avisados e
+     * avisa cada um, uma vez, a quem tem `housekeeping.lostfound.manage`
+     * ([HousekeepingNotificationTypes.LOST_FOUND_EXPIRED]), só com o id, a UH ou a área e a data em que foi achado (sem
+     * a descrição nem o local de guarda, texto livre). Não dá destino ao item. Devolve quantos foram avisados.
+     */
+    @Audited(HousekeepingAudit.NOTIFY_LOST_FOUND_EXPIRY)
+    @Transactional
+    fun notifyExpired(): Int {
+        val expiry = Expiry.current(hotel)
+        val now = clock.instant()
+        val items = store.markExpiryNotices(expiry.cutoff, now)
+        if (items.isEmpty()) audit.noChanges()
+        items.forEach { item ->
+            audit.record(
+                HousekeepingAudit.LOST_FOUND_ITEM,
+                item.id.value,
+                mapOf("expiryNotifiedAt" to null),
+                mapOf("expiryNotifiedAt" to now.toString()),
+            )
+            val location = label(item)
+            notifications.notify(
+                HousekeepingNotificationTypes.LOST_FOUND_EXPIRED,
+                "Achado vencido na $location",
+                "O item ${item.id} de achados e perdidos, achado na $location em " +
+                    "${DATE.format(item.foundAt.atZone(hotel.timezone()).toLocalDate())}, passou do prazo de guarda: " +
+                    "dê a ele o destino (devolução, descarte ou doação).",
+                NotificationRecipients.withPermission(HousekeepingPermissions.LOSTFOUND_MANAGE),
+            )
+        }
+        return items.size
     }
 
     @Transactional(readOnly = true)
@@ -240,6 +325,43 @@ class HousekeepingLostAndFound(
 
     private fun canManage(): Boolean = authorization.grantOrNull(HousekeepingPermissions.LOSTFOUND_MANAGE) != null
 
+    /**
+     * Grava o achado do [draft] depois de conferir o local; a origem do checklist já registrada devolve o item gravado,
+     * sem outra entrada na trilha (o índice único da origem segura a corrida).
+     */
+    private fun insert(draft: LostAndFoundDraft): LostAndFoundItem {
+        val execution = draft.checklistExecutionId
+        if (execution != null) {
+            store.findByChecklistItem(execution, checkNotNull(draft.checklistItemKey))?.let {
+                audit.noChanges()
+                return it
+            }
+        }
+        val item =
+            LostAndFoundItem.register(
+                draft.id,
+                draft.roomId,
+                draft.areaId,
+                draft.description,
+                draft.storagePlace,
+                draft.reportedBy,
+                draft.foundAt,
+                draft.source,
+                clock.instant(),
+                draft.checklistExecutionId,
+                draft.checklistItemKey,
+            )
+        requireLocationExists(item)
+        store.insert(item)
+        audit.created(HousekeepingAudit.LOST_FOUND_ITEM, item.id.value) { item.auditState() }
+        return item
+    }
+
+    /** O local do item no aviso: o número da UH ou o nome da área. */
+    private fun label(item: LostAndFoundItem): String =
+        item.roomId?.let { "UH ${rooms.room(it)?.number ?: "?"}" }
+            ?: "área ${rooms.area(checkNotNull(item.areaId))?.name ?: "?"}"
+
     private fun requireLocationExists(item: LostAndFoundItem) {
         val (exists, field) =
             item.roomId?.let { (rooms.room(it) != null) to "roomId" }
@@ -302,3 +424,6 @@ private class Expiry(
             )
     }
 }
+
+/** A data em que o item foi achado, no aviso do prazo de guarda. */
+private val DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
