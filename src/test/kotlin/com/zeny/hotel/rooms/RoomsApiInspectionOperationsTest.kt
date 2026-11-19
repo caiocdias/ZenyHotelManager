@@ -135,6 +135,22 @@ class RoomsApiInspectionOperationsTest(
     }
 
     @Test
+    fun `an occupied clean room with the inspection pending goes dirty on the rejection`() {
+        val occupied = newRoom()
+        roomsApi.markClean(occupied, requiresInspection = true, source = RoomStatusSource.MANUAL)
+        roomsApi.markOccupied(occupied, 2, RoomStatusSource.CHECK_IN)
+
+        val outcome = roomsApi.rejectInspectionIfPending(occupied, RoomStatusSource.TASK)
+
+        outcome.changed shouldBe true
+        outcome.after.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
+        outcome.after.inspectionPending shouldBe false
+        outcome.after.occupancy shouldBe OccupancyStatus.OCCUPIED
+        outcome.before.readyForCheckIn shouldBe false
+        outcome.after.readyForCheckIn shouldBe false
+    }
+
+    @Test
     fun `markInspectedIfClean inspects only a clean room without the pending inspection`() {
         val clean = newRoom()
         roomsApi.markClean(clean, requiresInspection = false, source = RoomStatusSource.MANUAL)

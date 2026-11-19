@@ -124,11 +124,12 @@ class HousekeepingInspectionRejectionApiTest(
     fun `rejecting with the room already dirty, inspected or occupied leaves the room (Review Focus 2)`(): Unit =
         with(iam) {
             val type = support.cleaningType()
-            val (checkedOut, dirtyRoom) = support.awaitingInspection(type)
+            val attendant = execution.attendant()
+            val (checkedOut, dirtyRoom) = support.awaitingInspection(type, attendant)
             roomsApi.markVacant(dirtyRoom, RoomStatusSource.CHECK_OUT)
-            val (inspected, inspectedRoom) = support.awaitingInspection(type)
+            val (inspected, inspectedRoom) = support.awaitingInspection(type, attendant)
             roomsApi.markInspected(inspectedRoom, RoomStatusSource.MANUAL)
-            val (occupied, occupiedRoom) = support.awaitingInspection(type)
+            val (occupied, occupiedRoom) = support.awaitingInspection(type, attendant)
             roomsApi.markInspected(occupiedRoom, RoomStatusSource.MANUAL)
             roomsApi.markOccupied(occupiedRoom, 2, RoomStatusSource.CHECK_IN)
 
@@ -154,6 +155,10 @@ class HousekeepingInspectionRejectionApiTest(
                     body["task"]["status"].asString() shouldBe "REJECTED"
                     body["roomChanged"].asBoolean() shouldBe false
                     roomsApi.status(room) shouldBe before
+                    val number = roomsApi.room(room).shouldNotBeNull().number
+                    support
+                        .notices(attendant.user, "notifications.inspection-rejected")
+                        .filter { it["title"].asString() == "Inspeção reprovada na UH $number" } shouldHaveSize 1
                 }
             }
         }
@@ -236,7 +241,13 @@ class HousekeepingInspectionRejectionApiTest(
                 .act(task, "inspection/complete", auth, body = support.complete("REJECTED", listOf("towels")))
                 .problem(400, "VALIDATION_FAILED")["errors"][0]["field"]
                 .asString() shouldBe "rejectedItems"
+            // `[null]` só o DTO segura: sem modelo, a aplicação não chegaria a conferir as chaves.
+            execution
+                .act(task, "inspection/complete", auth, body = support.complete("REJECTED", listOf(null)))
+                .problem(400, "VALIDATION_FAILED")["errors"][0]["field"]
+                .asString() shouldContain "rejectedItems"
             execution.plans.task(task)["status"].asString() shouldBe "AWAITING_INSPECTION"
+            support.inspectionCount(task) shouldBe 0
 
             val body = json(execution.acted(task, "inspection/complete", auth, support.complete("REJECTED")).second)
             body["task"]["status"].asString() shouldBe "REJECTED"

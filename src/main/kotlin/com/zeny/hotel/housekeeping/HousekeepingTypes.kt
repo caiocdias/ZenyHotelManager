@@ -292,6 +292,9 @@ object HousekeepingErrorCodes {
      */
     val HOUSEKEEPING_INSPECTION_USE_TASK = ErrorCode("HOUSEKEEPING_INSPECTION_USE_TASK")
 
+    /** 400: a UH da inspeção voluntária não existe (campo `roomId`, H16; D4-E05). */
+    val HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM = ErrorCode("HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM")
+
     /** 409: a inspeção voluntária de uma UH que não está Limpa (Suja ou já Inspecionada, D4-E05). */
     val HOUSEKEEPING_ROOM_NOT_CLEAN = ErrorCode("HOUSEKEEPING_ROOM_NOT_CLEAN")
 

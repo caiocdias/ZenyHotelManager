@@ -184,19 +184,16 @@ class HousekeepingInspections(
         tasks.update(task)
         if (result == InspectionResult.REJECTED) notifyRejection(task, rejected.size)
         publish(task)
-        return InspectionOutcome(
-            inspection.view(),
-            task.view().copy(rejectedItems = rejected),
-            room.changed,
-        )
+        return InspectionOutcome(inspection.view(), task.view(), room.changed)
     }
 
     /**
      * A inspeção voluntária de uma UH (D4-E05), sem tarefa e sem checklist, só aprovação: exige
-     * `housekeeping.inspections.perform` (`403`, antes de qualquer recusa); UH inexistente, `400 VALIDATION_FAILED` no
-     * campo `roomId`; pela [RoomsApi.markInspectedIfClean], a UH Limpa sem pendência fica Inspecionada; Limpa com
-     * inspeção pendente, `409 HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja ou já Inspecionada, `409
-     * HOUSEKEEPING_ROOM_NOT_CLEAN`. Grava uma inspeção sem tarefa `COMPLETED`/`APPROVED`.
+     * `housekeeping.inspections.perform` (`403`, antes de qualquer recusa); UH inexistente, `400
+     * HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM` no campo `roomId` (H16); pela [RoomsApi.markInspectedIfClean], a UH Limpa
+     * sem pendência fica Inspecionada; Limpa com inspeção pendente, `409 HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione
+     * pela tarefa); Suja ou já Inspecionada, `409 HOUSEKEEPING_ROOM_NOT_CLEAN`. Grava uma inspeção sem tarefa
+     * `COMPLETED`/`APPROVED`.
      */
     @Audited(HousekeepingAudit.INSPECT_ROOM)
     @Transactional
@@ -208,7 +205,11 @@ class HousekeepingInspections(
         authorization.require(HousekeepingPermissions.INSPECTIONS_PERFORM)
         if (rooms.room(roomId) == null) {
             val violation = FieldViolation("roomId", FieldViolationCodes.INVALID_VALUE, "A UH não existe.")
-            throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+            throw InvalidInputException(
+                HousekeepingErrorCodes.HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM,
+                violation.message,
+                listOf(violation),
+            )
         }
         val outcome = rooms.markInspectedIfClean(roomId, RoomStatusSource.TASK)
         if (!outcome.changed) throw notInspectable(outcome.before)

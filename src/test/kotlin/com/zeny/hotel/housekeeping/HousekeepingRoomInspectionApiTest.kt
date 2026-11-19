@@ -27,7 +27,8 @@ import java.util.UUID
  * A inspeção voluntária de uma UH (M6 E05, Task 2; D4): `POST /api/v1/room-inspections` `{ roomId }`, sem checklist,
  * só aprova, pela `RoomsApi.markInspectedIfClean`. UH Limpa sem pendência → Inspecionada, com uma inspeção sem tarefa
  * `COMPLETED`/`APPROVED`; Limpa com pendência → `409 HOUSEKEEPING_INSPECTION_USE_TASK`; não Limpa → `409
- * HOUSEKEEPING_ROOM_NOT_CLEAN`; sem `housekeeping.inspections.perform` → `403`, antes de qualquer recusa.
+ * HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente → `400 HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM` no campo `roomId` (H16);
+ * sem `housekeeping.inspections.perform` → `403`, antes de qualquer recusa.
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)
@@ -107,10 +108,10 @@ class HousekeepingRoomInspectionApiTest(
         }
 
     @Test
-    fun `an unknown room is 400 on the field`(): Unit =
+    fun `an unknown room is 400 HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM on the field`(): Unit =
         with(iam) {
             inspect(RoomId(UUID.randomUUID()), asTestUser(support.inspector()))
-                .problem(400, "VALIDATION_FAILED")["errors"][0]["field"]
+                .problem(400, "HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM")["errors"][0]["field"]
                 .asString() shouldBe "roomId"
         }
 

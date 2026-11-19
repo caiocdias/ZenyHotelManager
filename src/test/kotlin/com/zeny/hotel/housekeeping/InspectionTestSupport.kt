@@ -128,6 +128,13 @@ class InspectionTestSupport(
             .query()
             .singleRow()
 
+    fun inspectionCount(task: UUID): Int =
+        jdbc
+            .sql("SELECT count(*) FROM housekeeping.inspection WHERE task_id = :id")
+            .param("id", task)
+            .query(Int::class.java)
+            .single()
+
     /** As chaves reprovadas gravadas na última inspeção da [task]. */
     fun rejectedItemsOf(task: UUID): List<String> =
         jdbc

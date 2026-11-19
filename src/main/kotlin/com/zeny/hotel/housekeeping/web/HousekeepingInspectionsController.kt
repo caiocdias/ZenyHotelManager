@@ -113,9 +113,9 @@ class HousekeepingInspectionsController(
             "A inspeção voluntária de uma UH, sem tarefa e sem checklist: só aprova. A UH Limpa sem inspeção " +
                 "pendente fica Inspecionada, e fica registrada uma inspeção sem tarefa `COMPLETED`/`APPROVED`. UH " +
                 "Limpa com inspeção pendente: 409 `HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja " +
-                "ou já Inspecionada: 409 `HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente: 400 `VALIDATION_FAILED` no " +
-                "campo `roomId`. Exige `housekeeping.inspections.perform` (só `ALL`; 403 `PERMISSION_DENIED` antes " +
-                "de qualquer outra recusa).",
+                "ou já Inspecionada: 409 `HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente: 400 " +
+                "`HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM` no campo `roomId`. Exige `housekeeping.inspections.perform` " +
+                "(só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa).",
     )
     fun inspectRoom(
         @Valid @RequestBody request: HousekeepingRoomInspectionRequest,

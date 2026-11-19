@@ -11641,7 +11641,7 @@ paths:
         \ uma inspeção sem tarefa `COMPLETED`/`APPROVED`. UH Limpa com inspeção pendente:\
         \ 409 `HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja ou\
         \ já Inspecionada: 409 `HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente: 400\
-        \ `VALIDATION_FAILED` no campo `roomId`. Exige `housekeeping.inspections.perform`\
+        \ `HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM` no campo `roomId`. Exige `housekeeping.inspections.perform`\
         \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa)."
       operationId: inspectRoom
       requestBody:
@@ -21910,12 +21910,14 @@ components:
           type: array
           description: As chaves dos itens reprovados da última inspeção reprovada
             da tarefa (do checklist de inspeção); vazio se ela nunca foi reprovada
-            ou se a inspeção não tinha checklist.
+            ou se a inspeção não tinha checklist. Segue preenchido com a última reprovação
+            mesmo depois de a tarefa ser refeita e aprovada.
           items:
             type: string
             description: As chaves dos itens reprovados da última inspeção reprovada
               da tarefa (do checklist de inspeção); vazio se ela nunca foi reprovada
-              ou se a inspeção não tinha checklist.
+              ou se a inspeção não tinha checklist. Segue preenchido com a última
+              reprovação mesmo depois de a tarefa ser refeita e aprovada.
         roomId:
           type: string
           format: uuid

@@ -232,7 +232,8 @@ data class HousekeepingTaskResponse(
     @field:Schema(
         description =
             "As chaves dos itens reprovados da última inspeção reprovada da tarefa (do checklist de inspeção); " +
-                "vazio se ela nunca foi reprovada ou se a inspeção não tinha checklist.",
+                "vazio se ela nunca foi reprovada ou se a inspeção não tinha checklist. Segue preenchido com a " +
+                "última reprovação mesmo depois de a tarefa ser refeita e aprovada.",
     )
     val rejectedItems: List<String>,
 ) {
