@@ -31,10 +31,10 @@ class HousekeepingExecutionTestSupport(
 
     /**
      * Desativa os modelos de checklist **gerais** de governança ativos e publicados (contexto `HOUSEKEEPING`, versão
-     * publicada sem regra de aplicabilidade). O `start` de uma tarefa sem modelo vinculado ao tipo pega qualquer modelo
-     * geral de governança ativo pelo `resolveTemplate` (D5 da E04), e outros testes do banco compartilhado criam modelos
-     * gerais (com itens obrigatórios): eles não são duráveis aqui, e um teste que inicia tarefas não pode depender da
-     * ordem das classes. Os modelos de um teste da execução entram pelo vínculo do tipo de limpeza.
+     * publicada sem regra de aplicabilidade). O `start` de uma tarefa sem modelo vinculado ao tipo pega qualquer
+     * modelo geral de governança ativo pelo `resolveTemplate` (D5 da E04), e outros testes do banco compartilhado
+     * criam modelos gerais (com itens obrigatórios): eles não são duráveis aqui, e um teste que inicia tarefas não
+     * pode depender da ordem das classes. Os modelos de um teste da execução entram pelo vínculo do tipo de limpeza.
      */
     fun neutralizeGeneralHousekeepingTemplates() {
         jdbc

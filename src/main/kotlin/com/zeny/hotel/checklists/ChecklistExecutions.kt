@@ -122,7 +122,7 @@ data class ChecklistAnswerInput(
  * finalidade, outro autor ou outro dono; o autor é quem iniciou a execução).
  */
 enum class ChecklistPhotoPolicy {
-    /** Online: recusa (`422 CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`), como o endpoint do `checklists`. */
+    /** Online: recusa (`422 CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`), como o endpoint online. */
     REFUSE,
 
     /** Offline: a resposta fica sem a foto (`photoMissing`, que conta como respondida no obrigatório), H10 e RN-22. */

@@ -136,8 +136,8 @@ class HousekeepingTaskExecution(
      *   ou sem a ocupação: `400 VALIDATION_FAILED` no campo;
      * - conclui o checklist pela operação condicional ([ChecklistsApi.completeExecutionIfOpen]): item obrigatório
      *   faltando, `422 CHECKLIST_REQUIRED_ITEMS_MISSING` e nada muda; as fotos pela [photoPolicy] (a ação online recusa
-     *   a que não serve, `422 CHECKLIST_PHOTO_NOT_FOUND`/`CHECKLIST_PHOTO_INVALID`; o offline da E19 a tolera); já concluído por fora, segue sem erro e sem um
-     *   segundo `ChecklistCompleted`, e a trilha registra isso;
+     *   a que não serve, `422 CHECKLIST_PHOTO_NOT_FOUND`/`CHECKLIST_PHOTO_INVALID`; o offline da E19 a tolera); já
+     *   concluído por fora, segue sem erro e sem um segundo `ChecklistCompleted`, e a trilha registra isso;
      * - leva a UH Suja a Limpa ([RoomsApi.markCleanIfDirty]); a tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou
      *   com inspeção pendente agora (D3), senão a `DONE`;
      * - grava a observação de ocupação, se informada ([RoomsApi.recordObservation]);

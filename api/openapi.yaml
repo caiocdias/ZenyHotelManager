@@ -7083,16 +7083,19 @@ paths:
     post:
       description: "Conclui a tarefa `IN_PROGRESS`, numa transação só: conclui o checklist\
         \ aberto no início com as `answers` (todas; item obrigatório faltando: 422\
-        \ `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; checklist **já concluí\
-        do por fora**: a tarefa conclui e as `answers` são ignoradas; `answers` numa\
-        \ tarefa sem checklist: 400 `VALIDATION_FAILED` no campo `answers`), leva\
-        \ a UH Suja a Limpa (com inspeção pendente se o tipo de limpeza a exige),\
-        \ grava a ocupação encontrada (`foundOccupancy`, `foundGuestCount`; só numa\
-        \ tarefa de UH), registra a faxina programada feita e grava quem concluiu\
-        \ e os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com\
-        \ inspeção pendente agora; numa UH já Limpa ou Inspecionada e numa área, vai\
-        \ a `DONE`. O corpo é opcional. Exige `housekeeping.tasks.execute`: com o\
-        \ escopo `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa,\
+        \ `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; foto que não existe ou\
+        \ não serve, porque só vale um anexo da finalidade `checklists.photo` enviado\
+        \ por quem iniciou o checklist: 422 `CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`,\
+        \ e nada muda; checklist **já concluído por fora**: a tarefa conclui e as\
+        \ `answers` são ignoradas; `answers` numa tarefa sem checklist: 400 `VALIDATION_FAILED`\
+        \ no campo `answers`), leva a UH Suja a Limpa (com inspeção pendente se o\
+        \ tipo de limpeza a exige), grava a ocupação encontrada (`foundOccupancy`,\
+        \ `foundGuestCount`; só numa tarefa de UH; o número sem a ocupação: 400 `VALIDATION_FAILED`\
+        \ com `REQUIRED` em `foundOccupancy`), registra a faxina programada feita\
+        \ e grava quem concluiu e os tempos. A tarefa vai a `AWAITING_INSPECTION`\
+        \ só quando a UH ficou com inspeção pendente agora; numa UH já Limpa ou Inspecionada\
+        \ e numa área, vai a `DONE`. O corpo é opcional. Exige `housekeeping.tasks.execute`:\
+        \ com o escopo `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa,\
         \ ou uma inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa\
         \ inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com\
         \ outra versão; 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
@@ -21351,6 +21354,13 @@ components:
           format: int32
           description: "A posição publicada na ordem de execução da camareira, de\
             \ 1 em diante; nula sem camareira."
+          nullable: true
+        checklistExecutionId:
+          type: string
+          format: uuid
+          description: "A execução do checklist aberta no último início (id opaco\
+            \ do `checklists`); nula numa tarefa sem checklist, que não aceita `answers`\
+            \ na conclusão."
           nullable: true
         cleanedBy:
           type: string
