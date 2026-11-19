@@ -3,6 +3,7 @@ package com.zeny.hotel.housekeeping.application
 import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
@@ -327,7 +328,14 @@ class HousekeepingTaskExecution(
         val version = device ?: current ?: return null
         device?.let { compareDeviceVersion(it, current, warnings, remarks) }
         val subject = ChecklistSubject(TASK_CHECKLIST_SUBJECT, task.id.value)
-        return checklists.startExecution(version.id, subject, actor.userId, checkNotNull(task.lastTransitionAt)).id
+        return checklists
+            .startExecution(
+                version.id,
+                subject,
+                actor.userId,
+                checkNotNull(task.lastTransitionAt),
+                location = task.checklistLocation(),
+            ).id
     }
 
     /** A versão vigente do modelo da tarefa (D5-E04): a do vínculo do tipo, senão a que vale para ela, ou nenhuma. */
@@ -464,3 +472,10 @@ internal fun HousekeepingTask.executionAuditState(): Map<String, Any?> =
             "cleanedBy" to cleanedBy?.toString(),
             "checklistExecutionId" to checklistExecutionId?.toString(),
         )
+
+/**
+ * O local do checklist da tarefa (D1-E08): a UH ou a área dela, que o `checklists` publica no `ChecklistCompleted` para
+ * a manutenção abrir a OS no lugar certo. Tarefa sem UH nem área não tem local.
+ */
+internal fun HousekeepingTask.checklistLocation(): ChecklistLocation? =
+    roomId?.let { ChecklistLocation.room(it.value) } ?: areaId?.let { ChecklistLocation.area(it.value) }

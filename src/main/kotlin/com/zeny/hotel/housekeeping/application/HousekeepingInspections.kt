@@ -372,6 +372,7 @@ class HousekeepingInspections(
                     ChecklistSubject(INSPECTION_CHECKLIST_SUBJECT, id.value),
                     actor.userId,
                     at,
+                    location = task.checklistLocation(),
                 )
             }
         val roomId = checkNotNull(task.roomId) { "A tarefa ${task.id} aguarda inspeção sem UH" }

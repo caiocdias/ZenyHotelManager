@@ -50,15 +50,18 @@ interface ChecklistsApi {
     /**
      * Inicia uma execução da versão [versionId] (de um modelo ativo ou não: a versão é a usada, RF-CHK-06) para
      * o [subject], com o [executor] e o início real [startedAt] (quem chama corrige o horário do dispositivo).
-     * Para o módulo dono do sujeito (governança no M6, que já se autorizou). Auditada
-     * (`checklists.execution.start`). Versão inexistente: `404 CHECKLIST_VERSION_NOT_FOUND`.
+     * Para o módulo dono do sujeito (governança no M6, que já se autorizou), que também informa o [location] (a UH
+     * ou a área da tarefa; `null` quando não há local). O parâmetro é obrigatório: quem chama declara o local ou
+     * `null`. Auditada (`checklists.execution.start`). Versão inexistente: `404 CHECKLIST_VERSION_NOT_FOUND`.
      */
+    @Suppress("LongParameterList") // o local é obrigatório de propósito (D1 da E08)
     fun startExecution(
         versionId: ChecklistVersionId,
         subject: ChecklistSubject?,
         executor: UserId,
         startedAt: Instant,
         id: ChecklistExecutionId = ChecklistExecutionId.new(),
+        location: ChecklistLocation?,
     ): ChecklistExecutionView
 
     /**

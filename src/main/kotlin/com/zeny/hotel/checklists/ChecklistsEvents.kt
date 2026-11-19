@@ -19,6 +19,9 @@ import java.util.UUID
  * também publica o próprio evento com as ações (decisão do usuário em 2026-10-16): uma rotina feita por duas
  * pessoas offline gera dois eventos, e quem consome (M6, M9) decide por [duplicateOf] e [routineId] se aplica as
  * ações (por exemplo, não baixar estoque em dobro).
+ *
+ * [location]: onde a execução aconteceu (UH ou área), informado pelo dono do sujeito ou derivado do sujeito de uma
+ * rotina; `null` na execução avulsa iniciada pelo cliente e nos eventos gravados antes do campo existir.
  */
 data class ChecklistCompleted(
     val executionId: UUID,
@@ -34,6 +37,7 @@ data class ChecklistCompleted(
     val completedAt: Instant,
     val actions: List<ChecklistTriggeredAction>,
     val duplicateOf: UUID? = null,
+    val location: ChecklistLocation? = null,
 )
 
 /**

@@ -70,6 +70,40 @@ data class ChecklistSubject(
 }
 
 /**
+ * O local onde uma execução aconteceu, de outro módulo (D1 da E08): a UH ([roomId]) ou a área ([areaId]), exatamente
+ * um dos dois. O `checklists` não confere o id; quem consome o `ChecklistCompleted` (a manutenção) confere. Informado
+ * pelo dono do sujeito ao iniciar (a governança passa a UH ou a área da tarefa) ou derivado do sujeito de uma rotina:
+ * o `checklists` interpreta os sujeitos `rooms.room` e `rooms.area` **de rotina** como local. A execução avulsa
+ * iniciada pelo cliente (endpoint e comando offline) fica sem local, porque o sujeito dela é escolhido por quem
+ * executa.
+ */
+data class ChecklistLocation(
+    val roomId: UUID?,
+    val areaId: UUID?,
+) {
+    init {
+        require((roomId == null) != (areaId == null)) { "O local tem a UH ou a área, exatamente uma." }
+    }
+
+    companion object {
+        const val ROOM_SUBJECT = "rooms.room"
+        const val AREA_SUBJECT = "rooms.area"
+
+        fun room(id: UUID) = ChecklistLocation(roomId = id, areaId = null)
+
+        fun area(id: UUID) = ChecklistLocation(roomId = null, areaId = id)
+
+        /** O local do sujeito de uma rotina (`rooms.room` ou `rooms.area`); qualquer outro sujeito não é local. */
+        fun ofRoutineSubject(subject: ChecklistSubject?): ChecklistLocation? =
+            when (subject?.type) {
+                ROOM_SUBJECT -> room(subject.id)
+                AREA_SUBJECT -> area(subject.id)
+                else -> null
+            }
+    }
+}
+
+/**
  * Uma resposta como chega ao `checklists` (API HTTP, comando offline ou outro módulo): a chave do item na versão
  * da execução e só o campo do tipo dele — [check] (marcação), [quantity], [number], [text], [choice] (escolha
  * única), [choices] (múltipla) ou [photoFileId] (foto, um anexo da finalidade `checklists.photo`) — mais a
@@ -163,6 +197,7 @@ data class ChecklistExecutionView(
     val versionNumber: Int?,
     val context: ChecklistContext,
     val subject: ChecklistSubject?,
+    val location: ChecklistLocation?,
     val routineId: ChecklistRoutineId?,
     val businessDate: LocalDate?,
     val dueAt: Instant?,

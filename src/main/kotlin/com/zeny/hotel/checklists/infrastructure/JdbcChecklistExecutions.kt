@@ -6,6 +6,7 @@ import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionStatus
 import com.zeny.hotel.checklists.ChecklistExecutionView
 import com.zeny.hotel.checklists.ChecklistItemType
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistRoutineId
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
@@ -223,6 +224,8 @@ class JdbcChecklistExecutions(
             "context" to execution.context.name,
             "subjectType" to execution.subject?.type,
             "subjectId" to execution.subject?.id,
+            "locationRoomId" to execution.location?.roomId,
+            "locationAreaId" to execution.location?.areaId,
             "routineId" to execution.routineId?.value,
             "businessDate" to execution.businessDate,
             "dueAt" to execution.dueAt?.let(::utc),
@@ -252,6 +255,7 @@ class JdbcChecklistExecutions(
             rs.intOrNull("version_number"),
             ChecklistContext.valueOf(rs.getString("context")),
             subjectType?.let { ChecklistSubject(it, rs.uuid("subject_id")) },
+            locationOf(rs),
             rs.uuidOrNull("routine_id")?.let(::ChecklistRoutineId),
             rs.getObject("business_date", LocalDate::class.java),
             rs.instantOrNull("due_at"),
@@ -269,6 +273,12 @@ class JdbcChecklistExecutions(
             rs.instant("updated_at"),
             rs.getLong("version"),
         )
+    }
+
+    private fun locationOf(rs: ResultSet): ChecklistLocation? {
+        val room = rs.uuidOrNull("location_room_id")
+        val area = rs.uuidOrNull("location_area_id")
+        return if (room != null || area != null) ChecklistLocation(room, area) else null
     }
 
     private fun answerOf(rs: ResultSet) =
@@ -419,11 +429,13 @@ class JdbcChecklistExecutions(
     private companion object {
         const val EXECUTION_PK = "checklist_execution_pk"
         const val COLUMNS =
-            "id, template_id, version_id, version_number, context, subject_type, subject_id, routine_id, " +
+            "id, template_id, version_id, version_number, context, subject_type, subject_id, location_room_id, " +
+                "location_area_id, routine_id, " +
                 "business_date, due_at, candidate_ids, duplicate_of, status, executor_id, started_at, completed_at, " +
                 "device_session_id, start_command_id, complete_command_id, created_at, updated_at, version"
         const val VALUES =
-            ":id, :templateId, :versionId, :versionNumber, :context, :subjectType, :subjectId, :routineId, " +
+            ":id, :templateId, :versionId, :versionNumber, :context, :subjectType, :subjectId, :locationRoomId, " +
+                ":locationAreaId, :routineId, " +
                 ":businessDate, :dueAt, CAST(:candidates AS uuid[]), :duplicateOf, :status, :executorId, :startedAt, " +
                 ":completedAt, :deviceSessionId, :startCommandId, :completeCommandId, :createdAt, :updatedAt, :version"
     }

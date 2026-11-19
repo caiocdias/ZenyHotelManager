@@ -6,6 +6,7 @@ import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionStatus
 import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
@@ -114,6 +115,7 @@ class ChecklistExecutionsService(
                 ChecklistExecutionId.new(),
                 version,
                 command.subject,
+                null, // a avulsa iniciada pelo cliente fica sem local (D1 da E08)
                 current.userId,
                 operations.now(),
                 current.deviceSessionId,
@@ -198,14 +200,18 @@ class ChecklistExecutionsApiService(
 
     @Audited(ChecklistsAudit.START_EXECUTION)
     @Transactional
+    @Suppress("LongParameterList") // o local é obrigatório de propósito (D1 da E08)
     fun start(
         versionId: ChecklistVersionId,
         subject: ChecklistSubject?,
         executor: UserId,
         startedAt: Instant,
         id: ChecklistExecutionId,
+        location: ChecklistLocation?,
     ): ChecklistExecutionView =
-        operations.startNew(id, operations.version(versionId), subject, executor, startedAt, null, null).view()
+        operations
+            .startNew(id, operations.version(versionId), subject, location, executor, startedAt, null, null)
+            .view()
 
     @Audited(ChecklistsAudit.COMPLETE_EXECUTION)
     @Transactional
