@@ -71,6 +71,8 @@ class HousekeepingTaskSchemaTest(
                 "cleaned_by",
                 "refusal_reason",
                 "checklist_execution_id",
+                "change_seq",
+                "change_xid",
             )
     }
 
