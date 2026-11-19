@@ -51,6 +51,23 @@
 - **D7 — bloqueio da UH.** `POST /{id}/room-block` `{kind: OUT_OF_ORDER|OUT_OF_SERVICE, startsOn, endsOn}` (`manage`; `If-Match`; cabeçalho `X-Approval-Token` para o OOO). Ordem das recusas: `400` do corpo → `403` sem `manage` → `404` → `412` → OS final (`409 WORK_ORDER_TRANSITION_NOT_ALLOWED`), de área (`422 WORK_ORDER_NOT_ROOM`) ou com bloqueio vigente (`409 WORK_ORDER_ROOM_ALREADY_BLOCKED`) → `403 APPROVAL_REQUIRED` → regras do `rooms`. OOO passa por `authorization.requireOrApproval(SensitiveAction("maintenance.work-order.block-room", RoomsPermissions.OUT_OF_ORDER_MANAGE, "maintenance.work-order:<id>"), token)`, com o mesmo `action` no `@Audited` do caso de uso; OOS exige `RoomsPermissions.OUT_OF_SERVICE_MANAGE`. Chama `RoomsApi.openOutOfOrder(roomId, kind, OutOfOrderRequest(startsOn, endsOn, reason = "OS <número>", responsible = <nome do responsável ou terceiro ou "Manutenção">, returnStatus = DIRTY))`; os erros do `rooms` (`422 OUT_OF_ORDER_ROOM_OCCUPIED`, `422 OUT_OF_ORDER_PERIOD_IN_PAST`, `409 OUT_OF_ORDER_OVERLAP`) passam como estão. Grava o `outOfOrderId` na OS. **Bloqueio vigente** = `outOfOrderId` presente e o período não liberado (`releasedOn == null`). `complete` libera o período sem step-up (RF-MAN-03: o bloqueio foi autorizado para esta OS), pela `releaseOutOfOrder(id, RoomStatusSource.MANUAL)` na mesma transação (ruling U1: o enum publicado não muda; a trilha `maintenance.*` guarda a proveniência). `cancel` com bloqueio vigente exige o que o `rooms` exige para liberar (ruling U3): OOO `requireOrApproval(SensitiveAction("maintenance.work-order.cancel", OUT_OF_ORDER_MANAGE, "maintenance.work-order:<id>"), token)`, OOS `require(OUT_OF_SERVICE_MANAGE)`; sem bloqueio vigente, o `cancel` só pede `manage`. Ordem das recusas do `cancel`: `400` → `403` sem `manage` → `404` → `412` → OS final (`409`) → `403 APPROVAL_REQUIRED` (ou `403` sem `OUT_OF_SERVICE_MANAGE`). Um período que terminou sozinho sem ser liberado continua "vigente" (trava o local e um novo bloqueio) até a OS concluir ou cancelar, quando a liberação só o encerra, sem mexer no status da UH; o KDoc e o handoff registram isso. Período já liberado à mão no `rooms` não falha. Concluir sem bloqueio não mexe na UH. Prorrogar ou encurtar o período fica no `rooms` (`PUT` do período), registrado no KDoc e no handoff.
 - **D8 — tempo.** `startedAt` no primeiro `start`, `closedAt` no `complete`/`cancel`, pelo `Clock`; o relatório da E09 deriva o tempo daí.
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado, na rodada 2 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 9 Importantes:
+  - o valor novo `RoomStatusSource.MAINTENANCE`, que mudava um enum publicado e esbarrava no CHECK do banco;
+  - o `ModularityTest` exato com dependências que só entram na Task 2;
+  - escopo `OWN`, aviso e download incoerentes;
+  - liberação do OOO no cancelamento sem step-up;
+  - `PUT` que troca o local com bloqueio;
+  - campos do `POST`;
+  - permissão dos anexos;
+  - `origin` extensível e o risco de dado pessoal.
+
+  Houve também 12 Menores. Corrigido em `705d897`, com as rulings U1 a U4 do orquestrador pelas opções recomendadas (sem mudança de contrato).
+- **Rodada 1:** bloqueado por 1 Importante: o critério que esperava `400` para campo desconhecido, quando a convenção do projeto o ignora. Havia também 4 Menores (contagem de arquivos, `ETag` × anexos, ordem das recusas do `cancel`, período vencido não liberado). Corrigido em `83d4ae1`.
+- **Para o usuário (sem bloquear):** U1 (liberação com origem `MANUAL`), U2 (Manutenção com `read`/`manage` `ALL`), U3 (concluir sem step-up; cancelar com bloqueio pede o step-up do `rooms`), U4 (OS final não aceita custo).
+
 ---
 
 ### Task 1: Módulo, OS, estados e escopo `OWN`
