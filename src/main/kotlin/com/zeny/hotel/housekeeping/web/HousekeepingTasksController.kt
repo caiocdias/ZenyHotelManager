@@ -2,6 +2,7 @@ package com.zeny.hotel.housekeeping.web
 
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskView
@@ -198,6 +199,20 @@ data class HousekeepingTaskResponse(
         nullable = true,
     )
     val assignmentPosition: Int?,
+    @field:ExtensibleEnum
+    @field:Schema(
+        description = "O motivo da recusa, só em `REFUSED` (trate um valor desconhecido sem falhar).",
+        nullable = true,
+    )
+    val refusalReason: RefusalReason?,
+    @field:Schema(description = "O primeiro início; um refazer não o muda. Nulo antes do início.", nullable = true)
+    val startedAt: Instant?,
+    @field:Schema(description = "A conclusão; nula antes dela e depois de um refazer.", nullable = true)
+    val finishedAt: Instant?,
+    @field:Schema(description = "O tempo trabalhado, em segundos: só os trechos em andamento, sem as pausas.")
+    val workedSeconds: Long,
+    @field:Schema(description = "O usuário que concluiu a tarefa; nulo antes da conclusão.", nullable = true)
+    val cleanedBy: UUID?,
     @field:Schema(
         description =
             "A execução do checklist aberta no último início (id opaco do `checklists`); nula numa tarefa sem " +
@@ -225,6 +240,11 @@ data class HousekeepingTaskResponse(
                 view.notes,
                 view.assignedEmployeeId?.value,
                 view.assignmentPosition,
+                view.refusalReason,
+                view.startedAt,
+                view.finishedAt,
+                view.workedSeconds,
+                view.cleanedBy?.value,
                 view.checklistExecutionId?.value,
                 view.createdAt,
                 view.updatedAt,

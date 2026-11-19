@@ -148,6 +148,21 @@ class HousekeepingTaskCompletionApiTest(
             row["worked_seconds"] shouldBe body["workedSeconds"].asLong()
             row["finished_at"].shouldNotBeNull()
             row["in_progress_since"].shouldBeNull()
+
+            // A governança vê o mesmo pelo `GET` da tarefa (RF-GOV-05: quem limpou e os tempos).
+            val read = execution.plans.task(task)
+            read["cleanedBy"] shouldBe body["cleanedBy"]
+            read["workedSeconds"] shouldBe body["workedSeconds"]
+            // A resposta da ação tem o instante do relógio; a leitura, o do banco (microssegundos arredondados).
+            listOf("startedAt", "finishedAt").forEach {
+                withClue(it) {
+                    Duration
+                        .between(Instant.parse(read[it].asString()), Instant.parse(body[it].asString()))
+                        .abs()
+                        .toMillis() shouldBe 0
+                }
+            }
+            read["refusalReason"].isNull shouldBe true
         }
 
     // --- D3: UH já limpa ou inspecionada, e área (Review Focus 3) --------------------------------------
@@ -426,6 +441,8 @@ class HousekeepingTaskCompletionApiTest(
 
             val onArea = task(attendant, type(), area = housekeeping.rooms.createArea())
             json(execution.acted(onArea, "refuse", auth, dnd).second)["status"].asString() shouldBe "REFUSED"
+            // O motivo da recusa também vem no `GET` da tarefa, para a governança.
+            execution.plans.task(onArea)["refusalReason"].asString() shouldBe "DO_NOT_DISTURB"
         }
 
     // --- Apoio -------------------------------------------------------------------------------------------

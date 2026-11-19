@@ -21574,6 +21574,11 @@ components:
           description: A execução do checklist aberta no último início (id opaco do
             `checklists`); nula numa tarefa sem checklist ou ainda não iniciada.
           nullable: true
+        cleanedBy:
+          type: string
+          format: uuid
+          description: O usuário que concluiu a tarefa; nulo antes da conclusão.
+          nullable: true
         cleaningTypeId:
           type: string
           format: uuid
@@ -21589,6 +21594,11 @@ components:
           type: string
           format: date
           description: A data operacional da tarefa.
+        finishedAt:
+          type: string
+          format: date-time
+          description: A conclusão; nula antes dela e depois de um refazer.
+          nullable: true
         id:
           type: string
           format: uuid
@@ -21603,6 +21613,14 @@ components:
           format: int32
           description: "A prioridade, de 1 (mais baixa) a 5 (mais alta): a padrão\
             \ do tipo de limpeza."
+        refusalReason:
+          type: string
+          description: "O motivo da recusa, só em `REFUSED` (trate um valor desconhecido\
+            \ sem falhar)."
+          nullable: true
+          x-extensible-enum:
+          - DO_NOT_DISTURB
+          - GUEST_REFUSED
         roomId:
           type: string
           format: uuid
@@ -21623,6 +21641,11 @@ components:
           - PRE_ARRIVAL
           - SCHEDULED
           - AD_HOC
+        startedAt:
+          type: string
+          format: date-time
+          description: O primeiro início; um refazer não o muda. Nulo antes do início.
+          nullable: true
         status:
           type: string
           description: O status da tarefa (trate um valor desconhecido sem falhar).
@@ -21639,6 +21662,11 @@ components:
         updatedAt:
           type: string
           format: date-time
+        workedSeconds:
+          type: integer
+          format: int64
+          description: "O tempo trabalhado, em segundos: só os trechos em andamento,\
+            \ sem as pausas."
       required:
       - arrivalExpected
       - cleaningTypeId
@@ -21650,6 +21678,7 @@ components:
       - source
       - status
       - updatedAt
+      - workedSeconds
     InventoryDayResponse:
       type: object
       description: "Os contadores de um tipo de UH numa data. Disponível = `total`\
