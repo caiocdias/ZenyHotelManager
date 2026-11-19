@@ -169,6 +169,38 @@ interface RoomsApi {
     ): RoomStatusOutcome
 
     /**
+     * Inspeção reprovada (D3 e D5 da M6 E05): com a linha da UH travada, leva a Suja só a UH **Limpa com inspeção
+     * pendente**, como [rejectInspection]; a UH que perdeu a pendência (já Suja, Limpa sem pendência, já Inspecionada)
+     * não muda e não é recusada (Review Focus 2 da E05). Devolve o status antes e depois. Auditada como
+     * [rejectInspection] quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun rejectInspectionIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * Inspeção voluntária (D4 da M6 E05): com a linha da UH travada, leva a Inspecionada só a UH **Limpa sem inspeção
+     * pendente**, como [markInspected]; Suja, Limpa com inspeção pendente ou já Inspecionada não muda e não é
+     * recusada: quem chama decide pela recusa com o [RoomStatusOutcome.before]. Devolve o status antes e depois.
+     * Auditada como [markInspected] quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun markInspectedIfClean(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * [markCleanIfDirty] com o status antes e depois (D5 da M6 E05), para quem precisa saber se a UH ficou pronta
+     * para check-in com a linha travada: mesmas regras, mesma trilha.
+     */
+    fun markCleanIfDirtyWithStatus(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
      * Registra o que a governança encontrou na UH (RF-UH-08) com as regras do endpoint de observação: a ocupação, o
      * número de pessoas opcional (de 1 a 40 e só com a UH ocupada, senão `400 GUEST_COUNT_INVALID`), quem observou
      * ([observedBy]) e quando ([observedAt]), informados por quem chama (a conclusão da tarefa, M6 E04). Uma ocupação

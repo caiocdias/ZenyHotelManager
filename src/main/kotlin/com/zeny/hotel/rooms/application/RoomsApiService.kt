@@ -21,7 +21,9 @@ import com.zeny.hotel.rooms.RoomSummary
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomTypeSummary
 import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.rooms.domain.Room
 import com.zeny.hotel.rooms.domain.RoomFeature
+import com.zeny.hotel.rooms.domain.RoomStatusFieldChange
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
@@ -168,15 +170,25 @@ class RoomsApiService(
         id: RoomId,
         requiresInspection: Boolean,
         source: RoomStatusSource,
-    ): Boolean {
-        var changed = false
-        // A UH Suja conferida com a linha travada pelo changer; limpa ou inspecionada, nada muda (D3 da M6 E04).
-        changer.change(id, source) { room, now ->
-            if (room.housekeepingStatus != HousekeepingStatus.DIRTY) return@change emptyList()
-            room.markClean(requiresInspection, now).also { changed = it.isNotEmpty() }
+    ): Boolean = cleanIfDirty(id, requiresInspection, source).changed
+
+    @Audited(RoomsAudit.MARK_CLEAN)
+    @Transactional
+    override fun markCleanIfDirtyWithStatus(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome = cleanIfDirty(id, requiresInspection, source)
+
+    /** A UH Suja conferida com a linha travada pelo changer; limpa ou inspecionada, nada muda (D3 da M6 E04). */
+    private fun cleanIfDirty(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome =
+        changeIf(id, source, { it.housekeepingStatus == HousekeepingStatus.DIRTY }) { room, now ->
+            room.markClean(requiresInspection, now)
         }
-        return changed
-    }
 
     @Audited(RoomsAudit.SET_SERVICE_FLAG)
     @Transactional
@@ -199,19 +211,49 @@ class RoomsApiService(
     override fun markInspectedIfPending(
         id: RoomId,
         source: RoomStatusSource,
+    ): RoomStatusOutcome =
+        changeIf(id, source, { it.isCleanAwaitingInspection() }) { room, now -> room.markInspected(now) }
+
+    @Audited(RoomsAudit.REJECT_INSPECTION)
+    @Transactional
+    override fun rejectInspectionIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome =
+        changeIf(id, source, { it.isCleanAwaitingInspection() }) { room, now -> room.rejectInspection(now) }
+
+    @Audited(RoomsAudit.MARK_INSPECTED)
+    @Transactional
+    override fun markInspectedIfClean(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome =
+        changeIf(id, source, { it.isCleanWithoutPendingInspection() }) { room, now -> room.markInspected(now) }
+
+    /**
+     * A operação condicional de status (M6 E04 e E05): com a linha travada pelo changer, lê o status antes (com a
+     * prontidão e o OOO em vigor) e só aplica a [change] se a UH atende a [condition]; senão nada muda. Devolve o
+     * status antes e depois.
+     */
+    private fun changeIf(
+        id: RoomId,
+        source: RoomStatusSource,
+        condition: (Room) -> Boolean,
+        change: (Room, Instant) -> List<RoomStatusFieldChange>,
     ): RoomStatusOutcome {
         var before: RoomStatus? = null
-        // A pendência conferida com a linha travada pelo changer; sem ela, nada muda (D5 da M6 E05).
         val after =
             changer.change(id, source) { room, now ->
                 before = room.statusView(overlays.current(id)).status()
-                if (room.housekeepingStatus != HousekeepingStatus.CLEAN || !room.inspectionPending) {
-                    return@change emptyList()
-                }
-                room.markInspected(now)
+                if (condition(room)) change(room, now) else emptyList()
             }
         return RoomStatusOutcome(checkNotNull(before), after.status())
     }
+
+    private fun Room.isCleanAwaitingInspection() = housekeepingStatus == HousekeepingStatus.CLEAN && inspectionPending
+
+    private fun Room.isCleanWithoutPendingInspection() =
+        housekeepingStatus == HousekeepingStatus.CLEAN && !inspectionPending
 
     @Audited(RoomsAudit.RECORD_OBSERVATION)
     @Transactional
