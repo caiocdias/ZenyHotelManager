@@ -175,8 +175,9 @@ internal class IdempotencyFilter(
             try {
                 idempotency.release(reservation)
             } catch (ex: Exception) {
-                // A resposta já existe: a chave fica IN_PROGRESS (409 IDEMPOTENCY_KEY_IN_USE) até vencer.
-                log.error("Falha ao liberar a chave de idempotência {}", reservation.id, ex)
+                // A resposta já existe: a chave fica IN_PROGRESS (409 IDEMPOTENCY_KEY_IN_USE) até vencer. Só a
+                // classe vai ao log: a mensagem e a causa de uma falha do banco trazem nomes e valores (§16).
+                log.error("Falha ao liberar a chave de idempotência {}: {}", reservation.id, ex.javaClass.name)
             }
         }
         buffered.copyBodyToResponse()

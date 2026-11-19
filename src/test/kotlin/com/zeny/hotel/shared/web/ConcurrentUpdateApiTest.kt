@@ -6,6 +6,7 @@ import com.zeny.hotel.shared.IDEMPOTENCY_KEY_HEADER
 import com.zeny.hotel.shared.IDEMPOTENT_REPLAYED_HEADER
 import com.zeny.hotel.shared.Idempotent
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.shared.application.idempotency.IdempotencyRecords
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.asUser
 import io.kotest.assertions.withClue
@@ -19,6 +20,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.extension.ExtendWith
+import org.mockito.ArgumentMatchers
+import org.mockito.Mockito.doThrow
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.system.CapturedOutput
@@ -26,12 +29,14 @@ import org.springframework.boot.test.system.OutputCaptureExtension
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
 import org.springframework.dao.CannotAcquireLockException
+import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.MediaType
 import org.springframework.jdbc.UncategorizedSQLException
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.orm.jpa.JpaSystemException
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.request.RequestPostProcessor
@@ -80,6 +85,10 @@ class ConcurrentUpdateApiTest(
     private val tx = TransactionTemplate(transactionManager)
     private val user = asUser()
 
+    @Suppress("VarCouldBeVal") // o Spring injeta o campo lateinit
+    @MockitoSpyBean
+    private lateinit var idempotencyRecords: IdempotencyRecords
+
     @BeforeEach
     fun reset() = probe.reset()
 
@@ -87,7 +96,10 @@ class ConcurrentUpdateApiTest(
 
     @Test
     @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    fun `a deadlock between two requests answers 409 CONCURRENT_UPDATE to one and success to the other`() {
+    fun `a deadlock between two requests answers 409 CONCURRENT_UPDATE to one and success to the other`(
+        output: CapturedOutput,
+    ) {
+        val start = output.all.length
         val first = newRow()
         val second = newRow()
         val before = concurrentUpdates(DEADLOCK)
@@ -110,6 +122,9 @@ class ConcurrentUpdateApiTest(
             listOf("deadlock", "40P01", "time_probe", "test_support", "Process", "ShareLock", "transaction")
                 .forEach { leak -> withClue("o corpo do 409 vazou '$leak': $body") { body shouldNotContain leak } }
             concurrentUpdates(DEADLOCK) shouldBe before + 1
+            withClue("a mensagem do PostgreSQL foi ao log") {
+                output.all.substring(start) shouldNotContain "deadlock detected"
+            }
         } finally {
             gateA.proceed.countDown()
             pool.shutdown()
@@ -248,6 +263,30 @@ class ConcurrentUpdateApiTest(
     }
 
     @Test
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    fun `a failure to release the key keeps the 409 and logs only the class, never the database message`(
+        output: CapturedOutput,
+    ) {
+        val sentinel = "SENTINEL-${UUID.randomUUID()}"
+        val failure = DataAccessResourceFailureException("release $sentinel", SQLException("cause $sentinel", "08006"))
+        failure.addSuppressed(IllegalArgumentException("suppressed $sentinel"))
+        doThrow(failure).`when`(idempotencyRecords).deleteInProgress(anyUuid())
+        val row = newRow()
+        val start = output.all.length
+
+        val key = UUID.randomUUID().toString()
+
+        val response = holdingRow(row) { post("/api/v1/test-concurrency/idempotent-locked?row=$row", key) }
+
+        response.status shouldBe 409
+        jsonMapper.readTree(response.getContentAsString(Charsets.UTF_8))["code"].asString() shouldBe "CONCURRENT_UPDATE"
+        val logged = output.all.substring(start)
+        logged shouldContain "Falha ao liberar a chave de idempotência"
+        logged shouldContain DataAccessResourceFailureException::class.java.name
+        logged shouldNotContain sentinel
+    }
+
+    @Test
     fun `another 409 stays stored, and the retry with the same key replays it without running`() {
         val key = UuidV7.generate().toString()
         val path = "/api/v1/test-concurrency/idempotent-conflict"
@@ -358,6 +397,9 @@ class ConcurrentUpdateApiTest(
             ).param("holder", holder)
             .query(Int::class.java)
             .single()
+
+    /** Um `UUID` qualquer para o Mockito, sem passar `null` a um parâmetro Kotlin não anulável. */
+    private fun anyUuid(): UUID = ArgumentMatchers.any(UUID::class.java) ?: UUID(0, 0)
 
     private fun concurrentUpdates(state: String): Double =
         meters
