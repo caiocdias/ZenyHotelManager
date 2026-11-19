@@ -86,7 +86,36 @@ data class ChecklistAnswerInput(
     val photoFileId: FileId? = null,
     val note: String? = null,
     val answeredAt: Instant? = null,
-)
+) {
+    companion object {
+        /**
+         * Uma resposta com a foto pelo id do anexo ([photoFileId]), para o módulo que repassa respostas sem depender do
+         * `files` (a conclusão da tarefa de governança, M6 E04).
+         */
+        @Suppress("LongParameterList") // os campos da resposta, um por tipo de item
+        fun of(
+            itemKey: String,
+            check: CheckAnswer?,
+            quantity: BigDecimal?,
+            number: BigDecimal?,
+            text: String?,
+            choice: String?,
+            choices: List<String>?,
+            photoFileId: UUID?,
+            note: String?,
+        ) = ChecklistAnswerInput(
+            itemKey,
+            check,
+            quantity,
+            number,
+            text,
+            choice,
+            choices,
+            photoFileId?.let(::FileId),
+            note,
+        )
+    }
+}
 
 /**
  * Uma resposta gravada. [photoMissing]: a foto citada offline (ou pela API pública) não ficou com a resposta,

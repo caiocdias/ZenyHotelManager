@@ -1,5 +1,6 @@
 package com.zeny.hotel.housekeeping.domain
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
@@ -212,6 +213,11 @@ class HousekeepingTask private constructor(
     var refusalReason: RefusalReason? = null
         protected set
 
+    /** A execução do checklist aberta no último início (D5-E04); nula numa tarefa sem checklist. */
+    @Column(name = "checklist_execution_id")
+    var checklistExecutionId: ChecklistExecutionId? = null
+        protected set
+
     @Version
     var version: Long? = null
         protected set
@@ -269,6 +275,15 @@ class HousekeepingTask private constructor(
         transitioned(instant)
     }
 
+    /**
+     * Guarda a execução do checklist aberta no início que acabou de acontecer (D5-E04), ou nenhuma; o refazer troca a
+     * anterior. Só na tarefa em andamento.
+     */
+    fun openChecklist(executionId: ChecklistExecutionId?) {
+        check(status == TaskStatus.IN_PROGRESS) { "A tarefa $id não está em andamento ($status)" }
+        checklistExecutionId = executionId
+    }
+
     /** Pausa a tarefa `IN_PROGRESS`, somando o trecho ao tempo trabalhado. */
     fun pause(at: Instant) {
         requireFrom(TaskAction.PAUSE, TaskStatus.IN_PROGRESS)
@@ -305,6 +320,9 @@ class HousekeepingTask private constructor(
         status = TaskStatus.ASSIGNED
         transitioned(transitionInstant(at))
     }
+
+    /** Confere, antes dos efeitos da conclusão, que a tarefa pode ser concluída: `409` fora de `IN_PROGRESS`. */
+    fun requireCompletable() = requireFrom(TaskAction.COMPLETE, TaskStatus.IN_PROGRESS)
 
     /**
      * Conclui a tarefa `IN_PROGRESS` por [by]: `AWAITING_INSPECTION` se [awaitingInspection] (a conclusão deixou a UH

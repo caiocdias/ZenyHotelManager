@@ -4,6 +4,7 @@ import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistCompletion
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistExecutionStatus
 import com.zeny.hotel.checklists.ChecklistExecutionView
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
@@ -13,6 +14,8 @@ import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ChecklistsErrorCodes
 import com.zeny.hotel.checklists.ChecklistsPermissions
 import com.zeny.hotel.checklists.SubjectAttributes
+import com.zeny.hotel.checklists.domain.ChecklistExecution
+import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.BusinessRuleException
@@ -188,6 +191,7 @@ class ChecklistExecutionsService(
 class ChecklistExecutionsApiService(
     private val operations: ExecutionOperations,
     private val executions: ChecklistExecutionStore,
+    private val audit: AuditContext,
 ) {
     @Transactional(readOnly = true)
     fun execution(id: ChecklistExecutionId): ChecklistExecutionView? = executions.find(id)?.view()
@@ -209,8 +213,29 @@ class ChecklistExecutionsApiService(
         id: ChecklistExecutionId,
         inputs: List<ChecklistAnswerInput>,
         completedAt: Instant,
-    ): ChecklistCompletion {
+    ): ChecklistCompletion = completeLocked(operations.lock(id), inputs, completedAt)
+
+    /** Como [complete], mas a execução já concluída devolve `null`, sem mudança, sem trilha e sem evento. */
+    @Audited(ChecklistsAudit.COMPLETE_EXECUTION)
+    @Transactional
+    fun completeIfOpen(
+        id: ChecklistExecutionId,
+        inputs: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion? {
         val execution = operations.lock(id)
+        if (execution.status == ChecklistExecutionStatus.COMPLETED) {
+            audit.noChanges()
+            return null
+        }
+        return completeLocked(execution, inputs, completedAt)
+    }
+
+    private fun completeLocked(
+        execution: ChecklistExecution,
+        inputs: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion {
         val executor = execution.inProgressExecutor()
         val answers = operations.normalize(execution, inputs, completedAt)
         val photos =

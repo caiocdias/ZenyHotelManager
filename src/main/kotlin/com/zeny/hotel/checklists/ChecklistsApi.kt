@@ -29,6 +29,12 @@ interface ChecklistsApi {
      */
     fun template(id: ChecklistTemplateId): ChecklistTemplateSummary?
 
+    /**
+     * A versão publicada vigente (a última) do modelo **ativo** [templateId], ou `null` se o modelo não existe, está
+     * desativado ou nunca foi publicado. Para quem abre uma execução de um modelo vinculado (governança, D5 da M6 E04).
+     */
+    fun currentVersion(templateId: ChecklistTemplateId): ChecklistVersionView?
+
     /** A versão publicada [number] do modelo, ou `null` se não existe. */
     fun version(
         templateId: ChecklistTemplateId,
@@ -68,6 +74,19 @@ interface ChecklistsApi {
         answers: List<ChecklistAnswerInput>,
         completedAt: Instant,
     ): ChecklistCompletion
+
+    /**
+     * A conclusão condicional (governança, D5 da M6 E04): trava a execução e, em andamento, conclui como
+     * [completeExecution] (com o `422 CHECKLIST_REQUIRED_ITEMS_MISSING` de item obrigatório faltando); **já concluída
+     * por fora** (pelo próprio executor, online ou offline), devolve `null` sem erro, sem tocar na execução, sem
+     * entrada na trilha e sem um segundo `ChecklistCompleted`, e as [answers] são ignoradas. Pendente: `409
+     * CHECKLIST_EXECUTION_NOT_STARTED`. Inexistente: `404 CHECKLIST_EXECUTION_NOT_FOUND`.
+     */
+    fun completeExecutionIfOpen(
+        id: ChecklistExecutionId,
+        answers: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion?
 }
 
 /**

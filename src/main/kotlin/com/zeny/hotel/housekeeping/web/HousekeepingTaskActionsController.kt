@@ -1,11 +1,14 @@
 package com.zeny.hotel.housekeeping.web
 
+import com.zeny.hotel.checklists.CheckAnswer
+import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskExecution
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskView
+import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.ETags
@@ -15,6 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Size
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
@@ -22,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
+import java.math.BigDecimal
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -35,8 +40,8 @@ private const val ACTION_RULES =
         "**sem as observações** e o `ETag` novo."
 
 /**
- * As ações da execução da tarefa de governança (RF-GOV-04, SPEC §8.4, M6 E04): iniciar, pausar, retomar, recusar e
- * tentar de novo, como subrecursos de ação com `If-Match` (ARCHITECTURE §7). O instante é o do relógio do servidor. A
+ * As ações da execução da tarefa de governança (RF-GOV-04, SPEC §8.4, M6 E04): iniciar, pausar, retomar, recusar,
+ * tentar de novo e concluir, como subrecursos de ação com `If-Match` (ARCHITECTURE §7). O instante é o do relógio do servidor. A
  * resposta é a [HousekeepingTaskActionResponse], sem `notes` (D2-E04, RN-13).
  */
 @ApiV1Controller
@@ -99,8 +104,10 @@ class HousekeepingTaskActionsController(
         summary = "Recusar uma tarefa de governança",
         description =
             "Leva a tarefa `ASSIGNED` a `REFUSED`, com o motivo: `DO_NOT_DISTURB` (a UH com não perturbe) ou " +
-                "`GUEST_REFUSED` (o hóspede recusou o serviço). A camareira continua a mesma; a nova tentativa é o " +
-                "`retry`. Responde 200 com a tarefa `REFUSED`. $ACTION_RULES",
+                "`GUEST_REFUSED` (o hóspede recusou o serviço). Com `DO_NOT_DISTURB` numa UH ocupada, liga o sinal de " +
+                "não perturbe na UH; numa UH vaga e numa tarefa de área, a UH não muda. A camareira continua a " +
+                "mesma; a nova tentativa é o `retry`. Responde 200 com a tarefa `REFUSED` em todos os casos. " +
+                ACTION_RULES,
     )
     fun refuse(
         @PathVariable id: UUID,
@@ -128,6 +135,39 @@ class HousekeepingTaskActionsController(
         return respond(execution.retry(HousekeepingTaskId(id), actor.current(), clock.instant(), expected))
     }
 
+    @PostMapping("/{id}/complete")
+    @Operation(
+        operationId = "completeHousekeepingTask",
+        summary = "Concluir uma tarefa de governança",
+        description =
+            "Conclui a tarefa `IN_PROGRESS`, numa transação só: conclui o checklist aberto no início com as " +
+                "`answers` (todas; item obrigatório faltando: 422 `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; " +
+                "checklist **já concluído por fora**: a tarefa conclui e as `answers` são ignoradas; `answers` numa " +
+                "tarefa sem checklist: 400 `VALIDATION_FAILED` no campo `answers`), leva a UH Suja a Limpa (com " +
+                "inspeção pendente se o tipo de limpeza a exige), grava a ocupação encontrada (`foundOccupancy`, " +
+                "`foundGuestCount`; só numa tarefa de UH), registra a faxina programada feita e grava quem concluiu e " +
+                "os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com inspeção pendente agora; " +
+                "numa UH já Limpa ou Inspecionada e numa área, vai a `DONE`. O corpo é opcional. $ACTION_RULES",
+    )
+    fun complete(
+        @PathVariable id: UUID,
+        @Valid @RequestBody(required = false) request: HousekeepingTaskCompleteRequest?,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+    ): ResponseEntity<HousekeepingTaskActionResponse> {
+        val expected = ETags.expectedVersion(ifMatch)
+        return respond(
+            execution.complete(
+                HousekeepingTaskId(id),
+                request?.answers?.map { it.toInput() },
+                request?.foundOccupancy,
+                request?.foundGuestCount,
+                actor.current(),
+                clock.instant(),
+                expected,
+            ),
+        )
+    }
+
     private fun respond(view: HousekeepingTaskView) =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(HousekeepingTaskActionResponse.of(view))
 }
@@ -138,6 +178,65 @@ data class HousekeepingTaskRefuseRequest(
     @field:Schema(description = "O motivo: `DO_NOT_DISTURB` (não perturbe) ou `GUEST_REFUSED` (o hóspede recusou).")
     val reason: RefusalReason?,
 )
+
+@Schema(description = "A conclusão de uma tarefa de governança; todos os campos são opcionais.")
+data class HousekeepingTaskCompleteRequest(
+    @field:Size(max = MAX_ANSWERS)
+    @field:Schema(
+        description =
+            "Todas as respostas do checklist aberto no início (as que valem na conclusão). Só numa tarefa com " +
+                "checklist; ignoradas se ele já foi concluído por fora.",
+        nullable = true,
+    )
+    val answers: List<@Valid HousekeepingChecklistAnswerRequest>?,
+    @field:Schema(
+        description = "A ocupação que a camareira encontrou na UH (só numa tarefa de UH).",
+        nullable = true,
+    )
+    val foundOccupancy: OccupancyStatus?,
+    @field:Schema(
+        description = "O número de pessoas encontradas, de 1 a 40, só com `foundOccupancy` = `OCCUPIED`.",
+        nullable = true,
+    )
+    val foundGuestCount: Int?,
+)
+
+@Schema(
+    description =
+        "Uma resposta do checklist: a chave do item e só o campo do tipo dele — `check` (CHECK), `quantity` " +
+            "(QUANTITY), `number` (NUMBER), `text` (TEXT), `choice` (SINGLE_CHOICE), `choices` (MULTI_CHOICE) ou " +
+            "`photoFileId` (PHOTO: um anexo da finalidade `checklists.photo` enviado por quem iniciou o checklist) — " +
+            "e a observação opcional.",
+)
+data class HousekeepingChecklistAnswerRequest(
+    @field:Size(max = 40)
+    @field:Schema(example = "towels")
+    val itemKey: String,
+    @field:Schema(nullable = true)
+    val check: CheckAnswer?,
+    @field:Schema(nullable = true, example = "2")
+    val quantity: BigDecimal?,
+    @field:Schema(nullable = true, example = "4.5")
+    val number: BigDecimal?,
+    @field:Size(max = 2000)
+    @field:Schema(nullable = true)
+    val text: String?,
+    @field:Size(max = 40)
+    @field:Schema(nullable = true)
+    val choice: String?,
+    @field:Size(max = 50)
+    @field:Schema(nullable = true)
+    val choices: List<String>?,
+    @field:Schema(nullable = true)
+    val photoFileId: UUID?,
+    @field:Size(max = 500)
+    @field:Schema(nullable = true)
+    val note: String?,
+) {
+    fun toInput() = ChecklistAnswerInput.of(itemKey, check, quantity, number, text, choice, choices, photoFileId, note)
+}
+
+private const val MAX_ANSWERS = 300
 
 @Schema(
     description =

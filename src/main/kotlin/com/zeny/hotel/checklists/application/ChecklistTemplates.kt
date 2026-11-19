@@ -195,6 +195,12 @@ class ChecklistsApiService(
     }
 
     @Transactional(readOnly = true)
+    override fun currentVersion(templateId: ChecklistTemplateId): ChecklistVersionView? {
+        val number = templates.find(templateId)?.takeIf { it.active }?.publishedVersion ?: return null
+        return directory.version(templateId, number)?.view()
+    }
+
+    @Transactional(readOnly = true)
     override fun version(
         templateId: ChecklistTemplateId,
         number: Int,
@@ -218,6 +224,12 @@ class ChecklistsApiService(
         answers: List<ChecklistAnswerInput>,
         completedAt: Instant,
     ): ChecklistCompletion = executions.complete(id, answers, completedAt)
+
+    override fun completeExecutionIfOpen(
+        id: ChecklistExecutionId,
+        answers: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+    ): ChecklistCompletion? = executions.completeIfOpen(id, answers, completedAt)
 }
 
 @Configuration(proxyBeanMethods = false)

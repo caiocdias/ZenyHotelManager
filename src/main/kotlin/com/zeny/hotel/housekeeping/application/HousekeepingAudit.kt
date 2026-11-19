@@ -25,6 +25,7 @@ internal object HousekeepingAudit {
     const val RESUME_TASK = "housekeeping.task.resume"
     const val REFUSE_TASK = "housekeeping.task.refuse"
     const val RETRY_TASK = "housekeeping.task.retry"
+    const val COMPLETE_TASK = "housekeeping.task.complete"
 
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 

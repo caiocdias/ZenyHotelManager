@@ -22,6 +22,7 @@ import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.RealtimeMessage
 import com.zeny.hotel.shared.RealtimePublisher
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.requireCurrentVersion
 import org.slf4j.LoggerFactory
@@ -87,6 +88,37 @@ class RoomStatusChanger(
     }
 }
 
+/**
+ * O registro do que a governança encontrou na UH (RF-UH-08), na transação e na auditoria de quem chama (o endpoint de
+ * observação ou a `RoomsApi`): a UH existe (`404 ROOM_NOT_FOUND`) e está ativa (`422 ROOM_INACTIVE`), o número de
+ * pessoas passa por [Room.requireObservedGuestCount], e a observação vai para a trilha e para o histórico *append-only*.
+ */
+@Component
+class HousekeepingObservations(
+    private val store: RoomsStore,
+    private val records: RoomStatusRecords,
+    private val audit: AuditContext,
+) {
+    fun record(
+        id: RoomId,
+        occupancy: OccupancyStatus,
+        guestCount: Int?,
+        observedBy: UserId,
+        observedAt: Instant,
+    ): HousekeepingObservationView {
+        val room = store.room(id) ?: throw roomNotFound()
+        if (!room.active) {
+            throw BusinessRuleException(RoomsErrorCodes.ROOM_INACTIVE, "A UH está desativada.")
+        }
+        Room.requireObservedGuestCount(occupancy, guestCount)
+        val observation =
+            HousekeepingObservationView(UuidV7.generate(), id, occupancy, guestCount, observedAt, observedBy)
+        audit.created(RoomsAudit.HOUSEKEEPING_OBSERVATION, observation.id) { observation.auditState() }
+        records.appendObservation(observation)
+        return observation
+    }
+}
+
 internal fun roomNotFound() = NotFoundException(RoomsErrorCodes.ROOM_NOT_FOUND, "UH não encontrada.")
 
 /**
@@ -103,8 +135,8 @@ class RoomStatusService(
     private val store: RoomsStore,
     private val records: RoomStatusRecords,
     private val overlays: OutOfOrderOverlays,
+    private val observations: HousekeepingObservations,
     private val authorization: Authorization,
-    private val audit: AuditContext,
     private val currentActor: CurrentActor,
     private val clock: Clock,
 ) {
@@ -175,17 +207,7 @@ class RoomStatusService(
         guestCount: Int?,
     ): HousekeepingObservationView {
         authorization.require(RoomsPermissions.STATUS_OBSERVE)
-        val actor = currentActor.current()
-        val room = store.room(id) ?: throw roomNotFound()
-        if (!room.active) {
-            throw BusinessRuleException(RoomsErrorCodes.ROOM_INACTIVE, "A UH está desativada.")
-        }
-        Room.requireObservedGuestCount(occupancy, guestCount)
-        val observation =
-            HousekeepingObservationView(UuidV7.generate(), id, occupancy, guestCount, clock.instant(), actor.userId)
-        audit.created(RoomsAudit.HOUSEKEEPING_OBSERVATION, observation.id) { observation.auditState() }
-        records.appendObservation(observation)
-        return observation
+        return observations.record(id, occupancy, guestCount, currentActor.current().userId, clock.instant())
     }
 
     @Transactional(readOnly = true)

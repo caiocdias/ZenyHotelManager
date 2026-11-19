@@ -4,6 +4,8 @@ import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.AreaSummary
 import com.zeny.hotel.rooms.CheckInOccupation
 import com.zeny.hotel.rooms.GuestServiceFlag
+import com.zeny.hotel.rooms.HousekeepingStatus
+import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.rooms.OutOfOrderId
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderPeriod
@@ -20,8 +22,10 @@ import com.zeny.hotel.rooms.RoomTypeSummary
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.rooms.domain.RoomFeature
 import com.zeny.hotel.shared.Audited
+import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -40,6 +44,7 @@ class RoomsApiService(
     private val outOfOrders: OutOfOrderOperations,
     private val outOfOrderStore: OutOfOrderStore,
     private val outOfOrderRecords: OutOfOrderRecords,
+    private val observations: HousekeepingObservations,
 ) : RoomsApi {
     @Transactional(readOnly = true)
     override fun room(id: RoomId): RoomSummary? = store.room(id)?.view()?.summary()
@@ -155,6 +160,50 @@ class RoomsApiService(
         flag: GuestServiceFlag,
         source: RoomStatusSource,
     ): RoomStatus = changer.change(id, source) { room, now -> room.setServiceFlag(flag, now) }.status()
+
+    @Audited(RoomsAudit.MARK_CLEAN)
+    @Transactional
+    override fun markCleanIfDirty(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): Boolean {
+        var changed = false
+        // A UH Suja conferida com a linha travada pelo changer; limpa ou inspecionada, nada muda (D3 da M6 E04).
+        changer.change(id, source) { room, now ->
+            if (room.housekeepingStatus != HousekeepingStatus.DIRTY) return@change emptyList()
+            room.markClean(requiresInspection, now).also { changed = it.isNotEmpty() }
+        }
+        return changed
+    }
+
+    @Audited(RoomsAudit.SET_SERVICE_FLAG)
+    @Transactional
+    override fun setServiceFlagIfOccupied(
+        id: RoomId,
+        flag: GuestServiceFlag,
+        source: RoomStatusSource,
+    ): Boolean {
+        var changed = false
+        // A ocupação conferida com a linha travada pelo changer; vaga, nada muda (D4 da M6 E04).
+        changer.change(id, source) { room, now ->
+            if (room.occupancy != OccupancyStatus.OCCUPIED) return@change emptyList()
+            room.setServiceFlag(flag, now).also { changed = it.isNotEmpty() }
+        }
+        return changed
+    }
+
+    @Audited(RoomsAudit.RECORD_OBSERVATION)
+    @Transactional
+    override fun recordObservation(
+        roomId: RoomId,
+        occupancy: OccupancyStatus,
+        guestCount: Int?,
+        observedBy: UserId,
+        observedAt: Instant,
+    ) {
+        observations.record(roomId, occupancy, guestCount, observedBy, observedAt)
+    }
 
     @Transactional(readOnly = true)
     override fun isReadyForCheckIn(id: RoomId): Boolean =

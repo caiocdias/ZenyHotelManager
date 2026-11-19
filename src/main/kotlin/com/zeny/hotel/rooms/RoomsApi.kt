@@ -131,6 +131,46 @@ interface RoomsApi {
         source: RoomStatusSource,
     ): CheckInOccupation
 
+    // --- Operações condicionais da governança (M6 E04) ---------------------------------------------
+
+    /**
+     * Governança (D3 da M6 E04): com a linha da UH travada, leva a UH **Suja** a Limpa, com a inspeção pendente se
+     * [requiresInspection], como [markClean]; numa UH já Limpa (com ou sem inspeção pendente) ou Inspecionada não
+     * muda nada e não recusa. Devolve se mudou. Auditada como [markClean] quando muda. UH inexistente: `404
+     * ROOM_NOT_FOUND`.
+     */
+    fun markCleanIfDirty(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): Boolean
+
+    /**
+     * Governança (D4 da M6 E04): com a linha da UH travada, liga a sinalização [flag] só numa UH **ocupada**, como
+     * [setServiceFlag]; numa UH vaga não muda nada e não recusa. Devolve se mudou. Auditada como [setServiceFlag]
+     * quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun setServiceFlagIfOccupied(
+        id: RoomId,
+        flag: GuestServiceFlag,
+        source: RoomStatusSource,
+    ): Boolean
+
+    /**
+     * Registra o que a governança encontrou na UH (RF-UH-08) com as regras do endpoint de observação: a ocupação, o
+     * número de pessoas opcional (de 1 a 40 e só com a UH ocupada, senão `400 GUEST_COUNT_INVALID`), quem observou
+     * ([observedBy]) e quando ([observedAt]), informados por quem chama (a conclusão da tarefa, M6 E04). Uma ocupação
+     * que diverge da recepção aparece nas discrepâncias. UH inexistente: `404 ROOM_NOT_FOUND`; desativada: `422
+     * ROOM_INACTIVE`. Auditada (`rooms.housekeeping-observation.record`). Não mexe no status.
+     */
+    fun recordObservation(
+        roomId: RoomId,
+        occupancy: OccupancyStatus,
+        guestCount: Int?,
+        observedBy: UserId,
+        observedAt: Instant,
+    )
+
     // --- OOO e OOS (M2 E03) ------------------------------------------------------------------------
 
     /** O período OOO/OOS, liberado ou não, ou `null` se não existe. */
