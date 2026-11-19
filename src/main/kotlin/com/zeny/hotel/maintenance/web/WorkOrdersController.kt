@@ -11,11 +11,14 @@ import com.zeny.hotel.maintenance.application.WorkOrderAttachmentView
 import com.zeny.hotel.maintenance.application.WorkOrderAttachments
 import com.zeny.hotel.maintenance.application.WorkOrderCompletion
 import com.zeny.hotel.maintenance.application.WorkOrderFilter
+import com.zeny.hotel.maintenance.application.WorkOrderRoomBlockRequest
 import com.zeny.hotel.maintenance.application.WorkOrderView
 import com.zeny.hotel.maintenance.application.WorkOrdersService
 import com.zeny.hotel.maintenance.domain.WorkOrderEdit
 import com.zeny.hotel.rooms.AreaId
+import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.shared.APPROVAL_TOKEN_HEADER
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.ETags
@@ -43,6 +46,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import java.net.URI
 import java.time.Instant
+import java.time.LocalDate
 import java.util.UUID
 
 internal const val MAINTENANCE_TAG = "maintenance"
@@ -261,15 +265,52 @@ class WorkOrdersController(
         operationId = "cancelWorkOrder",
         summary = "Cancelar uma ordem de serviço",
         description =
-            "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `CANCELLED` e grava `closedAt`, com o motivo obrigatório. " +
+            "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `CANCELLED` e grava `closedAt`, com o motivo obrigatório. Com " +
+                "bloqueio da UH vigente, libera o período e exige o que o `rooms` exige para liberar: OOO, " +
+                "`rooms.outoforder.manage` ou a aprovação de um superior (403 `APPROVAL_REQUIRED`, repetido com " +
+                "`X-Approval-Token`; vem depois do 409 de ordem final); OOS, `rooms.outofservice.manage`. " +
                 ACTION_RULES,
     )
     fun cancel(
         @PathVariable id: UUID,
         @Valid @RequestBody request: WorkOrderCancelRequest,
         @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
     ): ResponseEntity<WorkOrderResponse> =
-        respond(workOrders.cancel(WorkOrderId(id), request.reason, ETags.expectedVersion(ifMatch)))
+        respond(workOrders.cancel(WorkOrderId(id), request.reason, ETags.expectedVersion(ifMatch), approvalToken))
+
+    @PostMapping("/{id}/room-block")
+    @Operation(
+        operationId = "blockWorkOrderRoom",
+        summary = "Bloquear a UH da ordem de serviço",
+        description =
+            "Abre um período OOO ou OOS do `rooms` na UH da ordem (motivo \"OS <número>\", retorno Suja) e guarda " +
+                "o `outOfOrderId`. OOO exige `rooms.outoforder.manage` ou a aprovação de um superior (403 " +
+                "`APPROVAL_REQUIRED`, repetido com `X-Approval-Token`); OOS exige `rooms.outofservice.manage`. " +
+                "Recusas nesta ordem: 400 do corpo, 403 sem `manage`, 404, 412, ordem `DONE` ou `CANCELLED` (409 " +
+                "`WORK_ORDER_TRANSITION_NOT_ALLOWED`), ordem de área (422 `WORK_ORDER_NOT_ROOM`), bloqueio vigente " +
+                "(409 `WORK_ORDER_ROOM_ALREADY_BLOCKED`), a aprovação e as regras do `rooms` (422 " +
+                "`OUT_OF_ORDER_ROOM_OCCUPIED`, 422 `OUT_OF_ORDER_PERIOD_IN_PAST`, 409 `OUT_OF_ORDER_OVERLAP`). Com " +
+                "o bloqueio vigente, o local da ordem não muda (409 `WORK_ORDER_LOCATION_LOCKED` no `PUT`); " +
+                "concluir a ordem libera o período sem aprovação e a UH volta Suja; cancelar pede o que o `rooms` " +
+                "pede para liberar (OOO: aprovação; OOS: `rooms.outofservice.manage`). Prorrogar ou encurtar o " +
+                "período é no `rooms`. $ACTION_RULES",
+    )
+    fun blockRoom(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: WorkOrderRoomBlockBody,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+        @RequestHeader(APPROVAL_TOKEN_HEADER, required = false) approvalToken: String?,
+    ): ResponseEntity<WorkOrderResponse> {
+        val expected = ETags.expectedVersion(ifMatch)
+        val block =
+            WorkOrderRoomBlockRequest(
+                checkNotNull(request.kind),
+                checkNotNull(request.startsOn),
+                checkNotNull(request.endsOn),
+            )
+        return respond(workOrders.blockRoom(WorkOrderId(id), block, expected, approvalToken))
+    }
 
     @PostMapping("/{id}/attachments")
     @Operation(
@@ -407,6 +448,19 @@ data class WorkOrderCompleteRequest(
     val thirdPartyCost: Money? = null,
     @field:Schema(description = "O custo das peças; omita para manter. $COST_DESCRIPTION", nullable = true)
     val partsCost: Money? = null,
+)
+
+@Schema(description = "O bloqueio da UH da ordem de serviço: um período OOO ou OOS, de datas de negócio inclusive.")
+data class WorkOrderRoomBlockBody(
+    @field:Schema(description = "`OUT_OF_ORDER` (sensível: aprovação de superior) ou `OUT_OF_SERVICE`.")
+    @field:NotNull
+    val kind: OutOfOrderKind?,
+    @field:Schema(description = "O primeiro dia do período (não antes da data operacional).")
+    @field:NotNull
+    val startsOn: LocalDate?,
+    @field:Schema(description = "O último dia do período (até 365 dias).")
+    @field:NotNull
+    val endsOn: LocalDate?,
 )
 
 @Schema(description = "O cancelamento de uma ordem de serviço.")

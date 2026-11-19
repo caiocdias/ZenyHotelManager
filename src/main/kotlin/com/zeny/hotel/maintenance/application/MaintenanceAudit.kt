@@ -12,6 +12,7 @@ internal object MaintenanceAudit {
     const val RESUME_WORK_ORDER = "maintenance.work-order.resume"
     const val COMPLETE_WORK_ORDER = "maintenance.work-order.complete"
     const val CANCEL_WORK_ORDER = "maintenance.work-order.cancel"
+    const val BLOCK_ROOM = "maintenance.work-order.block-room"
     const val ATTACH_FILE = "maintenance.work-order-attachment.attach"
     const val DETACH_FILE = "maintenance.work-order-attachment.detach"
 }

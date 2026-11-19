@@ -2,6 +2,7 @@ package com.zeny.hotel.maintenance.application
 
 import com.zeny.hotel.files.FileId
 import com.zeny.hotel.files.FilePurposeCode
+import com.zeny.hotel.files.FileSummary
 import com.zeny.hotel.files.FilesApi
 import com.zeny.hotel.maintenance.MaintenanceErrorCodes
 import com.zeny.hotel.maintenance.MaintenanceFilePurposes
@@ -71,9 +72,11 @@ interface WorkOrderAttachmentStore {
  * `If-Match` nem muda a versão da ordem (a versão e o `ETag` não cobrem a lista de anexos).
  *
  * - Vincular: com `maintenance.workorders.manage` (no escopo dele) ou, sem ela, com `maintenance.workorders.request`
- *   na ordem que o próprio ator abriu; a ordem alheia é `403`. Arquivo inexistente: `400 UNKNOWN_FILE`; de outra
- *   finalidade: `422 WORK_ORDER_ATTACHMENT_INVALID`; já de outro registro: `409 FILE_ALREADY_ATTACHED` (do `files`).
- *   Vincular de novo o mesmo arquivo à mesma ordem não muda nada.
+ *   na ordem que o próprio ator abriu; a ordem alheia e a inexistente dão o mesmo `403`. Quem só tem `request` vincula
+ *   apenas o arquivo que ele mesmo enviou (`FileSummary.createdBy`); o de outro usuário é `422
+ *   WORK_ORDER_ATTACHMENT_INVALID`. Arquivo inexistente: `400 UNKNOWN_FILE`; de outra finalidade: `422
+ *   WORK_ORDER_ATTACHMENT_INVALID`; já de outro registro: `409 FILE_ALREADY_ATTACHED` (do `files`). Vincular de novo
+ *   o mesmo arquivo à mesma ordem não muda nada.
  * - Desvincular: só com `manage`. O anexo volta a órfão no `files` (o expurgo o apaga depois da retenção). Não vigente
  *   nesta ordem: `404 WORK_ORDER_ATTACHMENT_NOT_FOUND`.
  * - Ordem final (`DONE` ou `CANCELLED`): `409 WORK_ORDER_TRANSITION_NOT_ALLOWED` nas duas.
@@ -95,17 +98,13 @@ class WorkOrderAttachments(
         id: WorkOrderId,
         fileId: FileId,
     ): WorkOrderView {
-        val order = loadForAttach(id)
+        val manager = authorization.grantOrNull(MaintenancePermissions.MANAGE) != null
+        val order = loadForAttach(id, manager)
         order.requireAttachable(WorkOrderAction.ATTACH)
         val summary =
             files.find(fileId)
                 ?: throw WorkOrderRules.invalid("fileId", "O anexo não existe.", MaintenanceErrorCodes.UNKNOWN_FILE)
-        if (summary.purpose !in MaintenanceFilePurposes.codes) {
-            throw BusinessRuleException(
-                MaintenanceErrorCodes.WORK_ORDER_ATTACHMENT_INVALID,
-                "O anexo precisa ser de uma finalidade de ordem de serviço (foto ou PDF).",
-            )
-        }
+        requireLinkable(summary, manager)
         if (store.activeOf(fileId)?.workOrderId == id) {
             audit.noChanges()
             return workOrders.viewOf(order)
@@ -155,16 +154,38 @@ class WorkOrderAttachments(
     }
 
     /**
-     * A ordem travada para vincular: quem tem `manage` a carrega no escopo dele; quem não tem exige `request` e só a
-     * ordem que abriu (a alheia dá o `403` de quem não tem `manage`).
+     * A finalidade é de ordem de serviço (foto ou PDF) e, para quem só tem `request`, o arquivo foi enviado por ele (um
+     * órfão de outro usuário não é dele): senão, `422 WORK_ORDER_ATTACHMENT_INVALID`.
      */
-    private fun loadForAttach(id: WorkOrderId): WorkOrder {
-        if (authorization.grantOrNull(MaintenancePermissions.MANAGE) != null) {
-            return workOrders.loadLocked(id, MaintenancePermissions.MANAGE)
+    private fun requireLinkable(
+        summary: FileSummary,
+        manager: Boolean,
+    ) {
+        val ownFile = manager || summary.createdBy == actor.current().userId
+        if (summary.purpose !in MaintenanceFilePurposes.codes || !ownFile) {
+            throw BusinessRuleException(
+                MaintenanceErrorCodes.WORK_ORDER_ATTACHMENT_INVALID,
+                "O anexo precisa ser de uma finalidade de ordem de serviço (foto ou PDF) e, sem " +
+                    "`maintenance.workorders.manage`, ter sido enviado por quem o vincula.",
+            )
         }
+    }
+
+    /**
+     * A ordem travada para vincular: quem tem `manage` ([manager]) a carrega no escopo dele; quem não tem exige
+     * `request` e só a ordem que abriu. A ordem alheia e a inexistente dão o mesmo `403` de quem não tem `manage`
+     * (sem revelar se a ordem existe).
+     */
+    private fun loadForAttach(
+        id: WorkOrderId,
+        manager: Boolean,
+    ): WorkOrder {
+        if (manager) return workOrders.loadLocked(id, MaintenancePermissions.MANAGE)
         authorization.require(MaintenancePermissions.REQUEST)
-        val order = workOrders.lockedOrNotFound(id)
-        if (order.openedBy != actor.current().userId) authorization.require(MaintenancePermissions.MANAGE)
-        return order
+        val order = workOrders.lockedOrNull(id)
+        if (order == null || order.openedBy != actor.current().userId) {
+            authorization.require(MaintenancePermissions.MANAGE)
+        }
+        return checkNotNull(order) { "A ordem ausente passou pela exigência de manage" }
     }
 }

@@ -11,6 +11,7 @@ import com.zeny.hotel.maintenance.WorkOrderOrigin
 import com.zeny.hotel.maintenance.WorkOrderPriority
 import com.zeny.hotel.maintenance.WorkOrderStatus
 import com.zeny.hotel.maintenance.domain.WorkOrder
+import com.zeny.hotel.maintenance.domain.WorkOrderAction
 import com.zeny.hotel.maintenance.domain.WorkOrderEdit
 import com.zeny.hotel.maintenance.domain.WorkOrderRules
 import com.zeny.hotel.notifications.NotificationRecipients
@@ -24,6 +25,7 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.CursorPage
 import com.zeny.hotel.shared.DocumentNumberGenerator
@@ -167,6 +169,7 @@ class WorkOrdersService(
     private val hotel: HotelApi,
     private val numbers: DocumentNumberGenerator,
     private val attachments: WorkOrderAttachmentStore,
+    private val blocks: WorkOrderRoomBlocks,
     private val notifications: NotificationsApi,
     private val authorization: Authorization,
     private val actor: CurrentActor,
@@ -255,7 +258,15 @@ class WorkOrdersService(
         act(id, expectedVersion) { order, now ->
             // Confere a edição e as referências com os valores novos antes de mudar o agregado.
             order.checkUpdate(edit)
-            if (edit.roomId != order.roomId || edit.areaId != order.areaId) requireLocation(edit.roomId, edit.areaId)
+            if (edit.roomId != order.roomId || edit.areaId != order.areaId) {
+                if (blocks.inEffect(order) != null) {
+                    throw ConflictException(
+                        MaintenanceErrorCodes.WORK_ORDER_LOCATION_LOCKED,
+                        "O local da ordem não muda enquanto há um bloqueio da UH vigente.",
+                    )
+                }
+                requireLocation(edit.roomId, edit.areaId)
+            }
             if (edit.assigneeEmployeeId != order.assigneeEmployeeId) requireAssignee(edit.assigneeEmployeeId)
             val becomesUrgent = edit.priority == WorkOrderPriority.URGENT && order.priority != WorkOrderPriority.URGENT
             order.update(edit, now)
@@ -295,16 +306,47 @@ class WorkOrdersService(
     ): WorkOrderView =
         act(id, expectedVersion) { order, now ->
             order.complete(completion.notes, completion.laborCost, completion.thirdPartyCost, completion.partsCost, now)
+            blocks.release(order)
         }
 
-    /** Cancela a ordem, com o motivo obrigatório (até 500). */
+    /**
+     * Cancela a ordem, com o motivo obrigatório (até 500). Com bloqueio da UH vigente, pede o que o `rooms` pede para
+     * liberá-lo (OOO: aprovação de superior pelo [approvalToken]; OOS: `rooms.outofservice.manage`) e o libera.
+     */
     @Audited(MaintenanceAudit.CANCEL_WORK_ORDER)
     @Transactional
     fun cancel(
         id: WorkOrderId,
         reason: String?,
         expectedVersion: Long,
-    ): WorkOrderView = act(id, expectedVersion) { order, now -> order.cancel(reason, now) }
+        approvalToken: String?,
+    ): WorkOrderView =
+        act(id, expectedVersion) { order, now ->
+            order.requireActive(WorkOrderAction.CANCEL)
+            WorkOrderRules.freeText("cancellationReason", reason, WorkOrder.MAX_REASON)
+            blocks.authorizeCancel(order, approvalToken)
+            order.cancel(reason, now)
+            blocks.release(order)
+        }
+
+    /**
+     * Bloqueia a UH da ordem com um período OOO/OOS do `rooms` (D7-E07). Recusas, nesta ordem: `403` sem `manage`,
+     * `404`, `412`, ordem final (`409 WORK_ORDER_TRANSITION_NOT_ALLOWED`), ordem de área (`422 WORK_ORDER_NOT_ROOM`),
+     * bloqueio vigente (`409 WORK_ORDER_ROOM_ALREADY_BLOCKED`), o step-up e, por fim, as regras do `rooms`.
+     */
+    @Audited(MaintenanceAudit.BLOCK_ROOM)
+    @Transactional
+    fun blockRoom(
+        id: WorkOrderId,
+        request: WorkOrderRoomBlockRequest,
+        expectedVersion: Long,
+        approvalToken: String?,
+    ): WorkOrderView =
+        act(id, expectedVersion) { order, now ->
+            order.requireBlockable()
+            blocks.requireNotBlocked(order)
+            order.blockRoom(blocks.open(order, request, approvalToken).id, now)
+        }
 
     /** A ação [change] na ordem travada: permissão e escopo, trava, `404`, versão (`412`) e a regra do domínio. */
     private fun act(
@@ -326,10 +368,8 @@ class WorkOrdersService(
         permission: PermissionCode,
     ): WorkOrder = load(id, permission, lock = true)
 
-    /** A ordem [id] travada, ou `404 WORK_ORDER_NOT_FOUND`; a permissão é de quem chama (sem escopo). */
-    internal fun lockedOrNotFound(id: WorkOrderId): WorkOrder =
-        store.findForUpdate(id)
-            ?: throw NotFoundException(MaintenanceErrorCodes.WORK_ORDER_NOT_FOUND, "Ordem de serviço não encontrada.")
+    /** A ordem [id] travada, ou `null` se não existe; a permissão é de quem chama (sem escopo). */
+    internal fun lockedOrNull(id: WorkOrderId): WorkOrder? = store.findForUpdate(id)
 
     /** A ordem para a resposta, com os anexos vigentes dela. */
     internal fun viewOf(order: WorkOrder): WorkOrderView =
@@ -341,8 +381,8 @@ class WorkOrdersService(
      */
     private fun notifyUrgent(order: WorkOrder) {
         val place =
-            order.roomId?.let { "UH ${rooms.room(it)?.number}" }
-                ?: order.areaId?.let { "Área ${rooms.area(it)?.name}" }
+            order.roomId?.let { "UH ${room(it).number}" }
+                ?: order.areaId?.let { "Área ${area(it).name}" }
                 ?: error("A ordem sem local")
         notifications.notify(
             NotificationsTypes.URGENT_WORK_ORDER,
@@ -354,6 +394,10 @@ class WorkOrdersService(
             ),
         )
     }
+
+    private fun room(id: RoomId) = requireNotNull(rooms.room(id)) { "A UH $id da ordem de serviço não existe" }
+
+    private fun area(id: AreaId) = requireNotNull(rooms.area(id)) { "A área $id da ordem de serviço não existe" }
 
     /**
      * A ordem [id] sob a [permission]: sem a permissão, `403`; inexistente, `404` (com `OWN`, o mesmo `403` da alheia);

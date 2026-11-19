@@ -174,6 +174,29 @@ class WorkOrderAttachmentsTest(
         }
 
     @Test
+    fun `reception without manage gets the same 403 on an unknown order as on someone else's order`(): Unit =
+        with(iam) {
+            val auth = asTestUser(reception())
+            val others = support.openedId()
+            val photo = photo(auth)
+
+            attach(UUID.randomUUID(), photo, auth).problem(403, "PERMISSION_DENIED")
+            attach(others, photo, auth).problem(403, "PERMISSION_DENIED")
+        }
+
+    @Test
+    fun `reception cannot link a file someone else uploaded, but whoever has manage can`(): Unit =
+        with(iam) {
+            val auth = asTestUser(reception())
+            val mine = support.openedId(auth)
+            val foreign = photo()
+
+            attach(mine, foreign, auth).problem(422, "WORK_ORDER_ATTACHMENT_INVALID")
+            attachedIds(support.order(mine)).shouldBeEmpty()
+            attachedIds(attach(mine, foreign).ok()) shouldContainExactly listOf(foreign.toString())
+        }
+
+    @Test
     fun `without request nor manage it is 403, even on an unknown order`(): Unit =
         with(iam) {
             val nobody = asTestUser(createUser())

@@ -95,4 +95,13 @@ object MaintenanceErrorCodes {
 
     /** 404: o anexo não está vinculado a esta ordem (nem vigente). */
     val WORK_ORDER_ATTACHMENT_NOT_FOUND = ErrorCode("WORK_ORDER_ATTACHMENT_NOT_FOUND")
+
+    /** 422: só a ordem de uma UH bloqueia a UH (a ordem de uma área comum não). */
+    val WORK_ORDER_NOT_ROOM = ErrorCode("WORK_ORDER_NOT_ROOM")
+
+    /** 409: a ordem já tem um bloqueio da UH vigente. */
+    val WORK_ORDER_ROOM_ALREADY_BLOCKED = ErrorCode("WORK_ORDER_ROOM_ALREADY_BLOCKED")
+
+    /** 409: o local da ordem não muda enquanto há um bloqueio da UH vigente. */
+    val WORK_ORDER_LOCATION_LOCKED = ErrorCode("WORK_ORDER_LOCATION_LOCKED")
 }

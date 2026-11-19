@@ -9,6 +9,7 @@ import com.zeny.hotel.maintenance.WorkOrderStatus
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.OutOfOrderId
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.DocumentNumber
 import com.zeny.hotel.shared.ErrorCode
@@ -30,6 +31,7 @@ enum class WorkOrderAction {
     CANCEL,
     ATTACH,
     DETACH,
+    BLOCK_ROOM,
 }
 
 /** `409 WORK_ORDER_TRANSITION_NOT_ALLOWED`, com o estado em `workOrderStatus` e a ação em `action`. */
@@ -147,7 +149,10 @@ class WorkOrder private constructor(
     var cancellationReason: String? = cancellationReason
         private set
 
-    /** O período OOO/OOS aberto para esta ordem (Task 3 da E07); nulo sem bloqueio. */
+    /**
+     * O período OOO/OOS aberto para esta ordem (D7-E07); nulo sem bloqueio. Fica depois da liberação: quem diz se o
+     * bloqueio ainda vigora é o período no `rooms`.
+     */
     var outOfOrderId: OutOfOrderId? = outOfOrderId
         private set
 
@@ -229,6 +234,34 @@ class WorkOrder private constructor(
         holdReason = null
         closedAt = now
         move(WorkOrderStatus.CANCELLED, now)
+    }
+
+    /** Uma ação que só vale numa ordem que não é final (`409 WORK_ORDER_TRANSITION_NOT_ALLOWED`), sem mudar nada. */
+    fun requireActive(action: WorkOrderAction) {
+        requireStatus(action, WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.ON_HOLD)
+    }
+
+    /**
+     * Confere que a ordem pode ganhar um bloqueio da UH (D7-E07): não é final (`409`) e é de UH (`422
+     * WORK_ORDER_NOT_ROOM`). Se já tem bloqueio vigente quem decide é o caso de uso, que lê o período no `rooms`.
+     */
+    fun requireBlockable() {
+        requireActive(WorkOrderAction.BLOCK_ROOM)
+        if (roomId == null) {
+            throw BusinessRuleException(
+                MaintenanceErrorCodes.WORK_ORDER_NOT_ROOM,
+                "Só a ordem de uma UH bloqueia a UH; esta é de uma área comum.",
+            )
+        }
+    }
+
+    /** Guarda o período OOO/OOS aberto para a ordem. */
+    fun blockRoom(
+        period: OutOfOrderId,
+        now: Instant,
+    ) {
+        outOfOrderId = period
+        updatedAt = now
     }
 
     /** Vincular ou desvincular anexo (D5-E07) só vale numa ordem que não é final; não muda a ordem nem a versão. */
