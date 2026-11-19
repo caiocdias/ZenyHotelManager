@@ -66,7 +66,7 @@ sealed interface TaskLocation {
     }
 }
 
-/** As ações da execução da tarefa (SPEC §8.4, M6 E04). */
+/** As ações da execução da tarefa (SPEC §8.4, M6 E04) e da inspeção dela (M6 E05). */
 enum class TaskAction {
     START,
     PAUSE,
@@ -74,6 +74,8 @@ enum class TaskAction {
     REFUSE,
     RETRY,
     COMPLETE,
+    START_INSPECTION,
+    COMPLETE_INSPECTION,
 }
 
 /** `409 HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`, com o status em `taskStatus` e a ação em `action`. */
@@ -108,6 +110,8 @@ class HousekeepingTaskTransitionNotAllowedException(
                 TaskAction.REFUSE to "recusada",
                 TaskAction.RETRY to "tentada de novo",
                 TaskAction.COMPLETE to "concluída",
+                TaskAction.START_INSPECTION to "inspecionada",
+                TaskAction.COMPLETE_INSPECTION to "aprovada ou reprovada",
             )
     }
 }
@@ -348,6 +352,22 @@ class HousekeepingTask private constructor(
         cleanedBy = by
         status = if (awaitingInspection) TaskStatus.AWAITING_INSPECTION else TaskStatus.DONE
         transitioned(instant)
+    }
+
+    /**
+     * Confere que a tarefa aguarda inspeção (D3-E05), antes de iniciar ou concluir a inspeção: `409` fora de
+     * `AWAITING_INSPECTION`, com a [action].
+     */
+    fun requireAwaitingInspection(action: TaskAction) = requireFrom(action, TaskStatus.AWAITING_INSPECTION)
+
+    /**
+     * Aprova a inspeção da tarefa `AWAITING_INSPECTION` (D3-E05): a tarefa vai a `DONE`; a conclusão da limpeza (quem
+     * limpou, os tempos) não muda.
+     */
+    fun approveInspection(at: Instant) {
+        requireFrom(TaskAction.COMPLETE_INSPECTION, TaskStatus.AWAITING_INSPECTION)
+        status = TaskStatus.DONE
+        transitioned(transitionInstant(at))
     }
 
     /**

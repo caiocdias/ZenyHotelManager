@@ -1,0 +1,293 @@
+package com.zeny.hotel.housekeeping.application
+
+import com.zeny.hotel.checklists.ChecklistAnswerInput
+import com.zeny.hotel.checklists.ChecklistContext
+import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistPhotoPolicy
+import com.zeny.hotel.checklists.ChecklistSubject
+import com.zeny.hotel.checklists.ChecklistVersionView
+import com.zeny.hotel.checklists.ChecklistsApi
+import com.zeny.hotel.checklists.SubjectAttributes
+import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
+import com.zeny.hotel.housekeeping.HousekeepingPermissions
+import com.zeny.hotel.housekeeping.HousekeepingRealtime
+import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.InspectionId
+import com.zeny.hotel.housekeeping.InspectionResult
+import com.zeny.hotel.housekeeping.InspectionStatus
+import com.zeny.hotel.housekeeping.domain.HousekeepingTask
+import com.zeny.hotel.housekeeping.domain.Inspection
+import com.zeny.hotel.housekeeping.domain.TaskAction
+import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomStatusSource
+import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.shared.Actor
+import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.Audited
+import com.zeny.hotel.shared.Authorization
+import com.zeny.hotel.shared.ConflictException
+import com.zeny.hotel.shared.ErrorCodes
+import com.zeny.hotel.shared.FieldViolation
+import com.zeny.hotel.shared.FieldViolationCodes
+import com.zeny.hotel.shared.InvalidInputException
+import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.RealtimeMessage
+import com.zeny.hotel.shared.RealtimePublisher
+import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.shared.requireCurrentVersion
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+
+/** Persistência das inspeções (D2-E05), na transação corrente. */
+interface InspectionStore {
+    fun insert(inspection: Inspection)
+
+    /** A inspeção aberta (`IN_PROGRESS`) da tarefa, com a linha travada, ou `null`. */
+    fun openForUpdate(taskId: HousekeepingTaskId): Inspection?
+
+    /** Grava a conclusão (status, resultado, itens reprovados, inspetor e instante). */
+    fun update(inspection: Inspection)
+}
+
+/** Uma inspeção, para a resposta (D2-E05): ids, estado e as chaves reprovadas, sem texto livre. */
+data class InspectionView(
+    val id: InspectionId,
+    val taskId: HousekeepingTaskId?,
+    val roomId: RoomId,
+    val checklistExecutionId: ChecklistExecutionId?,
+    val status: InspectionStatus,
+    val result: InspectionResult?,
+    val rejectedItems: List<String>,
+    val inspectorId: UserId,
+    val startedAt: Instant,
+    val completedAt: Instant?,
+)
+
+/**
+ * O resultado de uma ação da inspeção de tarefa: a inspeção, a tarefa e, na conclusão, se a UH mudou ([roomChanged]:
+ * falso quando ela já tinha perdido a inspeção pendente, Review Focus 1); nulo no início.
+ */
+data class InspectionOutcome(
+    val inspection: InspectionView,
+    val task: HousekeepingTaskView,
+    val roomChanged: Boolean?,
+)
+
+/**
+ * A inspeção da tarefa de governança (RF-GOV-06, SPEC §8.4, D3-E05): iniciar e concluir, pela tarefa
+ * `AWAITING_INSPECTION`. Toda ação, na ordem: exige `housekeeping.inspections.perform` (`403 PERMISSION_DENIED`, antes
+ * de qualquer recusa que revele estado, inclusive para quem limpou a tarefa); trava a tarefa (a ordem de trava é
+ * tarefa → inspeção → execução do checklist → UH); `404 HOUSEKEEPING_TASK_NOT_FOUND`; confere a versão (`412`); exige
+ * `AWAITING_INSPECTION` (`409 HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`). A UH muda só pela `RoomsApi` e o checklist só
+ * pela `ChecklistsApi`; cada ação publica [HousekeepingRealtime.TASK] com a versão nova da tarefa.
+ */
+@Service
+@Suppress("LongParameterList") // as portas da inspeção
+class HousekeepingInspections(
+    private val tasks: HousekeepingTaskStore,
+    private val inspections: InspectionStore,
+    private val rooms: RoomsApi,
+    private val checklists: ChecklistsApi,
+    private val realtime: RealtimePublisher,
+    private val authorization: Authorization,
+    private val audit: AuditContext,
+) {
+    /**
+     * Abre a inspeção da tarefa e, se houver modelo de contexto `INSPECTION` que valha para ela
+     * ([ChecklistsApi.resolveTemplate]), a execução da versão vigente, com o ator como executor. Uma inspeção já
+     * aberta: `409 HOUSEKEEPING_INSPECTION_ALREADY_OPEN`. A versão da tarefa sobe (serializa duas inspeções pelo
+     * `If-Match`).
+     */
+    @Audited(HousekeepingAudit.START_INSPECTION)
+    @Transactional
+    fun start(
+        taskId: HousekeepingTaskId,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): InspectionOutcome {
+        val task = awaitingInspection(taskId, expectedVersion, TaskAction.START_INSPECTION)
+        if (inspections.openForUpdate(task.id) != null) {
+            throw ConflictException(
+                HousekeepingErrorCodes.HOUSEKEEPING_INSPECTION_ALREADY_OPEN,
+                "A tarefa já tem uma inspeção aberta: conclua-a.",
+            )
+        }
+        val inspection = open(task, actor, at, inspectionChecklist(task))
+        tasks.touch(task)
+        publish(task)
+        return InspectionOutcome(inspection.view(), task.view(), roomChanged = null)
+    }
+
+    /**
+     * Conclui a inspeção aberta da tarefa com o [result]; sem inspeção aberta, só numa tarefa sem modelo de inspeção,
+     * que abre e conclui numa chamada (com modelo, `409 HOUSEKEEPING_INSPECTION_NOT_STARTED`). Conclui o checklist com
+     * as [answers] (item obrigatório faltando, `422` e nada muda; [answers] sem checklist, `400`). A aprovação leva a
+     * tarefa a `DONE` e a UH Limpa com inspeção pendente a Inspecionada ([RoomsApi.markInspectedIfPending]); a UH que
+     * perdeu a pendência não muda (Review Focus 1). A aprovação não leva [rejectedItems] (`400`).
+     */
+    @Audited(HousekeepingAudit.COMPLETE_INSPECTION)
+    @Transactional
+    @Suppress("LongParameterList") // a ação, as respostas, o ator, o instante e a versão
+    fun complete(
+        taskId: HousekeepingTaskId,
+        result: InspectionResult,
+        answers: List<ChecklistAnswerInput>?,
+        rejectedItems: List<String>,
+        actor: Actor,
+        at: Instant,
+        expectedVersion: Long?,
+    ): InspectionOutcome {
+        val task = awaitingInspection(taskId, expectedVersion, TaskAction.COMPLETE_INSPECTION)
+        audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() }
+        requireApproval(result, rejectedItems)
+        val inspection =
+            inspections.openForUpdate(task.id)?.also { open ->
+                audit.track(HousekeepingAudit.INSPECTION, open.id.value) { open.auditState() }
+            } ?: openWithoutChecklist(task, actor, at)
+        val completedAt = maxOf(at, inspection.startedAt)
+        requireAnswersFit(inspection, answers)
+        inspection.checklistExecutionId?.let {
+            checklists.completeExecutionIfOpen(it, answers.orEmpty(), completedAt, ChecklistPhotoPolicy.REFUSE)
+        }
+        val room = rooms.markInspectedIfPending(inspection.roomId, RoomStatusSource.TASK)
+        task.approveInspection(completedAt)
+        inspection.complete(result, emptyList(), actor.userId, completedAt)
+        inspections.update(inspection)
+        tasks.update(task)
+        publish(task)
+        return InspectionOutcome(inspection.view(), task.view(), room.changed)
+    }
+
+    /** A tarefa travada, conferida e `AWAITING_INSPECTION`, na ordem da autorização antes do estado. */
+    private fun awaitingInspection(
+        taskId: HousekeepingTaskId,
+        expectedVersion: Long?,
+        action: TaskAction,
+    ): HousekeepingTask {
+        authorization.require(HousekeepingPermissions.INSPECTIONS_PERFORM)
+        val task =
+            tasks.findForUpdate(taskId)
+                ?: throw NotFoundException(
+                    HousekeepingErrorCodes.HOUSEKEEPING_TASK_NOT_FOUND,
+                    "Tarefa de governança não encontrada.",
+                )
+        expectedVersion?.let { requireCurrentVersion(it, checkNotNull(task.version)) }
+        task.requireAwaitingInspection(action)
+        return task
+    }
+
+    /**
+     * Sem inspeção aberta: só uma tarefa sem modelo de inspeção abre e conclui numa chamada; com modelo, o checklist
+     * precisava abrir no início.
+     */
+    private fun openWithoutChecklist(
+        task: HousekeepingTask,
+        actor: Actor,
+        at: Instant,
+    ): Inspection {
+        if (inspectionChecklist(task) != null) {
+            throw ConflictException(
+                HousekeepingErrorCodes.HOUSEKEEPING_INSPECTION_NOT_STARTED,
+                "A tarefa tem checklist de inspeção: inicie a inspeção antes de concluí-la.",
+            )
+        }
+        return open(task, actor, at, version = null)
+    }
+
+    /** Grava uma inspeção nova da tarefa, com a execução da [version] do checklist, se houver. */
+    private fun open(
+        task: HousekeepingTask,
+        actor: Actor,
+        requestedAt: Instant,
+        version: ChecklistVersionView?,
+    ): Inspection {
+        val id = InspectionId.new()
+        val at = task.lastTransitionAt?.let { maxOf(requestedAt, it) } ?: requestedAt
+        val execution =
+            version?.let {
+                checklists.startExecution(it.id, ChecklistSubject(CHECKLIST_SUBJECT_TYPE, id.value), actor.userId, at)
+            }
+        val roomId = checkNotNull(task.roomId) { "A tarefa ${task.id} aguarda inspeção sem UH" }
+        val inspection = Inspection.start(id, task.id, roomId, execution?.id, actor.userId, at)
+        inspections.insert(inspection)
+        audit.created(HousekeepingAudit.INSPECTION, id.value) { inspection.auditState() }
+        return inspection
+    }
+
+    /** A versão vigente do modelo de inspeção que vale para a tarefa (D3-E05), ou nenhuma. */
+    private fun inspectionChecklist(task: HousekeepingTask): ChecklistVersionView? =
+        checklists.resolveTemplate(
+            ChecklistContext.INSPECTION,
+            SubjectAttributes(
+                roomTypeId = task.roomId?.let { rooms.room(it)?.roomTypeId?.value },
+                cleaningTypeId = task.cleaningTypeId.value,
+            ),
+        )
+
+    private fun publish(task: HousekeepingTask) {
+        realtime.publish(
+            HousekeepingRealtime.TOPIC,
+            RealtimeMessage(HousekeepingRealtime.TASK, task.id.value, checkNotNull(task.version)),
+        )
+    }
+}
+
+/** A aprovação não leva itens reprovados (`400 VALIDATION_FAILED` no campo); a reprovação vem com a Task 2. */
+private fun requireApproval(
+    result: InspectionResult,
+    rejectedItems: List<String>,
+) {
+    val violation =
+        when {
+            result != InspectionResult.APPROVED -> {
+                FieldViolation("result", FieldViolationCodes.INVALID_VALUE, "A reprovação ainda não é aceita.")
+            }
+
+            rejectedItems.isNotEmpty() -> {
+                FieldViolation(
+                    "rejectedItems",
+                    FieldViolationCodes.INVALID_VALUE,
+                    "A aprovação não tem itens reprovados.",
+                )
+            }
+
+            else -> {
+                return
+            }
+        }
+    throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+}
+
+/** [answers] numa inspeção sem checklist: `400 VALIDATION_FAILED` no campo `answers` (padrão da E04). */
+private fun requireAnswersFit(
+    inspection: Inspection,
+    answers: List<ChecklistAnswerInput>?,
+) {
+    if (answers == null || inspection.checklistExecutionId != null) return
+    val violation =
+        FieldViolation(
+            "answers",
+            FieldViolationCodes.INVALID_VALUE,
+            "A inspeção não tem checklist: não envie respostas.",
+        )
+    throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+}
+
+/** O tipo do sujeito da execução do checklist de inspeção (o `checklists` não o confere). */
+private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.inspection"
+
+internal fun Inspection.view() =
+    InspectionView(
+        id,
+        taskId,
+        roomId,
+        checklistExecutionId,
+        status,
+        result,
+        rejectedItems,
+        inspectorId,
+        startedAt,
+        completedAt,
+    )

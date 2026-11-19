@@ -155,6 +155,10 @@ class JpaHousekeepingTaskStore(
         repository.saveAndFlush(task)
     }
 
+    override fun touch(task: HousekeepingTask) {
+        entityManager.lock(task, LockModeType.PESSIMISTIC_FORCE_INCREMENT)
+    }
+
     override fun recordAssignment(
         taskId: HousekeepingTaskId,
         employeeId: EmployeeId,

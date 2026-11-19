@@ -108,6 +108,12 @@ interface HousekeepingTaskStore {
     fun update(task: HousekeepingTask)
 
     /**
+     * Sobe a versão da tarefa travada sem mudar outro campo (D3-E05: o início da inspeção serializa duas inspeções pelo
+     * `If-Match`); a versão nova já vale em [task] na volta.
+     */
+    fun touch(task: HousekeepingTask)
+
+    /**
      * Grava a posse (D3-E19): a tarefa [taskId] passou à camareira [employeeId] em [at], no histórico só de inserção
      * `housekeeping.task_assignment`. A camareira atual e a retirada vêm da própria tarefa.
      */

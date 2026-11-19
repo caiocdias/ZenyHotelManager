@@ -41,6 +41,36 @@ value class HousekeepingTaskId(
     }
 }
 
+/** Id de uma inspeção de UH (M6 E05). */
+@JvmInline
+value class InspectionId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): InspectionId = InspectionId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de uma inspeção (D2-E05): `IN_PROGRESS`, aberta pelo início; `COMPLETED`, concluída com o resultado. O
+ * conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class InspectionStatus {
+    IN_PROGRESS,
+    COMPLETED,
+}
+
+/**
+ * Resultado de uma inspeção (D2-E05): `APPROVED`, a UH fica Inspecionada; `REJECTED`, a limpeza volta à camareira. O
+ * conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class InspectionResult {
+    APPROVED,
+    REJECTED,
+}
+
 /** Id de um plano do dia da distribuição das tarefas. */
 @JvmInline
 value class AssignmentPlanId(
@@ -246,6 +276,15 @@ object HousekeepingErrorCodes {
      * marcada (`hasConflict`) e nada mais mudou nela.
      */
     val HOUSEKEEPING_TASK_CONFLICT = ErrorCode("HOUSEKEEPING_TASK_CONFLICT")
+
+    /** 409: a tarefa já tem uma inspeção aberta (D3-E05); conclua-a. */
+    val HOUSEKEEPING_INSPECTION_ALREADY_OPEN = ErrorCode("HOUSEKEEPING_INSPECTION_ALREADY_OPEN")
+
+    /**
+     * 409: concluir a inspeção de uma tarefa que tem modelo de checklist de inspeção sem tê-la iniciado (D3-E05): o
+     * checklist abre no início.
+     */
+    val HOUSEKEEPING_INSPECTION_NOT_STARTED = ErrorCode("HOUSEKEEPING_INSPECTION_NOT_STARTED")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")

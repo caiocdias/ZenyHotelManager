@@ -36,17 +36,27 @@ class HousekeepingExecutionTestSupport(
      * criam modelos gerais (com itens obrigatórios): eles não são duráveis aqui, e um teste que inicia tarefas não
      * pode depender da ordem das classes. Os modelos de um teste da execução entram pelo vínculo do tipo de limpeza.
      */
-    fun neutralizeGeneralHousekeepingTemplates() {
+    fun neutralizeGeneralHousekeepingTemplates() = neutralizeGeneralTemplates("HOUSEKEEPING")
+
+    /**
+     * O mesmo para os modelos **gerais** de inspeção (contexto `INSPECTION`, M6 E05): a inspeção de uma tarefa pega
+     * qualquer modelo geral de inspeção ativo pelo `resolveTemplate`. Os modelos de um teste da inspeção entram por
+     * uma regra de aplicabilidade do tipo de limpeza do próprio teste.
+     */
+    fun neutralizeGeneralInspectionTemplates() = neutralizeGeneralTemplates("INSPECTION")
+
+    private fun neutralizeGeneralTemplates(context: String) {
         jdbc
             .sql(
                 """
                 UPDATE checklists.checklist_template t SET active = false
-                WHERE t.context = 'HOUSEKEEPING' AND t.active AND t.published_version IS NOT NULL
+                WHERE t.context = :context AND t.active AND t.published_version IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM checklists.checklist_version v
                                   WHERE v.template_id = t.id AND v.number = t.published_version
                                     AND jsonb_array_length(COALESCE(v.content -> 'applicability', '[]'::jsonb)) > 0)
                 """.trimIndent(),
-            ).update()
+            ).param("context", context)
+            .update()
     }
 
     /** Um usuário novo só com o modelo de role [template] da carga. */

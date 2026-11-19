@@ -38,6 +38,12 @@ internal object HousekeepingAudit {
     const val RETRY_TASK_OFFLINE = "housekeeping.task.retry-offline"
     const val COMPLETE_TASK_OFFLINE = "housekeeping.task.complete-offline"
 
+    /** A inspeção de uma UH (M6 E05): retrato só com ids, estado e as chaves reprovadas. */
+    const val INSPECTION = "housekeeping.inspection"
+
+    const val START_INSPECTION = "housekeeping.inspection.start"
+    const val COMPLETE_INSPECTION = "housekeeping.inspection.complete"
+
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"

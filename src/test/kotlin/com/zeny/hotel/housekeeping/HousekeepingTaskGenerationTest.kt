@@ -457,6 +457,8 @@ class HousekeepingTaskGenerationTest {
 
         override fun update(task: HousekeepingTask): Unit = error("fora do teste")
 
+        override fun touch(task: HousekeepingTask): Unit = error("fora do teste")
+
         override fun recordAssignment(
             taskId: HousekeepingTaskId,
             employeeId: EmployeeId,
