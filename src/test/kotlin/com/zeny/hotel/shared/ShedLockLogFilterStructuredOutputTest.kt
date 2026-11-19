@@ -1,67 +1,83 @@
 package com.zeny.hotel.shared
 
+import ch.qos.logback.classic.LoggerContext
+import ch.qos.logback.classic.util.LogbackMDCAdapter
+import ch.qos.logback.core.OutputStreamAppender
 import com.zeny.hotel.shared.infrastructure.scheduling.ShedLockLogFilter
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
-import org.slf4j.LoggerFactory
-import org.springframework.boot.WebApplicationType
-import org.springframework.boot.builder.SpringApplicationBuilder
-import org.springframework.boot.test.system.CapturedOutput
-import org.springframework.boot.test.system.OutputCaptureExtension
-import org.springframework.context.annotation.Configuration
+import org.springframework.boot.logging.logback.StructuredLogEncoder
+import org.springframework.core.env.Environment
+import org.springframework.mock.env.MockEnvironment
+import java.io.ByteArrayOutputStream
 import java.sql.SQLException
 
 /**
- * O filtro do ShedLock com a saída estruturada (ECS) do profile `prod` (M6 E21): o Boot reinicializa o logging ao ler o
- * `Environment` e zera o contexto do Logback, e o instalador do filtro refaz o registro depois. Aqui sobe-se uma
- * aplicação mínima (sem banco) com o profile `prod`, para provar que o filtro continua valendo no formato ECS, e que um
- * logger qualquer com exceção continua saindo. Ao fim, o logging volta à configuração do profile `local` para não
- * mudar a saída dos outros testes da JVM.
+ * O filtro do ShedLock com a saída estruturada (ECS) do profile `prod` (M6 E21). Um [LoggerContext] próprio do teste,
+ * com o [ShedLockLogFilter] e um appender com o `StructuredLogEncoder` do Boot no formato `ecs` (o mesmo do `prod`),
+ * não depende do estado do logging da JVM nem o altera: subir uma aplicação com o profile `prod` dependia da ordem das
+ * classes de teste (o Boot não reinicializa o logging se outra aplicação já o configurou) e deixava a saída em ECS
+ * para os testes seguintes. O que prova: com saída ECS, o evento do ShedLock com exceção some, o de outro logger com
+ * exceção e o do ShedLock sem exceção saem em JSON.
  */
-@ExtendWith(OutputCaptureExtension::class)
 class ShedLockLogFilterStructuredOutputTest {
-    @Configuration(proxyBeanMethods = false)
-    class EmptyConfiguration
+    private val buffer = ByteArrayOutputStream()
+    private val context = LoggerContext()
 
-    private fun run(profile: String) =
-        SpringApplicationBuilder(EmptyConfiguration::class.java)
-            .web(WebApplicationType.NONE)
-            .profiles(profile)
-            .properties("spring.main.banner-mode=off")
-            .run()
-            .close()
+    @BeforeEach
+    fun setUp() {
+        val loggerContext = context
+        loggerContext.mdcAdapter = LogbackMDCAdapter()
+        loggerContext.putObject(Environment::class.java.name, MockEnvironment())
+        val encoder =
+            StructuredLogEncoder().apply {
+                setContext(loggerContext)
+                setFormat("ecs")
+                start()
+            }
+        val appender =
+            OutputStreamAppender<ch.qos.logback.classic.spi.ILoggingEvent>().apply {
+                setContext(loggerContext)
+                setEncoder(encoder)
+                outputStream = buffer
+                start()
+            }
+        context.getLogger(Logger.ROOT_LOGGER_NAME).addAppender(appender)
+        context.addTurboFilter(ShedLockLogFilter().apply { start() })
+    }
 
     @AfterEach
-    fun restoreLocalLogging() = run("local")
+    fun tearDown() = context.stop()
+
+    private fun output() = buffer.toString(Charsets.UTF_8)
 
     @Test
-    fun `the filter still drops the shedlock exception event under the prod ECS output`(output: CapturedOutput) {
-        run("prod")
+    fun `the filter drops the shedlock exception event and keeps other loggers under the ECS output`() {
         val sentinel = "sentinela_ecs_e21"
         val failure = IllegalStateException("banco: $sentinel", SQLException("causa $sentinel"))
 
-        LoggerFactory.getLogger(ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER).error("Unexpected exception", failure)
-        LoggerFactory.getLogger("com.zeny.hotel.e21.OtherEcs").error("other ecs failure", failure)
+        context.getLogger(ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER).error("Unexpected exception", failure)
+        context.getLogger("com.zeny.hotel.e21.OtherEcs").error("other ecs failure", failure)
 
-        // Prova que a saída é mesmo a estruturada: o evento do outro logger sai em JSON ECS.
-        output.all shouldContain "\"logger\":\"com.zeny.hotel.e21.OtherEcs\""
-        output.all shouldContain "other ecs failure"
-        output.all shouldNotContain "\"message\":\"Unexpected exception\""
-        output.all shouldNotContain "logger\":\"${ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER}\""
+        // A saída é mesmo a estruturada: o evento do outro logger sai em JSON ECS.
+        output() shouldContain "\"logger\":\"com.zeny.hotel.e21.OtherEcs\""
+        output() shouldContain "other ecs failure"
+        output() shouldNotContain "Unexpected exception"
+        output() shouldNotContain ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER
     }
 
     @Test
-    fun `an event without exception from the shedlock logger still shows up under the prod ECS output`(
-        output: CapturedOutput,
-    ) {
-        run("prod")
+    fun `an event without exception from the shedlock logger still shows up under the ECS output`() {
+        context.getLogger(ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER).error("Unlock failed after 10 attempts")
 
-        LoggerFactory.getLogger(ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER).error("Unlock failed after 10 attempts")
+        output() shouldContain "Unlock failed after 10 attempts"
+        output() shouldContain "\"logger\":\"${ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER}\""
+    }
 
-        output.all shouldContain "Unlock failed after 10 attempts"
-        output.all shouldContain "\"logger\":\"${ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER}\""
+    private object Logger {
+        const val ROOT_LOGGER_NAME = org.slf4j.Logger.ROOT_LOGGER_NAME
     }
 }
