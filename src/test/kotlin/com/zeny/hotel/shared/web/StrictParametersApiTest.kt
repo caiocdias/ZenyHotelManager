@@ -2,6 +2,7 @@ package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.withClue
@@ -75,7 +76,10 @@ class StrictParametersApiTest(
 
     @Test
     fun `an empty optional query parameter is absent, and an empty required one is a 400 on the parameter`() {
-        val optional = get("/api/v1/traces", queryParams = mapOf("dueOn" to ""))
+        // O filtro por um setor que ninguém usa restringe a lista aos próprios dados: o banco é compartilhado e há
+        // recados de setor inexistente deixados por testes de repositório.
+        val optional =
+            get("/api/v1/traces", queryParams = mapOf("dueOn" to "", "departmentId" to UuidV7.generate().toString()))
         withClue("dueOn= -> ${optional.status}") { optional.status shouldBe 200 }
 
         val required = get("/api/v1/card-pre-authorizations/expiring", queryParams = mapOf("to" to ""))

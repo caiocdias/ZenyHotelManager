@@ -348,19 +348,22 @@ class EndOfDayRunsApiTest(
         }
 
     @Test
-    fun `a businessDate outside the range of the database date type is END_OF_DAY_DATE_MISMATCH`() =
+    fun `a businessDate outside the storable range is INVALID_FORMAT, the ceiling is a date mismatch`() =
         settled {
             val auth = asUser(manager().id.value)
             val current = hotelApi.currentBusinessDate()
 
-            listOf("+5874898-01-01", "+5874897-12-31", "-4713-11-24", "-4714-11-23", "+999999999-12-31")
-                .forEach { value ->
-                    withClue(value) {
-                        start(auth, mapOf("businessDate" to value))
-                            .problem(409, "END_OF_DAY_DATE_MISMATCH")["currentBusinessDate"]
-                            .asString() shouldBe current.toString()
-                    }
+            listOf("+5874898-01-01", "-4713-11-24", "-4714-11-23", "+999999999-12-31").forEach { value ->
+                withClue(value) {
+                    val problem = start(auth, mapOf("businessDate" to value)).problem(400, "VALIDATION_FAILED")
+                    problem["errors"][0]["field"].asString() shouldBe "businessDate"
+                    problem["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
                 }
+            }
+            // O teto exato é uma data válida: passa da leitura e cai na recusa da data não corrente.
+            start(auth, mapOf("businessDate" to "+5874897-12-31"))
+                .problem(409, "END_OF_DAY_DATE_MISMATCH")["currentBusinessDate"]
+                .asString() shouldBe current.toString()
             runCount(current) shouldBe 0
         }
 
