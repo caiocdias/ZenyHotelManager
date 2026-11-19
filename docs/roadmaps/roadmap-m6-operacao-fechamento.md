@@ -120,7 +120,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
 - [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
 - [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
-- [ ] A manutenção transversal da E20 e da E21 está entregue: a entrada é estrita também em query string, caminho, `LocalTime`, número inteiro e UUID, e fora do alcance do banco no corpo; o contrato marca `required` nos requests; deadlock e `lock_timeout` dão `409 CONCURRENT_UPDATE`; nenhum job loga a mensagem da exceção.
+- [x] A manutenção transversal da E20 e da E21 está entregue: a entrada é estrita também em query string, caminho, `LocalTime`, número inteiro e UUID, e fora do alcance do banco no corpo; o contrato marca `required` nos requests; deadlock e `lock_timeout` dão `409 CONCURRENT_UPDATE`; nenhum job loga a mensagem da exceção.
 - [ ] Verificação de módulos, build, testes e verificação do contrato passam.
 
 ## Protocolo de execução
@@ -217,7 +217,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E18 | Faixa do cursor, rollback em toda exceção, datas estritas e log dos jobs | #concluida | — | Regras do `shared` que valem para todos os módulos: `400 INVALID_CURSOR` fora do alcance do banco, `rollbackOn = ALL_EXCEPTIONS`, Jackson estrito em `date`/`date-time` e tratador de erro do agendador que loga só a classe |
 | E20 | Entrada estrita no corpo, na query e no caminho, e `required` no contrato | #concluida | — | Datas e instantes fora do alcance do banco recusados no corpo; query e caminho só ISO; `LocalTime`, inteiro e UUID estritos; `required` nos schemas de request |
-| E21 | Erros de trava e logs restantes | #em-andamento | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
+| E21 | Erros de trava e logs restantes | #concluida | — | `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`; quatro jobs sem mensagem no log; filtro no lugar do `OFF` do ShedLock; `JOSEException` capturada no FCM |
 
 **Governança**
 
@@ -973,7 +973,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E21 — Erros de trava e logs restantes — #em-andamento
+## E21 — Erros de trava e logs restantes — #concluida
 
 **Objetivo:** fechar as pendências de erro e de log que a E18 e a E01 deixaram para o `arquiteto`: (1) `40P01` (deadlock) e `55P03` (`lock_timeout`) que escapam de um caso de uso viram 500 no `ApiExceptionHandler`, e passam a dar `409 CONCURRENT_UPDATE` (H21 c); (2) quatro jobs ainda logam a própria falha com a mensagem (`OutboxMetrics`, `FileOrphanPurgeJob`, `ProvisionalReservations` e `InventoryHorizonJob`); (3) o logger `JdbcTemplateStorageAccessor` do ShedLock está em `OFF` (decisão (d) da E18), o que também esconde o "Unlock failed after 10 attempts"; (4) `FcmPushGateway.requestAccessToken` não captura a `JOSEException` de `SignedJWT.sign`.
 
@@ -992,13 +992,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] **Deadlock:** um caso de uso de teste que provoca `40P01` de verdade (duas transações em ordem cruzada, coordenadas de forma determinística, como os testes de trava da E01) dá `409 CONCURRENT_UPDATE`, sem texto do PostgreSQL no corpo. Teste vermelho antes da correção (500).
-- [ ] **`lock_timeout`:** um caso de uso que espera uma linha travada além do `lock_timeout` dá `409 CONCURRENT_UPDATE`. Os testes de retomada do `endofday` continuam passando.
-- [ ] **Jobs:** cada um dos quatro jobs, com a falha forçada levando um sentinela na mensagem e na causa, gera log (saída capturada) com a classe e sem o sentinela. Teste vermelho antes da correção.
-- [ ] **ShedLock:** com o `LockProvider` falhando com sentinela, nenhum log do ShedLock traz o sentinela, e uma mensagem sem exceção do `JdbcTemplateStorageAccessor` aparece no log.
-- [ ] **FCM:** a `JOSEException` forçada na assinatura não escapa do gateway, e o log não traz a mensagem dela.
-- [ ] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa `ERR` (o `409` novo só documenta o que era 500).
-- [ ] Build e testes passam.
+- [x] **Deadlock:** um caso de uso de teste que provoca `40P01` de verdade (duas transações em ordem cruzada, coordenadas de forma determinística, como os testes de trava da E01) dá `409 CONCURRENT_UPDATE`, sem texto do PostgreSQL no corpo. Teste vermelho antes da correção (500).
+- [x] **`lock_timeout`:** um caso de uso que espera uma linha travada além do `lock_timeout` dá `409 CONCURRENT_UPDATE`. Os testes de retomada do `endofday` continuam passando.
+- [x] **Jobs:** cada um dos quatro jobs, com a falha forçada levando um sentinela na mensagem e na causa, gera log (saída capturada) com a classe e sem o sentinela. Teste vermelho antes da correção.
+- [x] **ShedLock:** com o `LockProvider` falhando com sentinela, nenhum log do ShedLock traz o sentinela, e uma mensagem sem exceção do `JdbcTemplateStorageAccessor` aparece no log.
+- [x] **FCM:** a `JOSEException` forçada na assinatura não escapa do gateway, e o log não traz a mensagem dela.
+- [x] `./gradlew checkOpenApi` passa, e `.github/scripts/check-api-breaking.sh` não acusa `ERR` (o `409` novo só documenta o que era 500).
+- [x] Build e testes passam.
 
 **Validação obrigatória:**
 
@@ -1018,12 +1018,64 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e21.md`, com 3 fatias. Revisão de arquitetura (`revisor-arquitetura`, opus): aprovado na rodada 2.
+  - Rodada 0: bloqueado por 5 Importantes. O teste do ShedLock não passava pelo filtro; o `409` retentável ficaria guardado pela idempotência; a `UnexpectedRollbackException` não traz a causa; o FCM não tinha ponto de injeção; um controller de teste vazaria para o contrato.
+  - Rodada 1: bloqueado por 1 Importante, o sinal da liberação da chave e o caso negativo.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `b141612` (início) a `bb79b5b`.
+  - Task 1 (409, idempotência, `lock_timeout`): `5d53d55`, `b916ac0` e, na rodada 1, `a6d9af7` (desenvolvedor).
+  - Task 2 (`ExceptionClasses`, jobs e FCM): `e9c9488` e `eb7d1df` (desenvolvedor).
+  - Task 3 (filtro do ShedLock): `5228dcc` (desenvolvedor).
+  - Testador da etapa: `7a31dd4` e `bb79b5b`, só `src/test`.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`.
+    - A Task 1 teve 1 Importante: o log da falha ao liberar a chave levava o throwable. Foi corrigido na rodada 1.
+    - As Tasks 2 e 3 foram aprovadas sem Importante.
+- Entregue:
+  - **`409 CONCURRENT_UPDATE`:** o `ApiExceptionHandler` reconhece `40P01` e `55P03` pelo SQLSTATE de qualquer `java.sql.SQLException` da cadeia, inclusive o `getNextException`, com teto de 64 elos.
+    - Responde `409`, retentável, sem a mensagem do banco.
+    - Loga o método, o caminho, a cadeia de classes e o SQLSTATE.
+    - Conta as ocorrências em `zeny.api.concurrent.updates{sqlstate}`.
+    - A `UnexpectedRollbackException`, que não traz a causa, segue `500`. A retomada do `endofday` mantém o tratamento próprio. No offline, segue `COMMAND_FAILED`.
+  - **Idempotência (D4):** o tratador grava um atributo de requisição, e o `IdempotencyFilter` libera a chave só com ele. O reenvio com a mesma chave executa de novo. Um `409` de outro código continua guardado.
+  - **`lock_timeout` (D1):** `10s` em toda conexão da aplicação, pelo parâmetro de partida `options` do `data-source-properties`, que sobrevive a `RESET ALL`. O Flyway usa um `SimpleDriverDataSource` próprio e não herda o prazo; um teste trava isso.
+  - **`ExceptionClasses.chain`** (`shared`, D2): devolve `A <- B <- C`, com proteção contra ciclo e teto de 10 elos. É usado pelo agendador, pelos quatro jobs (`OutboxMetrics`, `FileOrphanPurgeJob`, `ProvisionalReservations`, `InventoryHorizonJob`), pelo FCM e pelos logs do `409`.
+  - **FCM:** a `JOSEException` e a `RuntimeException` da montagem da asserção são capturadas e viram o `TemporaryFailure` que já existia. O ponto de injeção é o parâmetro `signerFactory` do construtor.
+  - **ShedLock:** o `OFF` deu lugar ao `ShedLockLogFilter`, um `TurboFilter` que descarta os eventos com exceção do `JdbcTemplateStorageAccessor`, tanto no `Throwable` do evento quanto nos `params`.
+    - O instalador é um listener em `META-INF/spring.factories` e sobrevive à reinicialização do logging do Boot, inclusive na saída ECS do `prod`.
+    - O "Unlock failed after 10 attempts" voltou a aparecer.
+- Revisão final: `revisor-seguranca` (opus) sobre `c2c2ab9..5228dcc`. "Ready to merge? Yes", com ressalvas, 0 Crítico e 0 Importante de código.
+  - A ressalva era fechar o inventário dos `@Idempotent`. O testador o fez: só o fechamento do dia confirma efeito antes de um ponto em que um erro de trava pode escapar. Nesse caso, o reenvio cai em `409 END_OF_DAY_RUN_EXISTS` (RN-21), sem efeito duplicado.
+  - A re-revisão escopada (`5228dcc..bb79b5b`) deu o inventário e os testes do testador por atendidos, sem Crítico nem Importante; restaram 3 Menores de teste (um `object Logger` que sombreia o nome; o teste negativo sem a classe da exceção; o sentinela no primeiro teste ECS).
+- Verificação:
+  - **Gate:** `./gradlew build` em `bb79b5b` → BUILD SUCCESSFUL em 16m 29s, com 4378 testes e 0 falhas. Em `7a31dd4`, o gate foi vermelho por um teste novo do testador que mexia no logging global e dependia da ordem das classes; o testador o reescreveu com um `LoggerContext` próprio (`bb79b5b`). Em `5228dcc`, BUILD SUCCESSFUL com 4373 testes.
+  - **oasdiff:** "Nenhuma mudança incompatível (nível ERR) em /api/v1". O contrato só mudou a descrição do `code`.
+  - **Scanner:** `osv-scanner` 2.7.1 (426 + 74 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos anteriores. O `logback` de runtime é o 1.5.38. Lockfiles e catálogo sem mudança.
+  - **Integridade:** `check_test_integrity.py --base c2c2ab9` → exit 0, sem apontamento; exit 0 também em cada fatia.
+- Critérios verificados:
+  - **Deadlock:** `ConcurrentUpdateApiTest`. Duas requisições em ordem cruzada, coordenadas por `pg_blocking_pids`, dão `[200, 409]`, sem texto do PostgreSQL no corpo nem no log. O vermelho antes era `500`.
+  - **`lock_timeout`:** `ConcurrentUpdateApiTest`, com `SET LOCAL` de 200 ms e `SHOW lock_timeout` = `10s`. Os testes do `endofday` seguem verdes.
+  - **Jobs:** `JobFailureLogTest`, com sentinela na mensagem, na causa e nas suprimidas. O vermelho antes vinha do sentinela no log.
+  - **ShedLock:** `ShedLockLogFilterTest` (as duas formas, um `JdbcTemplateLockProvider` real no ramo `error("Unexpected exception", e)` do insert, e uma mensagem sem exceção visível) e `ShedLockLogFilterStructuredOutputTest` (saída ECS do `prod`).
+  - **FCM:** `FcmPushGatewayTest`, com `JOSEException` e `IllegalArgumentException` com sentinela. O vermelho antes era a exceção escapando.
+  - **Contrato:** `checkOpenApi` (no gate) e o oasdiff acima.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **(a) D1:** `lock_timeout` de 10 s em toda conexão da aplicação. Uma requisição que espera uma trava mais que isso recebe `409 CONCURRENT_UPDATE`, e uma etapa do fechamento nessa situação falha e fica retomável. Um pooler na frente do banco (PgBouncer em modo transação, proxies gerenciados) pode ignorar o parâmetro `options`; ver a nota ao `arquiteto`.
+  - **(b) D4:** a chave de idempotência é liberada no `409 CONCURRENT_UPDATE`, e o reenvio com a mesma chave executa de novo. Isso muda o "guardada por 24h" da §7 nesse caso. Alternativa descartada: manter guardada e pedir uma chave nova.
+  - **(c)** O `signerFactory` do FCM ficou como parâmetro público do construtor, e não `internal`.
+- Notas para a próxima etapa:
+  - **Para o `arquiteto`:**
+    - caminhos que ainda logam a exceção inteira, com o texto do PostgreSQL (sem o DETAIL): `OfflineCommands.kt:305` (`COMMAND_FAILED`, que passa a disparar mais com o `lock_timeout`), `IdempotencyFilter.kt:202` e `:217`, e o caminho `500` do `ApiExceptionHandler`;
+    - um guarda de partida que confira `SHOW lock_timeout` = `10s` (por causa de poolers);
+    - o Flyway não herda `SET TIME ZONE`, `logServerErrorDetail` nem `lock_timeout` do pool, o que já era assim antes;
+    - `40001` (serialização) e `57014` (`statement_timeout`) ficaram fora do `409`;
+    - o filtro do ShedLock depende da API clássica do SLF4J; rever ao subir o ShedLock, junto do `KeepAliveLockProvider`.
+  - **Menores restantes:**
+    - o `seen` é compartilhado entre a cadeia de causas e o `nextException`;
+    - o contador é montado a cada resposta;
+    - a cadeia cortada no teto não tem marcador;
+    - o `JobFailureLogTest` fica no pacote `shared` e importa módulos;
+    - o instalador do filtro não faz nada (fail-open) se o backend de logging não for o Logback.
+  - **Para a E04 e seguintes:** um deadlock ou `lock_timeout` que escapa vira `409 CONCURRENT_UPDATE` sem código local; usar `ExceptionClasses.chain` em todo log de falha.
+- Capturas do brain: CAPTURA_E21.
 
 ---
 
