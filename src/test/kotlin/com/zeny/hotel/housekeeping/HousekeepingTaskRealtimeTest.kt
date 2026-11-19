@@ -10,6 +10,7 @@ import com.zeny.hotel.staff.StaffApi
 import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.GUESTS_REKEY_DEFERRED
 import com.zeny.hotel.testsupport.INVENTORY_HORIZON_DEFERRED
+import com.zeny.hotel.testsupport.LOST_FOUND_EXPIRY_DEFERRED
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PROVISIONAL_EXPIRY_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
@@ -61,6 +62,7 @@ import java.util.concurrent.CopyOnWriteArrayList
         GUESTS_REKEY_DEFERRED,
         INVENTORY_HORIZON_DEFERRED,
         PROVISIONAL_EXPIRY_DEFERRED,
+        LOST_FOUND_EXPIRY_DEFERRED,
     ],
 )
 @ActiveProfiles("local")
