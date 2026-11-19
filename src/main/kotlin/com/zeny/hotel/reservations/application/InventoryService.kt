@@ -320,7 +320,7 @@ class ReservationsApiService(
 
     @Transactional(readOnly = true)
     override fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime> =
-        if (ids.isEmpty()) emptyMap() else reservationQueries.expectedArrivalTimes(ids)
+        reservationQueries.expectedArrivalTimes(ids)
 
     @Transactional(readOnly = true)
     override fun chargesDue(

@@ -240,8 +240,9 @@ class JdbcReservationQueries(
     override fun pendingArrivalIds(date: LocalDate): List<ReservationId> =
         ids(ReservationQuerySql.idsUpTo(ReservationStatus.CONFIRMED, "arrival"), date)
 
-    override fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime> =
-        jdbc
+    override fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime> {
+        if (ids.isEmpty()) return emptyMap()
+        return jdbc
             .sql(
                 "SELECT id, expected_arrival_time FROM reservations.reservation " +
                     "WHERE id IN (:ids) AND expected_arrival_time IS NOT NULL",
@@ -250,6 +251,7 @@ class JdbcReservationQueries(
                 ReservationId(rs.uuid("id")) to rs.getObject("expected_arrival_time", LocalTime::class.java)
             }.list()
             .toMap()
+    }
 
     override fun pendingDepartureIds(date: LocalDate): List<ReservationId> =
         ids(ReservationQuerySql.idsUpTo(ReservationStatus.IN_HOUSE, "departure"), date)
