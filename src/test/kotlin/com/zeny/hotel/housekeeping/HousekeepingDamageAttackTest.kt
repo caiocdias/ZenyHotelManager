@@ -39,7 +39,7 @@ import java.util.UUID
 @Suppress("LongParameterList") // os apoios de iam, governança, reservas e billing
 class HousekeepingDamageAttackTest(
     @Autowired private val iam: IamTestSupport,
-    @Autowired private val jdbc: JdbcClient,
+    @Autowired jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
     @Autowired private val reservationsApi: ReservationsApi,
     @Autowired private val damages: HousekeepingDamages,
@@ -149,8 +149,10 @@ class HousekeepingDamageAttackTest(
             val reservation = UUID.fromString(support.damage(id)["reservationId"].asString())
             val folio =
                 reservationsApi
-                    .reservation(com.zeny.hotel.reservations.ReservationId(reservation))
-                    .shouldNotBeNull()
+                    .reservation(
+                        com.zeny.hotel.reservations
+                            .ReservationId(reservation),
+                    ).shouldNotBeNull()
                     .folioId.value
             val code = support.createCode("CHARGE")
             support.act(id, "review", asAdmin(), support.reviewBody(code, "80.00", reservation)).ok()

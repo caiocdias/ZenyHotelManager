@@ -112,6 +112,7 @@ class EndOfDayIsolationTest(
                     "--$PROVISIONAL_EXPIRY_DEFERRED",
                     "--$FNRH_SEND_DEFERRED",
                     "--$PRINTING_MAINTENANCE_DEFERRED",
+                    "--$LOST_FOUND_EXPIRY_DEFERRED",
                     "--server.port=0",
                 ).close()
         }

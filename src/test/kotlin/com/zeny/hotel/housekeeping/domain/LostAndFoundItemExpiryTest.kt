@@ -39,7 +39,10 @@ class LostAndFoundItemExpiryTest {
         // 01/11 15:30Z = 02/11 00:30 em Tóquio (mas 01/11 12:30 em São Paulo): vence em 07/11, não em 06/11.
         val item = itemFoundAt(Instant.parse("2026-11-01T15:30:00Z"))
 
-        withClue("06/11 ainda dentro do prazo") { item.isExpired(LocalDate.parse("2026-11-06"), tokyo, retention) shouldBe false }
+        withClue("06/11 ainda dentro do prazo") {
+            item.isExpired(LocalDate.parse("2026-11-06"), tokyo, retention) shouldBe
+                false
+        }
         withClue("07/11 vence") { item.isExpired(LocalDate.parse("2026-11-07"), tokyo, retention) shouldBe true }
         // No fuso da JVM (São Paulo) venceria um dia antes: prova que o fuso do hotel é o usado.
         withClue("fuso de São Paulo diverge") {

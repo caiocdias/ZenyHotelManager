@@ -12,6 +12,7 @@ import com.zeny.hotel.testsupport.FILES_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.FNRH_SEND_DEFERRED
 import com.zeny.hotel.testsupport.GUESTS_REKEY_DEFERRED
 import com.zeny.hotel.testsupport.INVENTORY_HORIZON_DEFERRED
+import com.zeny.hotel.testsupport.LOST_FOUND_EXPIRY_DEFERRED
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
 import com.zeny.hotel.testsupport.PROVISIONAL_EXPIRY_DEFERRED
 import com.zeny.hotel.testsupport.PostgresInitializer
@@ -219,6 +220,7 @@ abstract class PrintAgentStreamAttackSupport {
         INVENTORY_HORIZON_DEFERRED,
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
+        LOST_FOUND_EXPIRY_DEFERRED,
         "zeny.printing.delivery-poll-interval=PT0.1S",
         "zeny.printing.stream-heartbeat=PT0.3S",
         "zeny.printing.max-connections-per-agent=3",
@@ -653,6 +655,7 @@ class PrintAgentStreamAttackTest : PrintAgentStreamAttackSupport() {
         INVENTORY_HORIZON_DEFERRED,
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
+        LOST_FOUND_EXPIRY_DEFERRED,
         "zeny.printing.delivery-poll-interval=PT0.1S",
         "zeny.printing.stream-heartbeat=PT0.3S",
         "zeny.printing.stream-max-duration=PT1.5S",
