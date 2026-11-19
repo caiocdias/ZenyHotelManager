@@ -161,7 +161,7 @@ class WorkOrderRoomBlockTest(
             val required = block(order, technician.auth).problem(403, "APPROVAL_REQUIRED")
             required["action"].asString() shouldBe "maintenance.work-order.block-room"
             required["permission"].asString() shouldBe "rooms.outoforder.manage"
-            required["resourceRef"].asString() shouldBe "maintenance.work-order:$order"
+            required["resourceRef"].asString() shouldBe "maintenance.work-order:$order/rooms.room:$room"
             support.order(order)["outOfOrderId"].isNull shouldBe true
 
             val token = approve(technician, required, approver())
@@ -259,7 +259,7 @@ class WorkOrderRoomBlockTest(
             val required = cancel(order, technician.auth).problem(403, "APPROVAL_REQUIRED")
             required["action"].asString() shouldBe "maintenance.work-order.cancel"
             required["permission"].asString() shouldBe "rooms.outoforder.manage"
-            required["resourceRef"].asString() shouldBe "maintenance.work-order:$order"
+            required["resourceRef"].asString() shouldBe "maintenance.work-order:$order/rooms.room:$room"
             support.order(order)["status"].asString() shouldBe "OPEN"
 
             val token = approve(technician, required, approver())
@@ -391,6 +391,27 @@ class WorkOrderRoomBlockTest(
                 }
             }
             support.order(order)["outOfOrderId"].isNull shouldBe true
+        }
+
+    @Test
+    fun `an approval asked for the room A does not open an OOO in the room B after the order moves`(): Unit =
+        with(iam) {
+            val technician = Technician()
+            val order = support.openedId()
+            val current = support.order(order)
+            val roomB = support.room()
+
+            val required = block(order, technician.auth).problem(403, "APPROVAL_REQUIRED")
+            val token = approve(technician, required, approver())
+            support.update(order, support.updateBody(current, "roomId" to roomB)).ok()
+
+            block(order, technician.auth, token = token).problem(403, "APPROVAL_TOKEN_MISMATCH")
+            support.order(order)["outOfOrderId"].isNull shouldBe true
+            jdbc
+                .sql("SELECT count(*) FROM rooms.out_of_order WHERE room_id = :room")
+                .param("room", roomB)
+                .query(Int::class.java)
+                .single() shouldBe 0
         }
 
     @Test

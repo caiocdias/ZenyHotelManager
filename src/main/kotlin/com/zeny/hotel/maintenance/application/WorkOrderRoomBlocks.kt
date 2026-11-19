@@ -7,6 +7,7 @@ import com.zeny.hotel.maintenance.domain.WorkOrderRules
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderPeriod
 import com.zeny.hotel.rooms.OutOfOrderRequest
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.rooms.RoomsErrorCodes
@@ -51,8 +52,8 @@ data class WorkOrderRoomBlockRequest(
  * `outOfOrderId`. Chamado dentro dos casos de uso auditados e transacionais do [WorkOrdersService].
  *
  * - Abrir: OOO passa por `requireOrApproval(maintenance.work-order.block-room, rooms.outoforder.manage)` (sem a
- *   permissão, `403 APPROVAL_REQUIRED`); OOS exige `rooms.outofservice.manage`. Os erros do `rooms` passam como
- *   estão.
+ *   permissão, `403 APPROVAL_REQUIRED`, com o recurso da aprovação preso à ordem e à UH); OOS exige
+ *   `rooms.outofservice.manage`. Os erros do `rooms` passam como estão.
  * - **Bloqueio vigente** = a ordem tem `outOfOrderId` e o período não foi liberado (`releasedOn == null`). Um período
  *   que terminou sozinho, sem liberação, continua vigente (trava o local e um novo bloqueio) até a ordem concluir ou
  *   cancelar, quando a liberação só o encerra, sem mexer no status da UH.
@@ -89,7 +90,7 @@ class WorkOrderRoomBlocks(
         request: WorkOrderRoomBlockRequest,
         approvalToken: String?,
     ): OutOfOrderPeriod {
-        authorize(request.kind, BLOCK_ROOM, ref(order.id), approvalToken)
+        authorize(request.kind, BLOCK_ROOM, ref(order.id, checkNotNull(order.roomId)), approvalToken)
         return rooms.openOutOfOrder(
             checkNotNull(order.roomId),
             request.kind,
@@ -108,7 +109,7 @@ class WorkOrderRoomBlocks(
         approvalToken: String?,
     ) {
         val period = inEffect(order) ?: return
-        authorize(period.kind, CANCEL, ref(order.id), approvalToken)
+        authorize(period.kind, CANCEL, ref(order.id, period.roomId), approvalToken)
     }
 
     /** Libera o período da ordem (concluir ou cancelar); sem bloqueio ou já liberado, não muda nada. */
@@ -137,7 +138,14 @@ class WorkOrderRoomBlocks(
         }
     }
 
-    private fun ref(id: WorkOrderId) = "maintenance.work-order:$id"
+    /**
+     * O recurso da aprovação: a ordem **e** a UH (`maintenance.work-order:<id>/rooms.room:<roomId>`), como o `rooms`
+     * prende a aprovação à UH. Assim a aprovação pedida para a UH A não vale se a ordem mudar para a UH B antes do uso.
+     */
+    private fun ref(
+        id: WorkOrderId,
+        roomId: RoomId,
+    ) = "maintenance.work-order:$id/rooms.room:$roomId"
 
     private fun responsible(order: WorkOrder): String {
         val name =
