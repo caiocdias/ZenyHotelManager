@@ -54,6 +54,10 @@ spring:
       # ServerErrorMessage, e a constraint violada segue legível (UniqueConstraints, no iam).
       data-source-properties:
         logServerErrorDetail: false
+        # Espera máxima por uma trava (ARCHITECTURE §11, D1 da M6 E21): toda sessão do pool abre com
+        # lock_timeout de 10 s (parâmetro de partida, que um RESET não desfaz). Esgotado, o 55P03 vira
+        # 409 CONCURRENT_UPDATE; um SET LOCAL vale por cima na transação. O Flyway não herda (conexão própria).
+        options: "-c lock_timeout=10s"
 
   jpa:
     open-in-view: false

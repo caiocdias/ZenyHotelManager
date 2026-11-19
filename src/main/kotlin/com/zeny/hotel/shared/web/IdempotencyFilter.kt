@@ -53,7 +53,11 @@ import java.util.HexFormat
  *    → `409 IDEMPOTENCY_KEY_IN_USE`; usada com outra requisição → `422 IDEMPOTENCY_KEY_REUSED`;
  *    já concluída → devolve a resposta guardada com `Idempotent-Replayed: true`;
  * 4. com a reserva, executa o handler com a resposta em buffer e guarda status, cabeçalhos
- *    relevantes e corpo, **qualquer que seja o status**: erro se repete como erro.
+ *    relevantes e corpo, **qualquer que seja o status**: erro se repete como erro. A exceção é o
+ *    `409 CONCURRENT_UPDATE` (deadlock ou `lock_timeout`, ARCHITECTURE §7): o banco desfez a
+ *    transação e a operação é retentável, então a chave é liberada e o reenvio com a mesma chave
+ *    executa de novo. O sinal é explícito, o atributo [RELEASE_KEY_ATTRIBUTE] da requisição, gravado
+ *    só pelo `ApiExceptionHandler` nesse caso; nunca o status nem o corpo (outro `409` fica guardado).
  *
  * Se uma exceção escapa do Spring MVC: recusa de segurança (o `ApiExceptionHandler` relança
  * `AccessDeniedException`/`AuthenticationException`) libera a chave, porque nada executou;
@@ -148,7 +152,8 @@ internal class IdempotencyFilter(
         code: ErrorCode,
     ) = problems.write(request, response, Problems.of(status, code))
 
-    @Suppress("TooGenericExceptionCaught") // registra o desfecho de qualquer falha e a relança intacta
+    // Registra o desfecho de qualquer falha e a relança intacta; a falha ao liberar a chave só vai para o log.
+    @Suppress("TooGenericExceptionCaught")
     private fun execute(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -164,7 +169,16 @@ internal class IdempotencyFilter(
             throw failure
         }
         check(!request.isAsyncStarted) { "Endpoint @Idempotent precisa ser síncrono: ${request.requestURI}" }
-        store(reservation, StoredResponse(buffered.status, storedHeadersOf(buffered), buffered.contentAsByteArray))
+        if (request.getAttribute(RELEASE_KEY_ATTRIBUTE) == null) {
+            store(reservation, StoredResponse(buffered.status, storedHeadersOf(buffered), buffered.contentAsByteArray))
+        } else {
+            try {
+                idempotency.release(reservation)
+            } catch (ex: Exception) {
+                // A resposta já existe: a chave fica IN_PROGRESS (409 IDEMPOTENCY_KEY_IN_USE) até vencer.
+                log.error("Falha ao liberar a chave de idempotência {}", reservation.id, ex)
+            }
+        }
         buffered.copyBodyToResponse()
     }
 
@@ -243,9 +257,15 @@ internal class IdempotencyFilter(
         return body.takeIf { it.size <= maxRequestBodySize }
     }
 
-    private companion object {
+    companion object {
+        /**
+         * Atributo da requisição que pede a liberação da chave em vez de guardar a resposta: gravado só pelo
+         * `ApiExceptionHandler` no `409 CONCURRENT_UPDATE` (o banco desfez a transação; o reenvio executa de novo).
+         */
+        const val RELEASE_KEY_ATTRIBUTE = "com.zeny.hotel.shared.web.IdempotencyFilter.RELEASE_KEY"
+
         /** 1 a 255 caracteres ASCII visíveis (sem espaço nem controle); um UUID é o recomendado. */
-        val VALID_KEY = Regex("[\\x21-\\x7E]{1,255}")
+        private val VALID_KEY = Regex("[\\x21-\\x7E]{1,255}")
     }
 }
 

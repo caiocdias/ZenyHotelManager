@@ -297,8 +297,9 @@ class OpenApiConfiguration {
                         "Código estável do erro, para o cliente traduzir. Comuns: VALIDATION_FAILED, " +
                             "MALFORMED_REQUEST, INVALID_CURSOR, UNAUTHENTICATED, ACCESS_DENIED, " +
                             "PASSWORD_CHANGE_REQUIRED, APPROVAL_REQUIRED, NOT_FOUND, " +
-                            "METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, PRECONDITION_FAILED, PAYLOAD_TOO_LARGE, " +
-                            "UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, PRECONDITION_REQUIRED, " +
+                            "METHOD_NOT_ALLOWED, NOT_ACCEPTABLE, CONFLICT, CONCURRENT_UPDATE, PRECONDITION_FAILED, " +
+                            "PAYLOAD_TOO_LARGE, UNSUPPORTED_MEDIA_TYPE, BUSINESS_RULE_VIOLATED, " +
+                            "PRECONDITION_REQUIRED, " +
                             "IDEMPOTENCY_KEY_REQUIRED, IDEMPOTENCY_KEY_INVALID, IDEMPOTENCY_KEY_IN_USE, " +
                             "IDEMPOTENCY_KEY_REUSED, REQUEST_REJECTED, INTERNAL_ERROR, SERVICE_UNAVAILABLE. Cada " +
                             "módulo acrescenta os seus.",

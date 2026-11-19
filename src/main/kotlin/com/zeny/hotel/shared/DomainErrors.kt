@@ -69,6 +69,12 @@ object ErrorCodes {
     /** 409: conflito com o estado atual do recurso. */
     val CONFLICT = ErrorCode("CONFLICT")
 
+    /**
+     * 409: a operação esbarrou noutra que mexia nos mesmos dados (deadlock ou espera de trava além do
+     * `lock_timeout`) e foi desfeita; pode ser tentada de novo, inclusive com a mesma `Idempotency-Key`.
+     */
+    val CONCURRENT_UPDATE = ErrorCode("CONCURRENT_UPDATE")
+
     /** 412: `If-Match` não corresponde à versão atual (outra alteração chegou antes). */
     val PRECONDITION_FAILED = ErrorCode("PRECONDITION_FAILED")
 

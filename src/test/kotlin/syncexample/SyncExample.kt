@@ -27,8 +27,10 @@ import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
+import org.springframework.dao.PessimisticLockingFailureException
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.transaction.annotation.Transactional
+import java.sql.SQLException
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
@@ -68,6 +70,9 @@ object SyncExample {
     /** Texto que faz o handler esperar dentro da transação (corridas). */
     const val SLOW = "slow"
     const val SLOW_MILLIS = 400L
+
+    /** Texto que faz o handler falhar como um deadlock do banco (`40P01` na causa), depois de gravar a nota. */
+    const val DEADLOCK = "deadlock"
 }
 
 /** O que o app recebe de cada nota. */
@@ -123,7 +128,8 @@ data class RecordNotePayload(
 
 /**
  * Cria a nota com o `commandId` como id (registro criado offline com o UUID do cliente). Rejeita o texto
- * `reject`, alerta no texto que começa com `warn`, falha no `boom` e espera dentro da transação no `slow`.
+ * `reject`, alerta no texto que começa com `warn`, falha no `boom`, falha como um deadlock no `deadlock` e espera
+ * dentro da transação no `slow`.
  * Conta, em memória, quantas vezes o handler rodou para cada `commandId` (um efeito que não é idempotente e
  * não depende da chave primária da nota: conta também as execuções desfeitas).
  */
@@ -159,6 +165,12 @@ open class RecordNoteHandler(
             .param("occurredAt", command.occurredAt.atOffset(ZoneOffset.UTC))
             .update()
         check(text != "boom") { "Falha inesperada do exemplo" }
+        if (text == SyncExample.DEADLOCK) {
+            throw PessimisticLockingFailureException(
+                "Deadlock simulado do exemplo",
+                SQLException("deadlock detected", "40P01"),
+            )
+        }
         if (text == SyncExample.SLOW) Thread.sleep(SyncExample.SLOW_MILLIS)
         return if (text.startsWith("warn")) {
             OfflineCommandOutcome(listOf(OfflineCommandWarning(SyncExample.NOTE_WARNING, "Nota com alerta.")))
