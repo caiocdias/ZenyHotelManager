@@ -226,7 +226,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E01 | Tipos de limpeza, créditos e faxinas programadas | #concluida | — | Configuração de `CleaningType`, `CreditRule` e `ScheduledCleaning` |
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
-| E04 | Máquina de estados, ações online e conclusão da tarefa | #em-andamento | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
+| E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #pendente | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #pendente | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
@@ -1515,7 +1515,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E04 — Máquina de estados, ações online e conclusão da tarefa — #em-andamento
+## E04 — Máquina de estados, ações online e conclusão da tarefa — #concluida
 
 **Objetivo:** implementar a execução **online** da tarefa de governança (RF-GOV-04, RF-GOV-05) pela máquina de estados da SPEC §8.4: iniciar, pausar, retomar, concluir com checklist, recusar (não perturbe ou hóspede) e tentar de novo. A conclusão leva a UH Suja a Limpa (com ou sem inspeção pendente), registra quem limpou e os tempos, grava a ocupação encontrada para a discrepância (RF-UH-08), atualiza a faxina programada e publica `HousekeepingTaskCompleted`. Os comandos offline, o conflito RN-22 e o feed da camareira ficam na E19 (divisão da H18 e da H21 a).
 
@@ -1541,21 +1541,21 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Testes de domínio cobrem todas as transições da §8.4 e `ASSIGNED → PENDING`, válidas e inválidas, e a ordem dos instantes.
-- [ ] Conclusão numa UH Suja: tipo sem inspeção deixa a UH Limpa e a tarefa `DONE`; com inspeção, UH Limpa com inspeção pendente e tarefa `AWAITING_INSPECTION`.
-- [ ] Conclusão numa UH já Limpa ou Inspecionada, e numa tarefa de área, não muda a UH; a tarefa e o checklist concluem.
-- [ ] Item obrigatório do checklist faltando dá `422`, com a tarefa, a UH e a faxina programada sem mudança.
-- [ ] Transição inválida dá `409` com `code` estável, sem mudar a UH nem o checklist.
-- [ ] Camareira com escopo `OWN` sobre tarefa de outra dá `403` antes de qualquer `404`, `409` ou `412`; a Governanta, com `ALL`, age sobre qualquer tarefa; sem a permissão de execução, `403`.
-- [ ] A Camareira não lê, pela lista do dia, pelo plano nem pelo tópico `housekeeping`, tarefas de outra camareira (teste com o modelo Camareira).
-- [ ] Recusa por não perturbe numa UH vaga não dá 500 e não muda a UH; a resposta escolhida está no contrato.
-- [ ] `HousekeepingTaskCompleted` publicado uma vez, sem dado de hóspede; quem limpou, início, fim e duração sem as pausas gravados.
-- [ ] Ocupação divergente informada na conclusão aparece nas discrepâncias do `rooms` (RF-UH-08).
-- [ ] Tarefa `SCHEDULED` concluída atualiza `lastDoneOn` e `nextDueOn`; `recordDone` atualiza `updatedAt`, recusa faxina inativa e data fora do `StorableRange` (testes de unidade).
-- [ ] Conclusão com a execução de checklist já concluída por fora não dá 500 nem publica um segundo `ChecklistCompleted`.
-- [ ] Ação e conclusão simultâneas na mesma tarefa e UH se enfileiram sem deadlock (teste determinístico).
-- [ ] Um cliente inscrito no tópico `housekeeping` recebe uma mensagem a cada transição.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Testes de domínio cobrem todas as transições da §8.4 e `ASSIGNED → PENDING`, válidas e inválidas, e a ordem dos instantes.
+- [x] Conclusão numa UH Suja: tipo sem inspeção deixa a UH Limpa e a tarefa `DONE`; com inspeção, UH Limpa com inspeção pendente e tarefa `AWAITING_INSPECTION`.
+- [x] Conclusão numa UH já Limpa ou Inspecionada, e numa tarefa de área, não muda a UH; a tarefa e o checklist concluem.
+- [x] Item obrigatório do checklist faltando dá `422`, com a tarefa, a UH e a faxina programada sem mudança.
+- [x] Transição inválida dá `409` com `code` estável, sem mudar a UH nem o checklist.
+- [x] Camareira com escopo `OWN` sobre tarefa de outra dá `403` antes de qualquer `404`, `409` ou `412`; a Governanta, com `ALL`, age sobre qualquer tarefa; sem a permissão de execução, `403`.
+- [x] A Camareira não lê, pela lista do dia, pelo plano nem pelo tópico `housekeeping`, tarefas de outra camareira (teste com o modelo Camareira).
+- [x] Recusa por não perturbe numa UH vaga não dá 500 e não muda a UH; a resposta escolhida está no contrato.
+- [x] `HousekeepingTaskCompleted` publicado uma vez, sem dado de hóspede; quem limpou, início, fim e duração sem as pausas gravados.
+- [x] Ocupação divergente informada na conclusão aparece nas discrepâncias do `rooms` (RF-UH-08).
+- [x] Tarefa `SCHEDULED` concluída atualiza `lastDoneOn` e `nextDueOn`; `recordDone` atualiza `updatedAt`, recusa faxina inativa e data fora do `StorableRange` (testes de unidade).
+- [x] Conclusão com a execução de checklist já concluída por fora não dá 500 nem publica um segundo `ChecklistCompleted`.
+- [x] Ação e conclusão simultâneas na mesma tarefa e UH se enfileiram sem deadlock (teste determinístico).
+- [x] Um cliente inscrito no tópico `housekeeping` recebe uma mensagem a cada transição.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1585,12 +1585,103 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e04.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus).
+  - Na rodada 0 foi bloqueada por 4 Importantes:
+    - decisões tomadas sobre o estado de outro módulo lido sem trava (resolvido com operações condicionais em `rooms` e `checklists`);
+    - `notes` na resposta das ações;
+    - faxina inativa ou concorrente na conclusão;
+    - tempo real sem teste nomeado.
+  - As 7 notas Menores da rodada 1 foram aplicadas ao plano.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `703a096` (início) a `694d74b`.
+  - Task 1 (máquina de estados, permissão e ações): `ec5bfb0`, `dda1210` e `19164cf` (desenvolvedor), mais `52eaac0` (testador, listas exatas).
+  - Task 2 (conclusão): `8974f26`, `8d142af` e `2cd62bd` (desenvolvedor), `9ebb3ab` (testador, coluna nova e CHECKs) e, na rodada 1, `56a446d` e `18b3ffe` (desenvolvedor).
+  - Task 3 (tempo real, leitura da camareira, trava e D12): `2fd79d6`, `d9941a3`, `1dcd493`, `07a15b5` e `2591569` (desenvolvedor).
+  - ARCHITECTURE §10: `9bc67fa` (orquestrador).
+  - Testador da etapa: `8753f80`, só `src/test`.
+  - Rodada de correção do fim da etapa: `e7bfd7f` (os dados de execução no `GET`) e `694d74b` (critério de espera exato no `HousekeepingTaskLockTest`) (desenvolvedor).
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`.
+    - A Task 1 foi aprovada, com 1 Importante de teste (trava da tarefa), que foi ao testador.
+    - A Task 2 teve 4 Importantes, e a rodada 1 corrigiu dois:
+      - I1: a conclusão online tolerava foto obrigatória com UUID qualquer;
+      - I4: a neutralização dos modelos gerais estava presa a um teste.
+      - Os outros dois eram lacunas de teste e foram ao testador.
+    - A Task 3 foi aprovada sem Importante.
+- Entregue:
+  - **Máquina de estados** (`domain/HousekeepingTask.kt`):
+    - cobre todas as transições da §8.4, com `REJECTED → IN_PROGRESS` (refazer) e `REFUSED → ASSIGNED` (nova tentativa);
+    - o instante de cada transição é `max(agora, last_transition_at)`;
+    - `worked_seconds` soma só os trechos em `IN_PROGRESS`;
+    - colunas `started_at`, `finished_at`, `worked_seconds`, `in_progress_since`, `last_transition_at`, `cleaned_by`, `refusal_reason` (`V2026_11_19_1000`) e `checklist_execution_id` (`V2026_11_19_1001`), com CHECKs de coerência.
+  - **Permissão `housekeeping.tasks.execute`:**
+    - `OWN` na Camareira; `ALL` na Governanta e no Gerente;
+    - a dona é a camareira atribuída (`StaffApi.employeeOfUser`);
+    - com `OWN`, tarefa alheia e tarefa inexistente dão o mesmo `403 RESOURCE_OUT_OF_SCOPE`;
+    - a autorização vem antes de 404, 409 e 412; o `428` sem `If-Match` vem antes, pelo padrão `shared/Concurrency.kt`, e não revela estado.
+  - **Ações** (`POST /api/v1/housekeeping-tasks/{id}/start|pause|resume|refuse|retry|complete`):
+    - todas com `If-Match` e a resposta `HousekeepingTaskActionResponse`, sem `notes` e com `checklistExecutionId`;
+    - transição inválida dá `409 HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`;
+    - `start` de data futura dá `422 HOUSEKEEPING_TASK_NOT_DUE`.
+  - **Conclusão**, numa transação, na ordem de trava tarefa → execução → UH → faxina:
+    - `ChecklistsApi.completeExecutionIfOpen(..., ChecklistPhotoPolicy)` com `REFUSE` online; a execução já concluída por fora não dá erro nem segundo `ChecklistCompleted`;
+    - `RoomsApi.markCleanIfDirty`: a tarefa vai a `AWAITING_INSPECTION` só se a UH foi de Suja a Limpa com inspeção pendente, e a `DONE` nos demais casos;
+    - `RoomsApi.recordObservation` (RF-UH-08);
+    - `ScheduledCleaning.recordDone(businessDate da tarefa)` com a faxina travada; a faxina inativa não muda e vai à trilha;
+    - o evento público `HousekeepingTaskCompleted`, sem dado de hóspede.
+  - **Recusa por não perturbe:** `RoomsApi.setServiceFlagIfOccupied` liga o sinal só numa UH ocupada. Numa UH vaga ou numa tarefa de área, a recusa responde `200` com a tarefa `REFUSED`.
+  - **Checklist no `start`:** usa o vínculo do tipo, senão `resolveTemplate`, com a versão publicada vigente (`ChecklistsApi.currentVersion`). `answers` numa tarefa sem checklist dá `400` no campo.
+  - **Tempo real:** cada transição publica `housekeeping.task` (`id` e versão) no tópico `housekeeping`. A ARCHITECTURE §10 registra isso.
+  - **Leitura da camareira:** o modelo Camareira não tem `housekeeping.tasks.read`. A lista, o `GET`, o plano e o tópico dão `403` para ela.
+  - **Publicação do plano (D12):** o item de tarefa `DONE` ou `CANCELLED` sai do plano publicado, a tarefa não muda e as posições são renumeradas.
+  - **Teste:** o helper `HousekeepingExecutionTestSupport.neutralizeGeneralHousekeepingTemplates()` existe porque o `start` pega qualquer modelo geral HOUSEKEEPING ativo do banco compartilhado. Todo teste que inicia ou conclui tarefa o usa.
+- Revisão final: `revisor-seguranca` (opus) sobre `aa82c27..9bc67fa`, "With fixes", 0 Crítico e 2 Importantes.
+  - I1: o `GET` e a lista não mostravam os dados de execução (RF-GOV-05). Corrigido em `e7bfd7f`, com `refusalReason`, `startedAt`, `finishedAt`, `workedSeconds` e `cleanedBy`, todos aditivos.
+  - I2: a autorização do `complete` não tinha teste. Coberta pelo testador.
+  - A re-revisão escopada (`9bc67fa..694d74b`) deu os achados por resolvidos, sem Crítico nem Importante novo.
+- Verificação:
+  - **Gate:** `./gradlew build` em `694d74b` → BUILD SUCCESSFUL em 15m 24s, com 4440 testes e 0 falhas. Antes, em `9bc67fa`, 4427 testes e 0 falhas.
+  - **oasdiff:** "Nenhuma mudança incompatível (nível ERR) em /api/v1". O contrato só ganhou caminhos, schemas e campos.
+  - **Scanner:** `osv-scanner` 2.7.1 (426 + 74 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos anteriores. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base aa82c27` → exit 0, sem apontamento, também em cada fatia.
+- Critérios verificados:
+  - **Domínio:** `HousekeepingTaskDomainTest` (todas as transições, ordem dos instantes, pausas).
+  - **Conclusão:**
+    - `HousekeepingTaskCompletionApiTest`: UH Suja com e sem inspeção; UH já Limpa e área; `422` sem efeito; execução concluída por fora; foto recusada; faxina ativa e inativa; evento; DND;
+    - `RoomsApiHousekeepingOperationsTest` e `ChecklistsApiHousekeepingOperationsTest`;
+    - `ScheduledCleaningDomainTest`.
+  - **Escopo:** `HousekeepingTaskExecutionPermissionsTest`, `HousekeepingTaskExecutionAttackTest` (o `complete`) e `HousekeepingAttendantReadTest`.
+  - **Trava:** `HousekeepingTaskLockTest` (6 corridas por `pg_blocking_pids`) e `HousekeepingTaskLockAttackTest`.
+  - **Tempo real:** `HousekeepingTaskRealtimeTest`.
+  - **D12:** `AssignmentPlanPublishFinishedTasksTest`.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis; a revisão humana da etapa foi substituída pela autorização do usuário neste lote):
+  - **(a) D2:** a camareira não lê tarefas online. Ela as vê pela fonte offline da E19 e pela resposta das ações.
+  - **(b) D3:** a tarefa vai a `AWAITING_INSPECTION` só quando a conclusão deixou a inspeção pendente na UH. A E05 trata a tarefa `AWAITING_INSPECTION` cuja UH já perdeu a pendência por check-out, fechamento ou aprovação manual.
+  - **(c) D10:** a faxina inativa não bloqueia a conclusão. O critério "`recordDone` recusa faxina inativa" foi cumprido no sentido de não agir e devolver que não mudou.
+  - **(d) D11:** `start` só até a data operacional.
+  - **(e) D12:** o item terminado sai do plano publicado, sem aviso à camareira.
+  - **(f) Fotos (I1 da Task 2):** a foto obrigatória precisa ser de quem iniciou o checklist, também quando a Governanta conclui (regra do `checklists`). É decisão de produto.
+  - **(g)** O `checklistExecutionId` vai nas respostas.
+  - **(h)** `foundGuestCount` sem `foundOccupancy` dá `REQUIRED` em `foundOccupancy`, e `answers` não nulo, inclusive `[]`, numa tarefa sem checklist dá `400`.
+  - **(j)** A camareira não consegue iniciar online a primeira tarefa até a E19, porque não tem de onde tirar o `If-Match`.
+  - **(k)** Quando a Governanta inicia a tarefa, ela vira a executora do checklist, e a foto que a camareira mandar depois é recusada na conclusão.
+  - **(i) D1:** o mesmo `403` para tarefa alheia e inexistente com `OWN`. Isso diverge do `checklists`, que dá `404` na leitura.
+- Notas para a próxima etapa:
+  - **E19:**
+    - o feed `housekeeping-tasks` precisa levar a `version` de cada tarefa, porque a camareira não tem outro jeito de obter o `ETag`;
+    - `HousekeepingTaskExecution` aceita `expectedVersion` nulo e o instante corrigido;
+    - os comandos offline usam `ChecklistPhotoPolicy.TOLERATE`;
+    - uma linha legada em `IN_PROGRESS` sem `in_progress_since` daria 500 no `pause` (não existe dado real assim).
+  - **E19, mais:** uma observação numa UH desativada (`ROOM_INACTIVE`) desfaz a conclusão inteira; no offline, isso vira comando recusado.
+  - **E05:** reprovação ou aprovação de tarefa `AWAITING_INSPECTION` cuja UH já perdeu a pendência (D3).
+  - **Para o `arquiteto`:**
+    - nota na SPEC §8.4 sobre o estado da conclusão (D3);
+    - a transição para `CANCELLED` não tem etapa dona no roadmap;
+    - a publicação do plano não publica `housekeeping.task` por tarefa;
+    - o 403 da tarefa alheia pode virar `409 CONCURRENT_UPDATE` se outra transação segurar a linha além do `lock_timeout` (vazamento marginal de existência, aceito pela D9).
+  - **Testes:**
+    - modelos gerais HOUSEKEEPING não são duráveis no banco compartilhado (helper acima);
+    - o `HousekeepingTaskLockTest` serializa as operações e não prova a ausência de ciclo com duas operações em andamento;
+    - as janelas de tempo do `HousekeepingTaskRealtimeTest` são as primeiras suspeitas se houver intermitência.
+- Capturas do brain: CAPTURA_E04.
 
 ---
 
