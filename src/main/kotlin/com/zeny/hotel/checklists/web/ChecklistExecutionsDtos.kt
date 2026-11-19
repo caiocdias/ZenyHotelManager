@@ -32,6 +32,13 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
 
+/**
+ * A observação da resposta "não ok" de um item que abre ocorrência de manutenção vai à descrição da ordem de serviço e
+ * ao aparelho do técnico (RN-13).
+ */
+private const val NOTE_WARNING =
+    "**Não escreva dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+
 private const val MAX_ANSWERS = 300
 
 @Schema(
@@ -130,7 +137,7 @@ data class ChecklistAnswerDto(
     @field:Schema(nullable = true)
     val photoFileId: UUID? = null,
     @field:Size(max = 500)
-    @field:Schema(nullable = true)
+    @field:Schema(nullable = true, description = NOTE_WARNING)
     val note: String? = null,
 ) {
     fun toInput() =
@@ -160,7 +167,7 @@ data class ChecklistAnswerResponse(
                 "finalidade, outro autor ou outro registro). Conta como respondida num item de foto obrigatório.",
     )
     val photoMissing: Boolean,
-    @field:Schema(nullable = true)
+    @field:Schema(nullable = true, description = NOTE_WARNING)
     val note: String?,
     @field:Schema(description = "Quando a resposta foi dada (offline, o horário do dispositivo corrigido).")
     val answeredAt: Instant,

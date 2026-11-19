@@ -33,6 +33,13 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
+/**
+ * A observação da resposta "não ok" de um item que abre ocorrência de manutenção vai à descrição da ordem de serviço e
+ * ao aparelho do técnico (RN-13).
+ */
+private const val NOTE_WARNING =
+    "**Não escreva dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+
 private const val ACTION_RULES =
     "Exige `housekeeping.tasks.execute`: com o escopo `OWN` (a Camareira), só na tarefa atribuída a ela; outra " +
         "tarefa, ou uma inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente: 404 " +
@@ -237,7 +244,7 @@ data class HousekeepingChecklistAnswerRequest(
     @field:Schema(nullable = true)
     val photoFileId: UUID?,
     @field:Size(max = 500)
-    @field:Schema(nullable = true)
+    @field:Schema(nullable = true, description = NOTE_WARNING)
     val note: String?,
 ) {
     fun toInput() = ChecklistAnswerInput.of(itemKey, check, quantity, number, text, choice, choices, photoFileId, note)

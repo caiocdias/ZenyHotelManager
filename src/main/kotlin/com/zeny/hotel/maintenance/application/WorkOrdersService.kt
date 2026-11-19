@@ -82,6 +82,15 @@ interface WorkOrderStore {
     /** A ordem com a linha travada (`FOR UPDATE`), ou `null` se não existe. */
     fun findForUpdate(id: WorkOrderId): WorkOrder?
 
+    /**
+     * Trava consultiva da transação (`pg_advisory_xact_lock`) sobre a execução de referência e o item: serializa as
+     * entregas simultâneas do mesmo evento, para a segunda achar a ordem da primeira em vez de violar o índice único.
+     */
+    fun lockChecklistItem(
+        referenceExecution: ChecklistExecutionId,
+        itemKey: String,
+    )
+
     /** A ordem aberta pelo item [itemKey] da execução de referência [referenceExecution], ou `null` (D2-E08). */
     fun findByChecklistItem(
         referenceExecution: ChecklistExecutionId,
@@ -298,6 +307,7 @@ class WorkOrdersService(
     @Audited(MaintenanceAudit.OPEN_WORK_ORDER_FROM_CHECKLIST)
     @Transactional
     internal fun openFromChecklist(draft: ChecklistWorkOrderDraft): WorkOrderView {
+        store.lockChecklistItem(draft.link.referenceExecutionId, draft.link.itemKey)
         store.findByChecklistItem(draft.link.referenceExecutionId, draft.link.itemKey)?.let {
             audit.noChanges()
             return viewOf(it)

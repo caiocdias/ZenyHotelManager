@@ -32,6 +32,7 @@ import java.util.UUID
  * e os filtros na própria consulta. Nunca apaga.
  */
 @Component
+@Suppress("TooManyFunctions") // uma função por operação do repositório
 class WorkOrderPersistence(
     private val jdbc: JdbcClient,
 ) : WorkOrderStore {
@@ -78,6 +79,18 @@ class WorkOrderPersistence(
             .param("checklistItem", order.checklistLink?.itemKey)
             .param("checklistReference", order.checklistLink?.referenceExecutionId?.value)
             .update()
+    }
+
+    override fun lockChecklistItem(
+        referenceExecution: ChecklistExecutionId,
+        itemKey: String,
+    ) {
+        jdbc
+            .sql("SELECT pg_advisory_xact_lock(hashtext(:namespace), hashtext(:key))")
+            .param("namespace", CHECKLIST_ITEM_LOCK_NAMESPACE)
+            .param("key", "${referenceExecution.value}:$itemKey")
+            .query { _, _ -> }
+            .list()
     }
 
     override fun findByChecklistItem(
@@ -248,5 +261,6 @@ class WorkOrderPersistence(
 
     private companion object {
         const val TABLE = "maintenance.work_order"
+        const val CHECKLIST_ITEM_LOCK_NAMESPACE = "maintenance.work-order-checklist-item"
     }
 }

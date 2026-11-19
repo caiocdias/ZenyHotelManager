@@ -18098,6 +18098,8 @@ components:
           minLength: 0
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           maxLength: 500
           minLength: 0
           nullable: true
@@ -18157,6 +18159,8 @@ components:
           - PHOTO
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           nullable: true
         number:
           type: number
@@ -22820,6 +22824,8 @@ components:
           minLength: 0
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           maxLength: 500
           minLength: 0
           nullable: true
