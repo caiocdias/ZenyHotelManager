@@ -1075,7 +1075,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - o `JobFailureLogTest` fica no pacote `shared` e importa módulos;
     - o instalador do filtro não faz nada (fail-open) se o backend de logging não for o Logback.
   - **Para a E04 e seguintes:** um deadlock ou `lock_timeout` que escapa vira `409 CONCURRENT_UPDATE` sem código local; usar `ExceptionClasses.chain` em todo log de falha.
-- Capturas do brain: CAPTURA_E21.
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E21 - 52521260.md`.
 
 ---
 
