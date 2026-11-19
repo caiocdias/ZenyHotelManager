@@ -48,7 +48,8 @@ import java.time.Instant
 /**
  * A execução da tarefa de governança (RF-GOV-04, SPEC §8.4, M6 E04): iniciar, pausar, retomar, recusar, tentar de
  * novo e concluir. Atende as ações online (o [Actor] da requisição e o relógio do servidor) e, na E19, os comandos
- * offline (o `occurredAt` corrigido em [at] e [expectedVersion] nulo, sem conferir a versão).
+ * offline, pelas variantes `…Task` sem trilha própria (o `occurredAt` corrigido em `at` e `expectedVersion` nulo, sem
+ * conferir a versão).
  *
  * Toda ação, na ordem: exige `housekeeping.tasks.execute` (`403 PERMISSION_DENIED`); trava a tarefa (D9-E04,
  * [HousekeepingTaskStore.findForUpdate]); confere o escopo por [requireActsOn] (`403 RESOURCE_OUT_OF_SCOPE`, antes de
@@ -163,10 +164,10 @@ class HousekeepingTaskExecution(
     // transação e na trilha do próprio handler (uma entrada por comando, com a ação `…-offline`).
 
     /**
-     * O início ([start]), com a versão do checklist que o aparelho tem ([deviceChecklistVersion], D1-E19), que precisa
-     * ser de um modelo `HOUSEKEEPING` (`422 HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID`, sem abrir execução). Do modelo
-     * que a tarefa usa agora, abre essa versão, com o alerta `CHECKLIST_VERSION_OUTDATED` se não for a vigente; de outro
-     * modelo, ou numa tarefa sem modelo, abre a do aparelho assim mesmo (RN-22), com o alerta
+     * O início ([start]), com a versão do checklist que o aparelho tem ([deviceChecklistVersion], D1-E19), que
+     * precisa ser de um modelo `HOUSEKEEPING` (`422 HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID`, sem abrir execução).
+     * Do modelo que a tarefa usa agora, abre essa versão, com o alerta `CHECKLIST_VERSION_OUTDATED` se não for a
+     * vigente; de outro modelo, ou numa tarefa sem modelo, abre a do aparelho assim mesmo (RN-22), com o alerta
      * `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido na trilha.
      */
     internal fun startTask(
@@ -361,7 +362,7 @@ class HousekeepingTaskExecution(
             )
     }
 
-    /** A versão vigente do modelo da tarefa (D5-E04): a do vínculo do tipo, senão a que vale para ela, senão nenhuma. */
+    /** A versão vigente do modelo da tarefa (D5-E04): a do vínculo do tipo, senão a que vale para ela, ou nenhuma. */
     private fun currentChecklistVersion(task: HousekeepingTask): ChecklistVersionView? {
         val type = checkNotNull(cleaningTypes.cleaningType(task.cleaningTypeId))
         return type.checklistTemplateId?.let { checklists.currentVersion(ChecklistTemplateId(it)) }
