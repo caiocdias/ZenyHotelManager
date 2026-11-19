@@ -41,6 +41,94 @@ value class HousekeepingTaskId(
     }
 }
 
+/** Id de uma inspeção de UH (M6 E05). */
+@JvmInline
+value class InspectionId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): InspectionId = InspectionId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de uma inspeção (D2-E05): `IN_PROGRESS`, aberta pelo início; `COMPLETED`, concluída com o resultado. O
+ * conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class InspectionStatus {
+    IN_PROGRESS,
+    COMPLETED,
+}
+
+/**
+ * Resultado de uma inspeção (D2-E05): `APPROVED`, a UH fica Inspecionada; `REJECTED`, a limpeza volta à camareira. O
+ * conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class InspectionResult {
+    APPROVED,
+    REJECTED,
+}
+
+/** Id de um item de achados e perdidos (M6 E06). */
+@JvmInline
+value class LostAndFoundItemId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): LostAndFoundItemId = LostAndFoundItemId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de um item de achados e perdidos (D2-E06): `STORED`, guardado; `RETURNED`, devolvido; `DISCARDED`,
+ * descartado; `DONATED`, doado. O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class LostAndFoundStatus {
+    STORED,
+    RETURNED,
+    DISCARDED,
+    DONATED,
+}
+
+/**
+ * Origem de uma ocorrência da governança, achado ou dano (D2-E06): `MANUAL`, registrada online; `OFFLINE`, por comando
+ * do aparelho; `CHECKLIST`, por uma ação de ocorrência do checklist concluído. O conjunto pode crescer: o cliente trata
+ * um valor desconhecido sem falhar.
+ */
+enum class OccurrenceSource {
+    MANUAL,
+    OFFLINE,
+    CHECKLIST,
+}
+
+/** Id de um registro de dano (M6 E06). */
+@JvmInline
+value class DamageReportId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): DamageReportId = DamageReportId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de um dano (D4-E06): `REPORTED`, registrado; `REVIEWED`, revisado (valor final, código e vínculo);
+ * `CHARGED`, lançado na conta da reserva; `WAIVED`, dispensado com motivo. O conjunto pode crescer: o cliente trata um
+ * valor desconhecido sem falhar.
+ */
+enum class DamageReportStatus {
+    REPORTED,
+    REVIEWED,
+    CHARGED,
+    WAIVED,
+}
+
 /** Id de um plano do dia da distribuição das tarefas. */
 @JvmInline
 value class AssignmentPlanId(
@@ -87,6 +175,16 @@ enum class TaskStatus {
     DONE,
     REFUSED,
     CANCELLED,
+}
+
+/**
+ * Por que a camareira recusou a tarefa (SPEC §8.4, M6 E04): `DO_NOT_DISTURB`, a UH com o sinal de não perturbe;
+ * `GUEST_REFUSED`, o hóspede recusou o serviço. O conjunto pode crescer: o cliente trata um valor desconhecido sem
+ * falhar.
+ */
+enum class RefusalReason {
+    DO_NOT_DISTURB,
+    GUEST_REFUSED,
 }
 
 /**
@@ -207,6 +305,110 @@ object HousekeepingErrorCodes {
 
     /** 409: já há tarefa no mesmo local, na mesma data e com o mesmo tipo de limpeza, em qualquer status (D5-E02). */
     val HOUSEKEEPING_TASK_ALREADY_EXISTS = ErrorCode("HOUSEKEEPING_TASK_ALREADY_EXISTS")
+
+    /**
+     * 409: a ação da execução não vale no status atual da tarefa (SPEC §8.4), com `taskStatus` e `action` no problema
+     * (padrão `RESERVATION_TRANSITION_NOT_ALLOWED`).
+     */
+    val HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED")
+
+    /** 422: iniciar uma tarefa de data posterior à data operacional (D11-E04). */
+    val HOUSEKEEPING_TASK_NOT_DUE = ErrorCode("HOUSEKEEPING_TASK_NOT_DUE")
+
+    /**
+     * 422 (recusa do comando offline `housekeeping.start-task`, D1-E19): a versão do checklist que o aparelho informou
+     * não existe ou não é de um modelo do contexto `HOUSEKEEPING`; nenhuma execução é aberta.
+     */
+    val HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID = ErrorCode("HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID")
+
+    /**
+     * Alerta do comando offline `housekeeping.start-task` (D1-E19, RN-22): o aparelho abriu o checklist de um modelo
+     * diferente do que a tarefa usa agora (ou a tarefa não usa modelo nenhum); a execução abriu com a versão do
+     * aparelho e a trilha registra o modelo esperado e o recebido.
+     */
+    val HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH = ErrorCode("HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH")
+
+    /**
+     * Alerta dos comandos offline da execução (D4-E19, RN-22): o comando veio de uma ex-dona (camareira com `OWN` que
+     * já teve a tarefa) numa tarefa reatribuída, retirada ou cancelada; ficou registrado como conflito, a tarefa ficou
+     * marcada (`hasConflict`) e nada mais mudou nela.
+     */
+    val HOUSEKEEPING_TASK_CONFLICT = ErrorCode("HOUSEKEEPING_TASK_CONFLICT")
+
+    /** 409: a tarefa já tem uma inspeção aberta (D3-E05); conclua-a. */
+    val HOUSEKEEPING_INSPECTION_ALREADY_OPEN = ErrorCode("HOUSEKEEPING_INSPECTION_ALREADY_OPEN")
+
+    /**
+     * 409: concluir a inspeção de uma tarefa que tem modelo de checklist de inspeção sem tê-la iniciado (D3-E05): o
+     * checklist abre no início.
+     */
+    val HOUSEKEEPING_INSPECTION_NOT_STARTED = ErrorCode("HOUSEKEEPING_INSPECTION_NOT_STARTED")
+
+    /**
+     * 409: a inspeção voluntária de uma UH Limpa com inspeção pendente (D4-E05): a pendência é de uma tarefa;
+     * inspecione pela tarefa.
+     */
+    val HOUSEKEEPING_INSPECTION_USE_TASK = ErrorCode("HOUSEKEEPING_INSPECTION_USE_TASK")
+
+    /** 400: a UH da inspeção voluntária não existe (campo `roomId`, H16; D4-E05). */
+    val HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM = ErrorCode("HOUSEKEEPING_INSPECTION_UNKNOWN_ROOM")
+
+    /** 409: a inspeção voluntária de uma UH que não está Limpa (Suja ou já Inspecionada, D4-E05). */
+    val HOUSEKEEPING_ROOM_NOT_CLEAN = ErrorCode("HOUSEKEEPING_ROOM_NOT_CLEAN")
+
+    /** 400: a ocorrência (achado ou dano) precisa de exatamente um local, a UH (`roomId`) ou a área (`areaId`). */
+    val HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID = ErrorCode("HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID")
+
+    /** 400: a UH ou a área da ocorrência não existe (campo `roomId` ou `areaId`, H16). */
+    val HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION = ErrorCode("HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION")
+
+    /** 404: item de achados e perdidos inexistente (ou, com o escopo `OWN`, de outro usuário). */
+    val HOUSEKEEPING_LOST_FOUND_NOT_FOUND = ErrorCode("HOUSEKEEPING_LOST_FOUND_NOT_FOUND")
+
+    /**
+     * 409: o destino não vale no status atual do item (D2-E06: só o item guardado é devolvido, descartado ou doado),
+     * com `itemStatus` e `action` no problema.
+     */
+    val HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED")
+
+    /**
+     * 409: descartar ou doar um item antes do fim do prazo de guarda (D2-E06, RF-GOV-08): a data local em que foi
+     * achado, no fuso do hotel, mais o prazo de guarda ainda é posterior à data operacional.
+     */
+    val HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED = ErrorCode("HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED")
+
+    /** 404: dano inexistente (ou, com o escopo `OWN`, de outro usuário). */
+    val HOUSEKEEPING_DAMAGE_NOT_FOUND = ErrorCode("HOUSEKEEPING_DAMAGE_NOT_FOUND")
+
+    /**
+     * 409: a ação não vale no status atual do dano (D4-E06: revisar e dispensar só `REPORTED` ou `REVIEWED`; cobrar só
+     * `REVIEWED`), com `damageStatus` e `action` no problema.
+     */
+    val HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED")
+
+    /** 409: cobrar um dano ainda não revisado (`REPORTED`, D4-E06). */
+    val HOUSEKEEPING_DAMAGE_NOT_REVIEWED = ErrorCode("HOUSEKEEPING_DAMAGE_NOT_REVIEWED")
+
+    /** 409: cobrar um dano sem reserva vinculada (D4-E06, Review Focus 2): só registro e dispensa. */
+    val HOUSEKEEPING_DAMAGE_NO_RESERVATION = ErrorCode("HOUSEKEEPING_DAMAGE_NO_RESERVATION")
+
+    /** 409: a conta da cobrança existe, mas está encerrada ou não é da reserva vinculada ao dano (D4-E06). */
+    val HOUSEKEEPING_DAMAGE_FOLIO_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_FOLIO_INVALID")
+
+    /** 409: o código de lançamento da revisão existe, mas está desativado ou não é `CHARGE` nem `PENALTY` (D4-E06). */
+    val HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID")
+
+    /** 409: a reserva da revisão (troca do vínculo) existe, mas não está hospedada (`IN_HOUSE`, D4-E06). */
+    val HOUSEKEEPING_DAMAGE_RESERVATION_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_RESERVATION_INVALID")
+
+    /** 400: o código de lançamento da revisão não existe (campo `transactionCodeId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE")
+
+    /** 400: a conta da cobrança não existe (campo `folioId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO")
+
+    /** 400: a reserva da revisão não existe (campo `reservationId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")

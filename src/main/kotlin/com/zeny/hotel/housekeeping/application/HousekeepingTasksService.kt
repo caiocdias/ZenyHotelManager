@@ -1,10 +1,12 @@
 package com.zeny.hotel.housekeeping.application
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.ScheduledCleaningId
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
@@ -30,6 +32,7 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.StorableRange
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.staff.EmployeeId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -55,9 +58,16 @@ data class TaskFilter(
     val source: TaskSource? = null,
 )
 
-/** Persistência das tarefas de governança, na transação corrente. */
+/** Persistência das tarefas de governança e da posse delas (D3-E19), na transação corrente. */
+@Suppress("TooManyFunctions") // uma operação por método; a posse fica junto da tarefa
 interface HousekeepingTaskStore {
     fun task(id: HousekeepingTaskId): HousekeepingTask?
+
+    /**
+     * A tarefa com a linha travada (`SELECT … FOR NO KEY UPDATE`) e relida, ou `null` se não existe: a primeira trava
+     * de toda ação da execução (D9-E04).
+     */
+    fun findForUpdate(id: HousekeepingTaskId): HousekeepingTask?
 
     /** As tarefas de [ids], na ordem de [ids] (as inexistentes ficam de fora). */
     fun tasks(ids: List<UUID>): List<HousekeepingTask>
@@ -97,6 +107,37 @@ interface HousekeepingTaskStore {
      */
     fun update(task: HousekeepingTask)
 
+    /**
+     * Sobe a versão da tarefa travada sem mudar outro campo (D3-E05: o início da inspeção serializa duas inspeções pelo
+     * `If-Match`); a versão nova já vale em [task] na volta.
+     */
+    fun touch(task: HousekeepingTask)
+
+    /**
+     * Grava a posse (D3-E19): a tarefa [taskId] passou à camareira [employeeId] em [at], no histórico só de inserção
+     * `housekeeping.task_assignment`. A camareira atual e a retirada vêm da própria tarefa.
+     */
+    fun recordAssignment(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+        at: Instant,
+    )
+
+    /** Se a camareira [employeeId] já foi dona da tarefa [taskId], atual ou antiga (o histórico de posse, D3-E19). */
+    fun wasAssignedTo(
+        taskId: HousekeepingTaskId,
+        employeeId: EmployeeId,
+    ): Boolean
+
+    /**
+     * A tarefa [taskId] saiu do escopo `OWN` dos [users] na fonte offline `housekeeping-tasks` (D6-E19): o *tombstone*
+     * vai só a eles; quem tem `ALL` continua com a tarefa.
+     */
+    fun recordLeftScope(
+        taskId: HousekeepingTaskId,
+        users: Set<UserId>,
+    )
+
     /** A data da última tarefa da UH até [onOrBefore] (inclusive), sem contar as `CANCELLED`; `null` se não há. */
     fun lastTaskDate(
         roomId: RoomId,
@@ -113,7 +154,10 @@ data class TaskRequestCommand(
     val notes: String?,
 )
 
-/** Uma tarefa de governança. */
+/**
+ * Uma tarefa de governança, com a execução (M6 E04): o motivo da recusa, o primeiro início, a conclusão, o tempo
+ * trabalhado e quem concluiu; e a marca de conflito offline (D4-E19).
+ */
 data class HousekeepingTaskView(
     val id: HousekeepingTaskId,
     val roomId: RoomId?,
@@ -129,9 +173,18 @@ data class HousekeepingTaskView(
     val notes: String?,
     val assignedEmployeeId: EmployeeId?,
     val assignmentPosition: Int?,
+    val refusalReason: RefusalReason?,
+    val startedAt: Instant?,
+    val finishedAt: Instant?,
+    val workedSeconds: Long,
+    val cleanedBy: UserId?,
+    val checklistExecutionId: ChecklistExecutionId?,
+    val hasConflict: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
+    /** As chaves reprovadas da última inspeção reprovada da tarefa (D2-E05); vazio se nunca foi reprovada. */
+    val rejectedItems: List<String> = emptyList(),
 )
 
 /**
@@ -150,6 +203,7 @@ data class HousekeepingTaskView(
 class HousekeepingTasksService(
     private val store: HousekeepingTaskStore,
     private val cleaningTypes: CleaningTypeStore,
+    private val inspections: InspectionStore,
     private val rooms: RoomsApi,
     private val arrivals: ArrivalsByRoom,
     private val hotel: HotelApi,
@@ -177,13 +231,19 @@ class HousekeepingTasksService(
             CursorPage.fromRows(rows, page.limit) {
                 PageCursor.of(it.arrivalExpected.toString(), it.priority.toString(), it.id.toString())
             }
-        return CursorPage(store.tasks(keys.items.map { it.id }).map { it.view() }, keys.nextCursor)
+        return CursorPage(withRejectedItems(store.tasks(keys.items.map { it.id })), keys.nextCursor)
     }
 
     @Transactional(readOnly = true)
     fun get(id: HousekeepingTaskId): HousekeepingTaskView {
         authorization.require(HousekeepingPermissions.TASKS_READ)
-        return (store.task(id) ?: throw notFound()).view()
+        return withRejectedItems(listOf(store.task(id) ?: throw notFound())).single()
+    }
+
+    /** As tarefas com as chaves da última inspeção reprovada de cada uma (D2-E05: a inspeção é a fonte). */
+    private fun withRejectedItems(tasks: List<HousekeepingTask>): List<HousekeepingTaskView> {
+        val rejected = inspections.lastRejectedItems(tasks.map { it.id })
+        return tasks.map { it.view().copy(rejectedItems = rejected[it.id].orEmpty()) }
     }
 
     @Audited(HousekeepingAudit.REQUEST_TASK)
@@ -340,6 +400,13 @@ internal fun HousekeepingTask.view() =
         notes,
         assignedEmployeeId,
         assignmentPosition,
+        refusalReason,
+        startedAt,
+        finishedAt,
+        workedSeconds,
+        cleanedBy,
+        checklistExecutionId,
+        hasConflict,
         createdAt,
         updatedAt,
         checkNotNull(version),

@@ -1,13 +1,12 @@
 package com.zeny.hotel.shared.infrastructure.scheduling
 
+import com.zeny.hotel.shared.ExceptionClasses
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.Trigger
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler
 import java.time.Duration
 import java.time.Instant
-import java.util.Collections
-import java.util.IdentityHashMap
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledFuture
 
@@ -16,7 +15,7 @@ import java.util.concurrent.ScheduledFuture
  * de uma tarefa, inclusive a da trava do ShedLock com o banco fora, que acontece antes do método, sai em `ERROR` como
  * `Job <Classe.método> falhou: <Classe>[ <- <Causa>…]`. Só o nome do job e as classes da exceção e das causas: sem a
  * mensagem, que pode trazer valores do banco (§16), sem *stack trace* e sem as suprimidas. Um ciclo de causas para na
- * primeira repetida. Vale para todo job, sem código por job.
+ * primeira repetida e a cadeia tem um teto de elos ([ExceptionClasses.chain]). Vale para todo job, sem código por job.
  *
  * - **O nome logado é o `toString()` do `Runnable`.** Para um `@Scheduled`, o Spring dá `<Classe>.<método>`; uma tarefa
  *   avulsa sai com o `toString()` dela (o da classe, se ele não for sobrescrito ou lançar).
@@ -71,7 +70,7 @@ internal class JobErrorLogging(
         try {
             job.run()
         } catch (failure: Throwable) {
-            log.error("Job {} falhou: {}", nameOf(job), classChain(failure))
+            log.error("Job {} falhou: {}", nameOf(job), ExceptionClasses.chain(failure))
         }
     }
 
@@ -87,13 +86,5 @@ internal class JobErrorLogging(
             } catch (_: Throwable) {
                 job.javaClass.name
             }
-
-        /** `A <- B <- C`: a classe da falha e das causas, parando na primeira causa repetida (ciclo). */
-        fun classChain(failure: Throwable): String {
-            val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
-            return generateSequence(failure) { it.cause }
-                .takeWhile { seen.add(it) }
-                .joinToString(" <- ") { it.javaClass.name }
-        }
     }
 }

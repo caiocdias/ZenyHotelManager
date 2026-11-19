@@ -83,7 +83,7 @@ data class TransactionCodeUpdateRequest(
     @field:NotBlank
     @field:Size(max = 80)
     val name: String?,
-    val serviceChargeApplies: Boolean = false,
+    val serviceChargeApplies: Boolean,
     @field:Schema(description = "Taxa de serviço própria (0 a 100); nula: a padrão do hotel.", example = "10.0000")
     val serviceChargeRate: Percent? = null,
     @field:Size(max = 60)

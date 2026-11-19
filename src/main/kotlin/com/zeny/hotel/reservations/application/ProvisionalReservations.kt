@@ -11,6 +11,7 @@ import com.zeny.hotel.reservations.domain.ProvisionalValidity
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.CursorPage
+import com.zeny.hotel.shared.ExceptionClasses
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.PageCursor
@@ -85,7 +86,7 @@ class ProvisionalExpiry(
                     .onSuccess { if (it) expired++ }
                     .onFailure {
                         failed++
-                        log.warn("Expiração da pré-reserva {} falhou", id, it)
+                        log.warn("Expiração da pré-reserva {} falhou: {}", id, ExceptionClasses.chain(it))
                     }
             }
             after = batch.lastOrNull()

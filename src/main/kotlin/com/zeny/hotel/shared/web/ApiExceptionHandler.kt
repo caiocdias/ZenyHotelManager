@@ -2,7 +2,10 @@ package com.zeny.hotel.shared.web
 
 import com.zeny.hotel.shared.DomainException
 import com.zeny.hotel.shared.ErrorCodes
+import com.zeny.hotel.shared.ExceptionClasses
 import com.zeny.hotel.shared.FieldViolation
+import io.micrometer.core.instrument.Counter
+import io.micrometer.core.instrument.MeterRegistry
 import jakarta.persistence.OptimisticLockException
 import org.slf4j.LoggerFactory
 import org.springframework.beans.TypeMismatchException
@@ -21,12 +24,16 @@ import org.springframework.web.bind.MissingServletRequestParameterException
 import org.springframework.web.bind.ServletRequestBindingException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.RequestAttributes
 import org.springframework.web.context.request.ServletWebRequest
 import org.springframework.web.context.request.WebRequest
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.multipart.support.MissingServletRequestPartException
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler
+import java.sql.SQLException
+import java.util.Collections
+import java.util.IdentityHashMap
 
 /**
  * Converte toda exceção que sai de um controller num problema RFC 9457 com `code` estável
@@ -36,13 +43,20 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  * - erros de validação e de leitura da requisição: `400 VALIDATION_FAILED` com `errors[]`
  *   por campo, ou `400 MALFORMED_REQUEST` quando o corpo nem chega a ser lido;
  * - conflito de versão no banco (lock otimista): `412 PRECONDITION_FAILED`;
+ * - deadlock (`40P01`) ou espera de trava além do `lock_timeout` (`55P03`), com o SQLSTATE em
+ *   qualquer `SQLException` da cadeia de causas: `409 CONCURRENT_UPDATE`, retentável. O log leva
+ *   só a classe e o SQLSTATE (nunca a mensagem do banco), o contador `zeny.api.concurrent.updates`
+ *   conta a ocorrência por SQLSTATE e a chave de idempotência da requisição é liberada
+ *   ([IdempotencyFilter.RELEASE_KEY_ATTRIBUTE]);
  * - exceções do Spring MVC: o status do Spring, com `code`, título e detalhe padronizados;
  * - qualquer outra: `500 INTERNAL_ERROR` genérico. A causa vai só para o log, nunca para a
  *   resposta (sem stack trace nem mensagem interna).
  */
 @RestControllerAdvice
 @Suppress("TooManyFunctions") // um método por família de exceção, como no ResponseEntityExceptionHandler
-class ApiExceptionHandler : ResponseEntityExceptionHandler() {
+class ApiExceptionHandler(
+    private val meters: MeterRegistry,
+) : ResponseEntityExceptionHandler() {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @ExceptionHandler(DomainException::class)
@@ -79,8 +93,35 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
         ex: Exception,
         request: WebRequest,
     ): ResponseEntity<Any> {
+        concurrencySqlStateOf(ex)?.let { sqlState -> return handleConcurrentUpdate(ex, sqlState, request) }
         log.error("Erro inesperado em {}", describe(request), ex)
         return problem(Problems.of(HttpStatus.INTERNAL_SERVER_ERROR, ErrorCodes.INTERNAL_ERROR), request)
+    }
+
+    /**
+     * O banco desfez a transação do caso de uso (deadlock ou `lock_timeout`), e o cliente pode tentar de novo,
+     * inclusive com a mesma `Idempotency-Key`. A mensagem do banco traz nomes de tabela e valores, por isso só a
+     * classe e o SQLSTATE vão ao log.
+     */
+    private fun handleConcurrentUpdate(
+        ex: Exception,
+        sqlState: String,
+        request: WebRequest,
+    ): ResponseEntity<Any> {
+        log.warn(
+            "Conflito de concorrência no banco em {}: {} (SQLSTATE {})",
+            describe(request),
+            ExceptionClasses.chain(ex),
+            sqlState,
+        )
+        Counter
+            .builder(CONCURRENT_UPDATES)
+            .description("Requisições desfeitas por deadlock ou lock_timeout no banco (409 CONCURRENT_UPDATE)")
+            .tag(SQLSTATE_TAG, sqlState)
+            .register(meters)
+            .increment()
+        request.setAttribute(IdempotencyFilter.RELEASE_KEY_ATTRIBUTE, true, RequestAttributes.SCOPE_REQUEST)
+        return problem(Problems.of(HttpStatus.CONFLICT, ErrorCodes.CONCURRENT_UPDATE), request)
     }
 
     override fun handleMethodArgumentNotValid(
@@ -189,4 +230,42 @@ class ApiExceptionHandler : ResponseEntityExceptionHandler() {
     private fun describe(request: WebRequest): String =
         (request as? ServletWebRequest)?.request?.let { "${it.method} ${it.requestURI}" }
             ?: request.getDescription(false)
+
+    companion object {
+        /** Contador das respostas `409 CONCURRENT_UPDATE`, com a etiqueta [SQLSTATE_TAG]. */
+        const val CONCURRENT_UPDATES = "zeny.api.concurrent.updates"
+        const val SQLSTATE_TAG = "sqlstate"
+    }
+}
+
+/** Deadlock detectado pelo PostgreSQL. */
+private const val DEADLOCK_DETECTED = "40P01"
+
+/** Espera por trava esgotada (`lock_timeout`). */
+private const val LOCK_NOT_AVAILABLE = "55P03"
+
+private val CONCURRENCY_SQL_STATES = setOf(DEADLOCK_DETECTED, LOCK_NOT_AVAILABLE)
+
+/** Teto de elos percorridos na cadeia de causas e de `getNextException`, contra cadeias enormes. */
+private const val MAX_CHAIN_LINKS = 64
+
+/**
+ * O SQLSTATE de concorrência ([CONCURRENCY_SQL_STATES]) de alguma `SQLException` da cadeia de causas de [failure],
+ * olhando também o `getNextException` de cada uma (o erro de um lote vem ali), ou `null`. Pelo estado, nunca pelo
+ * texto. Ciclos e cadeias longas param no [MAX_CHAIN_LINKS].
+ */
+private fun concurrencySqlStateOf(failure: Throwable): String? {
+    val seen = Collections.newSetFromMap(IdentityHashMap<Throwable, Boolean>())
+    var cause: Throwable? = failure
+    while (cause != null && seen.size < MAX_CHAIN_LINKS && seen.add(cause)) {
+        if (cause is SQLException) {
+            var next: SQLException? = cause
+            while (next != null && seen.size < MAX_CHAIN_LINKS) {
+                if (next.sqlState in CONCURRENCY_SQL_STATES) return next.sqlState
+                next = next.nextException?.takeIf(seen::add)
+            }
+        }
+        cause = cause.cause
+    }
+    return null
 }

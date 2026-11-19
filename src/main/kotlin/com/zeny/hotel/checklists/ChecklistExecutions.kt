@@ -86,7 +86,48 @@ data class ChecklistAnswerInput(
     val photoFileId: FileId? = null,
     val note: String? = null,
     val answeredAt: Instant? = null,
-)
+) {
+    companion object {
+        /**
+         * Uma resposta com a foto pelo id do anexo ([photoFileId]), para o módulo que repassa respostas sem depender do
+         * `files` (a conclusão da tarefa de governança, M6 E04).
+         */
+        @Suppress("LongParameterList") // os campos da resposta, um por tipo de item
+        fun of(
+            itemKey: String,
+            check: CheckAnswer?,
+            quantity: BigDecimal?,
+            number: BigDecimal?,
+            text: String?,
+            choice: String?,
+            choices: List<String>?,
+            photoFileId: UUID?,
+            note: String?,
+        ) = ChecklistAnswerInput(
+            itemKey,
+            check,
+            quantity,
+            number,
+            text,
+            choice,
+            choices,
+            photoFileId?.let(::FileId),
+            note,
+        )
+    }
+}
+
+/**
+ * O que a conclusão pela API pública faz com uma foto citada que não serve à resposta (não existe, ou é de outra
+ * finalidade, outro autor ou outro dono; o autor é quem iniciou a execução).
+ */
+enum class ChecklistPhotoPolicy {
+    /** Online: recusa (`422 CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`), como o endpoint online. */
+    REFUSE,
+
+    /** Offline: a resposta fica sem a foto (`photoMissing`, que conta como respondida no obrigatório), H10 e RN-22. */
+    TOLERATE,
+}
 
 /**
  * Uma resposta gravada. [photoMissing]: a foto citada offline (ou pela API pública) não ficou com a resposta,

@@ -5,6 +5,7 @@ import com.zeny.hotel.checklists.ChecklistCompletion
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
@@ -195,6 +196,12 @@ class ChecklistsApiService(
     }
 
     @Transactional(readOnly = true)
+    override fun currentVersion(templateId: ChecklistTemplateId): ChecklistVersionView? {
+        val number = templates.find(templateId)?.takeIf { it.active }?.publishedVersion ?: return null
+        return directory.version(templateId, number)?.view()
+    }
+
+    @Transactional(readOnly = true)
     override fun version(
         templateId: ChecklistTemplateId,
         number: Int,
@@ -218,6 +225,22 @@ class ChecklistsApiService(
         answers: List<ChecklistAnswerInput>,
         completedAt: Instant,
     ): ChecklistCompletion = executions.complete(id, answers, completedAt)
+
+    override fun completeExecutionIfOpen(
+        id: ChecklistExecutionId,
+        answers: List<ChecklistAnswerInput>,
+        completedAt: Instant,
+        photoPolicy: ChecklistPhotoPolicy,
+    ): ChecklistCompletion? =
+        executions.completeIfOpen(
+            id,
+            answers,
+            completedAt,
+            when (photoPolicy) {
+                ChecklistPhotoPolicy.REFUSE -> PhotoPolicy.REFUSE
+                ChecklistPhotoPolicy.TOLERATE -> PhotoPolicy.TOLERATE
+            },
+        )
 }
 
 @Configuration(proxyBeanMethods = false)

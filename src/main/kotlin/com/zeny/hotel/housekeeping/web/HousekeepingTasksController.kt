@@ -2,6 +2,7 @@ package com.zeny.hotel.housekeeping.web
 
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
 import com.zeny.hotel.housekeeping.application.HousekeepingTaskView
@@ -198,8 +199,43 @@ data class HousekeepingTaskResponse(
         nullable = true,
     )
     val assignmentPosition: Int?,
+    @field:ExtensibleEnum
+    @field:Schema(
+        description = "O motivo da recusa, só em `REFUSED` (trate um valor desconhecido sem falhar).",
+        nullable = true,
+    )
+    val refusalReason: RefusalReason?,
+    @field:Schema(description = "O primeiro início; um refazer não o muda. Nulo antes do início.", nullable = true)
+    val startedAt: Instant?,
+    @field:Schema(description = "A conclusão; nula antes dela e depois de um refazer.", nullable = true)
+    val finishedAt: Instant?,
+    @field:Schema(description = "O tempo trabalhado, em segundos: só os trechos em andamento, sem as pausas.")
+    val workedSeconds: Long,
+    @field:Schema(description = "O usuário que concluiu a tarefa; nulo antes da conclusão.", nullable = true)
+    val cleanedBy: UUID?,
+    @field:Schema(
+        description =
+            "A execução do checklist aberta no último início (id opaco do `checklists`); nula numa tarefa sem " +
+                "checklist ou ainda não iniciada.",
+        nullable = true,
+    )
+    val checklistExecutionId: UUID?,
+    @field:Schema(
+        description =
+            "Se um comando offline de uma camareira que já não era dona da tarefa (reatribuída, retirada ou " +
+                "cancelada) ficou registrado como conflito (RN-22); a tarefa não mudou por ele. A marca muda a " +
+                "`version` (e o `ETag`), mas não o `updatedAt`.",
+    )
+    val hasConflict: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "As chaves dos itens reprovados da última inspeção reprovada da tarefa (do checklist de inspeção); " +
+                "vazio se ela nunca foi reprovada ou se a inspeção não tinha checklist. Segue preenchido com a " +
+                "última reprovação mesmo depois de a tarefa ser refeita e aprovada.",
+    )
+    val rejectedItems: List<String>,
 ) {
     companion object {
         fun of(view: HousekeepingTaskView) =
@@ -218,8 +254,16 @@ data class HousekeepingTaskResponse(
                 view.notes,
                 view.assignedEmployeeId?.value,
                 view.assignmentPosition,
+                view.refusalReason,
+                view.startedAt,
+                view.finishedAt,
+                view.workedSeconds,
+                view.cleanedBy?.value,
+                view.checklistExecutionId?.value,
+                view.hasConflict,
                 view.createdAt,
                 view.updatedAt,
+                view.rejectedItems,
             )
     }
 }

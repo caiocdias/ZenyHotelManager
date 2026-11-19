@@ -16,7 +16,6 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
-import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -68,8 +67,7 @@ class ChecklistExecutionsController(
         @Parameter(description = "Só as geradas por esta rotina.")
         @RequestParam(required = false) routineId: UUID?,
         @Parameter(description = "Só as de rotina desta data operacional.")
-        @RequestParam(required = false)
-        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) businessDate: LocalDate?,
+        @RequestParam(required = false) businessDate: LocalDate?,
         @Parameter(description = "Só as deste tipo de sujeito (com `subjectId`, deste sujeito).")
         @RequestParam(required = false) subjectType: String?,
         @RequestParam(required = false) subjectId: UUID?,

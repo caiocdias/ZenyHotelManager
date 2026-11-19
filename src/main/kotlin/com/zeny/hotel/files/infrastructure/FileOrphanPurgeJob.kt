@@ -1,6 +1,7 @@
 package com.zeny.hotel.files.infrastructure
 
 import com.zeny.hotel.files.application.FileOrphanPurge
+import com.zeny.hotel.shared.ExceptionClasses
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -33,7 +34,7 @@ class FileOrphanPurgeJob(
             candidates.forEach { id ->
                 runCatching { purge.purge(id) }
                     .onSuccess { if (it) purged++ }
-                    .onFailure { log.warn("Expurgo do anexo órfão {} falhou", id, it) }
+                    .onFailure { log.warn("Expurgo do anexo órfão {} falhou: {}", id, ExceptionClasses.chain(it)) }
             }
             batches++
         } while (candidates.size == BATCH_SIZE && batches < MAX_BATCHES)

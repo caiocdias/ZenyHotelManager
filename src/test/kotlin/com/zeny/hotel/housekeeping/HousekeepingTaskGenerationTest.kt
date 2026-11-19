@@ -34,6 +34,8 @@ import com.zeny.hotel.rooms.RoomSummary
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.AuditContext
+import com.zeny.hotel.shared.UserId
+import com.zeny.hotel.staff.EmployeeId
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
@@ -437,6 +439,8 @@ class HousekeepingTaskGenerationTest {
 
         override fun task(id: HousekeepingTaskId): HousekeepingTask? = saved.firstOrNull { it.id == id }
 
+        override fun findForUpdate(id: HousekeepingTaskId): HousekeepingTask? = error("fora do teste")
+
         override fun tasks(ids: List<UUID>): List<HousekeepingTask> = error("fora do teste")
 
         override fun page(
@@ -452,6 +456,24 @@ class HousekeepingTaskGenerationTest {
         ): List<HousekeepingTask> = error("fora do teste")
 
         override fun update(task: HousekeepingTask): Unit = error("fora do teste")
+
+        override fun touch(task: HousekeepingTask): Unit = error("fora do teste")
+
+        override fun recordAssignment(
+            taskId: HousekeepingTaskId,
+            employeeId: EmployeeId,
+            at: Instant,
+        ): Unit = error("fora do teste")
+
+        override fun wasAssignedTo(
+            taskId: HousekeepingTaskId,
+            employeeId: EmployeeId,
+        ): Boolean = error("fora do teste")
+
+        override fun recordLeftScope(
+            taskId: HousekeepingTaskId,
+            users: Set<UserId>,
+        ): Unit = error("fora do teste")
 
         override fun hasOpenTaskFor(scheduledCleaningId: ScheduledCleaningId): Boolean =
             saved.any {

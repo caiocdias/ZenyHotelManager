@@ -20,9 +20,8 @@ import java.util.UUID
 /**
  * Entrada externa malformada no `housekeeping` (M6 E01; risco de parsing): datas fora do formato estrito da E18,
  * números e identificadores com o tipo errado e coleções com a forma errada. Toda recusa é `4xx` (nunca `500`), e nada
- * é gravado. Número fracionário num campo inteiro (`7.5`, `1.5`) fica de fora: o mapeador JSON global o trunca hoje
- * (`201` com `7`/`1`), comportamento de toda a API e não desta etapa, apontado no relatório do testador da E01. O
- * mesmo vale para `""` num UUID opcional (`checklistTemplateId`), que o mapeador lê como `null`.
+ * é gravado. Número fracionário num campo inteiro (`7.5`, `1.5`) e `""` num UUID opcional (`checklistTemplateId`) são
+ * recusados com `INVALID_FORMAT` no campo desde a M6 E20; o `StrictDateTimeJsonApiTest` cobre esses casos.
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class)

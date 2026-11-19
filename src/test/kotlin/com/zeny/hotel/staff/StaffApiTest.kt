@@ -391,6 +391,7 @@ class StaffApiTest(
                     "shiftId" to shift,
                     "startsOn" to start.toString(),
                     "endsOn" to null,
+                    "weekdays" to emptyList<String>(),
                 )
             call(PUT, path, asAdmin(), extended, ifMatch = staff.etagOf(path)).problem(409, "SCHEDULE_PATTERN_OVERLAP")
             call(POST, "/api/v1/schedule-patterns/$next/deactivate", asAdmin()).ok()["active"].asBoolean() shouldBe
@@ -471,6 +472,7 @@ class StaffApiTest(
                     "shiftId" to nightShift,
                     "startsOn" to start.toString(),
                     "endsOn" to null,
+                    "weekdays" to emptyList<String>(),
                 ),
                 ifMatch = staff.etagOf(path),
             ).ok()
@@ -738,7 +740,13 @@ class StaffApiTest(
             val employee = staff.createEmployee(department)
             val start = today()
             val pattern = staff.createPattern(employee, shift, SchedulePatternKind.TWELVE_THIRTY_SIX, start)
-            val patternBody = mapOf("kind" to "TWELVE_THIRTY_SIX", "shiftId" to shift, "startsOn" to start.toString())
+            val patternBody =
+                mapOf(
+                    "kind" to "TWELVE_THIRTY_SIX",
+                    "shiftId" to shift,
+                    "startsOn" to start.toString(),
+                    "weekdays" to emptyList<String>(),
+                )
             // Quem tem tudo de leitura e a outra permissão de escrita, mas não a do endpoint.
             val read =
                 listOf(StaffPermissions.EMPLOYEES_READ, StaffPermissions.SCHEDULE_READ).map {

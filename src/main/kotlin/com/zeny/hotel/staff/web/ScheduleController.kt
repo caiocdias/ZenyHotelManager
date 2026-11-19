@@ -245,7 +245,7 @@ data class SchedulePatternRequest(
     val endsOn: LocalDate? = null,
     @field:ArraySchema(arraySchema = Schema(description = "Dias da semana do padrão fixo; vazio nos outros."))
     @field:Size(max = 7)
-    val weekdays: Set<DayOfWeek> = emptySet(),
+    val weekdays: Set<DayOfWeek>,
 ) {
     fun toCommand() = PatternCommand(kind, ShiftId(shiftId), startsOn, endsOn, weekdays)
 }

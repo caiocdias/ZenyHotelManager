@@ -120,21 +120,54 @@ class ScheduledCleaningDomainTest {
     @Test
     fun `recordDone moves the last date forward and never back`() {
         val schedule = schedule(lastDoneOn = LocalDate.parse("2026-11-10"), frequencyDays = 5)
+        val later = now.plusSeconds(60)
 
-        schedule.recordDone(LocalDate.parse("2026-11-12")) shouldBe true
+        schedule.recordDone(LocalDate.parse("2026-11-12"), later) shouldBe true
         schedule.lastDoneOn shouldBe LocalDate.parse("2026-11-12")
         schedule.nextDueOn shouldBe LocalDate.parse("2026-11-17")
+        schedule.updatedAt shouldBe later
 
-        // Uma data anterior ou igual não muda nada.
-        schedule.recordDone(LocalDate.parse("2026-11-11")) shouldBe false
-        schedule.recordDone(LocalDate.parse("2026-11-12")) shouldBe false
+        // Uma data anterior ou igual não muda nada (nem o updatedAt).
+        schedule.recordDone(LocalDate.parse("2026-11-11"), later.plusSeconds(1)) shouldBe false
+        schedule.recordDone(LocalDate.parse("2026-11-12"), later.plusSeconds(1)) shouldBe false
         schedule.lastDoneOn shouldBe LocalDate.parse("2026-11-12")
         schedule.nextDueOn shouldBe LocalDate.parse("2026-11-17")
+        schedule.updatedAt shouldBe later
 
         // Sem data anterior, a primeira vale.
         val never = schedule()
-        never.recordDone(LocalDate.parse("2026-11-16")) shouldBe true
+        never.recordDone(LocalDate.parse("2026-11-16"), later) shouldBe true
         never.lastDoneOn shouldBe LocalDate.parse("2026-11-16")
         never.nextDueOn shouldBe LocalDate.parse("2026-11-23")
+    }
+
+    @Test
+    fun `recordDone does not act on an inactive schedule (M6 E04, D10)`() {
+        val schedule = schedule(lastDoneOn = LocalDate.parse("2026-11-10"), frequencyDays = 5)
+        schedule.deactivate(now)
+
+        schedule.recordDone(LocalDate.parse("2026-11-16"), now.plusSeconds(60)) shouldBe false
+        schedule.lastDoneOn shouldBe LocalDate.parse("2026-11-10")
+        schedule.nextDueOn shouldBe LocalDate.parse("2026-11-15")
+        schedule.updatedAt shouldBe now
+    }
+
+    @Test
+    fun `recordDone refuses a date, or a next date, outside the storable range (M6 E04, D10)`() {
+        val schedule = schedule(frequencyDays = 5)
+        listOf(StorableRange.MIN_DATE.minusDays(1), StorableRange.MAX_DATE, StorableRange.MAX_DATE.minusDays(4))
+            .forEach { date ->
+                withClue(date) {
+                    val error = shouldThrow<InvalidInputException> { schedule.recordDone(date, now) }
+                    error.code.value shouldBe "VALIDATION_FAILED"
+                    error.violations.map { it.field to it.code } shouldBe listOf("date" to "INVALID_VALUE")
+                }
+            }
+        schedule.lastDoneOn shouldBe null
+        schedule.nextDueOn shouldBe today
+
+        // O extremo que ainda cabe vale.
+        schedule.recordDone(StorableRange.MAX_DATE.minusDays(5), now) shouldBe true
+        schedule.nextDueOn shouldBe StorableRange.MAX_DATE
     }
 }

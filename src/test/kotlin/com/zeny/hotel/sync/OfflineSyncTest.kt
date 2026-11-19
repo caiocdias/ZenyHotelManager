@@ -490,6 +490,107 @@ class OfflineSyncTest(
         noteCount(iso.id()) shouldBe 1
     }
 
+    /**
+     * Faixa do `StorableRange` e `""` num UUID no payload (M6 E20): `COMMAND_PAYLOAD_INVALID` sem rodar o handler, sem
+     * efeito e sem guardar; com o valor válido (inclusive o extremo da faixa), o comando é aplicado.
+     */
+    @Test
+    fun `a date outside the range or an empty UUID in the payload is COMMAND_PAYLOAD_INVALID, a valid one applies`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        val refused =
+            listOf(
+                mapOf("dueOn" to "+5874898-01-01"),
+                mapOf("dueOn" to "-4713-12-31"),
+                mapOf("ref" to ""),
+            ).map { extra -> command(SyncExample.RECORD, mapOf("text" to "faixa $extra") + extra) }
+
+        val results = send(auth(writer), refused)
+        refused.zip(results).forEach { (command, result) ->
+            withClue("payload ${command.payload}") {
+                result["status"].asString() shouldBe "REJECTED"
+                result["code"].asString() shouldBe "COMMAND_PAYLOAD_INVALID"
+                recordHandler.invocations(command.id()) shouldBe 0
+                noteCount(command.id()) shouldBe 0
+                storedCommand(command.id()) shouldBe 0
+            }
+        }
+
+        listOf(mapOf("dueOn" to "+5874897-12-31"), mapOf("ref" to UUID.randomUUID().toString())).forEach { extra ->
+            val valid = command(SyncExample.RECORD, mapOf("text" to "válido $extra") + extra)
+            send(auth(writer), valid).single()["status"].asString() shouldBe "APPLIED"
+            noteCount(valid.id()) shouldBe 1
+        }
+    }
+
+    /**
+     * O envelope (`occurredAt` e `deviceClock`) mantém o formato estrito, mas fica fora da faixa do `StorableRange`
+     * (M6 E20): um instante absurdo é `REJECTED DEVICE_TIME_INVALID` só naquele comando, e o resto do lote segue.
+     */
+    @Test
+    fun `an envelope instant outside the storable range rejects only that command with DEVICE_TIME_INVALID`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        val valid = command(SyncExample.RECORD, mapOf("text" to "válido no lote"))
+        val tooLate = command(SyncExample.RECORD, mapOf("text" to "occurredAt fora da faixa"))
+        val tooEarly = command(SyncExample.RECORD, mapOf("text" to "deviceClock fora da faixa"))
+        val bodies =
+            listOf(
+                tooLate.body() + ("occurredAt" to "+294277-01-01T00:00:00Z"),
+                valid.body(),
+                tooEarly.body() + ("deviceClock" to "-4713-12-31T23:59:59Z"),
+            )
+
+        val results =
+            with(iam) { call(POST, "/api/v1/sync/commands", auth(writer), mapOf("commands" to bodies)).ok() }["results"]
+                .values()
+                .toList()
+
+        results.map { it["status"].asString() } shouldContainExactly listOf("REJECTED", "APPLIED", "REJECTED")
+        results.map { it["code"]?.asString() }.filter { it?.isNotEmpty() == true } shouldContainExactly
+            listOf("DEVICE_TIME_INVALID", "DEVICE_TIME_INVALID")
+        noteCount(tooLate.id()) shouldBe 0
+        noteCount(valid.id()) shouldBe 1
+        noteCount(tooEarly.id()) shouldBe 0
+        storedCommand(tooLate.id()) shouldBe 0
+        storedCommand(tooEarly.id()) shouldBe 0
+        storedCommand(valid.id()) shouldBe 1
+    }
+
+    /**
+     * O envelope sem a faixa continua estrito no formato (M6 E20): época numérica ou em texto e `""` em `occurredAt` ou
+     * `deviceClock` recusam o lote inteiro com `400 INVALID_FORMAT` no campo, e nenhum comando do lote é aplicado nem
+     * guardado (só o fora da faixa em formato ISO é recusado por comando).
+     */
+    @Test
+    fun `an envelope instant that is not ISO text refuses the whole batch with 400 on the field`() {
+        val writer = iam.createUserWith(notesRead(ALL), notesWrite())
+        listOf<Any>(1_763_028_000, 1_763_028_000_000, "1763028000", "").forEach { bad ->
+            listOf("occurredAt", "deviceClock").forEach { field ->
+                withClue("$field=$bad") {
+                    val first = command(SyncExample.RECORD, mapOf("text" to "lote $field $bad primeiro"))
+                    val second = command(SyncExample.RECORD, mapOf("text" to "lote $field $bad segundo"))
+                    val response =
+                        with(iam) {
+                            call(
+                                POST,
+                                "/api/v1/sync/commands",
+                                auth(writer),
+                                mapOf("commands" to listOf(first.body(), second.body() + (field to bad))),
+                            )
+                        }
+                    response.status shouldBe 400
+                    val problem = iam.json(response)
+                    problem["code"].asString() shouldBe "VALIDATION_FAILED"
+                    problem["errors"].values().map { "${it["field"].asString()}:${it["code"].asString()}" } shouldBe
+                        listOf("commands[1].$field:INVALID_FORMAT")
+                    noteCount(first.id()) shouldBe 0
+                    noteCount(second.id()) shouldBe 0
+                    storedCommand(first.id()) shouldBe 0
+                    storedCommand(second.id()) shouldBe 0
+                }
+            }
+        }
+    }
+
     @Test
     fun `a handler without the permission rejects the command`() {
         val reader = iam.createUserWith(notesRead(ALL))

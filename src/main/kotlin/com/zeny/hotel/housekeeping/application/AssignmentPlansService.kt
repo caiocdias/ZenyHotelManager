@@ -258,18 +258,22 @@ class AssignmentPlansService(
      * Publica o plano da [date], sob a trava dele. Na ordem: `If-Match` (`428`), a janela (`422`), o plano (`404`), a
      * versão (`412`); depois, sem gravar nada se alguma falhar:
      *
-     * - **tarefa que já andou** (fora de `PENDING` e `ASSIGNED`, Review Focus 4): nunca é tocada. O item dela com a
-     *   mesma camareira (inclusive com outra posição) é ignorado; o item que a passaria a outra camareira (ou a
-     *   deixaria sem camareira) recusa a publicação inteira, `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE` com os ids em
-     *   `errors[]`;
+     * - **tarefa terminada** (`DONE` ou `CANCELLED`, D12 da E04): nunca é tocada, e o item dela sai do plano publicado
+     *   (as posições da camareira voltam a ir de 1 a n), com qualquer camareira;
+     * - **tarefa que já andou** (fora de `PENDING` e `ASSIGNED`, e não terminada, Review Focus 4): nunca é tocada. O
+     *   item dela com a mesma camareira (inclusive com outra posição) é ignorado; o item que a passaria a outra
+     *   camareira (ou a deixaria sem camareira) recusa a publicação inteira, `422 ASSIGNMENT_TASK_NOT_ASSIGNABLE` com
+     *   os ids em `errors[]`;
      * - **escala** (Review Focus 1): toda camareira que o rascunho faria receber uma tarefa precisa estar na escala da
      *   data (`422 ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`). Os `employeeIds` da sugestão não são reconferidos.
      *
      * Grava em cada tarefa do rascunho a camareira e a posição (`ASSIGNED`), ou a volta a `PENDING` sem camareira; a
      * tarefa já igual ao item não muda. A tarefa **retirada** (D7-E03: `ASSIGNED`, dentro do conteúdo do plano pela
      * D2-E03 e fora do rascunho) volta a `PENDING`. Uma falha otimista numa tarefa (outra escrita chegou antes) dá
-     * `412`. O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída ou removida
-     * (não a que só mudou de posição) e publica a mensagem no tópico `housekeeping`.
+     * `412`. A tarefa que passa a uma camareira grava a posse ([HousekeepingTaskStore.recordAssignment], D3-E19); a
+     * que sai de uma camareira (reatribuída ou retirada) vai como *tombstone* da fonte offline `housekeeping-tasks` ao
+     * usuário dela (D6-E19). O plano fica `PUBLISHED`. Depois de tudo gravado, avisa cada camareira com tarefa incluída
+     * ou removida (não a que só mudou de posição) e publica a mensagem no tópico `housekeeping`.
      */
     @Audited(HousekeepingAudit.PUBLISH_ASSIGNMENT_PLAN)
     @Transactional
@@ -284,9 +288,11 @@ class AssignmentPlansService(
         val plan = plans.lockByDate(date) ?: throw notFound()
         requireCurrentVersion(version, plan.version)
         audit.track(HousekeepingAudit.ASSIGNMENT_PLAN, plan.id.value) { plan.auditState() }
+        val (finished, current) =
+            tasks.tasks(plan.items.map { it.taskId.value }).partition { it.status in FINISHED }
+        plan.dropFinished(finished.map { it.id }.toSet())
         val items = plan.items.associateBy { it.taskId }
-        val (open, started) =
-            tasks.tasks(items.keys.map { it.value }).partition { it.status in ASSIGNABLE }
+        val (open, started) = current.partition { it.status in ASSIGNABLE }
         val moved = started.filter { it.assignedEmployeeId?.value != items.getValue(it.id).attendant?.value }
         if (moved.isNotEmpty()) throw TaskAlreadyStartedException(moved.map { it.id })
         val schedule = scheduledEmployees(date)
@@ -304,6 +310,7 @@ class AssignmentPlansService(
                 val item = items.getValue(task.id)
                 write(task, item.attendant?.let { EmployeeId(it.value) }, item.position, now)
             } + withdrawn.mapNotNull { write(it, null, 0, now) }
+        recordScopeExits(changes)
         plan.publish(now, actor.currentOrNull()?.userId)
         plans.update(plan)
         val (notified, notNotified) = notifyChanges(date, changes)
@@ -349,7 +356,8 @@ class AssignmentPlansService(
 
     /**
      * Grava na tarefa a camareira [employee] na [position] (`null`: volta a `PENDING`), acompanhada na trilha; a tarefa
-     * que já está assim não muda. Devolve a mudança, ou `null` se nada mudou.
+     * que já está assim não muda. Quando a tarefa passa a outra camareira, grava a posse (D3-E19; mudar só a posição
+     * não grava). Devolve a mudança, ou `null` se nada mudou.
      */
     private fun write(
         task: HousekeepingTask,
@@ -368,7 +376,22 @@ class AssignmentPlansService(
         audit.track(HousekeepingAudit.TASK, task.id.value) { task.auditState() }
         if (employee == null) task.unassign(now) else task.assign(employee, position, now)
         tasks.update(task)
+        if (employee != null && employee != before) tasks.recordAssignment(task.id, employee, now)
         return AssigneeChange(task, before, employee, position)
+    }
+
+    /**
+     * A tarefa que saiu de uma camareira (reatribuída a outra ou retirada) sai do escopo `OWN` do usuário dela na fonte
+     * `housekeeping-tasks` (D6-E19): o *tombstone* vai só a ele, e quem tem `ALL` continua com a tarefa. O usuário vem
+     * do cadastro do colaborador (`StaffApi.employees`); a camareira sem usuário não tem aparelho a avisar.
+     */
+    private fun recordScopeExits(changes: List<AssigneeChange>) {
+        val exits = changes.filter { it.before != null && it.after != it.before }
+        if (exits.isEmpty()) return
+        val users = staff.employees(exits.mapNotNull { it.before }.distinct())
+        exits.forEach { exit ->
+            users[exit.before]?.userId?.let { tasks.recordLeftScope(exit.task.id, setOf(it)) }
+        }
     }
 
     /**
@@ -517,6 +540,9 @@ class AssignmentPlansService(
         /** Até quantos dias depois da data operacional o plano pode ser feito (D2-E03). */
         const val MAX_DAYS_AHEAD = 7L
         private val ASSIGNABLE = setOf(TaskStatus.PENDING, TaskStatus.ASSIGNED)
+
+        /** As tarefas terminadas, cujo item a publicação tira do plano sem tocá-las (D12 da E04). */
+        private val FINISHED = setOf(TaskStatus.DONE, TaskStatus.CANCELLED)
     }
 }
 

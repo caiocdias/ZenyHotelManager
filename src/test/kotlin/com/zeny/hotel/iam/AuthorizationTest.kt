@@ -271,6 +271,11 @@ class AuthorizationTest(
                 "housekeeping.tasks.read:ALL",
                 "housekeeping.tasks.request:ALL",
                 "housekeeping.assignments.manage:ALL",
+                "housekeeping.tasks.execute:ALL",
+                "housekeeping.inspections.perform:ALL",
+                "housekeeping.occurrences.report:ALL",
+                "housekeeping.lostfound.manage:ALL",
+                "housekeeping.damages.manage:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(
@@ -278,6 +283,8 @@ class AuthorizationTest(
                 "rooms.offline.read:ALL",
                 "checklists.executions.read:OWN",
                 "checklists.executions.execute:OWN",
+                "housekeeping.tasks.execute:OWN",
+                "housekeeping.occurrences.report:OWN",
             )
 
         // O administrador inicial tem a role Administrador e, com ela, todas as permissões vigentes.

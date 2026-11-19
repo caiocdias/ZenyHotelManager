@@ -71,7 +71,7 @@ data class InventoryResponse(
 data class OverbookingLimitRequest(
     @field:Schema(description = "Os tipos de UH (de 1 a 50, sem repetir).")
     @field:Size(max = 50)
-    val roomTypeIds: List<UUID> = emptyList(),
+    val roomTypeIds: List<UUID>,
     @field:NotNull
     val from: LocalDate?,
     @field:NotNull

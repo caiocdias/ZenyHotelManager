@@ -131,6 +131,90 @@ interface RoomsApi {
         source: RoomStatusSource,
     ): CheckInOccupation
 
+    // --- Operações condicionais da governança (M6 E04) ---------------------------------------------
+
+    /**
+     * Governança (D3 da M6 E04): com a linha da UH travada, leva a UH **Suja** a Limpa, com a inspeção pendente se
+     * [requiresInspection], como [markClean]; numa UH já Limpa (com ou sem inspeção pendente) ou Inspecionada não
+     * muda nada e não recusa. Devolve se mudou. Auditada como [markClean] quando muda. UH inexistente: `404
+     * ROOM_NOT_FOUND`.
+     */
+    fun markCleanIfDirty(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): Boolean
+
+    /**
+     * Governança (D4 da M6 E04): com a linha da UH travada, liga a sinalização [flag] só numa UH **ocupada**, como
+     * [setServiceFlag]; numa UH vaga não muda nada e não recusa. Devolve se mudou. Auditada como [setServiceFlag]
+     * quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun setServiceFlagIfOccupied(
+        id: RoomId,
+        flag: GuestServiceFlag,
+        source: RoomStatusSource,
+    ): Boolean
+
+    /**
+     * Inspeção aprovada (D5 da M6 E05): com a linha da UH travada, leva a Inspecionada só a UH **Limpa com inspeção
+     * pendente**, como [markInspected]; a UH que perdeu a pendência (Suja pelo check-out ou pelo fechamento, Limpa sem
+     * pendência, já Inspecionada) não muda e não é recusada. Devolve o status antes e depois, com a prontidão de cada
+     * um decidida com a linha travada. Auditada como [markInspected] quando muda. UH inexistente: `404
+     * ROOM_NOT_FOUND`.
+     */
+    fun markInspectedIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * Inspeção reprovada (D3 e D5 da M6 E05): com a linha da UH travada, leva a Suja só a UH **Limpa com inspeção
+     * pendente**, como [rejectInspection]; a UH que perdeu a pendência (já Suja, Limpa sem pendência, já Inspecionada)
+     * não muda e não é recusada (Review Focus 2 da E05). Devolve o status antes e depois. Auditada como
+     * [rejectInspection] quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun rejectInspectionIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * Inspeção voluntária (D4 da M6 E05): com a linha da UH travada, leva a Inspecionada só a UH **Limpa sem inspeção
+     * pendente**, como [markInspected]; Suja, Limpa com inspeção pendente ou já Inspecionada não muda e não é
+     * recusada: quem chama decide pela recusa com o [RoomStatusOutcome.before]. Devolve o status antes e depois.
+     * Auditada como [markInspected] quando muda. UH inexistente: `404 ROOM_NOT_FOUND`.
+     */
+    fun markInspectedIfClean(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * [markCleanIfDirty] com o status antes e depois (D5 da M6 E05), para quem precisa saber se a UH ficou pronta
+     * para check-in com a linha travada: mesmas regras, mesma trilha.
+     */
+    fun markCleanIfDirtyWithStatus(
+        id: RoomId,
+        requiresInspection: Boolean,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
+     * Registra o que a governança encontrou na UH (RF-UH-08) com as regras do endpoint de observação: a ocupação, o
+     * número de pessoas opcional (de 1 a 40 e só com a UH ocupada, senão `400 GUEST_COUNT_INVALID`), quem observou
+     * ([observedBy]) e quando ([observedAt]), informados por quem chama (a conclusão da tarefa, M6 E04). Uma ocupação
+     * que diverge da recepção aparece nas discrepâncias. UH inexistente: `404 ROOM_NOT_FOUND`; desativada: `422
+     * ROOM_INACTIVE`. Auditada (`rooms.housekeeping-observation.record`). Não mexe no status.
+     */
+    fun recordObservation(
+        roomId: RoomId,
+        occupancy: OccupancyStatus,
+        guestCount: Int?,
+        observedBy: UserId,
+        observedAt: Instant,
+    )
+
     // --- OOO e OOS (M2 E03) ------------------------------------------------------------------------
 
     /** O período OOO/OOS, liberado ou não, ou `null` se não existe. */
@@ -297,6 +381,18 @@ data class CheckInOccupation(
     val ready: Boolean,
     val status: RoomStatus,
 )
+
+/**
+ * O resultado de uma operação condicional de status (M6 E05): o status da UH antes e depois, lidos com a linha
+ * travada, cada um com o `readyForCheckIn` dele. [changed] diz se a operação mudou a UH.
+ */
+data class RoomStatusOutcome(
+    val before: RoomStatus,
+    val after: RoomStatus,
+) {
+    val changed: Boolean
+        get() = before != after
+}
 
 /**
  * O status de uma UH (RF-UH-04): ocupação e número de hóspedes informados pela recepção, status de

@@ -90,7 +90,7 @@ data class RoomBlockRequest(
     val ratePlanId: UUID?,
     @field:NotNull
     val cutoffDate: LocalDate?,
-    val allocations: List<@Valid BlockAllocationRequest> = emptyList(),
+    val allocations: List<@Valid BlockAllocationRequest>,
 ) {
     fun toNew() =
         NewRoomBlock(
@@ -113,7 +113,7 @@ data class RoomBlockChangeRequest(
     val name: String?,
     @field:NotNull
     val cutoffDate: LocalDate?,
-    val allocations: List<@Valid BlockAllocationRequest> = emptyList(),
+    val allocations: List<@Valid BlockAllocationRequest>,
 ) {
     fun toChange() = RoomBlockChange(checkNotNull(name), checkNotNull(cutoffDate), allocations.map { it.toRange() })
 }
@@ -184,7 +184,7 @@ data class RoomingListRequest(
     val holderGuestId: UUID? = null,
     @field:NotNull
     val origin: ReservationOrigin?,
-    val reservations: List<@Valid BlockReservationDto> = emptyList(),
+    val reservations: List<@Valid BlockReservationDto>,
 ) {
     fun toList() = RoomingList(holderGuestId?.let(::GuestId), checkNotNull(origin), reservations.map { it.toRequest() })
 }

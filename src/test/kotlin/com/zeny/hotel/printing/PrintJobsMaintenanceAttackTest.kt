@@ -17,6 +17,7 @@ import com.zeny.hotel.testsupport.FNRH_SEND_DEFERRED
 import com.zeny.hotel.testsupport.GUESTS_REKEY_DEFERRED
 import com.zeny.hotel.testsupport.INVENTORY_HORIZON_DEFERRED
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.LOST_FOUND_EXPIRY_DEFERRED
 import com.zeny.hotel.testsupport.MutableClock
 import com.zeny.hotel.testsupport.MutableClockConfiguration
 import com.zeny.hotel.testsupport.OUTBOX_PURGE_DEFERRED
@@ -799,6 +800,7 @@ class PrintJobsMaintenanceAttackTest(
         PROVISIONAL_EXPIRY_DEFERRED,
         FNRH_SEND_DEFERRED,
         PRINTING_MAINTENANCE_DEFERRED,
+        LOST_FOUND_EXPIRY_DEFERRED,
         "zeny.printing.delivery-poll-interval=PT0.1S",
         "zeny.printing.stream-heartbeat=PT0.3S",
     ],

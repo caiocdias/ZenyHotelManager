@@ -99,7 +99,7 @@ data class PriceValuesRequest(
     val extraAdult: Money? = null,
     @field:Schema(description = "Um por faixa atual, no máximo; a faixa omitida fica sem preço de criança.")
     @field:Size(max = MAX_CHILD_BANDS)
-    val children: List<@Valid ChildPriceRequest> = emptyList(),
+    val children: List<@Valid ChildPriceRequest>,
 ) {
     fun toInput() =
         PriceInput(

@@ -1,14 +1,18 @@
 package com.zeny.hotel.housekeeping.domain
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.ScheduledCleaningId
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
+import com.zeny.hotel.shared.BusinessRuleException
+import com.zeny.hotel.shared.ConflictException
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.UserId
@@ -20,6 +24,7 @@ import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import jakarta.persistence.Version
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 
@@ -61,11 +66,65 @@ sealed interface TaskLocation {
     }
 }
 
+/** As ações da execução da tarefa (SPEC §8.4, M6 E04) e da inspeção dela (M6 E05). */
+enum class TaskAction {
+    START,
+    PAUSE,
+    RESUME,
+    REFUSE,
+    RETRY,
+    COMPLETE,
+    START_INSPECTION,
+    COMPLETE_INSPECTION,
+}
+
+/** `409 HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`, com o status em `taskStatus` e a ação em `action`. */
+class HousekeepingTaskTransitionNotAllowedException(
+    val action: TaskAction,
+    val status: TaskStatus,
+) : ConflictException(
+        HousekeepingErrorCodes.HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED,
+        "A tarefa ${STATUS_LABELS.getValue(status)} não pode ser ${ACTION_LABELS.getValue(action)}.",
+    ) {
+    override val problemProperties: Map<String, Any>
+        get() = mapOf("taskStatus" to status.name, "action" to action.name)
+
+    private companion object {
+        val STATUS_LABELS =
+            mapOf(
+                TaskStatus.PENDING to "pendente",
+                TaskStatus.ASSIGNED to "atribuída",
+                TaskStatus.IN_PROGRESS to "em andamento",
+                TaskStatus.PAUSED to "pausada",
+                TaskStatus.AWAITING_INSPECTION to "aguardando inspeção",
+                TaskStatus.REJECTED to "reprovada",
+                TaskStatus.DONE to "concluída",
+                TaskStatus.REFUSED to "recusada",
+                TaskStatus.CANCELLED to "cancelada",
+            )
+        val ACTION_LABELS =
+            mapOf(
+                TaskAction.START to "iniciada",
+                TaskAction.PAUSE to "pausada",
+                TaskAction.RESUME to "retomada",
+                TaskAction.REFUSE to "recusada",
+                TaskAction.RETRY to "tentada de novo",
+                TaskAction.COMPLETE to "concluída",
+                TaskAction.START_INSPECTION to "inspecionada",
+                TaskAction.COMPLETE_INSPECTION to "aprovada ou reprovada",
+            )
+    }
+}
+
 /**
  * Tarefa de governança (RF-GOV-02, SPEC §8.2.10): uma limpeza de um tipo num local (UH ou área, exatamente um, que não
  * muda) numa data operacional, com a origem, a prioridade padrão do tipo e os créditos do tipo para o tipo da UH (D2;
- * área ou sem crédito, 0). Nasce `PENDING`; as transições são da E03 e da E04. Há no máximo uma por (local, data,
- * tipo), em qualquer status (D5-E02).
+ * área ou sem crédito, 0). Nasce `PENDING`; a distribuição é da E03 e a execução da E04. Há no máximo uma por (local,
+ * data, tipo), em qualquer status (D5-E02).
+ *
+ * Execução (SPEC §8.4, D6-E04): o instante de cada transição é `max(instante informado, última transição)`, para que
+ * um instante fora de ordem (o relógio do servidor, ou o `occurredAt` corrigido do offline) nunca faça o tempo voltar;
+ * [workedSeconds] soma só os trechos em `IN_PROGRESS` (de [inProgressSince] até a pausa ou a conclusão).
  *
  * [arrivalExpected] é um **retrato do momento da geração** (D8-E02): alocação, cancelamento ou no-show posteriores não
  * o atualizam. [notes] é texto livre da recepção e nunca vai à trilha, a eventos nem a logs (RN-13). Nunca é apagada (o
@@ -73,7 +132,7 @@ sealed interface TaskLocation {
  */
 @Entity
 @Table(name = "housekeeping_task", schema = "housekeeping")
-@Suppress("LongParameterList") // os campos da tarefa, só pelo create
+@Suppress("LongParameterList", "TooManyFunctions") // os campos da tarefa, só pelo create; as transições da §8.4
 class HousekeepingTask private constructor(
     @Id
     val id: HousekeepingTaskId,
@@ -122,6 +181,55 @@ class HousekeepingTask private constructor(
     var assignmentPosition: Int? = null
         protected set
 
+    /** O primeiro início (D6-E04); um refazer não o muda. */
+    @Column(name = "started_at")
+    var startedAt: Instant? = null
+        protected set
+
+    /** A conclusão; limpa no refazer. */
+    @Column(name = "finished_at")
+    var finishedAt: Instant? = null
+        protected set
+
+    /** A soma dos trechos em `IN_PROGRESS`, em segundos inteiros. */
+    @Column(name = "worked_seconds", nullable = false)
+    var workedSeconds: Long = 0
+        protected set
+
+    /** O início do trecho em `IN_PROGRESS` corrente; nulo em qualquer outro status. */
+    @Column(name = "in_progress_since")
+    var inProgressSince: Instant? = null
+        protected set
+
+    /** A última transição; nula numa tarefa gravada antes da E04 (vale então [updatedAt]). */
+    @Column(name = "last_transition_at")
+    var lastTransitionAt: Instant? = createdAt
+        protected set
+
+    /** O usuário que concluiu (a camareira, ou a governanta, se foi ela); limpo no refazer. */
+    @Column(name = "cleaned_by")
+    var cleanedBy: UserId? = null
+        protected set
+
+    /** O motivo da recusa; só em `REFUSED`. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "refusal_reason")
+    var refusalReason: RefusalReason? = null
+        protected set
+
+    /** A execução do checklist aberta no último início (D5-E04); nula numa tarefa sem checklist. */
+    @Column(name = "checklist_execution_id")
+    var checklistExecutionId: ChecklistExecutionId? = null
+        protected set
+
+    /**
+     * Se um comando offline de uma ex-dona virou conflito (RN-22, D4-E19): o sinal durável para a governança e a nova
+     * dona. Nunca volta a falso nesta etapa (a resolução fica para outra).
+     */
+    @Column(name = "has_conflict", nullable = false)
+    var hasConflict: Boolean = false
+        protected set
+
     @Version
     var version: Long? = null
         protected set
@@ -143,7 +251,7 @@ class HousekeepingTask private constructor(
         status = TaskStatus.ASSIGNED
         assignedEmployeeId = employeeId
         assignmentPosition = position
-        updatedAt = now
+        transitioned(now)
     }
 
     /** Volta a tarefa a `PENDING`, sem camareira (D7-E03). Só a partir de `PENDING` ou `ASSIGNED`. */
@@ -152,7 +260,156 @@ class HousekeepingTask private constructor(
         status = TaskStatus.PENDING
         assignedEmployeeId = null
         assignmentPosition = null
-        updatedAt = now
+        transitioned(now)
+    }
+
+    /**
+     * Inicia a tarefa `ASSIGNED`, ou refaz a `REJECTED` (SPEC §8.4): guarda o primeiro início e limpa a conclusão
+     * anterior. Só até a data operacional [today] (D11-E04): tarefa de data posterior, `422 HOUSEKEEPING_TASK_NOT_DUE`.
+     */
+    fun start(
+        at: Instant,
+        today: LocalDate,
+    ) {
+        requireFrom(TaskAction.START, TaskStatus.ASSIGNED, TaskStatus.REJECTED)
+        if (businessDate.isAfter(today)) {
+            throw BusinessRuleException(
+                HousekeepingErrorCodes.HOUSEKEEPING_TASK_NOT_DUE,
+                "A tarefa é de $businessDate: só pode ser iniciada a partir dessa data operacional.",
+            )
+        }
+        val instant = transitionInstant(at)
+        if (startedAt == null) startedAt = instant
+        finishedAt = null
+        cleanedBy = null
+        inProgressSince = instant
+        status = TaskStatus.IN_PROGRESS
+        transitioned(instant)
+    }
+
+    /**
+     * Guarda a execução do checklist aberta no início que acabou de acontecer (D5-E04), ou nenhuma; o refazer troca a
+     * anterior. Só na tarefa em andamento.
+     */
+    fun openChecklist(executionId: ChecklistExecutionId?) {
+        check(status == TaskStatus.IN_PROGRESS) { "A tarefa $id não está em andamento ($status)" }
+        checklistExecutionId = executionId
+    }
+
+    /** Pausa a tarefa `IN_PROGRESS`, somando o trecho ao tempo trabalhado. */
+    fun pause(at: Instant) {
+        requireFrom(TaskAction.PAUSE, TaskStatus.IN_PROGRESS)
+        val instant = transitionInstant(at)
+        closeStretch(instant)
+        status = TaskStatus.PAUSED
+        transitioned(instant)
+    }
+
+    /** Retoma a tarefa `PAUSED`, abrindo um trecho novo. */
+    fun resume(at: Instant) {
+        requireFrom(TaskAction.RESUME, TaskStatus.PAUSED)
+        val instant = transitionInstant(at)
+        inProgressSince = instant
+        status = TaskStatus.IN_PROGRESS
+        transitioned(instant)
+    }
+
+    /** Recusa a tarefa `ASSIGNED` pelo [reason] (não perturbe ou hóspede); a camareira continua a mesma. */
+    fun refuse(
+        reason: RefusalReason,
+        at: Instant,
+    ) {
+        requireFrom(TaskAction.REFUSE, TaskStatus.ASSIGNED)
+        refusalReason = reason
+        status = TaskStatus.REFUSED
+        transitioned(transitionInstant(at))
+    }
+
+    /** Nova tentativa da tarefa `REFUSED`: volta a `ASSIGNED`, com a mesma camareira, sem o motivo. */
+    fun retry(at: Instant) {
+        requireFrom(TaskAction.RETRY, TaskStatus.REFUSED)
+        refusalReason = null
+        status = TaskStatus.ASSIGNED
+        transitioned(transitionInstant(at))
+    }
+
+    /** Confere, antes dos efeitos da conclusão, que a tarefa pode ser concluída: `409` fora de `IN_PROGRESS`. */
+    fun requireCompletable() = requireFrom(TaskAction.COMPLETE, TaskStatus.IN_PROGRESS)
+
+    /**
+     * Conclui a tarefa `IN_PROGRESS` por [by]: `AWAITING_INSPECTION` se [awaitingInspection] (a conclusão deixou a UH
+     * com inspeção pendente, D3-E04), senão `DONE`; fecha o trecho e grava a conclusão.
+     */
+    fun complete(
+        by: UserId,
+        awaitingInspection: Boolean,
+        at: Instant,
+    ) {
+        requireFrom(TaskAction.COMPLETE, TaskStatus.IN_PROGRESS)
+        val instant = transitionInstant(at)
+        closeStretch(instant)
+        finishedAt = instant
+        cleanedBy = by
+        status = if (awaitingInspection) TaskStatus.AWAITING_INSPECTION else TaskStatus.DONE
+        transitioned(instant)
+    }
+
+    /**
+     * Confere que a tarefa aguarda inspeção (D3-E05), antes de iniciar ou concluir a inspeção: `409` fora de
+     * `AWAITING_INSPECTION`, com a [action].
+     */
+    fun requireAwaitingInspection(action: TaskAction) = requireFrom(action, TaskStatus.AWAITING_INSPECTION)
+
+    /**
+     * Aprova a inspeção da tarefa `AWAITING_INSPECTION` (D3-E05): a tarefa vai a `DONE`; a conclusão da limpeza (quem
+     * limpou, os tempos) não muda.
+     */
+    fun approveInspection(at: Instant) {
+        requireFrom(TaskAction.COMPLETE_INSPECTION, TaskStatus.AWAITING_INSPECTION)
+        status = TaskStatus.DONE
+        transitioned(transitionInstant(at))
+    }
+
+    /**
+     * Reprova a inspeção da tarefa `AWAITING_INSPECTION` (D3-E05): a tarefa vai a `REJECTED`, para a camareira refazer
+     * pelo `start` (`REJECTED → IN_PROGRESS`); a conclusão da limpeza fica até o refazer.
+     */
+    fun rejectInspection(at: Instant) {
+        requireFrom(TaskAction.COMPLETE_INSPECTION, TaskStatus.AWAITING_INSPECTION)
+        status = TaskStatus.REJECTED
+        transitioned(transitionInstant(at))
+    }
+
+    /**
+     * Marca o conflito (D4-E19) sem mudar status, tempos, checklist nem camareira; devolve se a marca é nova (só então
+     * a tarefa muda e a versão sobe).
+     */
+    fun markConflict(): Boolean {
+        if (hasConflict) return false
+        hasConflict = true
+        return true
+    }
+
+    private fun requireFrom(
+        action: TaskAction,
+        vararg allowed: TaskStatus,
+    ) {
+        if (status !in allowed) throw HousekeepingTaskTransitionNotAllowedException(action, status)
+    }
+
+    /** O instante da transição: o informado, ou a última transição se ele vem antes dela (Review Focus 1). */
+    private fun transitionInstant(at: Instant): Instant = maxOf(at, lastTransitionAt ?: updatedAt)
+
+    private fun transitioned(instant: Instant) {
+        val effective = transitionInstant(instant)
+        lastTransitionAt = effective
+        updatedAt = effective
+    }
+
+    private fun closeStretch(instant: Instant) {
+        val since = checkNotNull(inProgressSince) { "A tarefa $id está em andamento sem o início do trecho" }
+        workedSeconds += Duration.between(since, instant).seconds.coerceAtLeast(0)
+        inProgressSince = null
     }
 
     private fun requireNotStarted() =

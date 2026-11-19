@@ -3,6 +3,7 @@ package com.zeny.hotel.shared.web
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.OfflineCommandType
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.UnboundedInstant
 import com.zeny.hotel.shared.application.sync.IncomingOfflineCommand
 import com.zeny.hotel.shared.application.sync.OfflineChangesPage
 import com.zeny.hotel.shared.application.sync.OfflineChangesService
@@ -187,9 +188,13 @@ data class SyncCommandRequest(
     val payload: Map<String, Any?>?,
     @field:NotNull
     @field:Schema(description = "Quando aconteceu, pelo relógio do dispositivo.")
+    @param:UnboundedInstant
+    @field:UnboundedInstant
     val occurredAt: Instant?,
     @field:NotNull
     @field:Schema(description = "O relógio do dispositivo no envio do lote (para a correção da defasagem).")
+    @param:UnboundedInstant
+    @field:UnboundedInstant
     val deviceClock: Instant?,
 )
 

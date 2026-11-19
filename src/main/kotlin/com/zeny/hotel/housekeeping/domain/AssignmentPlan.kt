@@ -103,12 +103,22 @@ class AssignmentPlan(
             val index = change.position?.let { (it - 1).coerceAtMost(target.size) } ?: target.size
             target.add(index, change.taskId)
         }
-        changed(
-            lists.flatMap { (attendant, tasks) ->
-                tasks.mapIndexed { index, task -> AssignmentPlanItem(task, attendant, index + 1) }
-            },
-            now,
-        )
+        changed(renumbered(lists), now)
+    }
+
+    /**
+     * Na publicação (D12 da E04), tira do plano os itens das tarefas [taskIds] que já terminaram, e as posições de cada
+     * camareira voltam a ir de 1 a n; não muda o status nem a versão, que a publicação ([publish]) sobe.
+     */
+    fun dropFinished(taskIds: Set<HousekeepingTaskId>) {
+        if (items.none { it.taskId in taskIds }) return
+        items =
+            renumbered(
+                items
+                    .filter { it.taskId !in taskIds }
+                    .groupBy { it.attendant }
+                    .mapValues { (_, list) -> list.sortedBy { it.position }.map { it.taskId } },
+            )
     }
 
     /** Marca o plano publicado por [by] (os itens já foram gravados nas tarefas) e sobe a versão. */
@@ -124,6 +134,12 @@ class AssignmentPlan(
     }
 
     fun contains(taskId: HousekeepingTaskId): Boolean = items.any { it.taskId == taskId }
+
+    /** Os itens das listas de cada camareira, com as posições de 1 a n na ordem de cada lista. */
+    private fun renumbered(lists: Map<AttendantId?, List<HousekeepingTaskId>>): List<AssignmentPlanItem> =
+        lists.flatMap { (attendant, tasks) ->
+            tasks.mapIndexed { index, task -> AssignmentPlanItem(task, attendant, index + 1) }
+        }
 
     private fun changed(
         newItems: List<AssignmentPlanItem>,

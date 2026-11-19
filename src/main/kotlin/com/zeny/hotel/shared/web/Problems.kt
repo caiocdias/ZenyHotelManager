@@ -143,6 +143,8 @@ internal object Problems {
             ErrorCodes.METHOD_NOT_ALLOWED to "Método HTTP não suportado neste recurso.",
             ErrorCodes.NOT_ACCEPTABLE to "Não há representação disponível no formato pedido.",
             ErrorCodes.CONFLICT to "A requisição conflita com o estado atual do recurso.",
+            ErrorCodes.CONCURRENT_UPDATE to
+                "Outra operação alterava os mesmos dados ao mesmo tempo. Tente de novo.",
             ErrorCodes.PRECONDITION_FAILED to
                 "O recurso foi alterado por outra requisição. Leia de novo e refaça a alteração.",
             ErrorCodes.PAYLOAD_TOO_LARGE to "O conteúdo enviado é grande demais.",

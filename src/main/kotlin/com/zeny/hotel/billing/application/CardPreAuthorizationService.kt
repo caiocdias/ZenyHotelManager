@@ -28,6 +28,7 @@ import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
+import com.zeny.hotel.shared.StorableRange
 import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -161,8 +162,8 @@ class CardPreAuthorizationService(
         val now = clock.instant()
         val rows =
             preAuthorizations.expiring(
-                start.atStartOfDay(zone).toInstant(),
-                to.plusDays(1).atStartOfDay(zone).toInstant(),
+                StorableRange.startOfDay(start, zone),
+                StorableRange.startOfDay(to.plusDays(1), zone),
                 cursor,
                 page.limit + 1,
             )

@@ -163,28 +163,20 @@ class HousekeepingTasksAttackTest(
         }
 
     @Test
-    fun `a list date outside the storable range is an empty page, never 500 nor the -infinity rows`(): Unit =
+    fun `a list date outside the storable range is 400 INVALID_FORMAT on the parameter, never 500`(): Unit =
         with(iam) {
-            // Uma tarefa gravada em -infinity (o que o driver grava para uma data abaixo do piso) num local só dela.
+            // Nenhuma tarefa é gravada: a conversão do parâmetro recusa o valor antes de qualquer consulta ao banco.
             val room = UUID.randomUUID()
-            owner
-                .sql(
-                    """
-                    INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
-                        source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
-                        created_at, updated_at, version)
-                    VALUES (:id, :room, NULL, '-infinity', :type, 'AD_HOC', 'PENDING', 3, 0, FALSE, NULL, NULL, NULL,
-                        now(), now(), 0)
-                    """.trimIndent(),
-                ).param("id", UUID.randomUUID())
-                .param("room", room)
-                .param("type", housekeeping.createCleaningType())
-                .update()
 
+            // A conversão do parâmetro recusa o que está fora do StorableRange (M6 E20), antes de qualquer consulta.
             listOf("-5000-01-01", "-4713-12-31", "+5874898-01-01", "+999999999-12-31").forEach { date ->
                 withClue(date) {
-                    call(GET, "$TASKS?date=$date&roomId=$room", asAdmin()).ok()["items"].size() shouldBe 0
-                    call(GET, "$TASKS?date=$date", asAdmin()).ok()["items"].size() shouldBe 0
+                    listOf("$TASKS?date=$date&roomId=$room", "$TASKS?date=$date").forEach { path ->
+                        val response = call(GET, path, asAdmin())
+                        response.status shouldBe 400
+                        json(response)["errors"][0]["field"].asString() shouldBe "date"
+                        json(response)["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
+                    }
                 }
             }
         }
@@ -202,8 +194,11 @@ class HousekeepingTasksAttackTest(
                         .problem(422, "HOUSEKEEPING_TASK_DATE_INVALID")
                 }
             }
-            post(housekeeping.taskBody(type, roomId = room, date = "-5000-01-01"))
-                .problem(422, "HOUSEKEEPING_TASK_DATE_INVALID")
+            // Fora do StorableRange, a leitura do corpo recusa antes da regra de negócio (M6 E20).
+            val refused =
+                post(housekeeping.taskBody(type, roomId = room, date = "-5000-01-01")).problem(400, "VALIDATION_FAILED")
+            refused.field() shouldBe "date"
+            refused["errors"][0]["code"].asString() shouldBe "INVALID_FORMAT"
             countTasksOf(room) shouldBe 0
         }
 

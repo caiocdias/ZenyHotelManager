@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.method.annotation.HandlerMethodValidationException
 import tools.jackson.databind.DatabindException
 import tools.jackson.databind.exc.InvalidNullException
+import tools.jackson.databind.exc.MismatchedInputException
 
 /**
  * Converte os erros de validação e de leitura do Spring e do Jackson em `errors[]` com código
@@ -20,6 +21,13 @@ import tools.jackson.databind.exc.InvalidNullException
  */
 internal object FieldViolations {
     private const val TYPE_MISMATCH = "typeMismatch"
+
+    /**
+     * Início da mensagem com que o Jackson recusa o parâmetro de criador obrigatório ausente: no Kotlin, só o de tipo
+     * primitivo não anulável sem valor padrão (`Int`, `Boolean`…) chega aqui; os demais viram [InvalidNullException].
+     * A exceção não tem tipo próprio, e a mensagem é o único sinal.
+     */
+    private const val MISSING_CREATOR_PROPERTY = "Missing required creator property"
     private val CAMEL_HUMP = Regex("([a-z0-9])([A-Z])")
 
     fun required(field: String) = FieldViolation(field, FieldViolationCodes.REQUIRED, "campo obrigatório")
@@ -53,10 +61,19 @@ internal object FieldViolations {
         val field = databind?.let(::pathOf)
         return when {
             field.isNullOrEmpty() -> null
-            databind is InvalidNullException -> required(field)
+            databind is InvalidNullException || databind.isMissingCreatorProperty() -> required(field)
             else -> invalidFormat(field)
         }
     }
+
+    /**
+     * Se o Jackson recusou um parâmetro de criador obrigatório ausente, pelo início da mensagem
+     * ([MISSING_CREATOR_PROPERTY]). O texto é preso pelo teste `a room type without maxAdults, or with it null, is
+     * refused with REQUIRED on the field`, do `RequiredRequestPropertiesApiTest`: uma versão do Jackson que o mude
+     * deixa esse teste vermelho, em vez de voltar a responder `INVALID_FORMAT` em silêncio.
+     */
+    private fun DatabindException?.isMissingCreatorProperty(): Boolean =
+        this is MismatchedInputException && originalMessage.orEmpty().startsWith(MISSING_CREATOR_PROPERTY)
 
     private fun of(
         field: String,

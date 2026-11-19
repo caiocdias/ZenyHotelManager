@@ -54,6 +54,10 @@ spring:
       # ServerErrorMessage, e a constraint violada segue legível (UniqueConstraints, no iam).
       data-source-properties:
         logServerErrorDetail: false
+        # Espera máxima por uma trava (ARCHITECTURE §11, D1 da M6 E21): toda sessão do pool abre com
+        # lock_timeout de 10 s (parâmetro de partida, que um RESET não desfaz). Esgotado, o 55P03 vira
+        # 409 CONCURRENT_UPDATE; um SET LOCAL vale por cima na transação. O Flyway não herda (conexão própria).
+        options: "-c lock_timeout=10s"
 
   jpa:
     open-in-view: false
@@ -166,11 +170,6 @@ logging:
     # vai para o log (ARCHITECTURE §16). A exceção segue para quem chama, que a trata ou a converte
     # em 500 com a causa no log, já sem o DETAIL (logServerErrorDetail no datasource, acima).
     org.hibernate.orm.jdbc.error: ERROR
-    # A trava do ShedLock loga a DataAccessException com a mensagem do JDBC, que pode trazer valores
-    # do banco (ARCHITECTURE §13 e §16); a falha que escapa do job já sai pelo agendador do shared,
-    # só pelas classes. Custo: some também o "Unlock failed after 10 attempts", e uma trava que não
-    # se solta fica presa até o lockAtMostFor sem sinal no log.
-    net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateStorageAccessor: OFF
 
 zeny:
   events:
@@ -364,6 +363,11 @@ zeny:
   # última tarefa dela (fora as canceladas) tem pre-arrival-after-days dias ou mais (de 1 a 30; fora disso o boot recusa).
   housekeeping:
     pre-arrival-after-days: 3
+    # Prazo de guarda dos achados (M6 E06, D3): o LostAndFoundExpiryJob, sob trava do ShedLock, avisa uma vez cada item
+    # guardado que venceu a quem gere os achados; não dá destino ao item.
+    lost-found-expiry:
+      interval: P1D
+      initial-delay: PT5M
   # Push pelo FCM HTTP v1 (módulo notifications, ARCHITECTURE §12, H7 do M2). ZENY_FCM_CREDENTIALS é o
   # JSON da conta de serviço do projeto Firebase em base64 (o project_id e o token_uri saem dele); vazia,
   # o push fica desligado e só o painel é entregue. Uma credencial ilegível impede o boot.

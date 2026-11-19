@@ -1,14 +1,17 @@
 package com.zeny.hotel.notifications.infrastructure
 
+import com.nimbusds.jose.JOSEException
 import com.nimbusds.jose.JOSEObjectType
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
+import com.nimbusds.jose.JWSSigner
 import com.nimbusds.jose.crypto.RSASSASigner
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
 import com.zeny.hotel.notifications.application.PushGateway
 import com.zeny.hotel.notifications.application.PushMessage
 import com.zeny.hotel.notifications.application.PushOutcome
+import com.zeny.hotel.shared.ExceptionClasses
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -183,13 +186,15 @@ object FcmErrors {
  * a chave da conta de serviço (grant `jwt-bearer`, escopo `firebase.messaging`, guardado até 1 min antes de vencer)
  * e cada mensagem vai em `POST /v1/projects/{project_id}/messages:send`. Sem `ZENY_FCM_CREDENTIALS`, fica desligado
  * ([enabled] falso); com uma credencial ilegível, a aplicação não sobe. O log leva só o resultado, nunca o token
- * do aparelho, o access token, o título nem o texto.
+ * do aparelho, o access token, o título nem o texto. [signerFactory] (o `RSASSASigner`, salvo nos testes) cria o
+ * assinador do JWT; a falha dele não escapa do gateway ([signedAssertion]).
  */
 @Component
 class FcmPushGateway(
     properties: FcmProperties,
     private val clock: Clock,
     private val jsonMapper: JsonMapper,
+    private val signerFactory: (RSAPrivateKey) -> JWSSigner = ::RSASSASigner,
 ) : PushGateway {
     private val account: FcmServiceAccount? =
         properties.credentials
@@ -269,7 +274,8 @@ class FcmPushGateway(
         now: Instant,
     ): AccessToken? =
         try {
-            val form = "grant_type=${encode(JWT_BEARER_GRANT)}&assertion=${encode(assertion(account, now))}"
+            val assertion = signedAssertion(account, now) ?: return null
+            val form = "grant_type=${encode(JWT_BEARER_GRANT)}&assertion=${encode(assertion)}"
             val response =
                 http
                     .post()
@@ -295,6 +301,25 @@ class FcmPushGateway(
             null
         }
 
+    /**
+     * O JWT da asserção assinado com a chave da conta; `null` se a assinatura ou a montagem falhar. Só as classes da
+     * falha vão ao log: a mensagem e a causa de uma falha de assinatura podem citar a chave (§16).
+     */
+    @Suppress("TooGenericExceptionCaught") // a JOSEException e qualquer RuntimeException da montagem: falha do token
+    private fun signedAssertion(
+        account: FcmServiceAccount,
+        now: Instant,
+    ): String? =
+        try {
+            assertion(account, now)
+        } catch (e: JOSEException) {
+            log.warn("FCM: falha ao assinar a asserção do token OAuth ({})", ExceptionClasses.chain(e))
+            null
+        } catch (e: RuntimeException) {
+            log.warn("FCM: falha ao montar a asserção do token OAuth ({})", ExceptionClasses.chain(e))
+            null
+        }
+
     private fun assertion(
         account: FcmServiceAccount,
         now: Instant,
@@ -315,7 +340,7 @@ class FcmPushGateway(
                 .type(JOSEObjectType.JWT)
                 .apply { account.privateKeyId?.let(::keyID) }
                 .build()
-        return SignedJWT(header, claims).apply { sign(RSASSASigner(account.privateKey)) }.serialize()
+        return SignedJWT(header, claims).apply { sign(signerFactory(account.privateKey)) }.serialize()
     }
 
     private class AccessToken(

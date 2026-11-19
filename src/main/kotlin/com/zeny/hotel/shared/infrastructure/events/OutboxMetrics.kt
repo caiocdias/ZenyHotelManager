@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared.infrastructure.events
 
+import com.zeny.hotel.shared.ExceptionClasses
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.TimeGauge
@@ -71,7 +72,7 @@ class OutboxMetrics(
             try {
                 read()
             } catch (ex: DataAccessException) {
-                log.warn("Não foi possível ler as métricas do outbox: {}", ex.mostSpecificCause.toString())
+                log.warn("Não foi possível ler as métricas do outbox: {}", ExceptionClasses.chain(ex))
                 null
             }
     }
