@@ -10,7 +10,9 @@ import com.zeny.hotel.housekeeping.domain.Inspection
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.shared.UserId
 import org.springframework.jdbc.core.simple.JdbcClient
+import org.springframework.jdbc.core.support.AbstractSqlTypeValue
 import org.springframework.stereotype.Component
+import java.sql.Connection
 import java.sql.ResultSet
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -20,7 +22,7 @@ import java.util.UUID
 /**
  * As inspeções (D2-E05) por `JdbcClient`, sempre parametrizadas e só em `housekeeping.inspection`: `INSERT`, a leitura
  * da aberta de uma tarefa com a linha travada (`FOR UPDATE`, depois da tarefa) e o `UPDATE` da conclusão. Nunca
- * apaga. Os itens reprovados vão como `text[]` (chaves de item do checklist, sem vírgula nem chave).
+ * apaga. Os itens reprovados vão como `text[]` pelo `createArrayOf` do driver.
  */
 @Component
 class JdbcInspectionStore(
@@ -32,7 +34,7 @@ class JdbcInspectionStore(
                 """
                 INSERT INTO $INSPECTION_TABLE (id, task_id, room_id, checklist_execution_id, status, result,
                     rejected_items, inspector_id, started_at, completed_at)
-                VALUES (:id, :task, :room, :execution, :status, :result, CAST(:items AS text[]), :inspector,
+                VALUES (:id, :task, :room, :execution, :status, :result, :items, :inspector,
                     :startedAt, :completedAt)
                 """.trimIndent(),
             ).param("id", inspection.id.value)
@@ -41,7 +43,7 @@ class JdbcInspectionStore(
             .param("execution", inspection.checklistExecutionId?.value)
             .param("status", inspection.status.name)
             .param("result", inspection.result?.name)
-            .param("items", arrayLiteral(inspection.rejectedItems))
+            .param("items", textArray(inspection.rejectedItems))
             .param("inspector", inspection.inspectorId.value)
             .param("startedAt", utc(inspection.startedAt))
             .param("completedAt", inspection.completedAt?.let(::utc))
@@ -56,18 +58,33 @@ class JdbcInspectionStore(
             .optional()
             .orElse(null)
 
+    override fun lastRejectedItems(taskIds: Collection<HousekeepingTaskId>): Map<HousekeepingTaskId, List<String>> {
+        if (taskIds.isEmpty()) return emptyMap()
+        return jdbc
+            .sql(
+                """
+                SELECT DISTINCT ON (task_id) task_id, rejected_items FROM $INSPECTION_TABLE
+                WHERE task_id IN (:tasks) AND status = 'COMPLETED' AND result = 'REJECTED'
+                ORDER BY task_id, completed_at DESC, id DESC
+                """.trimIndent(),
+            ).param("tasks", taskIds.map { it.value })
+            .query { rs, _ -> HousekeepingTaskId(rs.getObject("task_id", UUID::class.java)) to items(rs) }
+            .list()
+            .toMap()
+    }
+
     override fun update(inspection: Inspection) {
         jdbc
             .sql(
                 """
                 UPDATE $INSPECTION_TABLE SET status = :status, result = :result,
-                    rejected_items = CAST(:items AS text[]), inspector_id = :inspector, completed_at = :completedAt
+                    rejected_items = :items, inspector_id = :inspector, completed_at = :completedAt
                 WHERE id = :id
                 """.trimIndent(),
             ).param("id", inspection.id.value)
             .param("status", inspection.status.name)
             .param("result", inspection.result?.name)
-            .param("items", arrayLiteral(inspection.rejectedItems))
+            .param("items", textArray(inspection.rejectedItems))
             .param("inspector", inspection.inspectorId.value)
             .param("completedAt", inspection.completedAt?.let(::utc))
             .update()
@@ -83,14 +100,24 @@ class JdbcInspectionStore(
             rs.getObject("started_at", OffsetDateTime::class.java).toInstant(),
             InspectionStatus.valueOf(rs.getString("status")),
             rs.getString("result")?.let(InspectionResult::valueOf),
-            (rs.getArray("rejected_items").array as Array<*>).map { it.toString() },
+            items(rs),
             rs.getObject("completed_at", OffsetDateTime::class.java)?.toInstant(),
         )
 
+    private fun items(rs: ResultSet): List<String> =
+        (rs.getArray("rejected_items").array as Array<*>).map { it.toString() }
+
     private fun utc(instant: Instant): OffsetDateTime = OffsetDateTime.ofInstant(instant, ZoneOffset.UTC)
 
-    /** O literal de `text[]` das chaves de item do checklist (que não têm vírgula, aspas nem chaves). */
-    private fun arrayLiteral(items: List<String>): String = items.joinToString(",", "{", "}")
+    /** As chaves como `text[]` do driver (`createArrayOf`), sem montar literal à mão: as chaves vêm do cliente. */
+    private fun textArray(items: List<String>): AbstractSqlTypeValue =
+        object : AbstractSqlTypeValue() {
+            override fun createTypeValue(
+                connection: Connection,
+                sqlType: Int,
+                typeName: String?,
+            ): Any = connection.createArrayOf("text", items.toTypedArray())
+        }
 }
 
 /** As inspeções de UH (D2-E05): alteradas pela conclusão, nunca apagadas. */

@@ -229,6 +229,12 @@ data class HousekeepingTaskResponse(
     val hasConflict: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "As chaves dos itens reprovados da última inspeção reprovada da tarefa (do checklist de inspeção); " +
+                "vazio se ela nunca foi reprovada ou se a inspeção não tinha checklist.",
+    )
+    val rejectedItems: List<String>,
 ) {
     companion object {
         fun of(view: HousekeepingTaskView) =
@@ -256,6 +262,7 @@ data class HousekeepingTaskResponse(
                 view.hasConflict,
                 view.createdAt,
                 view.updatedAt,
+                view.rejectedItems,
             )
     }
 }

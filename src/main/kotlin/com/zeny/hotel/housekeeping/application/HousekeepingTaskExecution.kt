@@ -68,6 +68,7 @@ class HousekeepingTaskExecution(
     private val hotel: HotelApi,
     private val rooms: RoomsApi,
     private val checklists: ChecklistsApi,
+    private val releases: RoomReleaseNotices,
     private val events: ApplicationEventPublisher,
     private val realtime: RealtimePublisher,
     private val authorization: Authorization,
@@ -137,8 +138,9 @@ class HousekeepingTaskExecution(
      *   faltando, `422 CHECKLIST_REQUIRED_ITEMS_MISSING` e nada muda; as fotos pela [photoPolicy] (a ação online recusa
      *   a que não serve, `422 CHECKLIST_PHOTO_NOT_FOUND`/`CHECKLIST_PHOTO_INVALID`; o offline da E19 a tolera); já
      *   concluído por fora, segue sem erro e sem um segundo `ChecklistCompleted`, e a trilha registra isso;
-     * - leva a UH Suja a Limpa ([RoomsApi.markCleanIfDirty]); a tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou
-     *   com inspeção pendente agora (D3), senão a `DONE`;
+     * - leva a UH Suja a Limpa ([RoomsApi.markCleanIfDirtyWithStatus]); a tarefa vai a `AWAITING_INSPECTION` só quando
+     *   a UH ficou com inspeção pendente agora (D3), senão a `DONE`; a UH vaga que passou a pronta (tipo sem inspeção)
+     *   gera o aviso de UH liberada ([RoomReleaseNotices], D5-E05);
      * - grava a observação de ocupação, se informada ([RoomsApi.recordObservation]);
      * - na tarefa `SCHEDULED`, registra a faxina feita na data da tarefa; faxina desativada não muda, a tarefa conclui
      *   e a trilha registra que ela estava inativa (D10);
@@ -256,13 +258,15 @@ class HousekeepingTaskExecution(
                 }
             }
         val requiresInspection = checkNotNull(cleaningTypes.cleaningType(task.cleaningTypeId)).requiresInspection
-        val cleaned = task.roomId?.let { rooms.markCleanIfDirty(it, requiresInspection, RoomStatusSource.TASK) }
+        val cleaned =
+            task.roomId?.let { rooms.markCleanIfDirtyWithStatus(it, requiresInspection, RoomStatusSource.TASK) }
         if (foundOccupancy != null) {
             rooms.recordObservation(checkNotNull(task.roomId), foundOccupancy, foundGuestCount, actor.userId, at)
         }
         task.scheduledCleaningId?.let { recordScheduledCleaning(it, task, at, remarks) }
-        task.complete(actor.userId, awaitingInspection = cleaned == true && requiresInspection, at)
+        task.complete(actor.userId, awaitingInspection = cleaned?.changed == true && requiresInspection, at)
         save(task)
+        cleaned?.let { releases.notifyIfReleased(it, actor.userId) }
         events.publishEvent(
             HousekeepingTaskCompleted(
                 task.id.value,

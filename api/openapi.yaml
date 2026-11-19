@@ -7147,13 +7147,21 @@ paths:
         \ no campo `answers`). `APPROVED`: a tarefa vai a `DONE` e a UH Limpa com\
         \ inspeção pendente fica Inspecionada; a UH que já perdeu a pendência (Suja\
         \ pelo check-out ou pelo fechamento, já Inspecionada) não muda, e `roomChanged`\
-        \ vem falso. A aprovação não leva `rejectedItems`. Exige `housekeeping.inspections.perform`\
-        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa, inclusive\
-        \ para quem limpou a tarefa). Tarefa inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`.\
-        \ Com o `If-Match` da tarefa (412 com outra versão; 428 sem ele). Tarefa fora\
-        \ de `AWAITING_INSPECTION`: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
-        \ (com `taskStatus` e `action`). Responde a inspeção e a tarefa **sem as observaç\
-        ões**, com o `ETag` novo da tarefa."
+        \ vem falso; a UH vaga que passou a pronta para check-in gera o aviso `notifications.room-released`\
+        \ aos usuários com `housekeeping.tasks.read`, menos o inspetor. A aprovaçã\
+        o não leva `rejectedItems`. `REJECTED`: a tarefa vai a `REJECTED` (a camareira\
+        \ refaz pelo `start`) e a UH Limpa com inspeção pendente fica Suja (a que\
+        \ já perdeu a pendência não muda); com checklist, `rejectedItems` leva pelo\
+        \ menos uma chave de item da versão do checklist de inspeção (chave desconhecida:\
+        \ 400 `VALIDATION_FAILED` no campo); sem checklist, nenhuma. A camareira atribuí\
+        da recebe `notifications.inspection-rejected` com o número da UH e a contagem\
+        \ de itens. Exige `housekeeping.inspections.perform` (só `ALL`; 403 `PERMISSION_DENIED`\
+        \ antes de qualquer outra recusa, inclusive para quem limpou a tarefa). Tarefa\
+        \ inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com o `If-Match` da tarefa\
+        \ (412 com outra versão; 428 sem ele). Tarefa fora de `AWAITING_INSPECTION`:\
+        \ 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED` (com `taskStatus` e `action`).\
+        \ Responde a inspeção e a tarefa **sem as observações**, com o `ETag` novo\
+        \ da tarefa."
       operationId: completeHousekeepingInspection
       parameters:
       - in: path
@@ -11626,6 +11634,38 @@ paths:
       summary: Reativar uma característica
       tags:
       - rooms
+  /api/v1/room-inspections:
+    post:
+      description: "A inspeção voluntária de uma UH, sem tarefa e sem checklist: só\
+        \ aprova. A UH Limpa sem inspeção pendente fica Inspecionada, e fica registrada\
+        \ uma inspeção sem tarefa `COMPLETED`/`APPROVED`. UH Limpa com inspeção pendente:\
+        \ 409 `HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja ou\
+        \ já Inspecionada: 409 `HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente: 400\
+        \ `VALIDATION_FAILED` no campo `roomId`. Exige `housekeeping.inspections.perform`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa)."
+      operationId: inspectRoom
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingRoomInspectionRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingRoomInspectionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Inspecionar uma UH voluntariamente
+      tags:
+      - housekeeping
   /api/v1/room-type-inventory:
     get:
       description: "Um período de até 366 dias, inclusive o passado (fim antes do\
@@ -21374,15 +21414,17 @@ components:
           nullable: true
         rejectedItems:
           type: array
-          description: As chaves dos itens reprovados do checklist de inspeção; vazio
-            ou ausente na aprovação.
+          description: "As chaves dos itens reprovados do checklist de inspeção: na\
+            \ reprovação com checklist, pelo menos uma; vazio ou ausente na aprovaç\
+            ão e na reprovação sem checklist."
           items:
             type: string
-            description: As chaves dos itens reprovados do checklist de inspeção;
-              vazio ou ausente na aprovação.
-            maxLength: 40
-            minLength: 0
+            description: "As chaves dos itens reprovados do checklist de inspeção:\
+              \ na reprovação com checklist, pelo menos uma; vazio ou ausente na aprovaç\
+              ão e na reprovação sem checklist."
+            minLength: 1
             nullable: true
+            pattern: "[a-z0-9][a-z0-9_-]{0,39}"
           maxItems: 300
           minItems: 0
           nullable: true
@@ -21524,6 +21566,26 @@ components:
       - observedBy
       - occupancy
       - roomId
+    HousekeepingRoomInspectionRequest:
+      type: object
+      description: A inspeção voluntária de uma UH.
+      properties:
+        roomId:
+          type: string
+          format: uuid
+          description: A UH a inspecionar.
+          nullable: true
+      required:
+      - roomId
+    HousekeepingRoomInspectionResponse:
+      type: object
+      description: "O resultado da inspeção voluntária de uma UH: a inspeção, sem\
+        \ tarefa."
+      properties:
+        inspection:
+          $ref: "#/components/schemas/HousekeepingInspectionDto"
+      required:
+      - inspection
     HousekeepingStatusRequest:
       type: object
       description: Uma mudança manual do status de governança.
@@ -21844,6 +21906,16 @@ components:
           x-extensible-enum:
           - DO_NOT_DISTURB
           - GUEST_REFUSED
+        rejectedItems:
+          type: array
+          description: As chaves dos itens reprovados da última inspeção reprovada
+            da tarefa (do checklist de inspeção); vazio se ela nunca foi reprovada
+            ou se a inspeção não tinha checklist.
+          items:
+            type: string
+            description: As chaves dos itens reprovados da última inspeção reprovada
+              da tarefa (do checklist de inspeção); vazio se ela nunca foi reprovada
+              ou se a inspeção não tinha checklist.
         roomId:
           type: string
           format: uuid
@@ -21899,6 +21971,7 @@ components:
       - hasConflict
       - id
       - priority
+      - rejectedItems
       - source
       - status
       - updatedAt

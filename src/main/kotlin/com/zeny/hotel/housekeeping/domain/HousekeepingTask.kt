@@ -371,6 +371,16 @@ class HousekeepingTask private constructor(
     }
 
     /**
+     * Reprova a inspeção da tarefa `AWAITING_INSPECTION` (D3-E05): a tarefa vai a `REJECTED`, para a camareira refazer
+     * pelo `start` (`REJECTED → IN_PROGRESS`); a conclusão da limpeza fica até o refazer.
+     */
+    fun rejectInspection(at: Instant) {
+        requireFrom(TaskAction.COMPLETE_INSPECTION, TaskStatus.AWAITING_INSPECTION)
+        status = TaskStatus.REJECTED
+        transitioned(transitionInstant(at))
+    }
+
+    /**
      * Marca o conflito (D4-E19) sem mudar status, tempos, checklist nem camareira; devolve se a marca é nova (só então
      * a tarefa muda e a versão sobe).
      */

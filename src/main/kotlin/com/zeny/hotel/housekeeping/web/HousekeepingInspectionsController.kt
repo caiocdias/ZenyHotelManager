@@ -6,6 +6,7 @@ import com.zeny.hotel.housekeeping.InspectionStatus
 import com.zeny.hotel.housekeeping.application.HousekeepingInspections
 import com.zeny.hotel.housekeeping.application.InspectionOutcome
 import com.zeny.hotel.housekeeping.application.InspectionView
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.shared.ApiV1Controller
 import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.ETags
@@ -14,7 +15,9 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
@@ -22,7 +25,6 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
-import org.springframework.web.bind.annotation.RequestMapping
 import java.time.Clock
 import java.time.Instant
 import java.util.UUID
@@ -36,18 +38,17 @@ private const val INSPECTION_RULES =
 
 /**
  * A inspeção da tarefa de governança (RF-GOV-06, SPEC §8.4, M6 E05): iniciar e concluir como subrecursos de ação da
- * tarefa, com o `If-Match` dela (ARCHITECTURE §7). O instante é o do relógio do servidor. A resposta é a
- * [HousekeepingInspectionResponse], sem `notes` (RN-13).
+ * tarefa, com o `If-Match` dela (ARCHITECTURE §7), e a inspeção voluntária de uma UH (`/room-inspections`, D4). O
+ * instante é o do relógio do servidor. A resposta é a [HousekeepingInspectionResponse], sem `notes` (RN-13).
  */
 @ApiV1Controller
-@RequestMapping("/housekeeping-tasks")
 @Tag(name = HOUSEKEEPING_TAG, description = HOUSEKEEPING_TAG_DESCRIPTION)
 class HousekeepingInspectionsController(
     private val inspections: HousekeepingInspections,
     private val actor: CurrentActor,
     private val clock: Clock,
 ) {
-    @PostMapping("/{id}/inspection/start")
+    @PostMapping("/housekeeping-tasks/{id}/inspection/start")
     @Operation(
         operationId = "startHousekeepingInspection",
         summary = "Iniciar a inspeção de uma tarefa de governança",
@@ -65,7 +66,7 @@ class HousekeepingInspectionsController(
         return respond(inspections.start(HousekeepingTaskId(id), actor.current(), clock.instant(), expected))
     }
 
-    @PostMapping("/{id}/inspection/complete")
+    @PostMapping("/housekeeping-tasks/{id}/inspection/complete")
     @Operation(
         operationId = "completeHousekeepingInspection",
         summary = "Concluir a inspeção de uma tarefa de governança",
@@ -76,8 +77,14 @@ class HousekeepingInspectionsController(
                 "obrigatório faltando: 422 `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; `answers` numa inspeção " +
                 "sem checklist: 400 `VALIDATION_FAILED` no campo `answers`). `APPROVED`: a tarefa vai a `DONE` e a " +
                 "UH Limpa com inspeção pendente fica Inspecionada; a UH que já perdeu a pendência (Suja pelo " +
-                "check-out ou pelo fechamento, já Inspecionada) não muda, e `roomChanged` vem falso. A aprovação " +
-                "não leva `rejectedItems`. $INSPECTION_RULES",
+                "check-out ou pelo fechamento, já Inspecionada) não muda, e `roomChanged` vem falso; a UH vaga que " +
+                "passou a pronta para check-in gera o aviso `notifications.room-released` aos usuários com " +
+                "`housekeeping.tasks.read`, menos o inspetor. A aprovação não leva `rejectedItems`. `REJECTED`: a " +
+                "tarefa vai a `REJECTED` (a camareira refaz pelo `start`) e a UH Limpa com inspeção pendente fica " +
+                "Suja (a que já perdeu a pendência não muda); com checklist, `rejectedItems` leva pelo menos uma " +
+                "chave de item da versão do checklist de inspeção (chave desconhecida: 400 `VALIDATION_FAILED` no " +
+                "campo); sem checklist, nenhuma. A camareira atribuída recebe `notifications.inspection-rejected` " +
+                "com o número da UH e a contagem de itens. $INSPECTION_RULES",
     )
     fun complete(
         @PathVariable id: UUID,
@@ -90,13 +97,34 @@ class HousekeepingInspectionsController(
                 HousekeepingTaskId(id),
                 checkNotNull(request.result),
                 request.answers?.map { it.toInput() },
-                request.rejectedItems.orEmpty(),
+                request.rejectedItems.orEmpty().filterNotNull(),
                 actor.current(),
                 clock.instant(),
                 expected,
             ),
         )
     }
+
+    @PostMapping("/room-inspections")
+    @Operation(
+        operationId = "inspectRoom",
+        summary = "Inspecionar uma UH voluntariamente",
+        description =
+            "A inspeção voluntária de uma UH, sem tarefa e sem checklist: só aprova. A UH Limpa sem inspeção " +
+                "pendente fica Inspecionada, e fica registrada uma inspeção sem tarefa `COMPLETED`/`APPROVED`. UH " +
+                "Limpa com inspeção pendente: 409 `HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja " +
+                "ou já Inspecionada: 409 `HOUSEKEEPING_ROOM_NOT_CLEAN`; UH inexistente: 400 `VALIDATION_FAILED` no " +
+                "campo `roomId`. Exige `housekeeping.inspections.perform` (só `ALL`; 403 `PERMISSION_DENIED` antes " +
+                "de qualquer outra recusa).",
+    )
+    fun inspectRoom(
+        @Valid @RequestBody request: HousekeepingRoomInspectionRequest,
+    ): HousekeepingRoomInspectionResponse =
+        HousekeepingRoomInspectionResponse(
+            HousekeepingInspectionDto.of(
+                inspections.inspectRoom(RoomId(checkNotNull(request.roomId)), actor.current(), clock.instant()),
+            ),
+        )
 
     private fun respond(outcome: InspectionOutcome) =
         ResponseEntity
@@ -118,13 +146,28 @@ data class HousekeepingInspectionCompleteRequest(
     val answers: List<@Valid HousekeepingChecklistAnswerRequest>?,
     @field:Size(max = MAX_ANSWERS)
     @field:Schema(
-        description = "As chaves dos itens reprovados do checklist de inspeção; vazio ou ausente na aprovação.",
+        description =
+            "As chaves dos itens reprovados do checklist de inspeção: na reprovação com checklist, pelo menos uma; " +
+                "vazio ou ausente na aprovação e na reprovação sem checklist.",
         nullable = true,
     )
     val rejectedItems: List<
-        @Size(max = 40)
-        String,
+        @NotBlank
+        @Pattern(regexp = ITEM_KEY)
+        String?,
     >?,
+)
+
+@Schema(description = "A inspeção voluntária de uma UH.")
+data class HousekeepingRoomInspectionRequest(
+    @field:NotNull
+    @field:Schema(description = "A UH a inspecionar.")
+    val roomId: UUID?,
+)
+
+@Schema(description = "O resultado da inspeção voluntária de uma UH: a inspeção, sem tarefa.")
+data class HousekeepingRoomInspectionResponse(
+    val inspection: HousekeepingInspectionDto,
 )
 
 @Schema(
@@ -198,3 +241,6 @@ data class HousekeepingInspectionResponse(
 }
 
 private const val MAX_ANSWERS = 300
+
+/** A chave de um item de checklist (a regra do `checklists`). */
+private const val ITEM_KEY = "[a-z0-9][a-z0-9_-]{0,39}"

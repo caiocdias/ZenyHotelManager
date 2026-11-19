@@ -183,6 +183,8 @@ data class HousekeepingTaskView(
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
+    /** As chaves reprovadas da última inspeção reprovada da tarefa (D2-E05); vazio se nunca foi reprovada. */
+    val rejectedItems: List<String> = emptyList(),
 )
 
 /**
@@ -201,6 +203,7 @@ data class HousekeepingTaskView(
 class HousekeepingTasksService(
     private val store: HousekeepingTaskStore,
     private val cleaningTypes: CleaningTypeStore,
+    private val inspections: InspectionStore,
     private val rooms: RoomsApi,
     private val arrivals: ArrivalsByRoom,
     private val hotel: HotelApi,
@@ -228,13 +231,19 @@ class HousekeepingTasksService(
             CursorPage.fromRows(rows, page.limit) {
                 PageCursor.of(it.arrivalExpected.toString(), it.priority.toString(), it.id.toString())
             }
-        return CursorPage(store.tasks(keys.items.map { it.id }).map { it.view() }, keys.nextCursor)
+        return CursorPage(withRejectedItems(store.tasks(keys.items.map { it.id })), keys.nextCursor)
     }
 
     @Transactional(readOnly = true)
     fun get(id: HousekeepingTaskId): HousekeepingTaskView {
         authorization.require(HousekeepingPermissions.TASKS_READ)
-        return (store.task(id) ?: throw notFound()).view()
+        return withRejectedItems(listOf(store.task(id) ?: throw notFound())).single()
+    }
+
+    /** As tarefas com as chaves da última inspeção reprovada de cada uma (D2-E05: a inspeção é a fonte). */
+    private fun withRejectedItems(tasks: List<HousekeepingTask>): List<HousekeepingTaskView> {
+        val rejected = inspections.lastRejectedItems(tasks.map { it.id })
+        return tasks.map { it.view().copy(rejectedItems = rejected[it.id].orEmpty()) }
     }
 
     @Audited(HousekeepingAudit.REQUEST_TASK)

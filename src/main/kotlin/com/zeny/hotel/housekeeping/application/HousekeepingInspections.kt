@@ -18,7 +18,12 @@ import com.zeny.hotel.housekeeping.InspectionStatus
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.housekeeping.domain.Inspection
 import com.zeny.hotel.housekeeping.domain.TaskAction
+import com.zeny.hotel.notifications.NotificationRecipients
+import com.zeny.hotel.notifications.NotificationsApi
+import com.zeny.hotel.notifications.NotificationsTypes
+import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.RoomId
+import com.zeny.hotel.rooms.RoomStatus
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsApi
 import com.zeny.hotel.shared.Actor
@@ -35,6 +40,7 @@ import com.zeny.hotel.shared.RealtimeMessage
 import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.requireCurrentVersion
+import com.zeny.hotel.staff.StaffApi
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -48,6 +54,9 @@ interface InspectionStore {
 
     /** Grava a conclusão (status, resultado, itens reprovados, inspetor e instante). */
     fun update(inspection: Inspection)
+
+    /** As chaves reprovadas da última inspeção reprovada de cada tarefa (D2-E05); sem reprovação, fora do mapa. */
+    fun lastRejectedItems(taskIds: Collection<HousekeepingTaskId>): Map<HousekeepingTaskId, List<String>>
 }
 
 /** Uma inspeção, para a resposta (D2-E05): ids, estado e as chaves reprovadas, sem texto livre. */
@@ -66,7 +75,7 @@ data class InspectionView(
 
 /**
  * O resultado de uma ação da inspeção de tarefa: a inspeção, a tarefa e, na conclusão, se a UH mudou ([roomChanged]:
- * falso quando ela já tinha perdido a inspeção pendente, Review Focus 1); nulo no início.
+ * falso quando ela já tinha perdido a inspeção pendente, Review Focus 1 e 2); nulo no início.
  */
 data class InspectionOutcome(
     val inspection: InspectionView,
@@ -83,12 +92,15 @@ data class InspectionOutcome(
  * pela `ChecklistsApi`; cada ação publica [HousekeepingRealtime.TASK] com a versão nova da tarefa.
  */
 @Service
-@Suppress("LongParameterList") // as portas da inspeção
+@Suppress("LongParameterList", "TooManyFunctions") // as portas da inspeção; uma função por regra
 class HousekeepingInspections(
     private val tasks: HousekeepingTaskStore,
     private val inspections: InspectionStore,
     private val rooms: RoomsApi,
     private val checklists: ChecklistsApi,
+    private val staff: StaffApi,
+    private val notifications: NotificationsApi,
+    private val releases: RoomReleaseNotices,
     private val realtime: RealtimePublisher,
     private val authorization: Authorization,
     private val audit: AuditContext,
@@ -122,10 +134,15 @@ class HousekeepingInspections(
 
     /**
      * Conclui a inspeção aberta da tarefa com o [result]; sem inspeção aberta, só numa tarefa sem modelo de inspeção,
-     * que abre e conclui numa chamada (com modelo, `409 HOUSEKEEPING_INSPECTION_NOT_STARTED`). Conclui o checklist com
-     * as [answers] (item obrigatório faltando, `422` e nada muda; [answers] sem checklist, `400`). A aprovação leva a
-     * tarefa a `DONE` e a UH Limpa com inspeção pendente a Inspecionada ([RoomsApi.markInspectedIfPending]); a UH que
-     * perdeu a pendência não muda (Review Focus 1). A aprovação não leva [rejectedItems] (`400`).
+     * que abre e conclui numa chamada (com modelo, `409 HOUSEKEEPING_INSPECTION_NOT_STARTED`). Confere os
+     * [rejectedItems] (`400`) e conclui o checklist com as [answers] (item obrigatório faltando, `422` e nada muda;
+     * [answers] sem checklist, `400`).
+     * - Aprovação: a tarefa vai a `DONE` e a UH Limpa com inspeção pendente a Inspecionada
+     *   ([RoomsApi.markInspectedIfPending]); se a UH passou a pronta, o aviso de UH liberada ([RoomReleaseNotices]).
+     * - Reprovação (D6-E05): a tarefa vai a `REJECTED` com os itens na inspeção, a UH Limpa com inspeção pendente a
+     *   Suja ([RoomsApi.rejectInspectionIfPending]) e a camareira atribuída recebe `notifications.inspection-rejected`
+     *   (sem usuário vinculado, o aviso é omitido).
+     * A UH que perdeu a pendência não muda nos dois casos (Review Focus 1 e 2).
      */
     @Audited(HousekeepingAudit.COMPLETE_INSPECTION)
     @Transactional
@@ -141,23 +158,66 @@ class HousekeepingInspections(
     ): InspectionOutcome {
         val task = awaitingInspection(taskId, expectedVersion, TaskAction.COMPLETE_INSPECTION)
         audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() }
-        requireApproval(result, rejectedItems)
         val inspection =
             inspections.openForUpdate(task.id)?.also { open ->
                 audit.track(HousekeepingAudit.INSPECTION, open.id.value) { open.auditState() }
             } ?: openWithoutChecklist(task, actor, at)
         val completedAt = maxOf(at, inspection.startedAt)
+        val rejected = requireRejectedItems(result, rejectedItems, inspection)
         requireAnswersFit(inspection, answers)
         inspection.checklistExecutionId?.let {
             checklists.completeExecutionIfOpen(it, answers.orEmpty(), completedAt, ChecklistPhotoPolicy.REFUSE)
         }
-        val room = rooms.markInspectedIfPending(inspection.roomId, RoomStatusSource.TASK)
-        task.approveInspection(completedAt)
-        inspection.complete(result, emptyList(), actor.userId, completedAt)
+        val room =
+            if (result == InspectionResult.APPROVED) {
+                rooms.markInspectedIfPending(inspection.roomId, RoomStatusSource.TASK).also {
+                    task.approveInspection(completedAt)
+                    releases.notifyIfReleased(it, actor.userId)
+                }
+            } else {
+                rooms.rejectInspectionIfPending(inspection.roomId, RoomStatusSource.TASK).also {
+                    task.rejectInspection(completedAt)
+                }
+            }
+        inspection.complete(result, rejected, actor.userId, completedAt)
         inspections.update(inspection)
         tasks.update(task)
+        if (result == InspectionResult.REJECTED) notifyRejection(task, rejected.size)
         publish(task)
-        return InspectionOutcome(inspection.view(), task.view(), room.changed)
+        return InspectionOutcome(
+            inspection.view(),
+            task.view().copy(rejectedItems = rejected),
+            room.changed,
+        )
+    }
+
+    /**
+     * A inspeção voluntária de uma UH (D4-E05), sem tarefa e sem checklist, só aprovação: exige
+     * `housekeeping.inspections.perform` (`403`, antes de qualquer recusa); UH inexistente, `400 VALIDATION_FAILED` no
+     * campo `roomId`; pela [RoomsApi.markInspectedIfClean], a UH Limpa sem pendência fica Inspecionada; Limpa com
+     * inspeção pendente, `409 HOUSEKEEPING_INSPECTION_USE_TASK` (inspecione pela tarefa); Suja ou já Inspecionada, `409
+     * HOUSEKEEPING_ROOM_NOT_CLEAN`. Grava uma inspeção sem tarefa `COMPLETED`/`APPROVED`.
+     */
+    @Audited(HousekeepingAudit.INSPECT_ROOM)
+    @Transactional
+    fun inspectRoom(
+        roomId: RoomId,
+        actor: Actor,
+        at: Instant,
+    ): InspectionView {
+        authorization.require(HousekeepingPermissions.INSPECTIONS_PERFORM)
+        if (rooms.room(roomId) == null) {
+            val violation = FieldViolation("roomId", FieldViolationCodes.INVALID_VALUE, "A UH não existe.")
+            throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+        }
+        val outcome = rooms.markInspectedIfClean(roomId, RoomStatusSource.TASK)
+        if (!outcome.changed) throw notInspectable(outcome.before)
+        val inspection = Inspection.start(InspectionId.new(), null, roomId, null, actor.userId, at)
+        inspection.complete(InspectionResult.APPROVED, emptyList(), actor.userId, at)
+        inspections.insert(inspection)
+        audit.created(HousekeepingAudit.INSPECTION, inspection.id.value) { inspection.auditState() }
+        releases.notifyIfReleased(outcome, actor.userId)
+        return inspection.view()
     }
 
     /** A tarefa travada, conferida e `AWAITING_INSPECTION`, na ordem da autorização antes do estado. */
@@ -226,6 +286,80 @@ class HousekeepingInspections(
             ),
         )
 
+    /**
+     * O aviso da reprovação à camareira atribuída (D6-E05): o número da UH e a contagem de itens, nada de hóspede
+     * (RN-13). Sem camareira ou sem usuário vinculado a ela, nenhum aviso.
+     */
+    private fun notifyRejection(
+        task: HousekeepingTask,
+        itemCount: Int,
+    ) {
+        val employee = task.assignedEmployeeId ?: return
+        val user = staff.employees(listOf(employee))[employee]?.userId ?: return
+        val number = task.roomId?.let { rooms.room(it)?.number } ?: "?"
+        val body =
+            when (itemCount) {
+                0 -> "A inspeção da UH $number foi reprovada: refaça a limpeza."
+                1 -> "A inspeção da UH $number reprovou 1 item: refaça a limpeza."
+                else -> "A inspeção da UH $number reprovou $itemCount itens: refaça a limpeza."
+            }
+        notifications.notify(
+            NotificationsTypes.INSPECTION_REJECTED,
+            "Inspeção reprovada na UH $number",
+            body,
+            NotificationRecipients.user(user),
+        )
+    }
+
+    /**
+     * Os itens reprovados conferidos (D3-E05), sem repetição: a aprovação não os leva; a reprovação sem checklist
+     * também não (nada de texto livre); com checklist, pelo menos um, cada um uma chave de item da versão do checklist
+     * da inspeção. Fora disso, `400 VALIDATION_FAILED` no campo.
+     */
+    private fun requireRejectedItems(
+        result: InspectionResult,
+        rejectedItems: List<String>,
+        inspection: Inspection,
+    ): List<String> {
+        val execution = inspection.checklistExecutionId
+        val violation =
+            when {
+                result == InspectionResult.APPROVED && rejectedItems.isNotEmpty() -> {
+                    invalidItems("A aprovação não tem itens reprovados.")
+                }
+
+                result == InspectionResult.REJECTED && execution == null && rejectedItems.isNotEmpty() -> {
+                    invalidItems("A inspeção não tem checklist: não envie itens reprovados.")
+                }
+
+                result == InspectionResult.APPROVED || execution == null -> {
+                    null
+                }
+
+                rejectedItems.isEmpty() -> {
+                    FieldViolation(
+                        "rejectedItems",
+                        FieldViolationCodes.REQUIRED,
+                        "Informe pelo menos um item reprovado do checklist de inspeção.",
+                    )
+                }
+
+                else -> {
+                    unknownItem(rejectedItems, checklistKeys(execution))
+                }
+            }
+        if (violation != null) {
+            throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+        }
+        return rejectedItems.distinct()
+    }
+
+    /** As chaves dos itens da versão do checklist usada pela [execution]. */
+    private fun checklistKeys(execution: ChecklistExecutionId): Set<String> {
+        val version = checkNotNull(checklists.execution(execution)?.versionId) { "Execução $execution sem versão" }
+        return checkNotNull(checklists.version(version)).content.items.mapTo(mutableSetOf()) { it.key }
+    }
+
     private fun publish(task: HousekeepingTask) {
         realtime.publish(
             HousekeepingRealtime.TOPIC,
@@ -234,31 +368,35 @@ class HousekeepingInspections(
     }
 }
 
-/** A aprovação não leva itens reprovados (`400 VALIDATION_FAILED` no campo); a reprovação vem com a Task 2. */
-private fun requireApproval(
-    result: InspectionResult,
+private fun invalidItems(message: String) = FieldViolation("rejectedItems", FieldViolationCodes.INVALID_VALUE, message)
+
+/** A primeira chave reprovada que não é item do checklist, como violação no índice dela, ou `null`. */
+private fun unknownItem(
     rejectedItems: List<String>,
-) {
-    val violation =
-        when {
-            result != InspectionResult.APPROVED -> {
-                FieldViolation("result", FieldViolationCodes.INVALID_VALUE, "A reprovação ainda não é aceita.")
-            }
-
-            rejectedItems.isNotEmpty() -> {
-                FieldViolation(
-                    "rejectedItems",
-                    FieldViolationCodes.INVALID_VALUE,
-                    "A aprovação não tem itens reprovados.",
-                )
-            }
-
-            else -> {
-                return
-            }
-        }
-    throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
+    keys: Set<String>,
+): FieldViolation? {
+    val index = rejectedItems.indexOfFirst { it !in keys }
+    if (index < 0) return null
+    return FieldViolation(
+        "rejectedItems[$index]",
+        FieldViolationCodes.INVALID_VALUE,
+        "O item reprovado não é do checklist de inspeção.",
+    )
 }
+
+/** A recusa da inspeção voluntária pelo status que a UH tinha (D4-E05). */
+private fun notInspectable(status: RoomStatus): ConflictException =
+    if (status.housekeepingStatus == HousekeepingStatus.CLEAN && status.inspectionPending) {
+        ConflictException(
+            HousekeepingErrorCodes.HOUSEKEEPING_INSPECTION_USE_TASK,
+            "A UH aguarda a inspeção de uma tarefa de governança: inspecione pela tarefa.",
+        )
+    } else {
+        ConflictException(
+            HousekeepingErrorCodes.HOUSEKEEPING_ROOM_NOT_CLEAN,
+            "Só uma UH Limpa (sem inspeção pendente) é inspecionada voluntariamente.",
+        )
+    }
 
 /** [answers] numa inspeção sem checklist: `400 VALIDATION_FAILED` no campo `answers` (padrão da E04). */
 private fun requireAnswersFit(

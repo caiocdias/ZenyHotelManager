@@ -44,6 +44,9 @@ internal object HousekeepingAudit {
     const val START_INSPECTION = "housekeeping.inspection.start"
     const val COMPLETE_INSPECTION = "housekeeping.inspection.complete"
 
+    /** A inspeção voluntária de uma UH, sem tarefa (D4-E05). */
+    const val INSPECT_ROOM = "housekeeping.inspection.inspect-room"
+
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"

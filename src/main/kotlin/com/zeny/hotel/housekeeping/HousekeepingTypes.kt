@@ -286,6 +286,15 @@ object HousekeepingErrorCodes {
      */
     val HOUSEKEEPING_INSPECTION_NOT_STARTED = ErrorCode("HOUSEKEEPING_INSPECTION_NOT_STARTED")
 
+    /**
+     * 409: a inspeção voluntária de uma UH Limpa com inspeção pendente (D4-E05): a pendência é de uma tarefa;
+     * inspecione pela tarefa.
+     */
+    val HOUSEKEEPING_INSPECTION_USE_TASK = ErrorCode("HOUSEKEEPING_INSPECTION_USE_TASK")
+
+    /** 409: a inspeção voluntária de uma UH que não está Limpa (Suja ou já Inspecionada, D4-E05). */
+    val HOUSEKEEPING_ROOM_NOT_CLEAN = ErrorCode("HOUSEKEEPING_ROOM_NOT_CLEAN")
+
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")
 
