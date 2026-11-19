@@ -73,6 +73,7 @@ class HousekeepingTaskSchemaTest(
                 "checklist_execution_id",
                 "change_seq",
                 "change_xid",
+                "has_conflict",
             )
     }
 
@@ -162,6 +163,27 @@ class HousekeepingTaskSchemaTest(
             .sql("UPDATE housekeeping.housekeeping_task SET $set WHERE id = :id")
             .param("id", task)
             .update() shouldBe 1
+    }
+
+    @Test
+    fun `the application role cannot update nor delete a conflict row, only read and insert (M6 E19)`() {
+        listOf(
+            "UPDATE housekeeping.task_conflict SET summary = '{}'::jsonb WHERE id = :id",
+            "DELETE FROM housekeeping.task_conflict WHERE id = :id",
+        ).forEach { sql ->
+            withClue(sql) {
+                val refused =
+                    shouldThrow<DataAccessException> {
+                        transactions.executeWithoutResult { jdbc.sql(sql).param("id", UUID.randomUUID()).update() }
+                    }
+                (refused.mostSpecificCause as SQLException).sqlState shouldBe INSUFFICIENT_PRIVILEGE
+            }
+        }
+        jdbc
+            .sql("SELECT count(*) FROM housekeeping.task_conflict WHERE id = :id")
+            .param("id", UUID.randomUUID())
+            .query(Long::class.java)
+            .single() shouldBe 0L
     }
 
     @Test
