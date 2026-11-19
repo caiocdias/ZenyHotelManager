@@ -11,6 +11,7 @@ import com.zeny.hotel.checklists.SubjectAttributes
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
+import com.zeny.hotel.housekeeping.HousekeepingRealtime
 import com.zeny.hotel.housekeeping.HousekeepingTaskCompleted
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.RefusalReason
@@ -30,6 +31,8 @@ import com.zeny.hotel.shared.FieldViolationCodes
 import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.OwnedResource
+import com.zeny.hotel.shared.RealtimeMessage
+import com.zeny.hotel.shared.RealtimePublisher
 import com.zeny.hotel.shared.requireCurrentVersion
 import com.zeny.hotel.staff.StaffApi
 import org.springframework.context.ApplicationEventPublisher
@@ -46,7 +49,8 @@ import java.time.Instant
  * [HousekeepingTaskStore.findForUpdate]); confere o escopo por [requireActsOn] (`403 RESOURCE_OUT_OF_SCOPE`, antes de
  * qualquer recusa que revele estado); confere a versão (`412`); aplica a transição (`409
  * HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`; no início, `422 HOUSEKEEPING_TASK_NOT_DUE`, D11-E04). A trilha leva o
- * retrato da execução, sem o texto das `notes` (RN-13).
+ * retrato da execução, sem o texto das `notes` (RN-13). Toda transição gravada publica a mensagem
+ * [HousekeepingRealtime.TASK] no tópico `housekeeping` (D8-E04), enviada depois do commit.
  */
 @Service
 @Suppress("LongParameterList", "TooManyFunctions") // as portas da execução; uma operação por ação da §8.4
@@ -59,6 +63,7 @@ class HousekeepingTaskExecution(
     private val rooms: RoomsApi,
     private val checklists: ChecklistsApi,
     private val events: ApplicationEventPublisher,
+    private val realtime: RealtimePublisher,
     private val authorization: Authorization,
     private val audit: AuditContext,
 ) {
@@ -179,7 +184,7 @@ class HousekeepingTaskExecution(
         }
         task.scheduledCleaningId?.let { recordScheduledCleaning(it, task, at, remarks) }
         task.complete(actor.userId, awaitingInspection = cleaned == true && requiresInspection, at)
-        store.update(task)
+        save(task)
         events.publishEvent(
             HousekeepingTaskCompleted(
                 task.id.value,
@@ -270,8 +275,17 @@ class HousekeepingTaskExecution(
         expectedVersion?.let { requireCurrentVersion(it, checkNotNull(task.version)) }
         audit.track(HousekeepingAudit.TASK, task.id.value) { task.executionAuditState() }
         transition(task)
-        store.update(task)
+        save(task)
         return task.view()
+    }
+
+    /** Grava a transição e publica a tarefa no tópico `housekeeping` (D8-E04): só `id` e a versão nova. */
+    private fun save(task: HousekeepingTask) {
+        store.update(task)
+        realtime.publish(
+            HousekeepingRealtime.TOPIC,
+            RealtimeMessage(HousekeepingRealtime.TASK, task.id.value, checkNotNull(task.version)),
+        )
     }
 }
 

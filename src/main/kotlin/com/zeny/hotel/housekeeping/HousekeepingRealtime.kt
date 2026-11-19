@@ -9,9 +9,14 @@ import com.zeny.hotel.shared.RealtimeTopic
  *
  * - [ASSIGNMENT_PLAN]: o plano do dia foi publicado (`id` = o plano, `version` = a versão dele, a mesma do `ETag` de
  *   `GET /assignment-plans/{date}`); o cliente rebusca o plano e as tarefas. A sugestão e o ajuste não publicam.
+ * - [TASK]: uma tarefa mudou de status pela execução (D8 da E04: `start`, `pause`, `resume`, `refuse`, `retry` e
+ *   `complete`; `id` = a tarefa, `version` = a versão nova, a mesma do `ETag` da ação e de
+ *   `GET /housekeeping-tasks/{id}`); o cliente rebusca a tarefa. Uma ação recusada não publica.
  */
 object HousekeepingRealtime {
     val TOPIC = RealtimeTopic("housekeeping", HousekeepingPermissions.TASKS_READ)
 
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
+
+    const val TASK = "housekeeping.task"
 }
