@@ -41,6 +41,8 @@ tags:
   name: frontdesk
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
+- description: "Manutenção: ordens de serviço corretivas."
+  name: maintenance
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas\
@@ -15416,6 +15418,426 @@ paths:
       summary: "Fazer o walk-in: criar a reserva, alocar a UH e fazer o check-in"
       tags:
       - frontdesk
+  /api/v1/work-orders:
+    get:
+      description: "Da mais recente para a mais antiga, com os filtros opcionais.\
+        \ Exige `maintenance.workorders.read`; com o escopo `OWN`, só as ordens que\
+        \ o usuário abriu ou de que o colaborador dele é o responsável (a ordem de\
+        \ outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`)."
+      operationId: listWorkOrders
+      parameters:
+      - description: Só as ordens neste estado.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+      - description: Só as ordens desta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as ordens desta área comum.
+        in: query
+        name: areaId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as ordens desta prioridade.
+        in: query
+        name: priority
+        required: false
+        schema:
+          type: string
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+      - description: Só as ordens deste colaborador responsável.
+        in: query
+        name: assigneeEmployeeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageWorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as ordens de serviço
+      tags:
+      - maintenance
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `WORK_ORDER_LOCATION_INVALID`; local inexistente,\
+        \ 400 `UNKNOWN_ROOM` ou `UNKNOWN_AREA` no campo; local desativado, 422 `WORK_ORDER_LOCATION_INACTIVE`.\
+        \ A ordem nasce `OPEN`, com número `OS-<ano>-NNNNNN` (ano da data operacional),\
+        \ quem a abriu em `openedBy` e os três custos em zero. A origem (`origin`)\
+        \ aceita `RECEPTION`, `HOUSEKEEPING` e `MAINTENANCE`; `CHECKLIST` é reservada\
+        \ ao pedido por item de checklist e dá 400 no campo. Responsável, terceiro\
+        \ e custos só entram pela edição (`PUT`), por quem tem `maintenance.workorders.manage`:\
+        \ o corpo da abertura não os tem, e o que vier a mais é ignorado. Exige `maintenance.workorders.request`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do local; o 400 do corpo vem antes)."
+      operationId: openWorkOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderOpenRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: Ordem aberta.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Abrir uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}:
+    get:
+      description: "Exige `maintenance.workorders.read`; com o escopo `OWN`, só as\
+        \ ordens que o usuário abriu ou de que o colaborador dele é o responsável\
+        \ (a ordem de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`). Inexistente:\
+        \ 404 `WORK_ORDER_NOT_FOUND` (com `OWN`, 403)."
+      operationId: getWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma ordem de serviço
+      tags:
+      - maintenance
+    put:
+      description: "Substitui os campos editáveis inteiros: local, categoria, prioridade,\
+        \ descrição, responsável, terceiro, prazo e os três custos (obrigatórios,\
+        \ sem valor padrão). Responsável inexistente: 400 `UNKNOWN_EMPLOYEE`; desativado:\
+        \ 422 `WORK_ORDER_ASSIGNEE_INACTIVE`. Local inexistente: 400 `UNKNOWN_ROOM`\
+        \ ou `UNKNOWN_AREA`; desativado: 422 `WORK_ORDER_LOCATION_INACTIVE` (conferidos\
+        \ só quando mudam). Custo negativo, com mais de 2 casas ou acima de 99999.99:\
+        \ 400 no campo. Vale enquanto a ordem não é final (`DONE` ou `CANCELLED`:\
+        \ 409). Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes\
+        \ de qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas ordens\
+        \ do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
+        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
+        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
+        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: updateWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/cancel:
+    post:
+      description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `CANCELLED` e grava `closedAt`,\
+        \ com o motivo obrigatório. Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas\
+        \ ordens do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
+        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
+        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
+        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: cancelWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderCancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cancelar uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/complete:
+    post:
+      description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `DONE` e grava `closedAt`,\
+        \ com as notas e os custos que vierem (os omitidos mantêm o valor gravado).\
+        \ Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de\
+        \ qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas ordens\
+        \ do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
+        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
+        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
+        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: completeWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderCompleteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Concluir uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/hold:
+    post:
+      description: "`IN_PROGRESS` vai a `ON_HOLD` (aguardando peça ou terceiro), com\
+        \ o motivo obrigatório. Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas\
+        \ ordens do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
+        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
+        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
+        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: holdWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderHoldRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pôr uma ordem de serviço em espera
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/resume:
+    post:
+      description: "`ON_HOLD` volta a `IN_PROGRESS`; o motivo da espera sai. Exige\
+        \ `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de qualquer\
+        \ recusa que dependa da ordem; com o escopo `OWN`, só nas ordens do usuário,\
+        \ e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato\
+        \ do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem inexistente: 404\
+        \ `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412 com outra versão;\
+        \ 428 sem ele). Ação fora do estado, ou numa ordem `DONE` ou `CANCELLED`:\
+        \ 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus` e `action`),\
+        \ sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: resumeWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retomar uma ordem de serviço em espera
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/start:
+    post:
+      description: "`OPEN` vai a `IN_PROGRESS` e grava `startedAt`. Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
+      operationId: startWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Iniciar uma ordem de serviço
+      tags:
+      - maintenance
 components:
   headers:
     IdempotentReplayed:
@@ -19547,6 +19969,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/UserResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
+    CursorPageWorkOrderResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderResponse"
         nextCursor:
           type: string
           description: Cursor da próxima página; nulo quando esta é a última.
@@ -30878,6 +31314,342 @@ components:
       - restrictionAlerts
       - room
       - total
+    WorkOrderCancelRequest:
+      type: object
+      description: O cancelamento de uma ordem de serviço.
+      properties:
+        reason:
+          type: string
+          description: "O motivo, até 500 caracteres. **Não escreva dado de hóspede**\
+            \ (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+      required:
+      - reason
+    WorkOrderCompleteRequest:
+      type: object
+      description: A conclusão de uma ordem de serviço.
+      properties:
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        notes:
+          type: string
+          description: "As notas da conclusão, até 2000 caracteres. **Não escreva\
+            \ dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          nullable: true
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+    WorkOrderHoldRequest:
+      type: object
+      description: A espera de uma ordem de serviço.
+      properties:
+        reason:
+          type: string
+          description: "O motivo (peça, terceiro…), até 500 caracteres. **Não escreva\
+            \ dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+      required:
+      - reason
+    WorkOrderOpenRequest:
+      type: object
+      description: "A abertura de uma ordem de serviço, numa UH ou numa área comum\
+        \ (exatamente um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum da ordem; informe esta ou `roomId`, uma só."
+          nullable: true
+        category:
+          type: string
+          description: A categoria do problema.
+          enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        description:
+          type: string
+          description: "O problema, até 2000 caracteres. **Não escreva dado de hó\
+            spede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          minLength: 1
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo desejado; omita se não houver.
+          nullable: true
+        origin:
+          type: string
+          description: "Quem pede: `RECEPTION`, `HOUSEKEEPING` ou `MAINTENANCE` (`CHECKLIST`\
+            \ é recusada)."
+          enum:
+          - RECEPTION
+          - HOUSEKEEPING
+          - MAINTENANCE
+          - CHECKLIST
+        priority:
+          type: string
+          description: A prioridade da ordem.
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH da ordem; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - category
+      - description
+      - origin
+      - priority
+    WorkOrderResponse:
+      type: object
+      description: Uma ordem de serviço corretiva. A descrição e os motivos são texto
+        livre do operador.
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum da ordem; nula numa ordem de UH.
+          nullable: true
+        assigneeEmployeeId:
+          type: string
+          format: uuid
+          description: O colaborador responsável; nulo sem responsável.
+          nullable: true
+        cancellationReason:
+          type: string
+          description: O motivo do cancelamento; nulo fora de `CANCELLED`.
+          nullable: true
+        category:
+          type: string
+          description: A categoria (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        closedAt:
+          type: string
+          format: date-time
+          description: Quando foi concluída ou cancelada; nulo antes.
+          nullable: true
+        completionNotes:
+          type: string
+          description: As notas da conclusão; nulo fora de `DONE` ou sem notas.
+          nullable: true
+        description:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo; nulo sem prazo.
+          nullable: true
+        holdReason:
+          type: string
+          description: O motivo da espera; nulo fora de `ON_HOLD`.
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        number:
+          type: string
+          description: "O número legível, `OS-<ano>-NNNNNN`."
+          example: OS-2026-000001
+        openedAt:
+          type: string
+          format: date-time
+        openedBy:
+          type: string
+          format: uuid
+          description: O usuário que abriu a ordem (dono no escopo `OWN`).
+        origin:
+          type: string
+          description: A origem do pedido (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - RECEPTION
+          - HOUSEKEEPING
+          - MAINTENANCE
+          - CHECKLIST
+        outOfOrderId:
+          type: string
+          format: uuid
+          description: O período OOO/OOS aberto para a ordem; nulo sem bloqueio.
+          nullable: true
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        priority:
+          type: string
+          description: A prioridade (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: A UH da ordem; nula numa ordem de área.
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          description: Quando foi iniciada pela primeira vez; nulo antes.
+          nullable: true
+        status:
+          type: string
+          description: O estado da ordem (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyName:
+          type: string
+          description: O terceiro contratado; nulo sem terceiro.
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - category
+      - description
+      - id
+      - laborCost
+      - number
+      - openedAt
+      - openedBy
+      - origin
+      - partsCost
+      - priority
+      - status
+      - thirdPartyCost
+      - updatedAt
+    WorkOrderUpdateRequest:
+      type: object
+      description: "A edição de uma ordem de serviço: substitui todos os campos editá\
+        veis."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum da ordem; informe esta ou `roomId`, uma só."
+          nullable: true
+        assigneeEmployeeId:
+          type: string
+          format: uuid
+          description: O colaborador responsável; nulo ou omitido retira.
+          nullable: true
+        category:
+          type: string
+          description: A categoria do problema.
+          enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        description:
+          type: string
+          description: "O problema, até 2000 caracteres. **Não escreva dado de hó\
+            spede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          minLength: 1
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo; nulo ou omitido retira.
+          nullable: true
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        priority:
+          type: string
+          description: A prioridade da ordem.
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH da ordem; informe esta ou `areaId`, uma só."
+          nullable: true
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyName:
+          type: string
+          description: "O terceiro contratado, até 200 caracteres; nulo ou omitido\
+            \ retira."
+          maxLength: 200
+          nullable: true
+      required:
+      - category
+      - description
+      - laborCost
+      - partsCost
+      - priority
+      - thirdPartyCost
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

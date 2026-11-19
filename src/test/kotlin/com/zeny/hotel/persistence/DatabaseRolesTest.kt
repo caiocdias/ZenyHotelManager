@@ -293,6 +293,7 @@ class DatabaseRolesTest(
                 "housekeeping.inspection",
                 "housekeeping.lost_and_found_item",
                 "housekeeping.damage_report",
+                "maintenance.work_order",
             )
     }
 }
