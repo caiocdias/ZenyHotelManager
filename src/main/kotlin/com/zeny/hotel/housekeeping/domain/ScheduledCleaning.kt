@@ -120,12 +120,13 @@ class ScheduledCleaning private constructor(
                 listOf(FieldViolation("date", FieldViolationCodes.INVALID_VALUE, message)),
             )
         }
-        if (!active) return false
-        if (lastDoneOn?.let { !date.isAfter(it) } == true) return false
-        lastDoneOn = date
-        nextDueOn = next
-        updatedAt = now
-        return true
+        val advances = active && lastDoneOn?.let { date.isAfter(it) } != false
+        if (advances) {
+            lastDoneOn = date
+            nextDueOn = next
+            updatedAt = now
+        }
+        return advances
     }
 
     /** Desativa; devolve se mudou. */

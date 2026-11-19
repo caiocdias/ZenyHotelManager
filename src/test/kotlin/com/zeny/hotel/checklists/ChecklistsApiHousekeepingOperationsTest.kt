@@ -36,6 +36,7 @@ class ChecklistsApiHousekeepingOperationsTest(
     @Autowired private val jdbc: JdbcClient,
 ) {
     // O registro de eventos do Spring só chega por campo (não pelo construtor).
+    @Suppress("VarCouldBeVal") // lateinit, injetado pelo Spring
     @Autowired
     private lateinit var events: ApplicationEvents
 

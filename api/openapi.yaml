@@ -7079,6 +7079,59 @@ paths:
       summary: Consultar uma tarefa de governança
       tags:
       - housekeeping
+  /api/v1/housekeeping-tasks/{id}/complete:
+    post:
+      description: "Conclui a tarefa `IN_PROGRESS`, numa transação só: conclui o checklist\
+        \ aberto no início com as `answers` (todas; item obrigatório faltando: 422\
+        \ `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; checklist **já concluí\
+        do por fora**: a tarefa conclui e as `answers` são ignoradas; `answers` numa\
+        \ tarefa sem checklist: 400 `VALIDATION_FAILED` no campo `answers`), leva\
+        \ a UH Suja a Limpa (com inspeção pendente se o tipo de limpeza a exige),\
+        \ grava a ocupação encontrada (`foundOccupancy`, `foundGuestCount`; só numa\
+        \ tarefa de UH), registra a faxina programada feita e grava quem concluiu\
+        \ e os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com\
+        \ inspeção pendente agora; numa UH já Limpa ou Inspecionada e numa área, vai\
+        \ a `DONE`. O corpo é opcional. Exige `housekeeping.tasks.execute`: com o\
+        \ escopo `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa,\
+        \ ou uma inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa\
+        \ inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com\
+        \ outra versão; 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
+        \ e o `ETag` novo."
+      operationId: completeHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingTaskCompleteRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Concluir uma tarefa de governança
+      tags:
+      - housekeeping
   /api/v1/housekeeping-tasks/{id}/pause:
     post:
       description: "Leva a tarefa `IN_PROGRESS` a `PAUSED`; o trecho em andamento\
@@ -7122,12 +7175,14 @@ paths:
     post:
       description: "Leva a tarefa `ASSIGNED` a `REFUSED`, com o motivo: `DO_NOT_DISTURB`\
         \ (a UH com não perturbe) ou `GUEST_REFUSED` (o hóspede recusou o serviço).\
-        \ A camareira continua a mesma; a nova tentativa é o `retry`. Responde 200\
-        \ com a tarefa `REFUSED`. Exige `housekeeping.tasks.execute`: com o escopo\
-        \ `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa, ou uma\
-        \ inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente:\
-        \ 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com outra versão;\
-        \ 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ Com `DO_NOT_DISTURB` numa UH ocupada, liga o sinal de não perturbe na UH;\
+        \ numa UH vaga e numa tarefa de área, a UH não muda. A camareira continua\
+        \ a mesma; a nova tentativa é o `retry`. Responde 200 com a tarefa `REFUSED`\
+        \ em todos os casos. Exige `housekeeping.tasks.execute`: com o escopo `OWN`\
+        \ (a Camareira), só na tarefa atribuída a ela; outra tarefa, ou uma inexistente,\
+        \ dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente: 404\
+        \ `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com outra versão; 428\
+        \ sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
         \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
         \ e o `ETag` novo."
       operationId: refuseHousekeepingTask
@@ -21147,6 +21202,64 @@ components:
       - id
       - timezone
       - updatedAt
+    HousekeepingChecklistAnswerRequest:
+      type: object
+      description: "Uma resposta do checklist: a chave do item e só o campo do tipo\
+        \ dele — `check` (CHECK), `quantity` (QUANTITY), `number` (NUMBER), `text`\
+        \ (TEXT), `choice` (SINGLE_CHOICE), `choices` (MULTI_CHOICE) ou `photoFileId`\
+        \ (PHOTO: um anexo da finalidade `checklists.photo` enviado por quem iniciou\
+        \ o checklist) — e a observação opcional."
+      nullable: true
+      properties:
+        check:
+          type: string
+          enum:
+          - OK
+          - NOT_OK
+          - NOT_APPLICABLE
+          nullable: true
+        choice:
+          type: string
+          maxLength: 40
+          minLength: 0
+          nullable: true
+        choices:
+          type: array
+          items:
+            type: string
+            nullable: true
+          maxItems: 50
+          minItems: 0
+          nullable: true
+        itemKey:
+          type: string
+          example: towels
+          maxLength: 40
+          minLength: 0
+        note:
+          type: string
+          maxLength: 500
+          minLength: 0
+          nullable: true
+        number:
+          type: number
+          example: 4.5
+          nullable: true
+        photoFileId:
+          type: string
+          format: uuid
+          nullable: true
+        quantity:
+          type: number
+          example: 2
+          nullable: true
+        text:
+          type: string
+          maxLength: 2000
+          minLength: 0
+          nullable: true
+      required:
+      - itemKey
     HousekeepingObservationRequest:
       type: object
       description: O que a governança encontrou na UH.
@@ -21337,6 +21450,34 @@ components:
       - status
       - updatedAt
       - workedSeconds
+    HousekeepingTaskCompleteRequest:
+      type: object
+      description: A conclusão de uma tarefa de governança; todos os campos são opcionais.
+      properties:
+        answers:
+          type: array
+          description: Todas as respostas do checklist aberto no início (as que valem
+            na conclusão). Só numa tarefa com checklist; ignoradas se ele já foi concluído
+            por fora.
+          items:
+            $ref: "#/components/schemas/HousekeepingChecklistAnswerRequest"
+          maxItems: 300
+          minItems: 0
+          nullable: true
+        foundGuestCount:
+          type: integer
+          format: int32
+          description: "O número de pessoas encontradas, de 1 a 40, só com `foundOccupancy`\
+            \ = `OCCUPIED`."
+          nullable: true
+        foundOccupancy:
+          type: string
+          description: A ocupação que a camareira encontrou na UH (só numa tarefa
+            de UH).
+          enum:
+          - VACANT
+          - OCCUPIED
+          nullable: true
     HousekeepingTaskRefuseRequest:
       type: object
       description: A recusa de uma tarefa de governança.

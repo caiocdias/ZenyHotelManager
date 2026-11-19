@@ -41,8 +41,8 @@ private const val ACTION_RULES =
 
 /**
  * As ações da execução da tarefa de governança (RF-GOV-04, SPEC §8.4, M6 E04): iniciar, pausar, retomar, recusar,
- * tentar de novo e concluir, como subrecursos de ação com `If-Match` (ARCHITECTURE §7). O instante é o do relógio do servidor. A
- * resposta é a [HousekeepingTaskActionResponse], sem `notes` (D2-E04, RN-13).
+ * tentar de novo e concluir, como subrecursos de ação com `If-Match` (ARCHITECTURE §7). O instante é o do relógio
+ * do servidor. A resposta é a [HousekeepingTaskActionResponse], sem `notes` (D2-E04, RN-13).
  */
 @ApiV1Controller
 @RequestMapping("/housekeeping-tasks")
@@ -104,10 +104,10 @@ class HousekeepingTaskActionsController(
         summary = "Recusar uma tarefa de governança",
         description =
             "Leva a tarefa `ASSIGNED` a `REFUSED`, com o motivo: `DO_NOT_DISTURB` (a UH com não perturbe) ou " +
-                "`GUEST_REFUSED` (o hóspede recusou o serviço). Com `DO_NOT_DISTURB` numa UH ocupada, liga o sinal de " +
-                "não perturbe na UH; numa UH vaga e numa tarefa de área, a UH não muda. A camareira continua a " +
-                "mesma; a nova tentativa é o `retry`. Responde 200 com a tarefa `REFUSED` em todos os casos. " +
-                ACTION_RULES,
+                "`GUEST_REFUSED` (o hóspede recusou o serviço). Com `DO_NOT_DISTURB` numa UH ocupada, liga o " +
+                "sinal de não perturbe na UH; numa UH vaga e numa tarefa de área, a UH não muda. A camareira " +
+                "continua a mesma; a nova tentativa é o `retry`. Responde 200 com a tarefa `REFUSED` em todos os " +
+                "casos. $ACTION_RULES",
     )
     fun refuse(
         @PathVariable id: UUID,
@@ -145,8 +145,8 @@ class HousekeepingTaskActionsController(
                 "checklist **já concluído por fora**: a tarefa conclui e as `answers` são ignoradas; `answers` numa " +
                 "tarefa sem checklist: 400 `VALIDATION_FAILED` no campo `answers`), leva a UH Suja a Limpa (com " +
                 "inspeção pendente se o tipo de limpeza a exige), grava a ocupação encontrada (`foundOccupancy`, " +
-                "`foundGuestCount`; só numa tarefa de UH), registra a faxina programada feita e grava quem concluiu e " +
-                "os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com inspeção pendente agora; " +
+                "`foundGuestCount`; só numa tarefa de UH), registra a faxina programada feita e grava quem concluiu " +
+                "e os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com inspeção pendente agora; " +
                 "numa UH já Limpa ou Inspecionada e numa área, vai a `DONE`. O corpo é opcional. $ACTION_RULES",
     )
     fun complete(

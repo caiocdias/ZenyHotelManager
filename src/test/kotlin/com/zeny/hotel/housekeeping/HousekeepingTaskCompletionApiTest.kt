@@ -35,7 +35,6 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.context.event.ApplicationEvents
 import org.springframework.test.context.event.RecordApplicationEvents
 import org.springframework.test.web.servlet.request.RequestPostProcessor
-import tools.jackson.databind.json.JsonMapper
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -60,13 +59,13 @@ import java.util.UUID
 class HousekeepingTaskCompletionApiTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
-    @Autowired private val json: JsonMapper,
     @Autowired private val hotel: HotelApi,
     @Autowired private val roomsApi: RoomsApi,
     @Autowired private val checklistsApi: ChecklistsApi,
     @Autowired staffApi: StaffApi,
 ) {
     // O registro de eventos do Spring só chega por campo (não pelo construtor).
+    @Suppress("VarCouldBeVal") // lateinit, injetado pelo Spring
     @Autowired
     private lateinit var events: ApplicationEvents
 
@@ -364,15 +363,14 @@ class HousekeepingTaskCompletionApiTest(
             complete(task, auth).ok()["status"].asString() shouldBe "DONE"
 
             scheduleRow(schedule) shouldBe before
-            val after =
-                jdbc
-                    .sql(
-                        "SELECT after_state::text FROM audit.audit_entry WHERE entity_type = 'housekeeping.task' " +
-                            "AND entity_id = :id AND action = 'housekeeping.task.complete'",
-                    ).param("id", task.toString())
-                    .query(String::class.java)
-                    .single()
-            json.readTree(after)["scheduledCleaningInactive"].asBoolean() shouldBe true
+            jdbc
+                .sql(
+                    "SELECT after_state ->> 'scheduledCleaningInactive' FROM audit.audit_entry " +
+                        "WHERE entity_type = 'housekeeping.task' AND entity_id = :id " +
+                        "AND action = 'housekeeping.task.complete'",
+                ).param("id", task.toString())
+                .query(String::class.java)
+                .single() shouldBe "true"
         }
 
     // --- D4: a recusa por não perturbe ------------------------------------------------------------------
@@ -462,9 +460,9 @@ class HousekeepingTaskCompletionApiTest(
         )
 
     /**
-     * Uma tarefa `SCHEDULED` da faxina [schedule] na [date], já atribuída: escrita direta (o que a geração grava), porque
-     * a geração roda para o hotel inteiro no banco compartilhado. A faxina tem a próxima data depois de [date], então a
-     * geração não cria outra.
+     * Uma tarefa `SCHEDULED` da faxina [schedule] na [date], já atribuída: escrita direta (o que a geração grava),
+     * porque a geração roda para o hotel inteiro no banco compartilhado. A faxina tem a próxima data depois de [date],
+     * então a geração não cria outra.
      */
     private fun scheduledTask(
         attendant: HousekeepingExecutionTestSupport.Attendant,

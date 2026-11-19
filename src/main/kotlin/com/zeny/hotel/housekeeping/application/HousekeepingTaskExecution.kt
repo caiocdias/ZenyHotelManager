@@ -38,8 +38,8 @@ import java.time.Instant
 
 /**
  * A execução da tarefa de governança (RF-GOV-04, SPEC §8.4, M6 E04): iniciar, pausar, retomar, recusar, tentar de
- * novo e concluir. Atende as ações online (o [Actor] da requisição e o relógio do servidor) e, na E19, os comandos offline (o
- * `occurredAt` corrigido em [at] e [expectedVersion] nulo, sem conferir a versão).
+ * novo e concluir. Atende as ações online (o [Actor] da requisição e o relógio do servidor) e, na E19, os comandos
+ * offline (o `occurredAt` corrigido em [at] e [expectedVersion] nulo, sem conferir a versão).
  *
  * Toda ação, na ordem: exige `housekeeping.tasks.execute` (`403 PERMISSION_DENIED`); trava a tarefa (D9-E04,
  * [HousekeepingTaskStore.findForUpdate]); confere o escopo por [requireActsOn] (`403 RESOURCE_OUT_OF_SCOPE`, antes de
@@ -278,25 +278,30 @@ private fun requireCompletionInput(
     foundOccupancy: OccupancyStatus?,
     foundGuestCount: Int?,
 ) {
-    if (answers != null && task.checklistExecutionId == null) {
-        throw invalidField("answers", "A tarefa não tem checklist: não envie respostas.")
-    }
-    if (foundOccupancy != null && task.roomId == null) {
-        throw invalidField("foundOccupancy", "Uma tarefa de área não registra a ocupação de UH.")
-    }
-    if (foundGuestCount != null && foundOccupancy == null) {
-        throw invalidField("foundOccupancy", "Informe a ocupação encontrada junto com o número de hóspedes.")
-    }
-}
+    val (field, message) =
+        when {
+            answers != null && task.checklistExecutionId == null -> {
+                "answers" to "A tarefa não tem checklist: não envie respostas."
+            }
 
-private fun invalidField(
-    field: String,
-    message: String,
-) = InvalidInputException(
-    ErrorCodes.VALIDATION_FAILED,
-    message,
-    listOf(FieldViolation(field, FieldViolationCodes.INVALID_VALUE, message)),
-)
+            foundOccupancy != null && task.roomId == null -> {
+                "foundOccupancy" to "Uma tarefa de área não registra a ocupação de UH."
+            }
+
+            foundGuestCount != null && foundOccupancy == null -> {
+                "foundOccupancy" to "Informe a ocupação encontrada junto com o número de hóspedes."
+            }
+
+            else -> {
+                return
+            }
+        }
+    throw InvalidInputException(
+        ErrorCodes.VALIDATION_FAILED,
+        message,
+        listOf(FieldViolation(field, FieldViolationCodes.INVALID_VALUE, message)),
+    )
+}
 
 /** O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere). */
 private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.task"

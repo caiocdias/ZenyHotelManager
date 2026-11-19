@@ -89,9 +89,10 @@ class RoomStatusChanger(
 }
 
 /**
- * O registro do que a governança encontrou na UH (RF-UH-08), na transação e na auditoria de quem chama (o endpoint de
- * observação ou a `RoomsApi`): a UH existe (`404 ROOM_NOT_FOUND`) e está ativa (`422 ROOM_INACTIVE`), o número de
- * pessoas passa por [Room.requireObservedGuestCount], e a observação vai para a trilha e para o histórico *append-only*.
+ * O registro do que a governança encontrou na UH (RF-UH-08), na transação e na auditoria de quem chama (o endpoint
+ * de observação ou a `RoomsApi`): a UH existe (`404 ROOM_NOT_FOUND`) e está ativa (`422 ROOM_INACTIVE`), o número de
+ * pessoas passa por [Room.requireObservedGuestCount], e a observação vai para a trilha e para o histórico
+ * *append-only*.
  */
 @Component
 class HousekeepingObservations(
