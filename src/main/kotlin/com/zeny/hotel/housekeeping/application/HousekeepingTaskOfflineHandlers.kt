@@ -2,6 +2,7 @@ package com.zeny.hotel.housekeeping.application
 
 import com.zeny.hotel.checklists.CheckAnswer
 import com.zeny.hotel.checklists.ChecklistAnswerInput
+import com.zeny.hotel.checklists.ChecklistItemType
 import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistVersionId
 import com.zeny.hotel.checklists.ChecklistsErrorCodes
@@ -9,6 +10,7 @@ import com.zeny.hotel.housekeeping.HousekeepingOffline
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.RefusalReason
+import com.zeny.hotel.housekeeping.TaskStatus
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.rooms.OccupancyStatus
 import com.zeny.hotel.shared.Actor
@@ -19,6 +21,9 @@ import com.zeny.hotel.shared.OfflineCommand
 import com.zeny.hotel.shared.OfflineCommandHandler
 import com.zeny.hotel.shared.OfflineCommandOutcome
 import com.zeny.hotel.shared.OfflineCommandWarning
+import com.zeny.hotel.shared.ScopeFilter
+import com.zeny.hotel.staff.EmployeeId
+import com.zeny.hotel.staff.StaffApi
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -33,7 +38,10 @@ import java.util.UUID
 data class HousekeepingTaskCommandPayload(
     @field:NotNull
     val taskId: UUID?,
-)
+) {
+    /** O resumo do conflito (D4-E19): só a tarefa, que já está no registro. */
+    fun conflictSummary(): Map<String, Any?> = emptyMap()
+}
 
 /**
  * `housekeeping.start-task`: a tarefa e, opcional, a versão do checklist que o aparelho tem ([checklistVersionId],
@@ -43,7 +51,10 @@ data class StartHousekeepingTaskPayload(
     @field:NotNull
     val taskId: UUID?,
     val checklistVersionId: UUID? = null,
-)
+) {
+    /** O resumo do conflito (D4-E19): a versão do checklist que o aparelho abriu. */
+    fun conflictSummary(): Map<String, Any?> = mapOf("checklistVersionId" to checklistVersionId?.toString())
+}
 
 /** `housekeeping.refuse-task`: a tarefa e o motivo da recusa. */
 data class RefuseHousekeepingTaskPayload(
@@ -51,7 +62,10 @@ data class RefuseHousekeepingTaskPayload(
     val taskId: UUID?,
     @field:NotNull
     val reason: RefusalReason?,
-)
+) {
+    /** O resumo do conflito (D4-E19): o motivo da recusa. */
+    fun conflictSummary(): Map<String, Any?> = mapOf("reason" to reason?.name)
+}
 
 /**
  * `housekeeping.complete-task`: a tarefa, as respostas do checklist aberto no início (todas; só numa tarefa com
@@ -65,6 +79,18 @@ data class CompleteHousekeepingTaskPayload(
     val foundOccupancy: OccupancyStatus? = null,
     val foundGuestCount: Int? = null,
 ) {
+    /**
+     * O resumo do conflito (D4-E19), sem texto livre: cada resposta ([HousekeepingOfflineAnswerPayload.conflictSummary]),
+     * a contagem das fotos e a ocupação encontrada.
+     */
+    fun conflictSummary(): Map<String, Any?> =
+        mapOf(
+            "answers" to answers?.map { it.conflictSummary() },
+            "photoCount" to answers.orEmpty().count { it.photoFileId != null },
+            "foundOccupancy" to foundOccupancy?.name,
+            "foundGuestCount" to foundGuestCount,
+        )
+
     companion object {
         const val MAX_ANSWERS = 300
     }
@@ -96,41 +122,109 @@ data class HousekeepingOfflineAnswerPayload(
         ChecklistAnswerInput
             .of(checkNotNull(itemKey), check, quantity, number, text, choice, choices, photoFileId, note)
             .copy(answeredAt = answeredAt)
+
+    /**
+     * A resposta no resumo do conflito (D4-E19), que é só de inserção e não admite expurgo: o tipo pelo campo
+     * preenchido e os valores não textuais (marcação, quantidade, número, escolhas); o texto e a observação só como
+     * "tinha" e a foto só como "tinha", sem o id. A chave do item e as das opções vêm do aparelho sem conferência com o
+     * modelo: fora do formato de chave do `checklists`, ficam de fora (nada de texto livre por elas).
+     */
+    fun conflictSummary(): Map<String, Any?> =
+        mapOf(
+            "itemKey" to itemKey?.takeIf(KEY::matches),
+            "type" to answeredType()?.name,
+            "check" to check?.name,
+            "quantity" to quantity,
+            "number" to number,
+            "choice" to choice?.takeIf(KEY::matches),
+            "choices" to choices?.filter(KEY::matches),
+            "hadText" to !text.isNullOrBlank(),
+            "hadNote" to !note.isNullOrBlank(),
+            "hasPhoto" to (photoFileId != null),
+        )
+
+    private fun answeredType(): ChecklistItemType? =
+        when {
+            check != null -> ChecklistItemType.CHECK
+            quantity != null -> ChecklistItemType.QUANTITY
+            number != null -> ChecklistItemType.NUMBER
+            text != null -> ChecklistItemType.TEXT
+            choice != null -> ChecklistItemType.SINGLE_CHOICE
+            choices != null -> ChecklistItemType.MULTI_CHOICE
+            photoFileId != null -> ChecklistItemType.PHOTO
+            else -> null
+        }
+
+    private companion object {
+        /** O formato das chaves de item e de opção do `checklists` (`ChecklistContentRules.KEY`). */
+        val KEY = Regex("[a-z0-9][a-z0-9_-]{0,39}")
+    }
 }
 
 /**
  * A porta comum dos comandos offline da execução (D4-E19): exige `housekeeping.tasks.execute`, trava a tarefa e decide
- * a posse num ponto só ([resolveOwnership]) antes de entregar a ação ao handler. O ator é o usuário da sincronização.
+ * a posse num ponto só ([resolveOwnership]) antes de entregar a ação ao handler: a ex-dona vira conflito
+ * ([HousekeepingTaskConflicts]), sem a ação; os demais seguem a regra de escopo da execução. O ator é o usuário da
+ * sincronização.
  */
 @Component
 class HousekeepingTaskOfflineAccess(
     private val store: HousekeepingTaskStore,
     private val execution: HousekeepingTaskExecution,
+    private val conflicts: HousekeepingTaskConflicts,
+    private val staff: StaffApi,
     private val authorization: Authorization,
     private val actor: CurrentActor,
 ) {
-    /** Aplica [action] na tarefa [taskId] como o ator da sincronização, depois de travada e decidida a posse. */
-    fun <T> applyTo(
+    /**
+     * Aplica [action] na tarefa [taskId] do [command] como o ator da sincronização, depois de travada e decidida a
+     * posse, com os alertas que ela devolve; a ex-dona registra o conflito com o resumo [summary] (só calculado então).
+     */
+    fun applyTo(
+        command: OfflineCommand<*>,
         taskId: UUID,
-        action: (HousekeepingTaskId, Actor) -> T,
-    ): T {
+        summary: () -> Map<String, Any?>,
+        action: (HousekeepingTaskId, Actor) -> List<OfflineCommandWarning>,
+    ): OfflineCommandOutcome {
         authorization.require(HousekeepingPermissions.TASKS_EXECUTE)
         val current = actor.current()
         val id = HousekeepingTaskId(taskId)
-        resolveOwnership(store.findForUpdate(id), current)
-        return action(id, current)
+        val task = store.findForUpdate(id)
+        resolveOwnership(task, current)?.let { formerOwner ->
+            return conflicts.record(checkNotNull(task), formerOwner, current, command, summary())
+        }
+        return OfflineCommandOutcome(action(id, current))
     }
 
     /**
-     * A decisão de posse, com a tarefa travada: com `ALL`, qualquer tarefa; com `OWN`, só a dona atual (a camareira
-     * atribuída) aplica, e qualquer outra pessoa recebe `RESOURCE_OUT_OF_SCOPE` (inexistente, idem; com `ALL`, `404`).
+     * A decisão de posse (D4-E19), com a tarefa travada; devolve a ex-dona quando o comando é conflito, senão `null`
+     * depois de conferir o escopo. Com `ALL`, qualquer tarefa aplica. Com `OWN`, na ordem: (1) tarefa cancelada, de
+     * outra dona ou sem camareira, e o ator **foi** dona (a camareira atual ou alguém da posse em
+     * `housekeeping.task_assignment`) ⇒ conflito; (2) dona atual de tarefa não cancelada ⇒ aplica (uma transição
+     * inválida dá a recusa da E04); (3) quem nunca foi dona, sem colaborador ou numa tarefa inexistente ⇒
+     * `RESOURCE_OUT_OF_SCOPE`, sem registro.
      */
     private fun resolveOwnership(
         task: HousekeepingTask?,
         actor: Actor,
-    ) {
+    ): EmployeeId? {
+        if (task != null && authorization.scopeFilter(HousekeepingPermissions.TASKS_EXECUTE) is ScopeFilter.Own) {
+            val employee = staff.employeeOfUser(actor.userId)?.id
+            if (employee != null && !isCurrentOwner(task, employee) && wasOwner(task, employee)) return employee
+        }
         execution.requireActsOn(task, actor)
+        return null
     }
+
+    private fun isCurrentOwner(
+        task: HousekeepingTask,
+        employee: EmployeeId,
+    ) = task.status != TaskStatus.CANCELLED && task.assignedEmployeeId == employee
+
+    private fun wasOwner(
+        task: HousekeepingTask,
+        employee: EmployeeId,
+    ) = task.assignedEmployeeId == employee || store.wasAssignedTo(task.id, employee)
 }
 
 /** O handler de `housekeeping.start-task` ([StartHousekeepingTaskPayload]). */
@@ -146,12 +240,10 @@ class StartHousekeepingTaskHandler(
     @Transactional
     override fun handle(command: OfflineCommand<StartHousekeepingTaskPayload>): OfflineCommandOutcome {
         val payload = command.payload
-        val start =
-            access.applyTo(checkNotNull(payload.taskId)) { id, actor ->
-                val device = payload.checklistVersionId?.let(::ChecklistVersionId)
-                execution.startTask(id, actor, command.occurredAt, expectedVersion = null, device)
-            }
-        return OfflineCommandOutcome(start.warnings)
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
+            val device = payload.checklistVersionId?.let(::ChecklistVersionId)
+            execution.startTask(id, actor, command.occurredAt, expectedVersion = null, device).warnings
+        }
     }
 }
 
@@ -167,10 +259,11 @@ class PauseHousekeepingTaskHandler(
     @Audited(HousekeepingAudit.PAUSE_TASK_OFFLINE)
     @Transactional
     override fun handle(command: OfflineCommand<HousekeepingTaskCommandPayload>): OfflineCommandOutcome {
-        access.applyTo(checkNotNull(command.payload.taskId)) { id, actor ->
+        val payload = command.payload
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
             execution.pauseTask(id, actor, command.occurredAt, expectedVersion = null)
+            emptyList()
         }
-        return OfflineCommandOutcome.APPLIED
     }
 }
 
@@ -186,10 +279,11 @@ class ResumeHousekeepingTaskHandler(
     @Audited(HousekeepingAudit.RESUME_TASK_OFFLINE)
     @Transactional
     override fun handle(command: OfflineCommand<HousekeepingTaskCommandPayload>): OfflineCommandOutcome {
-        access.applyTo(checkNotNull(command.payload.taskId)) { id, actor ->
+        val payload = command.payload
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
             execution.resumeTask(id, actor, command.occurredAt, expectedVersion = null)
+            emptyList()
         }
-        return OfflineCommandOutcome.APPLIED
     }
 }
 
@@ -206,10 +300,10 @@ class RefuseHousekeepingTaskHandler(
     @Transactional
     override fun handle(command: OfflineCommand<RefuseHousekeepingTaskPayload>): OfflineCommandOutcome {
         val payload = command.payload
-        access.applyTo(checkNotNull(payload.taskId)) { id, actor ->
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
             execution.refuseTask(id, checkNotNull(payload.reason), actor, command.occurredAt, expectedVersion = null)
+            emptyList()
         }
-        return OfflineCommandOutcome.APPLIED
     }
 }
 
@@ -225,10 +319,11 @@ class RetryHousekeepingTaskHandler(
     @Audited(HousekeepingAudit.RETRY_TASK_OFFLINE)
     @Transactional
     override fun handle(command: OfflineCommand<HousekeepingTaskCommandPayload>): OfflineCommandOutcome {
-        access.applyTo(checkNotNull(command.payload.taskId)) { id, actor ->
+        val payload = command.payload
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
             execution.retryTask(id, actor, command.occurredAt, expectedVersion = null)
+            emptyList()
         }
-        return OfflineCommandOutcome.APPLIED
     }
 }
 
@@ -252,13 +347,13 @@ class CompleteHousekeepingTaskHandler(
         val payload = command.payload
         // A defasagem do relógio do aparelho, a mesma que o protocolo aplicou ao occurredAt (RN-22).
         val skew = Duration.between(command.deviceOccurredAt, command.occurredAt)
-        val answers =
-            payload.answers?.map { answer ->
-                val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(command.occurredAt)
-                answer.toInput(corrected ?: command.occurredAt)
-            }
-        val completion =
-            access.applyTo(checkNotNull(payload.taskId)) { id, actor ->
+        return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
+            val answers =
+                payload.answers?.map { answer ->
+                    val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(command.occurredAt)
+                    answer.toInput(corrected ?: command.occurredAt)
+                }
+            val completion =
                 execution.completeTask(
                     id,
                     answers,
@@ -269,8 +364,8 @@ class CompleteHousekeepingTaskHandler(
                     expectedVersion = null,
                     ChecklistPhotoPolicy.TOLERATE,
                 )
-            }
-        return OfflineCommandOutcome(photoWarnings(completion))
+            photoWarnings(completion)
+        }
     }
 
     /** Os alertas das fotos que ficaram de fora (H10, RN-22: aplicado com alerta), os mesmos do `checklists`. */

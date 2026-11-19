@@ -240,6 +240,13 @@ object HousekeepingErrorCodes {
      */
     val HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH = ErrorCode("HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH")
 
+    /**
+     * Alerta dos comandos offline da execução (D4-E19, RN-22): o comando veio de uma ex-dona (camareira com `OWN` que
+     * já teve a tarefa) numa tarefa reatribuída, retirada ou cancelada; ficou registrado como conflito, a tarefa ficou
+     * marcada (`hasConflict`) e nada mais mudou nela.
+     */
+    val HOUSEKEEPING_TASK_CONFLICT = ErrorCode("HOUSEKEEPING_TASK_CONFLICT")
+
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")
 

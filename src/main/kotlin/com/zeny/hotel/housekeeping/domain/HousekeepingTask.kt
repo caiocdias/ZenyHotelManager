@@ -218,6 +218,14 @@ class HousekeepingTask private constructor(
     var checklistExecutionId: ChecklistExecutionId? = null
         protected set
 
+    /**
+     * Se um comando offline de uma ex-dona virou conflito (RN-22, D4-E19): o sinal durável para a governança e a nova
+     * dona. Nunca volta a falso nesta etapa (a resolução fica para outra).
+     */
+    @Column(name = "has_conflict", nullable = false)
+    var hasConflict: Boolean = false
+        protected set
+
     @Version
     var version: Long? = null
         protected set
@@ -340,6 +348,16 @@ class HousekeepingTask private constructor(
         cleanedBy = by
         status = if (awaitingInspection) TaskStatus.AWAITING_INSPECTION else TaskStatus.DONE
         transitioned(instant)
+    }
+
+    /**
+     * Marca o conflito (D4-E19) sem mudar status, tempos, checklist nem camareira; devolve se a marca é nova (só então
+     * a tarefa muda e a versão sobe).
+     */
+    fun markConflict(): Boolean {
+        if (hasConflict) return false
+        hasConflict = true
+        return true
     }
 
     private fun requireFrom(

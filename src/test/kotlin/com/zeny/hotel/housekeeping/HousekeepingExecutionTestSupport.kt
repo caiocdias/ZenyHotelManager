@@ -80,16 +80,46 @@ class HousekeepingExecutionTestSupport(
         notes: String? = null,
     ): UUID = pendingTask(notes).also { assign(it, employee) }
 
+    /**
+     * Dá a [task] à [employee] como a publicação do plano: `ASSIGNED`, na posição 1, e a posse em
+     * `housekeeping.task_assignment` quando a camareira muda (D3-E19).
+     */
     fun assign(
         task: UUID,
         employee: UUID,
     ) {
+        val before =
+            jdbc
+                .sql("SELECT assigned_employee_id FROM housekeeping.housekeeping_task WHERE id = :id")
+                .param("id", task)
+                .query { rs, _ -> rs.getObject(1, UUID::class.java) }
+                .optional()
+                .orElse(null)
         jdbc
             .sql(
                 "UPDATE housekeeping.housekeeping_task SET status = 'ASSIGNED', assigned_employee_id = :employee, " +
                     "assignment_position = 1, version = version + 1 WHERE id = :id",
             ).param("employee", employee)
             .param("id", task)
+            .update() shouldBe 1
+        if (before != employee) {
+            jdbc
+                .sql(
+                    "INSERT INTO housekeeping.task_assignment (id, task_id, employee_id, assigned_at) " +
+                        "VALUES (uuidv7(), :task, :employee, now())",
+                ).param("task", task)
+                .param("employee", employee)
+                .update()
+        }
+    }
+
+    /** Retira a [task] da camareira, como a publicação do plano: `PENDING`, sem camareira nem posição. */
+    fun unassign(task: UUID) {
+        jdbc
+            .sql(
+                "UPDATE housekeeping.housekeeping_task SET status = 'PENDING', assigned_employee_id = NULL, " +
+                    "assignment_position = NULL, version = version + 1 WHERE id = :id",
+            ).param("id", task)
             .update() shouldBe 1
     }
 

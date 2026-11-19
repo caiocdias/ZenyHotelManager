@@ -45,7 +45,7 @@ class HousekeepingTaskOfflineSource(
                 """
                 SELECT t.id, t.room_id, t.area_id, t.cleaning_type_id, t.business_date, t.status, t.priority,
                        t.assignment_position, t.arrival_expected, t.checklist_execution_id, t.refusal_reason,
-                       t.version, ${OfflineChangeRequest.positionColumns("t")}
+                       t.has_conflict, t.version, ${OfflineChangeRequest.positionColumns("t")}
                 FROM housekeeping.housekeeping_task t
                 WHERE ${OfflineChangeRequest.window("t")}
                   AND (CAST(:employee AS uuid) IS NULL OR t.assigned_employee_id = CAST(:employee AS uuid))
@@ -78,11 +78,15 @@ class HousekeepingTaskOfflineSource(
                 arrivalExpected = rs.getBoolean("arrival_expected"),
                 checklistExecutionId = rs.getObject("checklist_execution_id", UUID::class.java),
                 refusalReason = rs.getString("refusal_reason")?.let(RefusalReason::valueOf),
+                hasConflict = rs.getBoolean("has_conflict"),
             ),
         )
     }
 
-    /** O que o app da camareira recebe de cada tarefa (RN-13): sem `notes` nem dado de hóspede ou de reserva. */
+    /**
+     * O que o app da camareira recebe de cada tarefa (RN-13): sem `notes` nem dado de hóspede ou de reserva.
+     * [hasConflict]: um comando offline de uma ex-dona virou conflito (D4-E19); o app sinaliza a tarefa.
+     */
     data class OfflineTask(
         val roomId: UUID?,
         val areaId: UUID?,
@@ -94,6 +98,7 @@ class HousekeepingTaskOfflineSource(
         val arrivalExpected: Boolean,
         val checklistExecutionId: UUID?,
         val refusalReason: RefusalReason?,
+        val hasConflict: Boolean,
     )
 
     private companion object {

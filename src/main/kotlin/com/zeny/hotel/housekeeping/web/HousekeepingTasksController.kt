@@ -220,6 +220,12 @@ data class HousekeepingTaskResponse(
         nullable = true,
     )
     val checklistExecutionId: UUID?,
+    @field:Schema(
+        description =
+            "Se um comando offline de uma camareira que já não era dona da tarefa (reatribuída, retirada ou " +
+                "cancelada) ficou registrado como conflito (RN-22); a tarefa não mudou por ele.",
+    )
+    val hasConflict: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -246,6 +252,7 @@ data class HousekeepingTaskResponse(
                 view.workedSeconds,
                 view.cleanedBy?.value,
                 view.checklistExecutionId?.value,
+                view.hasConflict,
                 view.createdAt,
                 view.updatedAt,
             )

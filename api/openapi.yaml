@@ -21389,6 +21389,11 @@ components:
           format: date-time
           description: A conclusão; nula antes dela e depois de um refazer.
           nullable: true
+        hasConflict:
+          type: boolean
+          description: "Se um comando offline de uma camareira que já não era dona\
+            \ da tarefa (reatribuída, retirada ou cancelada) ficou registrado como\
+            \ conflito (RN-22); a tarefa não mudou por ele."
         id:
           type: string
           format: uuid
@@ -21456,6 +21461,7 @@ components:
       - createdAt
       - credits
       - date
+      - hasConflict
       - id
       - priority
       - source
@@ -21599,6 +21605,11 @@ components:
           format: date-time
           description: A conclusão; nula antes dela e depois de um refazer.
           nullable: true
+        hasConflict:
+          type: boolean
+          description: "Se um comando offline de uma camareira que já não era dona\
+            \ da tarefa (reatribuída, retirada ou cancelada) ficou registrado como\
+            \ conflito (RN-22); a tarefa não mudou por ele."
         id:
           type: string
           format: uuid
@@ -21673,6 +21684,7 @@ components:
       - createdAt
       - credits
       - date
+      - hasConflict
       - id
       - priority
       - source

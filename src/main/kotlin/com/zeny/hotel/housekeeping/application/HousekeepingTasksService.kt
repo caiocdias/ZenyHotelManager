@@ -150,7 +150,7 @@ data class TaskRequestCommand(
 
 /**
  * Uma tarefa de governança, com a execução (M6 E04): o motivo da recusa, o primeiro início, a conclusão, o tempo
- * trabalhado e quem concluiu.
+ * trabalhado e quem concluiu; e a marca de conflito offline (D4-E19).
  */
 data class HousekeepingTaskView(
     val id: HousekeepingTaskId,
@@ -173,6 +173,7 @@ data class HousekeepingTaskView(
     val workedSeconds: Long,
     val cleanedBy: UserId?,
     val checklistExecutionId: ChecklistExecutionId?,
+    val hasConflict: Boolean,
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
@@ -390,6 +391,7 @@ internal fun HousekeepingTask.view() =
         workedSeconds,
         cleanedBy,
         checklistExecutionId,
+        hasConflict,
         createdAt,
         updatedAt,
         checkNotNull(version),
