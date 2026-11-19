@@ -112,7 +112,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 ## Definição global de pronto
 
 - [ ] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
-- [ ] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
+- [x] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
 - [ ] OS corretivas são abertas (manual, recepção, governança ou checklist), executadas online e offline, colocam a UH em OOO/OOS e a devolvem como Suja ao concluir.
 - [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
 - [ ] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis.
@@ -229,7 +229,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #concluida | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
-| E06 | Achados e perdidos e danos | #em-andamento | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
+| E06 | Achados e perdidos e danos | #concluida | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 | E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
 **Manutenção**
@@ -1945,7 +1945,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E06 — Achados e perdidos e danos — #em-andamento
+## E06 — Achados e perdidos e danos — #concluida
 
 **Objetivo:** implementar achados e perdidos (RF-GOV-08), com guarda, devolução e descarte após o prazo configurado, e danos (RF-GOV-09), com revisão pela recepção ou gerência e lançamento opcional na conta do hóspede via `billing`. Ambos podem ser abertos manualmente, offline ou por ocorrência de `ChecklistCompleted`.
 
@@ -1964,13 +1964,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Achado registrado offline aparece na listagem; devolução registra a quem, quando e por quem.
-- [ ] Após o prazo de guarda, o job lista o item como vencido; descarte ou doação registra motivo e usuário.
-- [ ] Dano não revisado não pode ser lançado (`409`); revisado e cobrado gera um único lançamento na conta da reserva (repetição não duplica).
-- [ ] Dano dispensado registra motivo e não gera lançamento.
-- [ ] `ChecklistCompleted` com ocorrência de dano ou achado cria o registro correspondente.
-- [ ] Respostas para a camareira não contêm dados do hóspede.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Achado registrado offline aparece na listagem; devolução registra a quem, quando e por quem.
+- [x] Após o prazo de guarda, o job lista o item como vencido; descarte ou doação registra motivo e usuário.
+- [x] Dano não revisado não pode ser lançado (`409`); revisado e cobrado gera um único lançamento na conta da reserva (repetição não duplica).
+- [x] Dano dispensado registra motivo e não gera lançamento.
+- [x] `ChecklistCompleted` com ocorrência de dano ou achado cria o registro correspondente.
+- [x] Respostas para a camareira não contêm dados do hóspede.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1989,12 +1989,84 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e06.md`
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e06.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). A rodada 0 bloqueou o plano por 6 Importantes:
+  - a aresta `housekeeping → billing` não existia no código;
+  - o código de permissão tinha hífen;
+  - o dano podia ficar vinculado à reserva errada;
+  - o código, a taxa, o valor e a descrição da cobrança;
+  - o descarte antes do prazo;
+  - o ouvinte não tratava `duplicateOf` nem as rotinas.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `0fc3cf2` (início) a `604579a`.
+  - **Task 1** (achados e perdidos): `a32b874` (desenvolvedor) e `57927ac` (testador, listas exatas de permissões).
+  - **Task 2** (danos, vínculo e cobrança): `6519fd4`, mais a rodada 1 em `1fe8f21` (desenvolvedor).
+  - **Task 3** (prazo, ouvinte e offline): `378376d`, mais a rodada final 1 em `b5685e4` (desenvolvedor). A rodada final ajustou a lista exata de tipos de aviso de um teste da E19, que deixou o gate vermelho, e fechou o sujeito forjável no ouvinte.
+  - **Testador da etapa:** `2bd2f99` e `9d728b8` (`LostAndFoundItemExpiryTest`, 4: fusos de Tóquio e Manaus nas duas bordas; `HousekeepingDamageAttackTest`, 8; `HousekeepingOccurrenceAttackTest`, 3) e `604579a` (adiamento do job do prazo em todos os contextos de teste com banco compartilhado). Só `src/test`, sem defeito de produção. Os dois primeiros foram reescritos para o trailer `Soul` ficar legível; a branch não estava publicada.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`.
+    - Task 1: aprovada sem Importante, com a condição de anexar a execução verde em `57927ac` (46 testes).
+    - Task 2: 2 Importantes, ambos corrigidos na rodada: ids inexistentes davam 409 em vez do 400 da H16, e o contrato não dizia "envie o atual para manter".
+    - Task 3: aprovada sem Importante.
+- Entregue:
+  - **Permissões:**
+    - `housekeeping.occurrences.report`: `OWN` na Camareira; `ALL` na Governanta, no Gerente e na Recepção;
+    - `housekeeping.lostfound.manage`: `ALL` na Governanta, no Gerente e na Recepção;
+    - `housekeeping.damages.manage`: `ALL` no Gerente e na Recepção.
+  - **Achados e perdidos** (`/api/v1/lost-and-found-items`):
+    - registro, listagem (`OWN` para a camareira, filtro `expired`) e local de guarda (`PUT …/storage-place`);
+    - devolução a qualquer tempo, com a quem, quando e por quem; o "a quem" só aparece a quem gere e fica fora da trilha;
+    - descarte e doação com motivo, só com o item vencido; antes disso, `409 HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED`. Vencido = data local de `found_at` no fuso do hotel + `lostAndFoundRetentionDays` ≤ data operacional.
+  - **Danos** (`/api/v1/damage-reports`):
+    - **Vínculo sugerido:** a reserva alocada à UH, se `max(checkIn.at, roomAssignment.assignedAt)` ≤ instante do fato; nunca a partir de tarefa `CHECKOUT`/`ROOM_MOVE` nem em área.
+    - **Revisão:** valor final > 0; código `CHARGE`/`PENALTY`, senão `409 …TRANSACTION_CODE_INVALID`; confirma, troca ou retira o vínculo, que é substituído inteiro.
+    - **Cobrança:** pela `BillingApi.post`, com `sourceReference` `housekeeping.damage:<id>`, sem taxa de serviço e com a descrição "Dano na UH " seguida do número da UH. Um lançamento só, provado com `pg_blocking_pids`.
+    - **Dispensa:** com motivo.
+    - **Ids inexistentes:** `400 …UNKNOWN_…`, depois do 403 (H16).
+    - Aresta nova `housekeeping → billing`, já prevista na §3.1.
+  - **Prazo de guarda:** job com ShedLock (`LostAndFoundExpiryJob`, adiado no `@IntegrationTest`) que avisa uma vez por item vencido, com o tipo do módulo `housekeeping.lost-found-expired`, sem texto livre. O job não descarta.
+  - **Ouvinte de `ChecklistCompleted`:** cria achado ou dano para as ocorrências `LOST_AND_FOUND`/`DAMAGE` de:
+    - tarefas;
+    - inspeções, só pela execução da própria inspeção;
+    - UH ou área, só de rotina.
+
+    Deduplica pelo índice (`executionId`, `itemKey`, tipo); o `duplicateOf` cria o próprio registro. A descrição é o rótulo, `category` e `note`, cortada em 500.
+  - **Offline:** `housekeeping.report-lost-found` e `housekeeping.report-damage` (padrão D7, o `commandId` vira o id, resultado sem dado de hóspede).
+  - A ARCHITECTURE §6.2, §9 e §13 registram os nomes.
+- Revisão final: `revisor-seguranca` (opus) sobre `ea763dd..b5685e4`: aprovado com ressalvas, "With fixes", 0 Crítico e 1 Importante. O job do prazo não estava adiado nos contextos de teste com banco compartilhado e corria no meio da suíte. O testador corrigiu em `9d728b8` e `604579a`. A re-revisão escopada (`b5685e4..604579a`) saiu limpa, "Ready to merge: Yes", com 2 Menores de teste (notas abaixo). Antes dela, o gate do fim da construção (`378376d`) ficou vermelho numa lista exata de tipos de aviso de um teste da E19, corrigida na rodada final 1 (`b5685e4`) junto com o sujeito forjável do ouvinte.
+- Verificação: `./gradlew build` em `604579a`: BUILD SUCCESSFUL, 4598 testes, 0 falhas (17m58s). `check_test_integrity.py --base ea763dd`: sem apontamentos. `check-api-breaking.sh`: nenhuma mudança `ERR`. `osv-scanner` (426 + 74 pacotes): 0 Critical, 0 High, 2 Medium e 3 Low, os mesmos de antes (lockfiles sem mudança).
+- Critérios verificados:
+  - **Achados:** `HousekeepingLostAndFoundApiTest`, `HousekeepingLostAndFoundStorageTest` e `HousekeepingLostAndFoundSchemaTest`.
+  - **Prazo:** `HousekeepingLostAndFoundExpiryJobTest`.
+  - **Danos:** `HousekeepingDamageApiTest` e `HousekeepingDamageLockTest`.
+  - **Ouvinte:** `HousekeepingOccurrenceListenerTest`.
+  - **Offline:** `HousekeepingOccurrenceOfflineTest`.
+  - **Permissões:** `HousekeepingOccurrencePermissionsTest`, `HousekeepingPermissionsTest` e `AuthorizationTest`.
+  - **Módulos e privilégios:** `ModularityTest` e `DatabaseRolesTest`.
+  - **Avisos:** `NotificationsApiTest`.
+  - **Ataque:** `LostAndFoundItemExpiryTest`, `HousekeepingDamageAttackTest` e `HousekeepingOccurrenceAttackTest` (testador).
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **(a) D4:** o lançamento do dano sai **sem taxa de serviço**, como os pacotes do check-out (H5).
+  - **(b) D2:** descarte e doação **só depois do prazo de guarda** (SPEC RF-GOV-08). O perecível espera o prazo.
+  - **(c) D4:** dano achado **depois do check-out não é cobrável pelo fluxo**, porque a conta foi encerrada. A recepção reabre a conta e lança à mão.
+  - **(d) D5:** o `duplicateOf` de rotina cria o próprio registro, e a revisão filtra o que vier em dobro. Execução avulsa com sujeito UH ou área não gera registro, porque o sujeito é escolhido pelo cliente. A camareira registra direto.
+  - **(e)** A revisão do dano sem `reservationId` retira o vínculo, porque substitui o vínculo inteiro. O contrato manda enviar o atual para mantê-lo.
+  - **(f)** O custo estimado no offline vai como texto decimal (`"45.50"`), como o `Money` online. Número JSON dá `COMMAND_PAYLOAD_INVALID`. **Aviso ao front.**
+  - **(g)** Decisões menores:
+    - o local de guarda é opcional no registro;
+    - quem encontrou é o usuário que registrou, sem vínculo a colaborador;
+    - quem tem `lostfound.manage` lê todos os itens;
+    - `expired=false` inclui os itens que já tiveram destino;
+    - o aviso de vencido não muda a versão do item.
+- Notas para a próxima etapa:
+  - **Testes (Menores da re-revisão):** em `HousekeepingDamageAttackTest`, ~122-123, `x?.isNull ?: true shouldBe true` não afirma nada (precedência do elvis), e o dano não foi cobrado; a revisão de dano `CHARGED`/`WAIVED` com código inexistente (409 de transição antes do 400) não é testada.
+  - **Risco aceito:** um papel com só `housekeeping.damages.manage` lança até 99 999,99 na conta de qualquer reserva hospedada, sem `billing.postings.create`. Fica limitado pela trilha. A tela de papéis deve avisar ao conceder.
+  - **Para o `arquiteto`:**
+    - o "a quem" da devolução é dado pessoal de terceiro em texto livre, sem expurgo antes da anonimização do M10 E13;
+    - "quem encontrou" é `UserId`, e não `Employee` (SPEC §8.2.10);
+    - a cobrança por `damages.manage` lança sem passar pela `billing.postings.create`;
+    - o sujeito de uma execução avulsa do `checklists` não é conferido, e o sujeito `housekeeping.task` é aceito (risco aceito: `reportedBy` na trilha e cobrança só com revisão);
+    - a tabela de danos guarda `reservation_id` e `folio_id` para a E09 (indicadores).
+  - **Front:** o aviso de texto livre também nas telas de descarte, doação e dispensa (`disposalReason` e `waiverReason` são visíveis à camareira dona); o custo offline vai como string; na revisão do dano, envie o `reservationId` atual para manter o vínculo.
+  - **Testes:** o `NotificationsApiTest` e o `HousekeepingTaskConflictTest` fixam a lista exata de tipos de aviso; cada tipo novo do `housekeeping` entra nos dois. Todo job novo com agendamento precisa de constante de adiamento em todos os contextos de teste que usam o banco compartilhado (há 12; o `grep` de `LOST_FOUND_EXPIRY_DEFERRED` em `src/test` lista todos).
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E06 - 877344cc.md`.
 
 ---
 
