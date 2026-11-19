@@ -5,6 +5,7 @@ import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistCompleted
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionStatus
+import com.zeny.hotel.checklists.ChecklistItemType
 import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ChecklistsTestSupport
 import com.zeny.hotel.hotel.HotelApi
@@ -15,6 +16,7 @@ import com.zeny.hotel.rooms.HousekeepingStatus
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.staff.StaffApi
 import com.zeny.hotel.testsupport.IntegrationTest
@@ -48,9 +50,9 @@ import java.util.UUID
  * `HousekeepingTaskCompleted` uma vez (D7); com item obrigatório faltando, `422` e nada muda (Review Focus 4). A recusa
  * por não perturbe liga o sinal só numa UH ocupada (D4).
  *
- * Os modelos **gerais** de governança ativos (sem regra de aplicabilidade, que valem para qualquer tarefa pelo
- * `resolveTemplate`) são desativados antes de cada teste: outros testes do banco compartilhado os criam, e eles dariam
- * checklist a toda tarefa. Os modelos usados aqui são vinculados ao tipo de limpeza do próprio teste.
+ * Os modelos **gerais** de governança são neutralizados antes de cada teste
+ * (`HousekeepingExecutionTestSupport.neutralizeGeneralHousekeepingTemplates`); os modelos usados aqui são vinculados ao
+ * tipo de limpeza do próprio teste.
  */
 @IntegrationTest
 @RecordApplicationEvents
@@ -74,18 +76,7 @@ class HousekeepingTaskCompletionApiTest(
     private val templates = ChecklistsTestSupport(iam)
 
     @BeforeEach
-    fun deactivateGeneralHousekeepingTemplates() {
-        jdbc
-            .sql(
-                """
-                UPDATE checklists.checklist_template t SET active = false
-                WHERE t.context = 'HOUSEKEEPING' AND t.active
-                  AND NOT EXISTS (SELECT 1 FROM checklists.checklist_version v
-                                  WHERE v.template_id = t.id AND v.number = t.published_version
-                                    AND jsonb_array_length(COALESCE(v.content -> 'applicability', '[]'::jsonb)) > 0)
-                """.trimIndent(),
-            ).update()
-    }
+    fun neutralizeGeneralTemplates() = execution.neutralizeGeneralHousekeepingTemplates()
 
     // --- UH, inspeção, quem limpou e os tempos ---------------------------------------------------------
 
@@ -210,8 +201,10 @@ class HousekeepingTaskCompletionApiTest(
             templates.publish(template) shouldBe 2
             val task = task(attendant, type(checklistTemplateId = template), room = housekeeping.createRoom())
 
-            execution.acted(task, "start", auth)
+            val started = json(execution.acted(task, "start", auth).second)
 
+            // O id da execução vai na resposta (M1 da revisão): o cliente sabe que há checklist e manda `answers`.
+            started["checklistExecutionId"].asString() shouldBe checklistOf(task).shouldNotBeNull().value.toString()
             val checklist = checklistsApi.execution(checklistOf(task).shouldNotBeNull()).shouldNotBeNull()
             checklist.status shouldBe ChecklistExecutionStatus.IN_PROGRESS
             checklist.templateId.value shouldBe template
@@ -234,12 +227,16 @@ class HousekeepingTaskCompletionApiTest(
             call(POST, "/api/v1/checklist-templates/$template/deactivate", asAdmin()).ok()
             val task = task(attendant, type, room = housekeeping.createRoom())
 
-            execution.acted(task, "start", auth)
+            json(execution.acted(task, "start", auth).second)["checklistExecutionId"].isNull shouldBe true
             checklistOf(task).shouldBeNull()
 
             val problem = complete(task, auth, answers = listOf(check("bed"))).problem(400, "VALIDATION_FAILED")
             problem["errors"].values().map { it["field"].asString() } shouldBe listOf("answers")
             taskRow(task)["status"] shouldBe "IN_PROGRESS"
+            // O número de hóspedes sem a ocupação: a ocupação é obrigatória (REQUIRED, padrão da E20).
+            complete(task, auth, foundGuestCount = 2).problem(400, "VALIDATION_FAILED")["errors"].values().map {
+                it["field"].asString() to it["code"].asString()
+            } shouldBe listOf("foundOccupancy" to "REQUIRED")
 
             complete(task, auth).ok()["status"].asString() shouldBe "DONE"
         }
@@ -317,6 +314,35 @@ class HousekeepingTaskCompletionApiTest(
                 "completedAt",
             )
     }
+
+    // --- Foto do checklist na conclusão online (I1 da revisão) ---------------------------------------------
+
+    @Test
+    fun `an unknown photo on a required photo item is refused online, also when the housekeeper completes`(): Unit =
+        with(iam) {
+            val attendant = execution.attendant()
+            val photo = templates.item("photo", type = ChecklistItemType.PHOTO, extra = mapOf("required" to true))
+            val room = RoomId(housekeeping.createRoom())
+            val task = task(attendant, type(checklistTemplateId = publishedTemplate(photo)), room = room.value)
+            execution.acted(task, "start", asTestUser(attendant.user))
+            val checklist = checklistOf(task).shouldNotBeNull()
+            val taskBefore = taskRow(task)
+            val roomBefore = roomsApi.status(room).shouldNotBeNull()
+            val answers = listOf(check("bed"), mapOf("itemKey" to "photo", "photoFileId" to UuidV7.generate()))
+
+            listOf(
+                asTestUser(attendant.user),
+                asTestUser(execution.userWithTemplate(RoleTemplate.HOUSEKEEPER)),
+            ).forEach { auth ->
+                complete(task, auth, answers = answers).problem(422, "CHECKLIST_PHOTO_NOT_FOUND")
+            }
+
+            taskRow(task) shouldBe taskBefore
+            checklistsApi.execution(checklist).shouldNotBeNull().status shouldBe ChecklistExecutionStatus.IN_PROGRESS
+            roomsApi.status(room) shouldBe roomBefore
+            completedEvents(task) shouldBe emptyList()
+            checklistCompletions(checklist) shouldBe 0
+        }
 
     // --- Checklist concluído por fora --------------------------------------------------------------------
 
@@ -412,7 +438,7 @@ class HousekeepingTaskCompletionApiTest(
         )
 
     /** Um modelo de governança publicado com `bed` obrigatório e `towels` opcional, só para o tipo que o vincula. */
-    private fun publishedTemplate(): UUID {
+    private fun publishedTemplate(vararg extraItems: Map<String, Any?>): UUID {
         val id =
             templates.create(
                 templates.templateBody(
@@ -424,6 +450,7 @@ class HousekeepingTaskCompletionApiTest(
                                 "Quarto",
                                 templates.item("bed", extra = mapOf("required" to true)),
                                 templates.item("towels"),
+                                *extraItems,
                             ),
                         ),
                 ),
@@ -498,6 +525,7 @@ class HousekeepingTaskCompletionApiTest(
         auth: RequestPostProcessor,
         answers: List<Map<String, Any?>>? = null,
         foundOccupancy: String? = null,
+        foundGuestCount: Int? = null,
     ) = execution.act(
         task,
         "complete",
@@ -506,6 +534,7 @@ class HousekeepingTaskCompletionApiTest(
             buildMap {
                 if (answers != null) put("answers", answers)
                 if (foundOccupancy != null) put("foundOccupancy", foundOccupancy)
+                if (foundGuestCount != null) put("foundGuestCount", foundGuestCount)
             },
     )
 

@@ -77,7 +77,8 @@ interface ChecklistsApi {
 
     /**
      * A conclusão condicional (governança, D5 da M6 E04): trava a execução e, em andamento, conclui como
-     * [completeExecution] (com o `422 CHECKLIST_REQUIRED_ITEMS_MISSING` de item obrigatório faltando); **já concluída
+     * [completeExecution] (com o `422 CHECKLIST_REQUIRED_ITEMS_MISSING` de item obrigatório faltando), com as fotos pela
+     * [photoPolicy]: `REFUSE` na ação online, como o endpoint do `checklists`; `TOLERATE` no comando offline; **já concluída
      * por fora** (pelo próprio executor, online ou offline), devolve `null` sem erro, sem tocar na execução, sem
      * entrada na trilha e sem um segundo `ChecklistCompleted`, e as [answers] são ignoradas. Pendente: `409
      * CHECKLIST_EXECUTION_NOT_STARTED`. Inexistente: `404 CHECKLIST_EXECUTION_NOT_FOUND`.
@@ -86,6 +87,7 @@ interface ChecklistsApi {
         id: ChecklistExecutionId,
         answers: List<ChecklistAnswerInput>,
         completedAt: Instant,
+        photoPolicy: ChecklistPhotoPolicy,
     ): ChecklistCompletion?
 }
 

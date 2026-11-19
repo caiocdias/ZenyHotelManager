@@ -29,6 +29,26 @@ class HousekeepingExecutionTestSupport(
     val housekeeping = HousekeepingTestSupport(iam, jdbc)
     val plans = AssignmentPlanTestSupport(iam, jdbc, staffApi)
 
+    /**
+     * Desativa os modelos de checklist **gerais** de governança ativos e publicados (contexto `HOUSEKEEPING`, versão
+     * publicada sem regra de aplicabilidade). O `start` de uma tarefa sem modelo vinculado ao tipo pega qualquer modelo
+     * geral de governança ativo pelo `resolveTemplate` (D5 da E04), e outros testes do banco compartilhado criam modelos
+     * gerais (com itens obrigatórios): eles não são duráveis aqui, e um teste que inicia tarefas não pode depender da
+     * ordem das classes. Os modelos de um teste da execução entram pelo vínculo do tipo de limpeza.
+     */
+    fun neutralizeGeneralHousekeepingTemplates() {
+        jdbc
+            .sql(
+                """
+                UPDATE checklists.checklist_template t SET active = false
+                WHERE t.context = 'HOUSEKEEPING' AND t.active AND t.published_version IS NOT NULL
+                  AND NOT EXISTS (SELECT 1 FROM checklists.checklist_version v
+                                  WHERE v.template_id = t.id AND v.number = t.published_version
+                                    AND jsonb_array_length(COALESCE(v.content -> 'applicability', '[]'::jsonb)) > 0)
+                """.trimIndent(),
+            ).update()
+    }
+
     /** Um usuário novo só com o modelo de role [template] da carga. */
     fun userWithTemplate(template: RoleTemplate): TestUser =
         iam.createUser().also {

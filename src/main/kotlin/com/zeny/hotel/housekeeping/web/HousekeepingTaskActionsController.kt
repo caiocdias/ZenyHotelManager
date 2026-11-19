@@ -2,6 +2,7 @@ package com.zeny.hotel.housekeeping.web
 
 import com.zeny.hotel.checklists.CheckAnswer
 import com.zeny.hotel.checklists.ChecklistAnswerInput
+import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.TaskSource
@@ -142,10 +143,14 @@ class HousekeepingTaskActionsController(
         description =
             "Conclui a tarefa `IN_PROGRESS`, numa transação só: conclui o checklist aberto no início com as " +
                 "`answers` (todas; item obrigatório faltando: 422 `CHECKLIST_REQUIRED_ITEMS_MISSING`, e nada muda; " +
-                "checklist **já concluído por fora**: a tarefa conclui e as `answers` são ignoradas; `answers` numa " +
+                "foto que não existe ou não serve, porque só vale um anexo da finalidade `checklists.photo` enviado " +
+                "por quem iniciou o checklist: 422 `CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`, e " +
+                "nada muda; checklist **já concluído por fora**: a tarefa conclui e as `answers` são ignoradas; " +
+                "`answers` numa " +
                 "tarefa sem checklist: 400 `VALIDATION_FAILED` no campo `answers`), leva a UH Suja a Limpa (com " +
                 "inspeção pendente se o tipo de limpeza a exige), grava a ocupação encontrada (`foundOccupancy`, " +
-                "`foundGuestCount`; só numa tarefa de UH), registra a faxina programada feita e grava quem concluiu " +
+                "`foundGuestCount`; só numa tarefa de UH; o número sem a ocupação: 400 `VALIDATION_FAILED` com " +
+                "`REQUIRED` em `foundOccupancy`), registra a faxina programada feita e grava quem concluiu " +
                 "e os tempos. A tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou com inspeção pendente agora; " +
                 "numa UH já Limpa ou Inspecionada e numa área, vai a `DONE`. O corpo é opcional. $ACTION_RULES",
     )
@@ -164,6 +169,8 @@ class HousekeepingTaskActionsController(
                 actor.current(),
                 clock.instant(),
                 expected,
+                // A ação online recusa a foto que não serve, como o endpoint do `checklists` (I1 da revisão).
+                ChecklistPhotoPolicy.REFUSE,
             ),
         )
     }
@@ -287,6 +294,13 @@ data class HousekeepingTaskActionResponse(
     val workedSeconds: Long,
     @field:Schema(description = "O usuário que concluiu a tarefa; nulo antes da conclusão.", nullable = true)
     val cleanedBy: UUID?,
+    @field:Schema(
+        description =
+            "A execução do checklist aberta no último início (id opaco do `checklists`); nula numa tarefa sem " +
+                "checklist, que não aceita `answers` na conclusão.",
+        nullable = true,
+    )
+    val checklistExecutionId: UUID?,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -311,6 +325,7 @@ data class HousekeepingTaskActionResponse(
                 view.finishedAt,
                 view.workedSeconds,
                 view.cleanedBy?.value,
+                view.checklistExecutionId?.value,
                 view.createdAt,
                 view.updatedAt,
             )

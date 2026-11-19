@@ -213,33 +213,38 @@ class ChecklistExecutionsApiService(
         id: ChecklistExecutionId,
         inputs: List<ChecklistAnswerInput>,
         completedAt: Instant,
-    ): ChecklistCompletion = completeLocked(operations.lock(id), inputs, completedAt)
+    ): ChecklistCompletion = completeLocked(operations.lock(id), inputs, completedAt, PhotoPolicy.TOLERATE)
 
-    /** Como [complete], mas a execução já concluída devolve `null`, sem mudança, sem trilha e sem evento. */
+    /**
+     * Como [complete], com as fotos pela [photoPolicy], mas a execução já concluída devolve `null`, sem mudança, sem
+     * trilha e sem evento.
+     */
     @Audited(ChecklistsAudit.COMPLETE_EXECUTION)
     @Transactional
     fun completeIfOpen(
         id: ChecklistExecutionId,
         inputs: List<ChecklistAnswerInput>,
         completedAt: Instant,
+        photoPolicy: PhotoPolicy,
     ): ChecklistCompletion? {
         val execution = operations.lock(id)
         if (execution.status == ChecklistExecutionStatus.COMPLETED) {
             audit.noChanges()
             return null
         }
-        return completeLocked(execution, inputs, completedAt)
+        return completeLocked(execution, inputs, completedAt, photoPolicy)
     }
 
     private fun completeLocked(
         execution: ChecklistExecution,
         inputs: List<ChecklistAnswerInput>,
         completedAt: Instant,
+        photoPolicy: PhotoPolicy,
     ): ChecklistCompletion {
         val executor = execution.inProgressExecutor()
         val answers = operations.normalize(execution, inputs, completedAt)
         val photos =
-            operations.completeWithAnswers(execution, executor, answers, PhotoPolicy.TOLERATE, completedAt, null, null)
+            operations.completeWithAnswers(execution, executor, answers, photoPolicy, completedAt, null, null)
         return ChecklistCompletion(execution.view(), photos.missing, photos.rejected)
     }
 }

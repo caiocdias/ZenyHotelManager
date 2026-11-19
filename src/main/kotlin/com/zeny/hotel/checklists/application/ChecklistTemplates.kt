@@ -5,6 +5,7 @@ import com.zeny.hotel.checklists.ChecklistCompletion
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
@@ -229,7 +230,17 @@ class ChecklistsApiService(
         id: ChecklistExecutionId,
         answers: List<ChecklistAnswerInput>,
         completedAt: Instant,
-    ): ChecklistCompletion? = executions.completeIfOpen(id, answers, completedAt)
+        photoPolicy: ChecklistPhotoPolicy,
+    ): ChecklistCompletion? =
+        executions.completeIfOpen(
+            id,
+            answers,
+            completedAt,
+            when (photoPolicy) {
+                ChecklistPhotoPolicy.REFUSE -> PhotoPolicy.REFUSE
+                ChecklistPhotoPolicy.TOLERATE -> PhotoPolicy.TOLERATE
+            },
+        )
 }
 
 @Configuration(proxyBeanMethods = false)

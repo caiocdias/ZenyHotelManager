@@ -12,6 +12,7 @@ import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Import
@@ -35,6 +36,9 @@ class HousekeepingTaskActionsApiTest(
     @Autowired staffApi: StaffApi,
 ) {
     private val execution = HousekeepingExecutionTestSupport(iam, jdbc, staffApi)
+
+    @BeforeEach
+    fun neutralizeGeneralTemplates() = execution.neutralizeGeneralHousekeepingTemplates()
 
     @Test
     fun `the assigned attendant starts, pauses, resumes, refuses and retries, with the new ETag each time`(): Unit =

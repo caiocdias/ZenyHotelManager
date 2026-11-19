@@ -12,6 +12,7 @@ import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.annotation.Import
@@ -33,6 +34,9 @@ class HousekeepingTaskExecutionPermissionsTest(
     @Autowired staffApi: StaffApi,
 ) {
     private val execution = HousekeepingExecutionTestSupport(iam, jdbc, staffApi)
+
+    @BeforeEach
+    fun neutralizeGeneralTemplates() = execution.neutralizeGeneralHousekeepingTemplates()
 
     @Test
     fun `execute is OWN and ALL, not sensitive, OWN for the attendant, ALL for housekeeper and manager`() {

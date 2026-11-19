@@ -1,5 +1,6 @@
 package com.zeny.hotel.housekeeping.application
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
@@ -145,6 +146,7 @@ data class HousekeepingTaskView(
     val finishedAt: Instant?,
     val workedSeconds: Long,
     val cleanedBy: UserId?,
+    val checklistExecutionId: ChecklistExecutionId?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
@@ -361,6 +363,7 @@ internal fun HousekeepingTask.view() =
         finishedAt,
         workedSeconds,
         cleanedBy,
+        checklistExecutionId,
         createdAt,
         updatedAt,
         checkNotNull(version),

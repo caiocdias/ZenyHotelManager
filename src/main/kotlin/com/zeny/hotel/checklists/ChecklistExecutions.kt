@@ -118,6 +118,18 @@ data class ChecklistAnswerInput(
 }
 
 /**
+ * O que a conclusão pela API pública faz com uma foto citada que não serve à resposta (não existe, ou é de outra
+ * finalidade, outro autor ou outro dono; o autor é quem iniciou a execução).
+ */
+enum class ChecklistPhotoPolicy {
+    /** Online: recusa (`422 CHECKLIST_PHOTO_NOT_FOUND` ou `CHECKLIST_PHOTO_INVALID`), como o endpoint do `checklists`. */
+    REFUSE,
+
+    /** Offline: a resposta fica sem a foto (`photoMissing`, que conta como respondida no obrigatório), H10 e RN-22. */
+    TOLERATE,
+}
+
+/**
  * Uma resposta gravada. [photoMissing]: a foto citada offline (ou pela API pública) não ficou com a resposta,
  * porque ainda não tinha chegado ao servidor (H10) ou não servia (outra finalidade, outro autor ou outro
  * registro); o alerta do comando diz qual. Conta como respondida num item de foto obrigatório.

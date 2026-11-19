@@ -100,6 +100,7 @@ class ChecklistsApiHousekeepingOperationsTest(
                     execution,
                     listOf(ChecklistAnswerInput("towels", check = CheckAnswer.OK)),
                     Instant.now(),
+                    ChecklistPhotoPolicy.REFUSE,
                 )
             }
         missing.code.value shouldBe "CHECKLIST_REQUIRED_ITEMS_MISSING"
@@ -112,6 +113,7 @@ class ChecklistsApiHousekeepingOperationsTest(
                     execution,
                     listOf(ChecklistAnswerInput("bed", check = CheckAnswer.OK)),
                     Instant.now(),
+                    ChecklistPhotoPolicy.REFUSE,
                 ).shouldNotBeNull()
         completion.execution.status shouldBe ChecklistExecutionStatus.COMPLETED
         completion.execution.answers.map { it.itemKey } shouldBe listOf("bed")
@@ -139,6 +141,7 @@ class ChecklistsApiHousekeepingOperationsTest(
                 execution,
                 listOf(ChecklistAnswerInput("towels", check = CheckAnswer.NOT_OK)),
                 Instant.now(),
+                ChecklistPhotoPolicy.REFUSE,
             ).shouldBeNull()
 
         completions(execution) shouldBe 1
@@ -150,5 +153,45 @@ class ChecklistsApiHousekeepingOperationsTest(
             ).param("id", execution.value.toString())
             .query(String::class.java)
             .list() shouldContainExactly listOf("checklists.execution.start", "checklists.execution.complete")
+    }
+
+    @Test
+    fun `completeExecutionIfOpen refuses an unknown photo with REFUSE and leaves it out with TOLERATE`() {
+        val id =
+            templates.create(
+                templates.templateBody(
+                    sections =
+                        listOf(
+                            templates.section(
+                                "Quarto",
+                                templates.item(
+                                    "photo",
+                                    type = ChecklistItemType.PHOTO,
+                                    extra = mapOf("required" to true),
+                                ),
+                            ),
+                        ),
+                ),
+            )
+        templates.publish(id)
+        val version = checklistsApi.currentVersion(ChecklistTemplateId(id)).shouldNotBeNull()
+        val executor = iam.createUser().id
+        val unknown =
+            listOf(ChecklistAnswerInput.of("photo", null, null, null, null, null, null, UuidV7.generate(), null))
+
+        val online = checklistsApi.startExecution(version.id, null, executor, Instant.now()).id
+        shouldThrow<BusinessRuleException> {
+            checklistsApi.completeExecutionIfOpen(online, unknown, Instant.now(), ChecklistPhotoPolicy.REFUSE)
+        }.code.value shouldBe "CHECKLIST_PHOTO_NOT_FOUND"
+        checklistsApi.execution(online).shouldNotBeNull().status shouldBe ChecklistExecutionStatus.IN_PROGRESS
+        completions(online) shouldBe 0
+
+        val offline = checklistsApi.startExecution(version.id, null, executor, Instant.now()).id
+        val completion =
+            checklistsApi
+                .completeExecutionIfOpen(offline, unknown, Instant.now(), ChecklistPhotoPolicy.TOLERATE)
+                .shouldNotBeNull()
+        completion.missingPhotos shouldBe listOf("photo")
+        completion.execution.status shouldBe ChecklistExecutionStatus.COMPLETED
     }
 }

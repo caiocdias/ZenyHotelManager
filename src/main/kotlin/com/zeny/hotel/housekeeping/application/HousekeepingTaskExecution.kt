@@ -3,6 +3,7 @@ package com.zeny.hotel.housekeeping.application
 import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
+import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistsApi
@@ -134,7 +135,8 @@ class HousekeepingTaskExecution(
      * - [answers] numa tarefa sem checklist, ou a observação ([foundOccupancy], [foundGuestCount]) numa tarefa de área
      *   ou sem a ocupação: `400 VALIDATION_FAILED` no campo;
      * - conclui o checklist pela operação condicional ([ChecklistsApi.completeExecutionIfOpen]): item obrigatório
-     *   faltando, `422 CHECKLIST_REQUIRED_ITEMS_MISSING` e nada muda; já concluído por fora, segue sem erro e sem um
+     *   faltando, `422 CHECKLIST_REQUIRED_ITEMS_MISSING` e nada muda; as fotos pela [photoPolicy] (a ação online recusa
+     *   a que não serve, `422 CHECKLIST_PHOTO_NOT_FOUND`/`CHECKLIST_PHOTO_INVALID`; o offline da E19 a tolera); já concluído por fora, segue sem erro e sem um
      *   segundo `ChecklistCompleted`, e a trilha registra isso;
      * - leva a UH Suja a Limpa ([RoomsApi.markCleanIfDirty]); a tarefa vai a `AWAITING_INSPECTION` só quando a UH ficou
      *   com inspeção pendente agora (D3), senão a `DONE`;
@@ -154,6 +156,7 @@ class HousekeepingTaskExecution(
         actor: Actor,
         at: Instant,
         expectedVersion: Long?,
+        photoPolicy: ChecklistPhotoPolicy,
     ): HousekeepingTaskView {
         authorization.require(HousekeepingPermissions.TASKS_EXECUTE)
         val task = requireActsOn(store.findForUpdate(taskId), actor)
@@ -164,7 +167,8 @@ class HousekeepingTaskExecution(
         requireCompletionInput(task, answers, foundOccupancy, foundGuestCount)
 
         task.checklistExecutionId?.let { execution ->
-            if (checklists.completeExecutionIfOpen(execution, answers.orEmpty(), at) == null) {
+            val completion = checklists.completeExecutionIfOpen(execution, answers.orEmpty(), at, photoPolicy)
+            if (completion == null) {
                 remarks["checklistCompletedElsewhere"] = true
             }
         }
@@ -278,29 +282,38 @@ private fun requireCompletionInput(
     foundOccupancy: OccupancyStatus?,
     foundGuestCount: Int?,
 ) {
-    val (field, message) =
+    val violation =
         when {
             answers != null && task.checklistExecutionId == null -> {
-                "answers" to "A tarefa não tem checklist: não envie respostas."
+                FieldViolation(
+                    "answers",
+                    FieldViolationCodes.INVALID_VALUE,
+                    "A tarefa não tem checklist: não envie respostas.",
+                )
             }
 
             foundOccupancy != null && task.roomId == null -> {
-                "foundOccupancy" to "Uma tarefa de área não registra a ocupação de UH."
+                FieldViolation(
+                    "foundOccupancy",
+                    FieldViolationCodes.INVALID_VALUE,
+                    "Uma tarefa de área não registra a ocupação de UH.",
+                )
             }
 
+            // O número de hóspedes sem a ocupação: a ocupação passa a ser obrigatória (padrão da E20).
             foundGuestCount != null && foundOccupancy == null -> {
-                "foundOccupancy" to "Informe a ocupação encontrada junto com o número de hóspedes."
+                FieldViolation(
+                    "foundOccupancy",
+                    FieldViolationCodes.REQUIRED,
+                    "Informe a ocupação encontrada junto com o número de hóspedes.",
+                )
             }
 
             else -> {
                 return
             }
         }
-    throw InvalidInputException(
-        ErrorCodes.VALIDATION_FAILED,
-        message,
-        listOf(FieldViolation(field, FieldViolationCodes.INVALID_VALUE, message)),
-    )
+    throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
 }
 
 /** O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere). */
