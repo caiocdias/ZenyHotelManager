@@ -272,6 +272,7 @@ class AuthorizationTest(
                 "housekeeping.tasks.request:ALL",
                 "housekeeping.assignments.manage:ALL",
                 "housekeeping.tasks.execute:ALL",
+                "housekeeping.inspections.perform:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(
