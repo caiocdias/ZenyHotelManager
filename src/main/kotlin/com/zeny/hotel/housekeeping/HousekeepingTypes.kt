@@ -71,6 +71,40 @@ enum class InspectionResult {
     REJECTED,
 }
 
+/** Id de um item de achados e perdidos (M6 E06). */
+@JvmInline
+value class LostAndFoundItemId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): LostAndFoundItemId = LostAndFoundItemId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de um item de achados e perdidos (D2-E06): `STORED`, guardado; `RETURNED`, devolvido; `DISCARDED`,
+ * descartado; `DONATED`, doado. O conjunto pode crescer: o cliente trata um valor desconhecido sem falhar.
+ */
+enum class LostAndFoundStatus {
+    STORED,
+    RETURNED,
+    DISCARDED,
+    DONATED,
+}
+
+/**
+ * Origem de uma ocorrência da governança, achado ou dano (D2-E06): `MANUAL`, registrada online; `OFFLINE`, por comando
+ * do aparelho; `CHECKLIST`, por uma ação de ocorrência do checklist concluído. O conjunto pode crescer: o cliente trata
+ * um valor desconhecido sem falhar.
+ */
+enum class OccurrenceSource {
+    MANUAL,
+    OFFLINE,
+    CHECKLIST,
+}
+
 /** Id de um plano do dia da distribuição das tarefas. */
 @JvmInline
 value class AssignmentPlanId(
@@ -297,6 +331,27 @@ object HousekeepingErrorCodes {
 
     /** 409: a inspeção voluntária de uma UH que não está Limpa (Suja ou já Inspecionada, D4-E05). */
     val HOUSEKEEPING_ROOM_NOT_CLEAN = ErrorCode("HOUSEKEEPING_ROOM_NOT_CLEAN")
+
+    /** 400: a ocorrência (achado ou dano) precisa de exatamente um local, a UH (`roomId`) ou a área (`areaId`). */
+    val HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID = ErrorCode("HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID")
+
+    /** 400: a UH ou a área da ocorrência não existe (campo `roomId` ou `areaId`, H16). */
+    val HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION = ErrorCode("HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION")
+
+    /** 404: item de achados e perdidos inexistente (ou, com o escopo `OWN`, de outro usuário). */
+    val HOUSEKEEPING_LOST_FOUND_NOT_FOUND = ErrorCode("HOUSEKEEPING_LOST_FOUND_NOT_FOUND")
+
+    /**
+     * 409: o destino não vale no status atual do item (D2-E06: só o item guardado é devolvido, descartado ou doado),
+     * com `itemStatus` e `action` no problema.
+     */
+    val HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED")
+
+    /**
+     * 409: descartar ou doar um item antes do fim do prazo de guarda (D2-E06, RF-GOV-08): a data local em que foi
+     * achado, no fuso do hotel, mais o prazo de guarda ainda é posterior à data operacional.
+     */
+    val HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED = ErrorCode("HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")

@@ -277,8 +277,9 @@ class DatabaseRolesTest(
         /**
          * Tabelas que o papel da aplicação altera mas nunca apaga: o histórico do fechamento do dia (M6 E10), os
          * tipos de limpeza e as faxinas programadas, que só se desativam (M6 E01; os créditos do tipo, substituídos
-         * pelo `PUT`, têm DELETE), o plano do dia da distribuição (M6 E03; os itens dele têm DELETE) e as inspeções
-         * (M6 E05: a conclusão grava o resultado, mas nada se apaga).
+         * pelo `PUT`, têm DELETE), o plano do dia da distribuição (M6 E03; os itens dele têm DELETE), as inspeções
+         * (M6 E05: a conclusão grava o resultado, mas nada se apaga) e os achados e perdidos (M6 E06: o destino grava a
+         * devolução, o descarte ou a doação, mas nada se apaga).
          */
         val NO_DELETE_TABLES =
             setOf(
@@ -290,6 +291,7 @@ class DatabaseRolesTest(
                 "housekeeping.housekeeping_task",
                 "housekeeping.assignment_plan",
                 "housekeeping.inspection",
+                "housekeeping.lost_and_found_item",
             )
     }
 }

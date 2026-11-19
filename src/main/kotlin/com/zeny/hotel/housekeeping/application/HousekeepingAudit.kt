@@ -52,6 +52,16 @@ internal object HousekeepingAudit {
     const val COMPLETE_INSPECTION_OFFLINE = "housekeeping.inspection.complete-offline"
     const val INSPECT_ROOM_OFFLINE = "housekeeping.inspection.inspect-room-offline"
 
+    /**
+     * Um item de achados e perdidos (M6 E06): retrato com os textos livres só pelo tamanho e sem a quem foi devolvido.
+     */
+    const val LOST_FOUND_ITEM = "housekeeping.lost-found-item"
+
+    const val REGISTER_LOST_FOUND_ITEM = "housekeeping.lost-found-item.register"
+    const val RETURN_LOST_FOUND_ITEM = "housekeeping.lost-found-item.return"
+    const val DISCARD_LOST_FOUND_ITEM = "housekeeping.lost-found-item.discard"
+    const val DONATE_LOST_FOUND_ITEM = "housekeeping.lost-found-item.donate"
+
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
     const val SUGGEST_ASSIGNMENT_PLAN = "housekeeping.assignment-plan.suggest"
