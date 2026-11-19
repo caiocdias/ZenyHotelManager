@@ -327,12 +327,17 @@ A inspeção offline (M6 E05, D7) segue o mesmo caminho, pelo mesmo caso de uso 
 Os achados e os danos (M6 E06) chegam ao `housekeeping` por dois caminhos offline:
 
 - **Registro direto** pela camareira: os comandos `housekeeping.report-lost-found` (`roomId` ou `areaId`, `description`, `storagePlace` opcional) e `housekeeping.report-damage` (`roomId` ou `areaId`, `description`, `estimatedCost` opcional, em texto decimal como na API online, até 2 casas e 99999.99), com `housekeeping.occurrences.report` (D6). O `commandId` vira o id do registro, com origem `OFFLINE`, e o `occurredAt` corrigido é o instante do fato. No dano, esse instante decide o vínculo sugerido à reserva da UH. O resultado do comando não traz a reserva nem o hóspede (RN-13).
-- **Ação do checklist:** o ouvinte `HousekeepingOccurrenceListener` (D5) recebe o `ChecklistCompleted` e trata as ações `OPEN_OCCURRENCE` de tipo `LOST_AND_FOUND` e `DAMAGE`. O sujeito da execução precisa ser uma tarefa (`housekeeping.task`) ou uma inspeção (`housekeeping.inspection`) da governança, ou ainda a UH (`rooms.room`) ou a área (`rooms.area`) de uma rotina. O ouvinte registra:
+- **Ação do checklist:** o ouvinte `HousekeepingOccurrenceListener` (D5) recebe o `ChecklistCompleted` e trata as ações `OPEN_OCCURRENCE` de tipo `LOST_AND_FOUND` e `DAMAGE`. O sujeito da execução precisa ser:
+  - uma tarefa da governança (`housekeeping.task`);
+  - uma inspeção (`housekeeping.inspection`), só pela execução do checklist dela (o `executionId` do evento é o `checklistExecutionId` da inspeção);
+  - a UH (`rooms.room`) ou a área (`rooms.area`) de uma rotina (`routineId` presente).
+
+  O sujeito de uma execução avulsa é escolhido pelo cliente: a UH ou a área fora de rotina e a inspeção citada por outra execução são ignoradas. O ouvinte registra:
   - a origem `CHECKLIST`, com o executor como quem registrou;
   - o `completedAt` como instante do fato;
   - a descrição com o rótulo do item, a `category` e a `note` da ação, até 500 caracteres.
 
-  Ele é idempotente por execução, item e tipo (índice único da origem em cada tabela), e a reentrega não duplica. Uma execução à parte de uma rotina (`duplicateOf`) cria o próprio registro. O dano que vem de uma tarefa `CHECKOUT` ou `ROOM_MOVE` nunca vincula reserva. Outros sujeitos são ignorados com log, e também a UH inexistente e a rotina sem local.
+  Ele é idempotente por execução, item e tipo (índice único da origem em cada tabela), e a reentrega não duplica. Uma execução à parte de uma rotina (`duplicateOf`) cria o próprio registro. O dano que vem de uma tarefa `CHECKOUT` ou `ROOM_MOVE` nunca vincula reserva. Outros sujeitos são ignorados com log (só ids e tipo), e também a UH, a tarefa ou a inspeção inexistente e a rotina sem local.
 
 ### 6.3 Aprovação de superior (step-up)
 

@@ -30,11 +30,15 @@ import java.util.UUID
  * `DAMAGE` de um `ChecklistCompleted`, registra o achado ou o dano com origem `CHECKLIST`, o instante do fato
  * `completedAt`, o executor como quem registrou e a descrição do rótulo do item (da versão do checklist), da categoria
  * e da observação da ação, até 500 caracteres. O local sai do sujeito da execução, opaco no `checklists`:
- * - a tarefa (`housekeeping.task`) ou a inspeção (`housekeeping.inspection`) da governança: a UH ou a área dela, e a
- *   origem da tarefa, para o dano não vincular reserva a partir de uma tarefa de saída ou de troca de UH (D4-E06);
- * - a UH (`rooms.room`) ou a área (`rooms.area`) de uma rotina, conferida pela [RoomsApi].
+ * - a tarefa (`housekeeping.task`) da governança: a UH ou a área dela e a origem da tarefa, para o dano não vincular
+ *   reserva a partir de uma tarefa de saída ou de troca de UH (D4-E06);
+ * - a inspeção (`housekeeping.inspection`), só pela própria execução de checklist dela (o `executionId` do evento é o
+ *   `checklistExecutionId` da inspeção): a UH e a origem da tarefa inspecionada;
+ * - a UH (`rooms.room`) ou a área (`rooms.area`) **de uma rotina** (`routineId` presente), conferida pela [RoomsApi].
  *
- * Outros sujeitos, a rotina sem local e o local, a tarefa ou a inspeção inexistente são ignorados com log. A execução
+ * O sujeito de uma execução avulsa é escolhido pelo cliente: por isso a UH ou área fora de rotina e a inspeção citada
+ * por outra execução são ignoradas (M1 da revisão da E06). Outros sujeitos, a rotina sem local e o local, a tarefa ou a
+ * inspeção inexistente também são ignorados, com log só dos ids e do tipo. A execução
  * registrada à parte de uma rotina (`duplicateOf`) tem outro `executionId` e cria o próprio registro (achado e dano não
  * são consumo em dobro; a revisão filtra, Review Focus 3). Assíncrono, em transação própria e reentregue pelo outbox se
  * falhar: idempotente por execução, item e tipo (o índice único da origem em cada tabela; a reentrega devolve o
@@ -123,9 +127,9 @@ class HousekeepingOccurrenceListener(
         val place =
             when (event.subjectType) {
                 TASK_CHECKLIST_SUBJECT -> id?.let { taskPlace(HousekeepingTaskId(it)) }
-                INSPECTION_CHECKLIST_SUBJECT -> id?.let(::inspectionPlace)
-                ROOM_SUBJECT -> id?.let { RoomId(it) }?.takeIf { rooms.room(it) != null }?.let { Place(it, null, null) }
-                AREA_SUBJECT -> id?.let { AreaId(it) }?.takeIf { rooms.area(it) != null }?.let { Place(null, it, null) }
+                INSPECTION_CHECKLIST_SUBJECT -> id?.let { inspectionPlace(it, event.executionId) }
+                ROOM_SUBJECT -> id?.takeIf { event.routineId != null }?.let(::roomPlace)
+                AREA_SUBJECT -> id?.takeIf { event.routineId != null }?.let(::areaPlace)
                 else -> null
             }
         if (place == null) {
@@ -147,10 +151,21 @@ class HousekeepingOccurrenceListener(
             }
         }
 
-    private fun inspectionPlace(id: UUID): Place? =
-        inspections.find(InspectionId(id))?.let { inspection ->
-            Place(inspection.roomId, null, inspection.taskId?.let { tasks.task(it)?.source })
-        }
+    /** A inspeção [id], só se a execução [executionId] é a do checklist dela. */
+    private fun inspectionPlace(
+        id: UUID,
+        executionId: UUID,
+    ): Place? =
+        inspections
+            .find(InspectionId(id))
+            ?.takeIf { it.checklistExecutionId?.value == executionId }
+            ?.let { inspection -> Place(inspection.roomId, null, inspection.taskId?.let { tasks.task(it)?.source }) }
+
+    private fun roomPlace(id: UUID): Place? =
+        RoomId(id).takeIf { rooms.room(it) != null }?.let { Place(it, null, null) }
+
+    private fun areaPlace(id: UUID): Place? =
+        AreaId(id).takeIf { rooms.area(it) != null }?.let { Place(null, it, null) }
 
     /** O local do registro: a UH **ou** a área e, quando vem de uma tarefa, a origem dela. */
     private data class Place(

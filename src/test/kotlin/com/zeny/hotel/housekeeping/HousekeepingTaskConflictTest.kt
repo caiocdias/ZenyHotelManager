@@ -408,7 +408,7 @@ class HousekeepingTaskConflictTest(
                 .map { it["type"].asString() }
 
         types.filter { it.startsWith("housekeeping.") } shouldContainExactlyInAnyOrder
-            listOf("housekeeping.task-conflict")
+            listOf("housekeeping.task-conflict", "housekeeping.lost-found-expired")
     }
 
     // --- apoio -------------------------------------------------------------------------------------------------

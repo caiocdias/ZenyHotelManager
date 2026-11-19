@@ -114,7 +114,8 @@ class HousekeepingOccurrenceListenerTest(
         inspection.inspectionTemplate(type)
         val (task, room) = inspection.awaitingInspection(type)
         execution.acted(task, "inspection/start", iam.asTestUser(inspection.inspector()))
-        val inspectionId = inspection.inspectionRow(task)["id"] as UUID
+        val row = inspection.inspectionRow(task)
+        val inspectionId = row["id"] as UUID
         val event =
             event(
                 versionId,
@@ -123,14 +124,20 @@ class HousekeepingOccurrenceListenerTest(
                 inspectionId,
                 UUID.randomUUID(),
                 actions = listOf(damage("lamp", "Elétrico", null)),
-            )
+            ).copy(executionId = row["checklist_execution_id"] as UUID)
+        // Outra execução que cita a mesma inspeção como sujeito (escolhido pelo cliente): ignorada.
+        val foreign = event.copy(executionId = UuidV7.generate())
 
         publish(event)
-        await().atMost(TIMEOUT).until { damages(event.executionId).isNotEmpty() }
+        publish(foreign)
+        await().atMost(TIMEOUT).until {
+            damages(event.executionId).isNotEmpty() && completedDeliveries(foreign.executionId) == 1
+        }
 
         val damage = damages(event.executionId).single()
         damage["room_id"] shouldBe room.value
         damage["description"] shouldBe "Abajur - Elétrico"
+        damages(foreign.executionId).shouldBeEmpty()
     }
 
     @Test
@@ -193,7 +200,7 @@ class HousekeepingOccurrenceListenerTest(
     }
 
     @Test
-    fun `a subject of another module, a missing room and a routine without place are ignored`() {
+    fun `a subject of another module, a missing room, a routine without place and a non-routine place are ignored`() {
         val (templateId, versionId) = template()
         val actions = listOf(found("wallet", "Objeto", null), damage("lamp", "Elétrico", null))
         val ignored =
@@ -201,6 +208,9 @@ class HousekeepingOccurrenceListenerTest(
                 event(versionId, templateId, "maintenance.asset", UUID.randomUUID(), UUID.randomUUID(), null, actions),
                 event(versionId, templateId, "rooms.room", UUID.randomUUID(), UUID.randomUUID(), null, actions),
                 event(versionId, templateId, null, null, UUID.randomUUID(), UUID.randomUUID(), actions),
+                // Execução avulsa (fora de rotina) com o sujeito escolhido pelo cliente: uma UH e uma área existentes.
+                event(versionId, templateId, "rooms.room", housekeeping.createRoom(), UUID.randomUUID(), null, actions),
+                event(versionId, templateId, "rooms.area", rooms.createArea(), UUID.randomUUID(), null, actions),
             )
 
         ignored.forEach(::publish)
