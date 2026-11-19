@@ -44,6 +44,13 @@
 - **D3 — métrica.** O tratador conta cada `409 CONCURRENT_UPDATE` no contador `zeny.api.concurrent.updates` do Micrometer, com a etiqueta `sqlstate`, para um deadlock recorrente aparecer sem a mensagem (risco do roadmap; ARCHITECTURE §16).
 - **D4 — idempotência no `409 CONCURRENT_UPDATE` (ruling do orquestrador, achado I2 da revisão de arquitetura; vai a "Decisões para o usuário").** O `IdempotencyFilter` guarda a resposta "qualquer que seja o status", e o `409` retentável ficaria guardado 24 h: o reenvio com a mesma chave devolveria o mesmo `409` para sempre. Decisão: no `409 CONCURRENT_UPDATE`, o filtro **libera a chave**, como já faz na recusa de segurança, e o reenvio com a mesma chave executa de novo. O sinal é **explícito**: o tratador do `CONCURRENT_UPDATE` grava um atributo da requisição (ex.: `IdempotencyFilter.RELEASE_KEY_ATTRIBUTE`, constante do `shared`) e o filtro, depois do `chain.doFilter`, libera a chave só quando o atributo está presente; nunca pelo status nem pela leitura do corpo. Qualquer outro `409` (de domínio, como `ROOM_ALREADY_ASSIGNED`, ou o de trava de domínio) continua guardado. A transação do caso de uso foi desfeita pela exceção. Alternativa descartada: manter guardado e documentar que o reenvio pede chave nova; isso contradiz "retentável" e tem o mesmo risco de efeito parcial num caso de uso com mais de uma transação. Registrada na ARCHITECTURE §7, linhas "Idempotência" e "Concorrência", pela Task 1.
 
+## Revisão de arquitetura
+
+- **Veredito:** aprovado, na rodada 2 (`revisor-arquitetura`, modelo opus), sem notas.
+- **Rodada 0:** bloqueado por 5 Importantes: o teste do ShedLock não passava pelo filtro; o `409` retentável ficaria guardado pela idempotência; a `UnexpectedRollbackException` não traz a causa; o FCM não tinha ponto de injeção para a falha da assinatura; um controller de teste vazaria para o contrato. Havia também 7 Menores. Corrigido em `dab1ce4`; o I2 foi decidido pelo orquestrador pela opção (b) do revisor (D4), com autorização do usuário para este lote.
+- **Rodada 1:** bloqueado por 1 Importante novo (o sinal da liberação da chave e o caso negativo) e 2 Menores (o ramo do ShedLock que loga; a primeira falha determinística no teste de idempotência). Corrigido em `f4fc172`.
+- **Para o usuário (sem bloquear):** D1 (`lock_timeout` de 10 s) e D4 (chave de idempotência liberada no `409 CONCURRENT_UPDATE`).
+
 ---
 
 ### Task 1: `409 CONCURRENT_UPDATE` para deadlock e `lock_timeout`, a chave de idempotência liberada e o `lock_timeout` da aplicação
