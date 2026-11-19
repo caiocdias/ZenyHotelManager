@@ -1826,7 +1826,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - os limites numéricos do resumo do conflito são cópia dos do `checklists` e podem divergir;
     - não há teste dedicado da concorrência comando offline × ação online × reatribuição (a ordem de trava é a da E04).
   - **Testes:** `HousekeepingExecutionTestSupport.assign` grava a posse; o `NotificationsApiTest` fixa a lista exata de tipos de aviso, então cada tipo novo entra nela.
-- Capturas do brain: CAPTURA_E19.
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E19 - a4e860e6.md`.
 
 ---
 
