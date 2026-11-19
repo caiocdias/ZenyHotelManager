@@ -11,7 +11,9 @@ import org.springframework.modulith.PackageInfo
  * e das tarefas, só pela `RoomsApi`), de `reservations` (desde a E02: os eventos de saída e de troca de UH e a chegada
  * prevista, só pela `ReservationsApi` e pelos eventos da raiz) e de `checklists` (o vínculo ao modelo, só pela
  * `ChecklistsApi`), de `staff` (desde a E03: a escala das camareiras, só pela `StaffApi`) e de `notifications` (desde a
- * E03: o aviso da publicação do plano do dia, só pela `NotificationsApi`), sempre dentro da linha da §3.1.
+ * E03: o aviso da publicação do plano do dia, só pela `NotificationsApi`) e de `billing` (desde a E06: a cobrança do
+ * dano na conta da reserva, só pela `BillingApi`; o `billing` não conhece o `housekeeping`), sempre dentro da linha da
+ * §3.1.
  *
  * A raiz do pacote é a API pública: os ids, a chave estável dos tipos da carga inicial ([CleaningTypeKey]), o status e
  * a origem das tarefas ([TaskStatus], [TaskSource]), os códigos de erro ([HousekeepingErrorCodes]) e as permissões
@@ -20,6 +22,7 @@ import org.springframework.modulith.PackageInfo
 @PackageInfo
 @ApplicationModule(
     displayName = "Housekeeping",
-    allowedDependencies = ["shared", "hotel", "rooms", "reservations", "checklists", "staff", "notifications"],
+    allowedDependencies =
+        ["shared", "hotel", "rooms", "reservations", "checklists", "staff", "notifications", "billing"],
 )
 class HousekeepingModule

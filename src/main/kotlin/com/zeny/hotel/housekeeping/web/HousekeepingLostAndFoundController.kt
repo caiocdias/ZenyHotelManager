@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
@@ -38,11 +39,12 @@ private const val READ_RULES =
         "registrados pelo usuário); sem nenhuma, 403 `PERMISSION_DENIED`. O `returnedTo` só vem para quem tem " +
         "`housekeeping.lostfound.manage`."
 private const val ACTION_RULES =
-    "Exige `housekeeping.lostfound.manage` (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa, " +
-        "inclusive para quem achou o item). Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com o " +
-        "`If-Match` do item (412 com outra versão; 428 sem ele). Item fora de `STORED` (já devolvido, descartado ou " +
-        "doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED` (com `itemStatus` e `action`), sem mudança. " +
-        "Responde o item com o `ETag` novo."
+    "Exige `housekeeping.lostfound.manage` (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que " +
+        "dependa do item, inclusive para quem achou o item; o 400 do corpo e o 428 sem `If-Match` vêm antes). Item " +
+        "inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com o `If-Match` do item (412 com outra versão; 428 " +
+        "sem ele). Item fora de `STORED` (já devolvido, descartado ou doado): 409 " +
+        "`HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED` (com `itemStatus` e `action`), sem mudança. Responde o " +
+        "item com o `ETag` novo."
 private const val EXPIRY_RULE =
     "Vencido: guardado e com a data local em que foi achado, no fuso do hotel, mais o prazo de guarda " +
         "(`lostAndFoundRetentionDays`) até a data operacional corrente."
@@ -86,8 +88,9 @@ class HousekeepingLostAndFoundController(
                 "`HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID`; local inexistente, 400 " +
                 "`HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION` no campo. O item nasce `STORED`, achado agora, com " +
                 "origem `MANUAL` e quem registra em `reportedBy` (o dono no escopo `OWN`). Exige " +
-                "`housekeeping.occurrences.report` (qualquer escopo; 403 `PERMISSION_DENIED` antes de qualquer outra " +
-                "recusa). Texto fora do formato: 400 `HOUSEKEEPING_DATA_INVALID` no campo.",
+                "`housekeeping.occurrences.report` (qualquer escopo; 403 `PERMISSION_DENIED` antes de qualquer " +
+                "recusa que dependa do local; o 400 do corpo vem antes). Texto fora do formato: 400 " +
+                "`HOUSEKEEPING_DATA_INVALID` no campo.",
     )
     @ApiResponse(responseCode = "201", description = "Item registrado.")
     fun register(
@@ -135,6 +138,23 @@ class HousekeepingLostAndFoundController(
     ): ResponseEntity<LostAndFoundItemResponse> {
         val expected = ETags.expectedVersion(ifMatch)
         return respond(lostAndFound.returnItem(LostAndFoundItemId(id), request.returnedTo, expected))
+    }
+
+    @PutMapping("/{id}/storage-place")
+    @Operation(
+        operationId = "changeLostAndFoundStoragePlace",
+        summary = "Definir o local de guarda de um item achado",
+        description =
+            "Define ou troca onde o item guardado fica (`storagePlace`, até 100 caracteres); o item continua " +
+                "`STORED`. A trilha leva o local só pelo tamanho. $ACTION_RULES",
+    )
+    fun changeStoragePlace(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: LostAndFoundStoragePlaceRequest,
+        @RequestHeader(HttpHeaders.IF_MATCH, required = false) ifMatch: String?,
+    ): ResponseEntity<LostAndFoundItemResponse> {
+        val expected = ETags.expectedVersion(ifMatch)
+        return respond(lostAndFound.changeStoragePlace(LostAndFoundItemId(id), request.storagePlace, expected))
     }
 
     @PostMapping("/{id}/discard")
@@ -207,6 +227,13 @@ data class LostAndFoundReturnRequest(
         maxLength = MAX_RETURNED_TO,
     )
     val returnedTo: String?,
+)
+
+@Schema(description = "O local de guarda de um item achado.")
+data class LostAndFoundStoragePlaceRequest(
+    @field:NotBlank
+    @field:Schema(description = "Onde o item fica guardado, até 100 caracteres.", maxLength = MAX_STORAGE_PLACE)
+    val storagePlace: String?,
 )
 
 @Schema(description = "O descarte ou a doação de um item achado vencido.")

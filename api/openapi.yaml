@@ -3110,6 +3110,257 @@ paths:
       summary: Reativar uma empresa
       tags:
       - guests
+  /api/v1/damage-reports:
+    get:
+      description: "Do fato mais recente para o mais antigo. Exige `housekeeping.damages.manage`\
+        \ (todos os danos) ou `housekeeping.occurrences.report` (com `OWN`, só os\
+        \ registrados pelo usuário); sem nenhuma, 403 `PERMISSION_DENIED`. A reserva\
+        \ vinculada (`reservationId`), a conta (`folioId`) e o lançamento (`postingId`)\
+        \ só vêm para quem tem `housekeeping.damages.manage`."
+      operationId: listDamageReports
+      parameters:
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageDamageReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar os danos
+      tags:
+      - housekeeping
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID`; local\
+        \ inexistente, 400 `HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION` no campo. O\
+        \ dano nasce `REPORTED`, com o fato agora, origem `MANUAL` e quem registra\
+        \ em `reportedBy` (o dono no escopo `OWN`). Numa UH ocupada, vincula a reserva\
+        \ hospedada nela desde antes do fato (visível só a quem tem `housekeeping.damages.manage`).\
+        \ Exige `housekeeping.occurrences.report` (qualquer escopo; 403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa do local; o 400 do corpo vem antes).\
+        \ Texto ou valor fora do formato: 400 `HOUSEKEEPING_DATA_INVALID` no campo."
+      operationId: registerDamageReport
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DamageReportRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageReportResponse"
+          description: Dano registrado.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar um dano
+      tags:
+      - housekeeping
+  /api/v1/damage-reports/{id}:
+    get:
+      description: "Exige `housekeeping.damages.manage` (todos os danos) ou `housekeeping.occurrences.report`\
+        \ (com `OWN`, só os registrados pelo usuário); sem nenhuma, 403 `PERMISSION_DENIED`.\
+        \ A reserva vinculada (`reservationId`), a conta (`folioId`) e o lançamento\
+        \ (`postingId`) só vêm para quem tem `housekeeping.damages.manage`. Inexistente,\
+        \ ou de outro usuário com o escopo `OWN`: 404 `HOUSEKEEPING_DAMAGE_NOT_FOUND`."
+      operationId: getDamageReport
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar um dano
+      tags:
+      - housekeeping
+  /api/v1/damage-reports/{id}/charge:
+    post:
+      description: "Lança o valor final do dano revisado na conta `folioId`, que precisa\
+        \ ser uma conta aberta da reserva vinculada (senão 409 `HOUSEKEEPING_DAMAGE_FOLIO_INVALID`):\
+        \ um lançamento só, com o código revisado, sem taxa de serviço, a descriçã\
+        o fixa \"Dano na UH <número>\" e a data operacional corrente; o dano vai a\
+        \ `CHARGED`. Não revisado: 409 `HOUSEKEEPING_DAMAGE_NOT_REVIEWED`; sem reserva\
+        \ vinculada: 409 `HOUSEKEEPING_DAMAGE_NO_RESERVATION` (só pode ser dispensado).\
+        \ Não exige `billing.postings.create`. Exige `housekeeping.damages.manage`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do dano, inclusive para quem o registrou; o 400 do corpo e o 428 sem `If-Match`\
+        \ vêm antes). Dano inexistente: 404 `HOUSEKEEPING_DAMAGE_NOT_FOUND`. Com o\
+        \ `If-Match` do dano (412 com outra versão; 428 sem ele). Ação fora do status:\
+        \ 409 `HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED` (com `damageStatus` e `action`),\
+        \ sem mudança. Responde o dano com o `ETag` novo."
+      operationId: chargeDamageReport
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DamageChargeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cobrar um dano na conta da reserva
+      tags:
+      - housekeeping
+  /api/v1/damage-reports/{id}/review:
+    post:
+      description: "Fixa o valor final (`finalAmount`, maior que zero e até 99999.99;\
+        \ um dano sem valor é dispensado), o código de lançamento (`transactionCodeId`:\
+        \ ativo e de tipo `CHARGE` ou `PENALTY`, senão 409 `HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID`)\
+        \ e a reserva vinculada (`reservationId`: a mesma confirma; outra precisa\
+        \ estar hospedada, senão 409 `HOUSEKEEPING_DAMAGE_RESERVATION_INVALID`; nula\
+        \ ou omitida retira o vínculo). Vale em `REPORTED` e `REVIEWED`; o dano vai\
+        \ a `REVIEWED`. Exige `housekeeping.damages.manage` (só `ALL`; 403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa do dano, inclusive para quem o registrou;\
+        \ o 400 do corpo e o 428 sem `If-Match` vêm antes). Dano inexistente: 404\
+        \ `HOUSEKEEPING_DAMAGE_NOT_FOUND`. Com o `If-Match` do dano (412 com outra\
+        \ versão; 428 sem ele). Ação fora do status: 409 `HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED`\
+        \ (com `damageStatus` e `action`), sem mudança. Responde o dano com o `ETag`\
+        \ novo."
+      operationId: reviewDamageReport
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DamageReviewRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Revisar um dano
+      tags:
+      - housekeeping
+  /api/v1/damage-reports/{id}/waive:
+    post:
+      description: "Dispensa o dano sem lançar: grava o motivo, quando e por quem,\
+        \ e o dano vai a `WAIVED`. Vale em `REPORTED` e `REVIEWED`. Exige `housekeeping.damages.manage`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do dano, inclusive para quem o registrou; o 400 do corpo e o 428 sem `If-Match`\
+        \ vêm antes). Dano inexistente: 404 `HOUSEKEEPING_DAMAGE_NOT_FOUND`. Com o\
+        \ `If-Match` do dano (412 com outra versão; 428 sem ele). Ação fora do status:\
+        \ 409 `HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED` (com `damageStatus` e `action`),\
+        \ sem mudança. Responde o dano com o `ETag` novo."
+      operationId: waiveDamageReport
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DamageWaiverRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DamageReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Dispensar um dano
+      tags:
+      - housekeeping
   /api/v1/departments:
     get:
       description: Em ordem de criação (os seis pré-carregados primeiro). Exige `staff.employees.read`.
@@ -7500,8 +7751,9 @@ paths:
         \ inexistente, 400 `HOUSEKEEPING_OCCURRENCE_UNKNOWN_LOCATION` no campo. O\
         \ item nasce `STORED`, achado agora, com origem `MANUAL` e quem registra em\
         \ `reportedBy` (o dono no escopo `OWN`). Exige `housekeeping.occurrences.report`\
-        \ (qualquer escopo; 403 `PERMISSION_DENIED` antes de qualquer outra recusa).\
-        \ Texto fora do formato: 400 `HOUSEKEEPING_DATA_INVALID` no campo."
+        \ (qualquer escopo; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do local; o 400 do corpo vem antes). Texto fora do formato: 400 `HOUSEKEEPING_DATA_INVALID`\
+        \ no campo."
       operationId: registerLostAndFoundItem
       requestBody:
         content:
@@ -7562,10 +7814,11 @@ paths:
         \ sem mudança. Vencido: guardado e com a data local em que foi achado, no\
         \ fuso do hotel, mais o prazo de guarda (`lostAndFoundRetentionDays`) até\
         \ a data operacional corrente. Exige `housekeeping.lostfound.manage` (só `ALL`;\
-        \ 403 `PERMISSION_DENIED` antes de qualquer outra recusa, inclusive para quem\
-        \ achou o item). Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`.\
-        \ Com o `If-Match` do item (412 com outra versão; 428 sem ele). Item fora\
-        \ de `STORED` (já devolvido, descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
+        \ 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa do item, inclusive\
+        \ para quem achou o item; o 400 do corpo e o 428 sem `If-Match` vêm antes).\
+        \ Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com o `If-Match`\
+        \ do item (412 com outra versão; 428 sem ele). Item fora de `STORED` (já devolvido,\
+        \ descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
         \ (com `itemStatus` e `action`), sem mudança. Responde o item com o `ETag`\
         \ novo."
       operationId: discardLostAndFoundItem
@@ -7610,10 +7863,11 @@ paths:
         \ sem mudança. Vencido: guardado e com a data local em que foi achado, no\
         \ fuso do hotel, mais o prazo de guarda (`lostAndFoundRetentionDays`) até\
         \ a data operacional corrente. Exige `housekeeping.lostfound.manage` (só `ALL`;\
-        \ 403 `PERMISSION_DENIED` antes de qualquer outra recusa, inclusive para quem\
-        \ achou o item). Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`.\
-        \ Com o `If-Match` do item (412 com outra versão; 428 sem ele). Item fora\
-        \ de `STORED` (já devolvido, descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
+        \ 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa do item, inclusive\
+        \ para quem achou o item; o 400 do corpo e o 428 sem `If-Match` vêm antes).\
+        \ Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com o `If-Match`\
+        \ do item (412 com outra versão; 428 sem ele). Item fora de `STORED` (já devolvido,\
+        \ descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
         \ (com `itemStatus` e `action`), sem mudança. Responde o item com o `ETag`\
         \ novo."
       operationId: donateLostAndFoundItem
@@ -7655,10 +7909,11 @@ paths:
     post:
       description: "Devolve o item guardado a qualquer tempo: grava a quem (`returnedTo`),\
         \ quando e por quem, e o item vai a `RETURNED`. Exige `housekeeping.lostfound.manage`\
-        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer outra recusa, inclusive\
-        \ para quem achou o item). Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`.\
-        \ Com o `If-Match` do item (412 com outra versão; 428 sem ele). Item fora\
-        \ de `STORED` (já devolvido, descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do item, inclusive para quem achou o item; o 400 do corpo e o 428 sem `If-Match`\
+        \ vêm antes). Item inexistente: 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com\
+        \ o `If-Match` do item (412 com outra versão; 428 sem ele). Item fora de `STORED`\
+        \ (já devolvido, descartado ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`\
         \ (com `itemStatus` e `action`), sem mudança. Responde o item com o `ETag`\
         \ novo."
       operationId: returnLostAndFoundItem
@@ -7694,6 +7949,52 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Devolver um item achado
+      tags:
+      - housekeeping
+  /api/v1/lost-and-found-items/{id}/storage-place:
+    put:
+      description: "Define ou troca onde o item guardado fica (`storagePlace`, até\
+        \ 100 caracteres); o item continua `STORED`. A trilha leva o local só pelo\
+        \ tamanho. Exige `housekeeping.lostfound.manage` (só `ALL`; 403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa do item, inclusive para quem achou\
+        \ o item; o 400 do corpo e o 428 sem `If-Match` vêm antes). Item inexistente:\
+        \ 404 `HOUSEKEEPING_LOST_FOUND_NOT_FOUND`. Com o `If-Match` do item (412 com\
+        \ outra versão; 428 sem ele). Item fora de `STORED` (já devolvido, descartado\
+        \ ou doado): 409 `HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED` (com `itemStatus`\
+        \ e `action`), sem mudança. Responde o item com o `ETag` novo."
+      operationId: changeLostAndFoundStoragePlace
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LostAndFoundStoragePlaceRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LostAndFoundItemResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Definir o local de guarda de um item achado
       tags:
       - housekeeping
   /api/v1/meta/version:
@@ -18623,6 +18924,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageDamageReportResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DamageReportResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     CursorPageDepartmentResponse:
       type: object
       description: Página de resultados paginada por cursor.
@@ -19370,6 +19685,205 @@ components:
       - closed
       - closedToArrival
       - closedToDeparture
+    DamageChargeRequest:
+      type: object
+      description: A cobrança de um dano revisado.
+      properties:
+        folioId:
+          type: string
+          format: uuid
+          description: A conta aberta da reserva vinculada ao dano.
+          nullable: true
+      required:
+      - folioId
+    DamageReportRequest:
+      type: object
+      description: "O registro de um dano, numa UH ou numa área comum (exatamente\
+        \ um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum do dano; informe esta ou `roomId`, uma só."
+          nullable: true
+        description:
+          type: string
+          description: "O dano, até 500 caracteres. **Não escreva dado de hóspede**\
+            \ (nome, documento, contato): a governança vê o dano."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+        estimatedCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH do dano; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - description
+    DamageReportResponse:
+      type: object
+      description: "Um dano, sem dado de hóspede."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum do dano; nula num dano de UH.
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        description:
+          type: string
+          description: O dano.
+        estimatedCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        finalAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        folioId:
+          type: string
+          format: uuid
+          description: "A conta da cobrança, só em `CHARGED` e só para quem tem `housekeeping.damages.manage`."
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+          description: O instante do fato.
+        postingId:
+          type: string
+          format: uuid
+          description: "O lançamento da cobrança, só em `CHARGED` e só para quem tem\
+            \ `housekeeping.damages.manage`."
+          nullable: true
+        reportedBy:
+          type: string
+          format: uuid
+          description: O usuário que registrou o dano (o dono no escopo `OWN`).
+        reservationId:
+          type: string
+          format: uuid
+          description: "A reserva vinculada, só para quem tem `housekeeping.damages.manage`;\
+            \ nula para os outros."
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          description: Quando foi cobrado ou dispensado; nulo antes.
+          nullable: true
+        resolvedBy:
+          type: string
+          format: uuid
+          description: Quem cobrou ou dispensou; nulo antes.
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          description: Quando foi revisado; nulo antes da revisão.
+          nullable: true
+        reviewedBy:
+          type: string
+          format: uuid
+          description: Quem revisou; nulo antes da revisão.
+          nullable: true
+        roomId:
+          type: string
+          format: uuid
+          description: A UH do dano; nula num dano de área.
+          nullable: true
+        source:
+          type: string
+          description: A origem do registro (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - MANUAL
+          - OFFLINE
+          - CHECKLIST
+        status:
+          type: string
+          description: O status do dano (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - REPORTED
+          - REVIEWED
+          - CHARGED
+          - WAIVED
+        transactionCodeId:
+          type: string
+          format: uuid
+          description: O código de lançamento da revisão; nulo antes dela.
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+        waiverReason:
+          type: string
+          description: O motivo da dispensa; nulo fora de `WAIVED`.
+          nullable: true
+      required:
+      - createdAt
+      - description
+      - id
+      - occurredAt
+      - reportedBy
+      - source
+      - status
+      - updatedAt
+    DamageReviewRequest:
+      type: object
+      description: A revisão de um dano.
+      properties:
+        finalAmount:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        reservationId:
+          type: string
+          format: uuid
+          description: "A reserva vinculada: a atual confirma, outra (hospedada) troca,\
+            \ nula ou omitida retira."
+          nullable: true
+        transactionCodeId:
+          type: string
+          format: uuid
+          description: "O código de lançamento da cobrança, ativo e de tipo `CHARGE`\
+            \ ou `PENALTY`."
+          nullable: true
+      required:
+      - finalAmount
+      - transactionCodeId
+    DamageWaiverRequest:
+      type: object
+      description: A dispensa de um dano.
+      properties:
+        reason:
+          type: string
+          description: "O motivo, até 500 caracteres. **Não escreva dado de hóspede**\
+            \ (nome, documento, contato): a governança vê o dano."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+      required:
+      - reason
     DeliveredJobResponse:
       type: object
       description: "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`)."
@@ -22757,6 +23271,18 @@ components:
           nullable: true
       required:
       - returnedTo
+    LostAndFoundStoragePlaceRequest:
+      type: object
+      description: O local de guarda de um item achado.
+      properties:
+        storagePlace:
+          type: string
+          description: "Onde o item fica guardado, até 100 caracteres."
+          maxLength: 100
+          minLength: 1
+          nullable: true
+      required:
+      - storagePlace
     MeResponse:
       type: object
       description: "O usuário corrente, as roles ativas e as permissões efetivas."

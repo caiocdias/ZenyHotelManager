@@ -105,6 +105,30 @@ enum class OccurrenceSource {
     CHECKLIST,
 }
 
+/** Id de um registro de dano (M6 E06). */
+@JvmInline
+value class DamageReportId(
+    override val value: UUID,
+) : TypedId {
+    override fun toString(): String = value.toString()
+
+    companion object {
+        fun new(): DamageReportId = DamageReportId(UuidV7.generate())
+    }
+}
+
+/**
+ * Status de um dano (D4-E06): `REPORTED`, registrado; `REVIEWED`, revisado (valor final, código e vínculo);
+ * `CHARGED`, lançado na conta da reserva; `WAIVED`, dispensado com motivo. O conjunto pode crescer: o cliente trata um
+ * valor desconhecido sem falhar.
+ */
+enum class DamageReportStatus {
+    REPORTED,
+    REVIEWED,
+    CHARGED,
+    WAIVED,
+}
+
 /** Id de um plano do dia da distribuição das tarefas. */
 @JvmInline
 value class AssignmentPlanId(
@@ -352,6 +376,30 @@ object HousekeepingErrorCodes {
      * achado, no fuso do hotel, mais o prazo de guarda ainda é posterior à data operacional.
      */
     val HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED = ErrorCode("HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED")
+
+    /** 404: dano inexistente (ou, com o escopo `OWN`, de outro usuário). */
+    val HOUSEKEEPING_DAMAGE_NOT_FOUND = ErrorCode("HOUSEKEEPING_DAMAGE_NOT_FOUND")
+
+    /**
+     * 409: a ação não vale no status atual do dano (D4-E06: revisar e dispensar só `REPORTED` ou `REVIEWED`; cobrar só
+     * `REVIEWED`), com `damageStatus` e `action` no problema.
+     */
+    val HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED")
+
+    /** 409: cobrar um dano ainda não revisado (`REPORTED`, D4-E06). */
+    val HOUSEKEEPING_DAMAGE_NOT_REVIEWED = ErrorCode("HOUSEKEEPING_DAMAGE_NOT_REVIEWED")
+
+    /** 409: cobrar um dano sem reserva vinculada (D4-E06, Review Focus 2): só registro e dispensa. */
+    val HOUSEKEEPING_DAMAGE_NO_RESERVATION = ErrorCode("HOUSEKEEPING_DAMAGE_NO_RESERVATION")
+
+    /** 409: a conta da cobrança não existe, está encerrada ou não é da reserva vinculada ao dano (D4-E06). */
+    val HOUSEKEEPING_DAMAGE_FOLIO_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_FOLIO_INVALID")
+
+    /** 409: o código de lançamento da revisão não existe, está desativado ou não é `CHARGE` nem `PENALTY` (D4-E06). */
+    val HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID")
+
+    /** 409: a reserva da revisão (troca do vínculo) não existe ou não está hospedada (`IN_HOUSE`, D4-E06). */
+    val HOUSEKEEPING_DAMAGE_RESERVATION_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_RESERVATION_INVALID")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")

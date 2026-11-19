@@ -56,7 +56,7 @@ interface LostAndFoundStore {
     /** O item com a linha travada (`FOR UPDATE`), ou `null` se não existe. */
     fun findForUpdate(id: LostAndFoundItemId): LostAndFoundItem?
 
-    /** Grava o destino do item travado e sobe a versão; a versão nova já vale em [item] na volta. */
+    /** Grava o destino ou o local de guarda do item travado e sobe a versão; a nova já vale em [item] na volta. */
     fun update(item: LostAndFoundItem)
 
     /** Até [limit] itens de [query] depois de [after], de quando foi achado (desc) e id (desc). */
@@ -105,9 +105,10 @@ data class LostAndFoundItemView(
  * - registrar, `housekeeping.occurrences.report` (qualquer escopo; quem registra é o dono);
  * - consultar, `housekeeping.lostfound.manage` (todos) ou `housekeeping.occurrences.report` (com `OWN`, só os próprios;
  *   o item de outro dá o mesmo `404` do inexistente);
- * - dar destino, `housekeeping.lostfound.manage`; depois a trava do item, `404 HOUSEKEEPING_LOST_FOUND_NOT_FOUND`, a
- *   versão (`412`), o status (`409 HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`) e, no descarte e na doação, o prazo
- *   de guarda (`409 HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED`).
+ * - dar destino ou trocar o local de guarda, `housekeeping.lostfound.manage`; depois a trava do item, `404
+ *   HOUSEKEEPING_LOST_FOUND_NOT_FOUND`, a versão (`412`), o status (`409
+ *   HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`) e, no descarte e na doação, o prazo de guarda (`409
+ *   HOUSEKEEPING_LOST_FOUND_NOT_EXPIRED`).
  * O vencimento é pela data operacional ([HotelApi.currentBusinessDate]), o fuso do hotel ([HotelApi.timezone]) e o
  * prazo de guarda ([HotelApi.operationalSettings]). A trilha guarda os textos livres só pelo tamanho e nunca a quem foi
  * devolvido.
@@ -180,6 +181,15 @@ class HousekeepingLostAndFound(
         returnedTo: String?,
         expectedVersion: Long,
     ): LostAndFoundItemView = act(id, expectedVersion) { item, _, by, at -> item.returnTo(returnedTo, by, at) }
+
+    /** Define ou troca o local de guarda do item guardado ([storagePlace], até 100). */
+    @Audited(HousekeepingAudit.CHANGE_LOST_FOUND_STORAGE_PLACE)
+    @Transactional
+    fun changeStoragePlace(
+        id: LostAndFoundItemId,
+        storagePlace: String?,
+        expectedVersion: Long,
+    ): LostAndFoundItemView = act(id, expectedVersion) { item, _, _, at -> item.changeStoragePlace(storagePlace, at) }
 
     /** Descarta o item guardado e vencido, com o [reason]. */
     @Audited(HousekeepingAudit.DISCARD_LOST_FOUND_ITEM)

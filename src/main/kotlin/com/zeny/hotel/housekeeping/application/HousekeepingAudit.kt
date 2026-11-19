@@ -61,6 +61,17 @@ internal object HousekeepingAudit {
     const val RETURN_LOST_FOUND_ITEM = "housekeeping.lost-found-item.return"
     const val DISCARD_LOST_FOUND_ITEM = "housekeeping.lost-found-item.discard"
     const val DONATE_LOST_FOUND_ITEM = "housekeeping.lost-found-item.donate"
+    const val CHANGE_LOST_FOUND_STORAGE_PLACE = "housekeeping.lost-found-item.change-storage-place"
+
+    /**
+     * Um dano (M6 E06): retrato com a descrição e o motivo da dispensa só pelo tamanho; ids, valores e estado.
+     */
+    const val DAMAGE_REPORT = "housekeeping.damage-report"
+
+    const val REGISTER_DAMAGE_REPORT = "housekeeping.damage-report.register"
+    const val REVIEW_DAMAGE_REPORT = "housekeeping.damage-report.review"
+    const val CHARGE_DAMAGE_REPORT = "housekeeping.damage-report.charge"
+    const val WAIVE_DAMAGE_REPORT = "housekeeping.damage-report.waive"
 
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 

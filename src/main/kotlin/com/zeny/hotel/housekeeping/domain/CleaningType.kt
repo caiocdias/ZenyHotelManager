@@ -3,6 +3,8 @@ package com.zeny.hotel.housekeeping.domain
 import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.CleaningTypeKey
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
+import com.zeny.hotel.rooms.AreaId
+import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.FieldViolation
@@ -244,6 +246,52 @@ internal object HousekeepingRules {
             "Informe $field com até $max caracteres.",
         )
         return trimmed
+    }
+
+    /**
+     * Texto livre obrigatório de uma ocorrência (achado ou dano, E06), aparado, de 1 a [max] caracteres (code points),
+     * sem NUL; a recusa não ecoa o texto.
+     */
+    fun freeText(
+        field: String,
+        raw: String?,
+        max: Int,
+    ): String =
+        optionalFreeText(field, raw, max)
+            ?: throw invalid(
+                HousekeepingErrorCodes.HOUSEKEEPING_DATA_INVALID,
+                field,
+                "Informe $field com até $max caracteres.",
+            )
+
+    /** O texto livre opcional aparado, ou `null` se vazio; com mais de [max] caracteres ou com NUL, `400`. */
+    fun optionalFreeText(
+        field: String,
+        raw: String?,
+        max: Int,
+    ): String? {
+        val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        require(
+            trimmed.codePointCount(0, trimmed.length) <= max && NUL !in trimmed,
+            field,
+            "Informe $field com até $max caracteres.",
+        )
+        return trimmed
+    }
+
+    /** O local de uma ocorrência (E06): a UH **ou** a área, um só; os dois ou nenhum, `400 …_LOCATION_INVALID`. */
+    fun requireOneLocation(
+        roomId: RoomId?,
+        areaId: AreaId?,
+    ) {
+        if ((roomId == null) != (areaId == null)) return
+        val code = HousekeepingErrorCodes.HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID
+        val message = "Informe o local: a UH (roomId) ou a área (areaId), um só."
+        throw InvalidInputException(
+            code,
+            message,
+            listOf("roomId", "areaId").map { FieldViolation(it, code.value, message) },
+        )
     }
 
     fun inRange(

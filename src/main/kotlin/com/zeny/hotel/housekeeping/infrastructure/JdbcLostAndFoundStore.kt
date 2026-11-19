@@ -69,13 +69,15 @@ class JdbcLostAndFoundStore(
             jdbc
                 .sql(
                     """
-                    UPDATE $LOST_AND_FOUND_TABLE SET status = :status, returned_to = :returnedTo,
+                    UPDATE $LOST_AND_FOUND_TABLE SET status = :status, storage_place = :storagePlace,
+                        returned_to = :returnedTo,
                         disposal_reason = :reason, resolved_at = :resolvedAt, resolved_by = :resolvedBy,
                         updated_at = :updatedAt, version = version + 1
                     WHERE id = :id AND version = :version
                     """.trimIndent(),
                 ).param("id", item.id.value)
                 .param("status", item.status.name)
+                .param("storagePlace", item.storagePlace)
                 .param("returnedTo", item.returnedTo)
                 .param("reason", item.disposalReason)
                 .param("resolvedAt", item.resolvedAt?.let(::utc))

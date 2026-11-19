@@ -192,9 +192,10 @@ class ModularityTest {
     }
 
     @Test
-    fun `housekeeping depends only on shared, hotel, rooms, reservations, checklists, staff and notifications`() {
+    fun `housekeeping depends only on shared, hotel, rooms, reservations, checklists, staff, notifications, billing`() {
         val housekeeping = modules.getModuleByName("housekeeping").orElseThrow()
-        val allowed = setOf("shared", "hotel", "rooms", "reservations", "checklists", "staff", "notifications")
+        val allowed =
+            setOf("shared", "hotel", "rooms", "reservations", "checklists", "staff", "notifications", "billing")
         val dependencies =
             housekeeping
                 .getDirectDependencies(modules)
@@ -206,7 +207,8 @@ class ModularityTest {
         // pela HotelApi), rooms (os tipos de UH dos créditos e os locais das faxinas, pela RoomsApi) e checklists (o
         // vínculo ao modelo, pela ChecklistsApi); desde a E02, reservations (os eventos de saída e troca de UH e a
         // chegada prevista, pela ReservationsApi); desde a E03, staff (a escala das camareiras, pela StaffApi) e
-        // notifications (o aviso da publicação do plano do dia, pela NotificationsApi), exatamente.
+        // notifications (o aviso da publicação do plano do dia, pela NotificationsApi); desde a E06, billing (a
+        // cobrança do dano na conta da reserva, pela BillingApi), exatamente.
         dependencies.toSet() shouldBe allowed
         HousekeepingModule::class.java
             .getAnnotation(ApplicationModule::class.java)

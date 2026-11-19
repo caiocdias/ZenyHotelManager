@@ -292,6 +292,7 @@ class DatabaseRolesTest(
                 "housekeeping.assignment_plan",
                 "housekeeping.inspection",
                 "housekeeping.lost_and_found_item",
+                "housekeeping.damage_report",
             )
     }
 }

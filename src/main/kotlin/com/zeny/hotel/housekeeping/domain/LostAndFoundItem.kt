@@ -8,18 +8,17 @@ import com.zeny.hotel.housekeeping.OccurrenceSource
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.shared.ConflictException
-import com.zeny.hotel.shared.FieldViolation
-import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.UserId
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Os destinos de um item de achados e perdidos (D2-E06). */
+/** As ações sobre um item de achados e perdidos (D2-E06): os destinos e a troca do local de guarda. */
 enum class LostAndFoundAction {
     RETURN,
     DISCARD,
     DONATE,
+    CHANGE_STORAGE_PLACE,
 }
 
 /** `409 HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED`, com o status em `itemStatus` e o destino em `action`. */
@@ -28,7 +27,7 @@ class LostAndFoundTransitionNotAllowedException(
     val status: LostAndFoundStatus,
 ) : ConflictException(
         HousekeepingErrorCodes.HOUSEKEEPING_LOST_FOUND_TRANSITION_NOT_ALLOWED,
-        "Só um item guardado pode ser devolvido, descartado ou doado.",
+        "Só um item guardado pode ser devolvido, descartado, doado ou mudar de local de guarda.",
     ) {
     override val problemProperties: Map<String, Any>
         get() = mapOf("itemStatus" to status.name, "action" to action.name)
@@ -47,7 +46,7 @@ class LostAndFoundItem private constructor(
     val roomId: RoomId?,
     val areaId: AreaId?,
     val description: String,
-    val storagePlace: String?,
+    storagePlace: String?,
     val foundAt: Instant,
     val reportedBy: UserId,
     val source: OccurrenceSource,
@@ -63,6 +62,9 @@ class LostAndFoundItem private constructor(
     version: Long,
 ) {
     var status: LostAndFoundStatus = status
+        private set
+
+    var storagePlace: String? = storagePlace
         private set
 
     var returnedTo: String? = returnedTo
@@ -100,6 +102,16 @@ class LostAndFoundItem private constructor(
                 .plusDays(retentionDays.toLong())
                 .isAfter(businessDate)
 
+    /** Define ou troca o local de guarda do item guardado ([place], obrigatório, até [MAX_STORAGE_PLACE]), em [at]. */
+    fun changeStoragePlace(
+        place: String?,
+        at: Instant,
+    ) {
+        requireStored(LostAndFoundAction.CHANGE_STORAGE_PLACE)
+        storagePlace = HousekeepingRules.freeText("storagePlace", place, MAX_STORAGE_PLACE)
+        updatedAt = at
+    }
+
     /** Devolve o item guardado a [person] (texto livre, até [MAX_RETURNED_TO]), por [by], em [at]. */
     fun returnTo(
         person: String?,
@@ -107,7 +119,7 @@ class LostAndFoundItem private constructor(
         at: Instant,
     ) {
         requireStored(LostAndFoundAction.RETURN)
-        returnedTo = text("returnedTo", person, MAX_RETURNED_TO)
+        returnedTo = HousekeepingRules.freeText("returnedTo", person, MAX_RETURNED_TO)
         resolve(LostAndFoundStatus.RETURNED, by, at)
     }
 
@@ -122,7 +134,7 @@ class LostAndFoundItem private constructor(
         by: UserId,
         at: Instant,
     ) {
-        require(action != LostAndFoundAction.RETURN) { "A devolução é pelo returnTo" }
+        require(action == LostAndFoundAction.DISCARD || action == LostAndFoundAction.DONATE) { "Só descarte ou doação" }
         requireStored(action)
         if (!expired) {
             throw ConflictException(
@@ -130,7 +142,7 @@ class LostAndFoundItem private constructor(
                 "O item ainda está no prazo de guarda: só depois dele pode ser descartado ou doado.",
             )
         }
-        disposalReason = text("reason", reason, MAX_REASON)
+        disposalReason = HousekeepingRules.freeText("reason", reason, MAX_REASON)
         resolve(
             if (action == LostAndFoundAction.DISCARD) LostAndFoundStatus.DISCARDED else LostAndFoundStatus.DONATED,
             by,
@@ -181,7 +193,6 @@ class LostAndFoundItem private constructor(
         const val MAX_STORAGE_PLACE = 100
         const val MAX_RETURNED_TO = 200
         const val MAX_REASON = 500
-        private const val NUL = '\u0000'
 
         /**
          * Um item novo, `STORED`, achado em [foundAt] na UH [roomId] **ou** na área [areaId] (os dois ou nenhum, `400
@@ -200,14 +211,14 @@ class LostAndFoundItem private constructor(
             source: OccurrenceSource,
             now: Instant,
         ): LostAndFoundItem {
-            requireOneLocation(roomId, areaId)
+            HousekeepingRules.requireOneLocation(roomId, areaId)
             require(source != OccurrenceSource.CHECKLIST) { "O registro do checklist leva a execução e o item" }
             return LostAndFoundItem(
                 id,
                 roomId,
                 areaId,
-                text("description", description, MAX_DESCRIPTION),
-                optionalText("storagePlace", storagePlace, MAX_STORAGE_PLACE),
+                HousekeepingRules.freeText("description", description, MAX_DESCRIPTION),
+                HousekeepingRules.optionalFreeText("storagePlace", storagePlace, MAX_STORAGE_PLACE),
                 foundAt,
                 reportedBy,
                 source,
@@ -275,47 +286,5 @@ class LostAndFoundItem private constructor(
             zone: ZoneId,
             retentionDays: Int,
         ): Instant = businessDate.minusDays(retentionDays.toLong() - 1).atStartOfDay(zone).toInstant()
-
-        private fun requireOneLocation(
-            roomId: RoomId?,
-            areaId: AreaId?,
-        ) {
-            if ((roomId == null) != (areaId == null)) return
-            val code = HousekeepingErrorCodes.HOUSEKEEPING_OCCURRENCE_LOCATION_INVALID
-            val message = "Informe o local: a UH (roomId) ou a área (areaId), um só."
-            throw InvalidInputException(
-                code,
-                message,
-                listOf("roomId", "areaId").map { FieldViolation(it, code.value, message) },
-            )
-        }
-
-        /** O texto obrigatório aparado, de 1 a [max] caracteres (code points), sem NUL, sem ecoar o texto. */
-        private fun text(
-            field: String,
-            raw: String?,
-            max: Int,
-        ): String =
-            optionalText(field, raw, max)
-                ?: throw HousekeepingRules.invalid(
-                    HousekeepingErrorCodes.HOUSEKEEPING_DATA_INVALID,
-                    field,
-                    "Informe $field com até $max caracteres.",
-                )
-
-        /** O texto opcional aparado, ou `null` se vazio; com mais de [max] caracteres ou com NUL, `400`. */
-        private fun optionalText(
-            field: String,
-            raw: String?,
-            max: Int,
-        ): String? {
-            val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-            HousekeepingRules.require(
-                trimmed.codePointCount(0, trimmed.length) <= max && NUL !in trimmed,
-                field,
-                "Informe $field com até $max caracteres.",
-            )
-            return trimmed
-        }
     }
 }
