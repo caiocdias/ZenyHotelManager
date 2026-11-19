@@ -101,13 +101,30 @@ class ScheduledCleaning private constructor(
     }
 
     /**
-     * Registra a faxina feita em [date] (a E04 chama ao concluir a tarefa): o `lastDoneOn` só avança, e a próxima data
-     * passa a `date + frequencyDays`. Uma data anterior ou igual à última não muda nada; devolve se mudou.
+     * Registra a faxina feita em [date] (a E04 chama ao concluir a tarefa, D10-E04): o `lastDoneOn` só avança, a
+     * próxima data passa a `date + frequencyDays` e o `updatedAt` a [now]. Não age sobre a faxina **inativa** (o
+     * trabalho feito não é recusado: quem chama conclui a tarefa e registra na trilha que a faxina estava inativa).
+     * Uma data anterior ou igual à última não muda nada; devolve se mudou. A data, ou a próxima data, fora do
+     * [StorableRange] dá `400 VALIDATION_FAILED` com `INVALID_VALUE` no campo `date`.
      */
-    fun recordDone(date: LocalDate): Boolean {
+    fun recordDone(
+        date: LocalDate,
+        now: Instant,
+    ): Boolean {
+        val next = date.plusDays(frequencyDays.toLong())
+        if (!StorableRange.contains(date) || !StorableRange.contains(next)) {
+            val message = "A data da faxina feita está fora do alcance guardável."
+            throw InvalidInputException(
+                ErrorCodes.VALIDATION_FAILED,
+                message,
+                listOf(FieldViolation("date", FieldViolationCodes.INVALID_VALUE, message)),
+            )
+        }
+        if (!active) return false
         if (lastDoneOn?.let { !date.isAfter(it) } == true) return false
         lastDoneOn = date
-        nextDueOn = date.plusDays(frequencyDays.toLong())
+        nextDueOn = next
+        updatedAt = now
         return true
     }
 
