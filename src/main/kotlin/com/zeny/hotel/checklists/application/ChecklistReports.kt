@@ -16,6 +16,7 @@ import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.Percent
+import com.zeny.hotel.shared.StorableRange
 import com.zeny.hotel.shared.UserId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -173,12 +174,8 @@ class ChecklistReportsService(
         }
         val zone = hotel.timezone()
         return ReportQuery(
-            from = filter.from?.atStartOfDay(zone)?.toInstant(),
-            to =
-                filter.to
-                    ?.plusDays(1)
-                    ?.atStartOfDay(zone)
-                    ?.toInstant(),
+            from = filter.from?.let { StorableRange.startOfDay(it, zone) },
+            to = filter.to?.let { StorableRange.startOfDay(it.plusDays(1), zone) },
             templateId = filter.templateId,
             subjectType = filter.subjectType,
             subjectId = filter.subjectId,

@@ -2,6 +2,7 @@ package com.zeny.hotel.shared
 
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 
 /**
  * O alcance de datas e instantes que o PostgreSQL e o driver guardam (ARCHITECTURE §11), com os extremos inclusivos.
@@ -21,4 +22,14 @@ object StorableRange {
     fun contains(date: LocalDate): Boolean = date in MIN_DATE..MAX_DATE
 
     fun contains(instant: Instant): Boolean = instant in MIN_INSTANT..MAX_INSTANT
+
+    /**
+     * O início de [date] no fuso [zone], limitado à faixa do `timestamptz` ([MIN_INSTANT] a [MAX_INSTANT]): uma data
+     * válida no `date` (até [MAX_DATE]) pode cair além do último instante guardável, e um período de datas convertido
+     * em instantes para uma consulta daria 500 no banco.
+     */
+    fun startOfDay(
+        date: LocalDate,
+        zone: ZoneId,
+    ): Instant = date.atStartOfDay(zone).toInstant().coerceIn(MIN_INSTANT, MAX_INSTANT)
 }

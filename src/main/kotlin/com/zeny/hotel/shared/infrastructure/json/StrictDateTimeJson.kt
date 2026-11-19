@@ -34,7 +34,10 @@ import java.util.UUID
  * - [LocalTime]: só `HH:mm` ou `HH:mm:ss` (duas casas, `00:00` a `23:59:59`), sem fração, zona nem `24:00`.
  * - `Int`, `Long` e `Short`: qualquer número fracionário é recusado, inclusive `7.0` e `7e0` (o Jackson truncaria).
  *   O inteiro em texto (`"7"`) segue como antes (decisão D4 da E20).
- * - [UUID]: `""` é recusado (o Jackson o leria como `null`, e o campo perderia o valor em silêncio).
+ * - `Int`, `Long`, `Short` e `Boolean`, anuláveis ou não: o texto vazio ou em branco é recusado (o Jackson o leria
+ *   como `null`, e o campo perderia o valor em silêncio).
+ * - [UUID]: só a forma canônica de 36 caracteres (`8-4-4-4-12` dígitos hexadecimais), sem espaço nas pontas; `""`,
+ *   texto em branco e a forma base64, que o Jackson aceitaria (os dois primeiros como `null`), são recusados.
  *
  * A recusa é um erro de leitura no campo, que a API devolve como `400 VALIDATION_FAILED` com `INVALID_FORMAT`, e a
  * mensagem não repete o valor recebido. `null` e o campo ausente não passam por aqui e seguem como antes. A escrita
@@ -89,11 +92,24 @@ private fun isoRule(
     override fun accepts(value: Any?): Boolean = inRange(value)
 }
 
+private val UUID_TEXT = Regex("""\p{XDigit}{8}-\p{XDigit}{4}-\p{XDigit}{4}-\p{XDigit}{4}-\p{XDigit}{12}""")
+
+/** O texto vazio ou em branco num escalar que não é texto: o Jackson o leria como `null`. */
+private fun JsonParser.isBlankText(): Boolean = hasToken(JsonToken.VALUE_STRING) && string.isBlank()
+
 private val INT_RULE =
     object : ScalarRule {
         override val expected = "um número inteiro"
 
-        override fun accepts(parser: JsonParser): Boolean = !parser.hasToken(JsonToken.VALUE_NUMBER_FLOAT)
+        override fun accepts(parser: JsonParser): Boolean =
+            !parser.hasToken(JsonToken.VALUE_NUMBER_FLOAT) && !parser.isBlankText()
+    }
+
+private val BOOLEAN_RULE =
+    object : ScalarRule {
+        override val expected = "um booleano"
+
+        override fun accepts(parser: JsonParser): Boolean = !parser.isBlankText()
     }
 
 private val INSTANT_RULE = isoRule(DateTimeFormatter.ISO_INSTANT, "Instant") { StorableRange.contains(it as Instant) }
@@ -119,7 +135,7 @@ private val RULES: Map<Class<*>, ScalarRule> =
                 override val expected = "um UUID"
 
                 override fun accepts(parser: JsonParser): Boolean =
-                    !(parser.hasToken(JsonToken.VALUE_STRING) && parser.string.isEmpty())
+                    !parser.hasToken(JsonToken.VALUE_STRING) || UUID_TEXT.matches(parser.string)
             },
         Integer.TYPE to INT_RULE,
         Int::class.javaObjectType to INT_RULE,
@@ -127,6 +143,8 @@ private val RULES: Map<Class<*>, ScalarRule> =
         Long::class.javaObjectType to INT_RULE,
         java.lang.Short.TYPE to INT_RULE,
         Short::class.javaObjectType to INT_RULE,
+        java.lang.Boolean.TYPE to BOOLEAN_RULE,
+        Boolean::class.javaObjectType to BOOLEAN_RULE,
     )
 
 /** Envolve o deserializador de cada tipo de [RULES] num [StrictScalar]. */

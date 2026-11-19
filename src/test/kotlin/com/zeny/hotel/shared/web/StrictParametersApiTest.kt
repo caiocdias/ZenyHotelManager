@@ -35,9 +35,8 @@ class StrictParametersApiTest(
         shouldRefuseOnlyTheInvalid("/api/v1/traces", "dueOn", REFUSED_DATES, ACCEPTED_DATES)
 
     /**
-     * O teto exato da faixa (`+5874897-12-31`) fica de fora dos aceitos deste endpoint de propósito: o serviço da
-     * pré-autorização que expira soma dias ao `to` e dá 500 nesse extremo, defeito conhecido e pendente na rodada de
-     * correção da E20. Quando for corrigido, o teto entra em `ACCEPTED_DATES` como nos demais parâmetros.
+     * O serviço da pré-autorização que expira converte o `to` (mais um dia) num instante: desde a rodada de correção
+     * final da E20, o instante é limitado ao `timestamptz` (`StorableRange.startOfDay`), e o teto exato passa.
      */
     @Test
     fun `the to of the expiring pre-authorizations accepts only an ISO date inside the storable range`() =
@@ -45,8 +44,27 @@ class StrictParametersApiTest(
             "/api/v1/card-pre-authorizations/expiring",
             "to",
             REFUSED_DATES,
-            listOf("2026-11-13"),
+            ACCEPTED_DATES,
         )
+
+    /**
+     * Datas válidas além do `timestamptz` (`+294277-01-01` até o teto do `date`) viram instantes nos serviços: o
+     * instante é limitado à faixa do banco, nunca 500 (M6 E20, rodada de correção final).
+     */
+    @Test
+    fun `a date beyond the timestamptz range in a period converted to instants is never a 500`() {
+        val far = mapOf("from" to "+300000-01-01", "to" to "+300000-01-02")
+        shouldPassConversion(get("/api/v1/card-pre-authorizations/expiring", queryParams = far))
+        shouldPassConversion(get("/api/v1/card-pre-authorizations/expiring", queryParams = mapOf("to" to MAX_DATE)))
+        listOf("/api/v1/checklist-reports/compliance", "/api/v1/checklist-reports/failed-items").forEach { path ->
+            withClue(path) {
+                shouldPassConversion(get(path, queryParams = mapOf("to" to "+300000-01-01")))
+                shouldPassConversion(get(path, queryParams = far))
+            }
+        }
+        val subject = mapOf("subjectType" to "rooms.room", "subjectId" to UuidV7.generate().toString())
+        shouldPassConversion(get("/api/v1/checklist-reports/location-history", queryParams = subject + far))
+    }
 
     @Test
     fun `the businessDate of the checklist executions refuses a date with an offset`() =
@@ -193,6 +211,7 @@ class StrictParametersApiTest(
 
     private companion object {
         const val SLASH_SHORT_DATE = "13/11/25"
+        const val MAX_DATE = "+5874897-12-31"
 
         /** Formato curto do locale, época em ms, data-hora numa data e fora da faixa por cima e por baixo. */
         val REFUSED_DATES =
