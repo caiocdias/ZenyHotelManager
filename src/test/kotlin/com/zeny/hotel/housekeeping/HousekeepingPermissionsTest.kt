@@ -7,6 +7,9 @@ import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.PermissionScope.OWN
+import com.zeny.hotel.shared.RoleTemplate
+import com.zeny.hotel.shared.TemplateGrant
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldContainExactly
@@ -39,11 +42,11 @@ class HousekeepingPermissionsTest(
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
 
     @Test
-    fun `the catalog has the five permissions, ALL only and not sensitive, config for manager and housekeeper`() {
+    fun `the catalog has the six permissions, not sensitive, config for manager and housekeeper`() {
         HousekeepingPermissions.CONFIG_READ.value shouldBe "housekeeping.config.read"
         HousekeepingPermissions.CONFIG_MANAGE.value shouldBe "housekeeping.config.manage"
         // As permissões das tarefas (E02) estão no HousekeepingTaskPermissionsTest; a da distribuição (E03), no
-        // AssignmentPlanPermissionsTest.
+        // AssignmentPlanPermissionsTest; a da execução (E04), no HousekeepingTaskExecutionPermissionsTest.
         HousekeepingPermissions.permissions.map { it.code.value } shouldContainExactlyInAnyOrder
             listOf(
                 "housekeeping.config.read",
@@ -51,13 +54,21 @@ class HousekeepingPermissionsTest(
                 "housekeeping.tasks.read",
                 "housekeeping.tasks.request",
                 "housekeeping.assignments.manage",
+                "housekeeping.tasks.execute",
             )
         HousekeepingPermissions.permissions.forEach {
             withClue(it.code.value) {
-                it.scopes shouldBe setOf(ALL)
+                // Só a execução (E04, D1) tem dono: a camareira atribuída, com OWN.
+                it.scopes shouldBe if (it.code == HousekeepingPermissions.TASKS_EXECUTE) setOf(OWN, ALL) else setOf(ALL)
                 it.sensitive shouldBe false
             }
         }
+        definition(HousekeepingPermissions.TASKS_EXECUTE).templates shouldBe
+            mapOf(
+                RoleTemplate.MANAGER to TemplateGrant(ALL),
+                RoleTemplate.HOUSEKEEPER to TemplateGrant(ALL),
+                RoleTemplate.ROOM_ATTENDANT to TemplateGrant(OWN),
+            )
 
         listOf("housekeeping.config.read", "housekeeping.config.manage").forEach { code ->
             withClue(code) {

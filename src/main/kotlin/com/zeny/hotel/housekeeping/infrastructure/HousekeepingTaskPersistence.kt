@@ -7,6 +7,8 @@ import com.zeny.hotel.housekeeping.application.TaskFilter
 import com.zeny.hotel.housekeeping.application.TaskPageKey
 import com.zeny.hotel.housekeeping.domain.HousekeepingTask
 import com.zeny.hotel.rooms.RoomId
+import jakarta.persistence.EntityManager
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
@@ -23,10 +25,17 @@ interface HousekeepingTaskJpaRepository : JpaRepository<HousekeepingTask, UUID>
  */
 @Component
 class JpaHousekeepingTaskStore(
+    private val entityManager: EntityManager,
     private val jdbc: JdbcClient,
     private val repository: HousekeepingTaskJpaRepository,
 ) : HousekeepingTaskStore {
     override fun task(id: HousekeepingTaskId): HousekeepingTask? = repository.findById(id.value).orElse(null)
+
+    /** A linha travada (`FOR NO KEY UPDATE`, o `PESSIMISTIC_WRITE` do Hibernate 7) e relida. */
+    override fun findForUpdate(id: HousekeepingTaskId): HousekeepingTask? =
+        entityManager
+            .find(HousekeepingTask::class.java, id.value)
+            ?.also { entityManager.refresh(it, LockModeType.PESSIMISTIC_WRITE) }
 
     override fun tasks(ids: List<UUID>): List<HousekeepingTask> {
         val byId = repository.findAllById(ids).associateBy { it.id.value }
@@ -82,9 +91,9 @@ class JpaHousekeepingTaskStore(
                 """
                 INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, cleaning_type_id,
                     source, status, priority, credits, arrival_expected, scheduled_cleaning_id, notes, created_by,
-                    created_at, updated_at, version)
+                    created_at, updated_at, last_transition_at, version)
                 VALUES (:id, :roomId, :areaId, :date, :typeId, :source, :status, :priority, :credits, :arrival,
-                    :scheduleId, :notes, :createdBy, :createdAt, :updatedAt, 0)
+                    :scheduleId, :notes, :createdBy, :createdAt, :updatedAt, :updatedAt, 0)
                 ON CONFLICT ON CONSTRAINT housekeeping_task_location_date_type_uk DO NOTHING
                 """.trimIndent(),
             ).param("id", task.id.value)

@@ -5,6 +5,7 @@ import com.zeny.hotel.housekeeping.CleaningTypeId
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
+import com.zeny.hotel.housekeeping.RefusalReason
 import com.zeny.hotel.housekeeping.ScheduledCleaningId
 import com.zeny.hotel.housekeeping.TaskSource
 import com.zeny.hotel.housekeeping.TaskStatus
@@ -30,6 +31,7 @@ import com.zeny.hotel.shared.NotFoundException
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.StorableRange
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.staff.EmployeeId
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -58,6 +60,12 @@ data class TaskFilter(
 /** Persistência das tarefas de governança, na transação corrente. */
 interface HousekeepingTaskStore {
     fun task(id: HousekeepingTaskId): HousekeepingTask?
+
+    /**
+     * A tarefa com a linha travada (`SELECT … FOR NO KEY UPDATE`) e relida, ou `null` se não existe: a primeira trava
+     * de toda ação da execução (D9-E04).
+     */
+    fun findForUpdate(id: HousekeepingTaskId): HousekeepingTask?
 
     /** As tarefas de [ids], na ordem de [ids] (as inexistentes ficam de fora). */
     fun tasks(ids: List<UUID>): List<HousekeepingTask>
@@ -113,7 +121,10 @@ data class TaskRequestCommand(
     val notes: String?,
 )
 
-/** Uma tarefa de governança. */
+/**
+ * Uma tarefa de governança, com a execução (M6 E04): o motivo da recusa, o primeiro início, a conclusão, o tempo
+ * trabalhado e quem concluiu.
+ */
 data class HousekeepingTaskView(
     val id: HousekeepingTaskId,
     val roomId: RoomId?,
@@ -129,6 +140,11 @@ data class HousekeepingTaskView(
     val notes: String?,
     val assignedEmployeeId: EmployeeId?,
     val assignmentPosition: Int?,
+    val refusalReason: RefusalReason?,
+    val startedAt: Instant?,
+    val finishedAt: Instant?,
+    val workedSeconds: Long,
+    val cleanedBy: UserId?,
     val createdAt: Instant,
     val updatedAt: Instant,
     val version: Long,
@@ -340,6 +356,11 @@ internal fun HousekeepingTask.view() =
         notes,
         assignedEmployeeId,
         assignmentPosition,
+        refusalReason,
+        startedAt,
+        finishedAt,
+        workedSeconds,
+        cleanedBy,
         createdAt,
         updatedAt,
         checkNotNull(version),

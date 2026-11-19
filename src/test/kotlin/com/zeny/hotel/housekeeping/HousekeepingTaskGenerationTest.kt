@@ -437,6 +437,8 @@ class HousekeepingTaskGenerationTest {
 
         override fun task(id: HousekeepingTaskId): HousekeepingTask? = saved.firstOrNull { it.id == id }
 
+        override fun findForUpdate(id: HousekeepingTaskId): HousekeepingTask? = error("fora do teste")
+
         override fun tasks(ids: List<UUID>): List<HousekeepingTask> = error("fora do teste")
 
         override fun page(

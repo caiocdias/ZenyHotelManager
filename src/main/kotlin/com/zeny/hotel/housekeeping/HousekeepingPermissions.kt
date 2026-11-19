@@ -4,15 +4,18 @@ import com.zeny.hotel.shared.ModulePermissions
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.PermissionDefinition
 import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.PermissionScope.OWN
 import com.zeny.hotel.shared.RoleTemplate
 import com.zeny.hotel.shared.TemplateGrant
 
 /**
- * Permissões do módulo `housekeeping` (RF-ACS-02, M6 E01 a E03). A configuração da governança (tipos de limpeza e
- * faxinas programadas) e as tarefas não têm dono, então só aceitam o escopo `ALL`, e nenhuma é sensível. Sugestões aos
- * modelos (SPEC §3.1): o Gerente ("toda a operação") e a Governanta consultam e mantêm a configuração; o Gerente, a
- * Governanta e a Recepção consultam as tarefas e solicitam a avulsa; o Gerente e a Governanta distribuem as tarefas
- * (E03).
+ * Permissões do módulo `housekeeping` (RF-ACS-02, M6 E01 a E04). A configuração da governança (tipos de limpeza e
+ * faxinas programadas), a consulta, a solicitação e a distribuição das tarefas não têm dono, então só aceitam o escopo
+ * `ALL`; a execução das tarefas (E04) aceita `OWN`, cuja dona é a camareira atribuída. Nenhuma é sensível. Sugestões
+ * aos modelos (SPEC §3.1): o Gerente ("toda a operação") e a Governanta consultam e mantêm a configuração; o Gerente,
+ * a Governanta e a Recepção consultam as tarefas e solicitam a avulsa; o Gerente e a Governanta distribuem as tarefas
+ * (E03) e executam qualquer uma; a Camareira executa só as dela e **não** consulta as tarefas (D2-E04: ela as vê pela
+ * resposta das ações e, na E19, pela fonte offline).
  */
 object HousekeepingPermissions : ModulePermissions {
     override val module = "housekeeping"
@@ -32,11 +35,21 @@ object HousekeepingPermissions : ModulePermissions {
     /** Sugerir, ajustar e publicar a distribuição das tarefas do dia (D10-E03). */
     val ASSIGNMENTS_MANAGE = PermissionCode("housekeeping.assignments.manage")
 
+    /** Executar as tarefas de governança: iniciar, pausar, retomar, recusar, tentar de novo e concluir (D1-E04). */
+    val TASKS_EXECUTE = PermissionCode("housekeeping.tasks.execute")
+
     private val managers = listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER).associateWith { TemplateGrant(ALL) }
 
     private val taskUsers =
         listOf(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER, RoleTemplate.RECEPTIONIST)
             .associateWith { TemplateGrant(ALL) }
+
+    private val executors =
+        mapOf(
+            RoleTemplate.MANAGER to TemplateGrant(ALL),
+            RoleTemplate.HOUSEKEEPER to TemplateGrant(ALL),
+            RoleTemplate.ROOM_ATTENDANT to TemplateGrant(OWN),
+        )
 
     override val permissions =
         listOf(
@@ -69,6 +82,12 @@ object HousekeepingPermissions : ModulePermissions {
                 "Sugerir, ajustar e publicar a distribuição das tarefas de governança do dia",
                 setOf(ALL),
                 templates = managers,
+            ),
+            PermissionDefinition(
+                TASKS_EXECUTE,
+                "Executar as tarefas de governança (as próprias, com o escopo OWN)",
+                setOf(OWN, ALL),
+                templates = executors,
             ),
         )
 }

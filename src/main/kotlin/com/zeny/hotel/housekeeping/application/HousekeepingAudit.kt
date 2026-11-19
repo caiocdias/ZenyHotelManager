@@ -20,6 +20,11 @@ internal object HousekeepingAudit {
 
     const val REQUEST_TASK = "housekeeping.task.request"
     const val GENERATE_TASK = "housekeeping.task.generate"
+    const val START_TASK = "housekeeping.task.start"
+    const val PAUSE_TASK = "housekeeping.task.pause"
+    const val RESUME_TASK = "housekeeping.task.resume"
+    const val REFUSE_TASK = "housekeeping.task.refuse"
+    const val RETRY_TASK = "housekeeping.task.retry"
 
     const val ASSIGNMENT_PLAN = "housekeeping.assignment-plan"
 
