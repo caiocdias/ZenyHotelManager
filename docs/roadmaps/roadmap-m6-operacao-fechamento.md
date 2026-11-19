@@ -227,7 +227,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E02 | Geração automática de tarefas | #concluida | E01, E11 | Tarefas por saída, permanência, chegada, faxina programada e avulsa |
 | E03 | Distribuição sugerida e publicação | #concluida | E02 | `AssignmentPlan` balanceado por créditos e escala, publicado com aviso |
 | E04 | Máquina de estados, ações online e conclusão da tarefa | #concluida | E03 | Transições da §8.4, ações online com escopo `OWN`, conclusão com checklist, UH, observação de ocupação, `HousekeepingTaskCompleted` e `recordDone` |
-| E19 | Comandos offline, conflito RN-22 e feed da camareira | #em-andamento | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
+| E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #pendente | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #pendente | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
 | E22 | Hora prevista de chegada e prioridade do early check-in | #pendente | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
@@ -1685,7 +1685,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E19 — Comandos offline, conflito RN-22 e feed da camareira — #em-andamento
+## E19 — Comandos offline, conflito RN-22 e feed da camareira — #concluida
 
 **Objetivo:** levar a execução da E04 para o app da camareira offline (RF-GOV-04, RN-22, ARCHITECTURE §6.2 e §9): comandos offline das mesmas ações, conflito RN-22 registrado e sinalizado com histórico de posse (H18 b) e o feed das tarefas da camareira sem dado de hóspede (RN-13).
 
@@ -1706,15 +1706,15 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Um lote offline com iniciar e concluir produz o mesmo estado que as chamadas online da E04; o mesmo `commandId` reenviado devolve o resultado anterior sem reaplicar.
-- [ ] Um `occurredAt` além da tolerância do relógio é aplicado com `CLOCK_SKEW_EXCEEDED`, e nenhum instante gravado fica antes da última transição da tarefa.
-- [ ] Iniciar offline com o `versionId` do aparelho abre a execução dessa versão, mesmo que o modelo tenha publicado outra depois.
-- [ ] Ex-dona da tarefa (reatribuída, retirada ou cancelada): o comando volta aplicado com o alerta de conflito, o que ela fez fica registrado com as respostas do checklist, a tarefa fica marcada, um usuário com `housekeeping.assignments.manage` recebe o aviso do tipo novo, e a tarefa e a UH não mudam.
-- [ ] Quem nunca foi dona da tarefa recebe `REJECTED` com o código do escopo, sem registro de conflito.
-- [ ] O feed da camareira traz só as tarefas dela, inclusive as abertas de datas anteriores; reatribuir gera o *tombstone* para a antiga dona.
-- [ ] O corpo do feed, com tarefas e UHs, não contém `notes`, nome, documento, contato nem id de hóspede ou de reserva de uma reserva hospedada na UH do teste.
-- [ ] Os testes que baixam `/api/v1/sync/changes` chamam antes `InventoryListenersQuiescence.await(jdbc)`.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Um lote offline com iniciar e concluir produz o mesmo estado que as chamadas online da E04; o mesmo `commandId` reenviado devolve o resultado anterior sem reaplicar.
+- [x] Um `occurredAt` além da tolerância do relógio é aplicado com `CLOCK_SKEW_EXCEEDED`, e nenhum instante gravado fica antes da última transição da tarefa.
+- [x] Iniciar offline com o `versionId` do aparelho abre a execução dessa versão, mesmo que o modelo tenha publicado outra depois.
+- [x] Ex-dona da tarefa (reatribuída, retirada ou cancelada): o comando volta aplicado com o alerta de conflito, o que ela fez fica registrado com as respostas do checklist, a tarefa fica marcada, um usuário com `housekeeping.assignments.manage` recebe o aviso do tipo novo, e a tarefa e a UH não mudam.
+- [x] Quem nunca foi dona da tarefa recebe `REJECTED` com o código do escopo, sem registro de conflito.
+- [x] O feed da camareira traz só as tarefas dela, inclusive as abertas de datas anteriores; reatribuir gera o *tombstone* para a antiga dona.
+- [x] O corpo do feed, com tarefas e UHs, não contém `notes`, nome, documento, contato nem id de hóspede ou de reserva de uma reserva hospedada na UH do teste.
+- [x] Os testes que baixam `/api/v1/sync/changes` chamam antes `InventoryListenersQuiescence.await(jdbc)`.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -1736,12 +1736,97 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e19.md`, com 3 fatias. Revisão de arquitetura (`revisor-arquitetura`, opus): aprovada com notas na rodada 2.
+  - **Rodada 0, bloqueada por 8 Importantes:**
+    - o escopo `ALL` era ignorado;
+    - os nomes das colunas de mudança;
+    - o tipo de aviso estava no módulo errado;
+    - um critério não tinha teste;
+    - `assigned_user_id` criava uma segunda fonte de verdade;
+    - o formato da posse ficou em aberto;
+    - texto livre numa tabela só de inserção;
+    - a fatia 2 estava subdimensionada.
+  - **Rodada 1, bloqueada por 2 Importantes:**
+    - versão do aparelho de outro modelo sem sinal;
+    - `hasConflict` no feed antes de a coluna existir.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `f2a4cfa` (início) a `6f47934`.
+  - **Task 1 (comandos offline):** `da51bbe`, `42cb6fe` e `3f82b37` (desenvolvedor).
+  - **Task 2 (posse, feed e *tombstones*):** `9e0e02e`, `13c4250` e `f96d457` (desenvolvedor) e `3224e4a` (testador).
+  - **Task 3 (conflito RN-22):** `9db6594` e `43e0cd0` (desenvolvedor) e `0801003` (testador).
+  - **Rodadas do fim da etapa:**
+    - `d5cb695`: a lista exata de tipos de aviso no `NotificationsApiTest` (desenvolvedor);
+    - `6f47934`: entrada própria do conflito na trilha, limites numéricos no resumo e descrição do contrato (desenvolvedor).
+  - **Testador da etapa:** `0064b0e`, só `src/test`. O `Soul: testador` ficou num parágrafo separado e não é lido como trailer (`SEM_SOUL` na verificação mecânica). Decisão: não reescrever o histórico.
+  - Cada fatia passou por desenvolvedor → verificação mecânica → `revisor-seguranca`. As três foram aprovadas sem Crítico nem Importante.
+- Entregue:
+  - **Comandos** `housekeeping.start-task`, `pause-task`, `resume-task`, `complete-task`, `refuse-task` e `retry-task` (`HousekeepingOffline`, `HousekeepingTaskOfflineHandlers`):
+    - usam a execução da E04 com o `occurredAt` corrigido e a foto em `TOLERATE`, com os alertas `CHECKLIST_PHOTO_MISSING` e `INVALID`;
+    - o `answeredAt` é corrigido pela defasagem, e a idempotência é pelo `commandId`;
+    - uma entrada de trilha por comando (`housekeeping.task.<verbo>-offline`).
+  - **Posse e escopo:**
+    - com `ALL`, aplica direto;
+    - com `OWN`, a decisão é tomada com a tarefa travada: a ex-dona vira conflito, a dona atual aplica, e quem nunca foi dona (ou não tem colaborador) recebe `REJECTED RESOURCE_OUT_OF_SCOPE`.
+  - **Versão do checklist do aparelho:**
+    - do mesmo modelo: abre com `CHECKLIST_VERSION_OUTDATED` se não for a vigente;
+    - de outro modelo HOUSEKEEPING, ou tarefa sem modelo: abre com `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o desvio na trilha;
+    - inexistente ou de outro contexto: `REJECTED HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID`.
+  - **Posse:** `housekeeping.task_assignment(id, task_id, employee_id, assigned_at)`, só de inserção, com uma linha a cada atribuição a uma camareira. As tarefas já atribuídas foram preenchidas na migração.
+  - **Feed** `housekeeping-tasks`:
+    - permissão `housekeeping.tasks.execute`; com `OWN`, a camareira é resolvida pelo `StaffApi.employeeOfUser`;
+    - traz as tarefas abertas, inclusive de datas anteriores, com `version`, `checklistExecutionId`, `refusalReason` e `hasConflict`, sem `notes` nem dado de hóspede ou de reserva;
+    - gera *tombstone* derivado da linha quando a tarefa deixa de ser aberta, e *tombstone* de escopo para a ex-dona na reatribuição ou na retirada;
+    - colunas `change_seq`/`change_xid` com o gatilho.
+  - **Conflito RN-22:**
+    - `housekeeping.task_conflict`, só de inserção, com um resumo estruturado sem texto livre: `text`/`note` viram booleano, as fotos só pela contagem e sem vínculo, as chaves só no formato do `checklists` e os números só dentro dos limites do `checklists`;
+    - `has_conflict` muda a `version` e publica `housekeeping.task`;
+    - entrada própria `housekeeping.task-conflict` na trilha;
+    - aviso `housekeeping.task-conflict` (tipo do próprio módulo) uma vez por par (tarefa, colaborador);
+    - alerta `HOUSEKEEPING_TASK_CONFLICT`;
+    - status, tempos, checklist e UH não mudam.
+  - A ARCHITECTURE §6.2, §9 e §10 registram os nomes e as mensagens.
+- Revisão final: `revisor-seguranca` (opus) sobre `1f9d6b7..d5cb695`, "With fixes", 0 Crítico e 1 Importante.
+  - I1: o conflito não tinha entrada própria na trilha, e do segundo conflito por tarefa em diante não sobrava entrada nenhuma. Foi corrigido em `6f47934`, junto com os Menores M1 (limites numéricos no resumo) e M4 (contrato).
+  - A re-revisão escopada (`d5cb695..6f47934`) deu os achados por resolvidos, sem Crítico nem Importante novo, aprovou os 12 testes do testador e julgou justificado o `SEM_SOUL`. Restou 1 Menor: os limites numéricos copiados do `checklists` podem divergir.
+- Verificação:
+  - **Gate:** `./gradlew build` em `6f47934` → BUILD SUCCESSFUL em 15m 50s, com 4483 testes e 0 falhas.
+    - Em `0801003`, o gate foi vermelho por um teste legado (`NotificationsApiTest`) que fixa a lista exata de tipos de aviso; foi corrigido em `d5cb695`.
+    - Em `d5cb695`, 4469 testes e 0 falhas.
+  - **oasdiff:** sem `ERR`.
+  - **Scanner:** `osv-scanner` 2.7.1 (426 + 74 pacotes): 0 Critical/High, 2 Medium e 3 Low, todos anteriores. Lockfiles sem mudança.
+  - **Integridade:** `check_test_integrity.py --base 1f9d6b7` → exit 0, sem apontamento, com 1 aviso `SEM_SOUL` em `0064b0e` (trailer em parágrafo separado; justificado na re-revisão).
+- Critérios verificados:
+  - **Comandos:** `HousekeepingTaskOfflineTest` (13).
+  - **Feed e posse:** `HousekeepingTaskFeedTest` e `AssignmentPlanOwnershipTest`.
+  - **Conflito:** `HousekeepingTaskConflictTest` (8).
+  - **Ataque:** `HousekeepingTaskOfflineAttackTest` (12; testador).
+  - **Schema e privilégios:** `HousekeepingTaskSchemaTest` e `DatabaseRolesTest`.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis; a revisão humana foi substituída pela autorização do usuário neste lote). É o padrão que a E05, a E06 e a E08 repetem:
+  - **(a) D1:** a versão do checklist de outro modelo HOUSEKEEPING é aceita offline, com alerta e registro na trilha. **Isso permite concluir sem os itens obrigatórios do modelo do tipo**: a governanta só vê isso pela trilha, sem marca na tarefa nem aviso. A alternativa é dar um aviso à governança ou uma marca na tarefa, como no conflito.
+  - **(b) D3:** a posse guarda só as atribuições, sem a saída nem o motivo. O roadmap pedia "quem e quando, inclusive retirada e cancelamento".
+  - **(c) D4:** o conflito fica registrado sem texto livre e sem vincular as fotos, que se perdem. O roadmap pedia "o que ela fez, inclusive as respostas do checklist".
+  - **(d) D5:** o aviso de conflito sai uma vez por par (tarefa, colaborador) e segue as preferências. O sinal durável é o `hasConflict`.
+  - **(e) D6:** a troca do vínculo usuário ↔ colaborador no `staff` não reenvia o feed.
+  - **(f)** A recusa por não perturbe offline liga o sinal pela ocupação atual da UH, e não pela do `occurredAt`.
+  - **(g)** A marca de conflito não muda o `updatedAt`, só a `version`.
+  - **(h) Mudança na E04:** o `complete` online também passa a usar `max(at, lastTransitionAt)` no checklist, na observação e na faxina.
+- Notas para a próxima etapa:
+  - **Padrão offline (D7) para E05, E06 e E08:**
+    - comandos `housekeeping.<verbo>-<objeto>`;
+    - payloads próprios do módulo;
+    - recusa por `DomainException`, que vira `REJECTED` com o código; alertas por `warnings`; foto `TOLERATE` com alertas;
+    - `occurredAt` corrigido e `max(instante, última transição)`;
+    - com `ALL`, aplica direto; com `OWN`, posse decidida com a tarefa travada (ex-dona vira conflito, nunca dona é recusada);
+    - fonte em `infrastructure` com a permissão de execução, sem texto livre, e *tombstones* de escopo pelo `OfflineTombstones`.
+  - **Para o `arquiteto`:**
+    - a etapa que criar o cancelamento de tarefa grava o *tombstone* de escopo se limpar a camareira;
+    - a etapa de expurgo ou remoção de tarefa trata as FKs de `task_conflict` e `task_assignment`;
+    - `recordLeftScope` está na store, e não no serviço;
+    - não há leitura nem resolução do registro de conflito;
+    - os decimais dos payloads offline passam por `double` no protocolo do `shared`: acima de uns 15 algarismos perdem precisão, e o expoente fica limitado a uns 1e308 (o que afasta o DoS suspeito em `ChecklistAnswers`);
+    - os limites numéricos do resumo do conflito são cópia dos do `checklists` e podem divergir;
+    - não há teste dedicado da concorrência comando offline × ação online × reatribuição (a ordem de trava é a da E04).
+  - **Testes:** `HousekeepingExecutionTestSupport.assign` grava a posse; o `NotificationsApiTest` fixa a lista exata de tipos de aviso, então cada tipo novo entra nela.
+- Capturas do brain: CAPTURA_E19.
 
 ---
 
