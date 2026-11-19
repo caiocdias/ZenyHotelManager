@@ -70,6 +70,7 @@ class HousekeepingTaskSchemaTest(
                 "last_transition_at",
                 "cleaned_by",
                 "refusal_reason",
+                "checklist_execution_id",
             )
     }
 
@@ -106,6 +107,58 @@ class HousekeepingTaskSchemaTest(
                 "UPDATE housekeeping.housekeeping_task SET status = 'CANCELLED', assigned_employee_id = NULL, " +
                     "assignment_position = NULL WHERE id = :id",
             ).param("id", task)
+            .update() shouldBe 1
+    }
+
+    @Test
+    fun `the execution checks refuse data that does not fit the status (M6 E04)`() {
+        val id = insert(room = UUID.randomUUID())
+        val cases =
+            listOf(
+                "negative worked seconds" to "worked_seconds = -1",
+                "running stretch on a PENDING task" to "in_progress_since = now(), started_at = now()",
+                "running stretch without first start" to "status = 'IN_PROGRESS', in_progress_since = now()",
+                "running stretch before the first start" to
+                    "status = 'IN_PROGRESS', started_at = now(), in_progress_since = now() - interval '1 hour'",
+                "finished on a PENDING task" to
+                    "finished_at = now(), started_at = now(), cleaned_by = gen_random_uuid()",
+                "finished without start" to "status = 'DONE', finished_at = now(), cleaned_by = gen_random_uuid()",
+                "finished before the start" to
+                    "status = 'DONE', started_at = now(), finished_at = now() - interval '1 hour', " +
+                    "cleaned_by = gen_random_uuid()",
+                "finished without who finished" to "status = 'DONE', started_at = now(), finished_at = now()",
+                "who finished without finishing" to "cleaned_by = gen_random_uuid()",
+                "refusal reason on a PENDING task" to "refusal_reason = 'DO_NOT_DISTURB'",
+                "unknown refusal reason" to "status = 'REFUSED', refusal_reason = 'TIRED'",
+            )
+        cases.forEach { (case, set) ->
+            withClue(case) {
+                val error = shouldThrow<DataAccessException> { update(id, set) }
+                (error.mostSpecificCause as SQLException).sqlState shouldBe CHECK_VIOLATION
+            }
+        }
+
+        // O dado coerente passa (o desfazer deixa a tarefa fora dos planos).
+        update(id, "status = 'REFUSED', refusal_reason = 'GUEST_REFUSED'")
+        update(id, "refusal_reason = NULL, status = 'IN_PROGRESS', started_at = now(), in_progress_since = now()")
+        update(
+            id,
+            "status = 'DONE', in_progress_since = NULL, finished_at = now(), cleaned_by = gen_random_uuid(), " +
+                "worked_seconds = 60",
+        )
+        update(
+            id,
+            "status = 'CANCELLED', started_at = NULL, finished_at = NULL, cleaned_by = NULL, worked_seconds = 0",
+        )
+    }
+
+    private fun update(
+        task: UUID,
+        set: String,
+    ) {
+        owner
+            .sql("UPDATE housekeeping.housekeeping_task SET $set WHERE id = :id")
+            .param("id", task)
             .update() shouldBe 1
     }
 
