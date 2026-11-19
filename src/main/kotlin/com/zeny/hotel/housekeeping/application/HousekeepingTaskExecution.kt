@@ -157,7 +157,7 @@ class HousekeepingTaskExecution(
         expectedVersion: Long?,
         photoPolicy: ChecklistPhotoPolicy,
     ): HousekeepingTaskView =
-        completeTask(taskId, answers, foundOccupancy, foundGuestCount, actor, at, expectedVersion, photoPolicy)
+        completeTask(taskId, answers, foundOccupancy, foundGuestCount, actor, at, expectedVersion, photoPolicy).view
 
     // --- As ações sem trilha nem transação próprias ---------------------------------------------------------------
     // Os métodos públicos acima as envolvem para as ações online; os comandos offline (E19) as chamam direto, na
@@ -239,7 +239,7 @@ class HousekeepingTaskExecution(
         requestedAt: Instant,
         expectedVersion: Long?,
         photoPolicy: ChecklistPhotoPolicy,
-    ): HousekeepingTaskView {
+    ): HousekeepingTaskCompletion {
         authorization.require(HousekeepingPermissions.TASKS_EXECUTE)
         val task = requireActsOn(store.findForUpdate(taskId), actor)
         expectedVersion?.let { requireCurrentVersion(it, checkNotNull(task.version)) }
@@ -249,12 +249,12 @@ class HousekeepingTaskExecution(
         task.requireCompletable()
         requireCompletionInput(task, answers, foundOccupancy, foundGuestCount)
 
-        task.checklistExecutionId?.let { execution ->
-            val completion = checklists.completeExecutionIfOpen(execution, answers.orEmpty(), at, photoPolicy)
-            if (completion == null) {
-                remarks["checklistCompletedElsewhere"] = true
+        val completion =
+            task.checklistExecutionId?.let { execution ->
+                checklists.completeExecutionIfOpen(execution, answers.orEmpty(), at, photoPolicy).also {
+                    if (it == null) remarks["checklistCompletedElsewhere"] = true
+                }
             }
-        }
         val requiresInspection = checkNotNull(cleaningTypes.cleaningType(task.cleaningTypeId)).requiresInspection
         val cleaned = task.roomId?.let { rooms.markCleanIfDirty(it, requiresInspection, RoomStatusSource.TASK) }
         if (foundOccupancy != null) {
@@ -275,7 +275,11 @@ class HousekeepingTaskExecution(
                 checkNotNull(task.finishedAt),
             ),
         )
-        return task.view()
+        return HousekeepingTaskCompletion(
+            task.view(),
+            completion?.missingPhotos.orEmpty(),
+            completion?.rejectedPhotos.orEmpty(),
+        )
     }
 
     /**
@@ -426,6 +430,16 @@ class HousekeepingTaskExecution(
 internal data class HousekeepingTaskStart(
     val view: HousekeepingTaskView,
     val warnings: List<OfflineCommandWarning>,
+)
+
+/**
+ * O resultado da conclusão ([HousekeepingTaskExecution.completeTask]): a tarefa e as chaves dos itens cuja foto ficou
+ * de fora da resposta pela política `TOLERATE` (a que ainda não chegou e a que não serve).
+ */
+internal data class HousekeepingTaskCompletion(
+    val view: HousekeepingTaskView,
+    val missingPhotos: List<String>,
+    val rejectedPhotos: List<String>,
 )
 
 /** Os dados de entrada da conclusão que dependem da tarefa (`400 VALIDATION_FAILED` no campo). */

@@ -3,9 +3,13 @@ package com.zeny.hotel.housekeeping
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionStatus
+import com.zeny.hotel.checklists.ChecklistExecutionsTestSupport
+import com.zeny.hotel.checklists.ChecklistItemType
 import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ChecklistsTestSupport
 import com.zeny.hotel.checklists.SyncCommand
+import com.zeny.hotel.files.FilesTestConfiguration
+import com.zeny.hotel.files.FilesTestSupport
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.rooms.HousekeepingStatus
@@ -52,12 +56,13 @@ import java.util.UUID
  */
 @IntegrationTest
 @RecordApplicationEvents
-@Import(IamTestConfiguration::class)
+@Import(IamTestConfiguration::class, FilesTestConfiguration::class)
 class HousekeepingTaskOfflineTest(
     @Autowired private val iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val roomsApi: RoomsApi,
     @Autowired private val checklistsApi: ChecklistsApi,
+    @Autowired files: FilesTestSupport,
     @Autowired staffApi: StaffApi,
 ) {
     // O registro de eventos do Spring só chega por campo (não pelo construtor).
@@ -68,6 +73,7 @@ class HousekeepingTaskOfflineTest(
     private val execution = HousekeepingExecutionTestSupport(iam, jdbc, staffApi)
     private val housekeeping = execution.housekeeping
     private val templates = ChecklistsTestSupport(iam)
+    private val photos = ChecklistExecutionsTestSupport(iam, files, jdbc)
 
     @BeforeEach
     fun neutralizeGeneralTemplates() = execution.neutralizeGeneralHousekeepingTemplates()
@@ -268,6 +274,46 @@ class HousekeepingTaskOfflineTest(
     }
 
     @Test
+    fun `a photo not yet uploaded or that does not serve leaves complete-task applied with photo warnings`() {
+        val attendant = execution.attendant()
+        val auth = iam.asTestUser(attendant.user)
+        val template =
+            publishedTemplate(
+                extraItems =
+                    arrayOf(
+                        templates.item("photo", type = ChecklistItemType.PHOTO, extra = mapOf("required" to true)),
+                        templates.item("detail", type = ChecklistItemType.PHOTO),
+                    ),
+            )
+        val task = task(attendant, type(checklistTemplateId = template), room = housekeeping.createRoom())
+        // A foto de outra pessoa (a Governanta) não serve à execução iniciada pela camareira.
+        val foreign = photos.uploadPhoto(iam.asTestUser(execution.userWithTemplate(RoleTemplate.HOUSEKEEPER)))
+        val now = Instant.now()
+        val answers =
+            listOf(
+                check("bed"),
+                mapOf("itemKey" to "photo", "photoFileId" to UuidV7.generate()),
+                mapOf("itemKey" to "detail", "photoFileId" to foreign),
+            )
+
+        val results =
+            sync(
+                auth,
+                command("start-task", mapOf("taskId" to task), now, now),
+                command("complete-task", mapOf("taskId" to task, "answers" to answers), now, now),
+            )
+
+        results.map { it["status"].asString() } shouldContainExactly listOf("APPLIED", "APPLIED_WITH_WARNINGS")
+        results[1]["warnings"].values().map { it["code"].asString() } shouldContainExactly
+            listOf("CHECKLIST_PHOTO_MISSING", "CHECKLIST_PHOTO_INVALID")
+        taskRow(task)["status"] shouldBe "DONE"
+        val checklist =
+            checklistsApi.execution(ChecklistExecutionId(taskRow(task)["checklist_execution_id"] as UUID))!!
+        checklist.status shouldBe ChecklistExecutionStatus.COMPLETED
+        checklist.answers.filter { it.photoFileId != null } shouldBe emptyList()
+    }
+
+    @Test
     fun `start-task opens the device's older version of the same template with CHECKLIST_VERSION_OUTDATED`() {
         val attendant = execution.attendant()
         val template = publishedTemplate()
@@ -424,26 +470,32 @@ class HousekeepingTaskOfflineTest(
         housekeeping.createCleaningType(housekeeping.cleaningTypeBody(checklistTemplateId = checklistTemplateId))
 
     /** Um modelo publicado com `bed` obrigatório e `towels` opcional, que só entra pelo vínculo do tipo. */
-    private fun publishedTemplate(context: ChecklistContext = ChecklistContext.HOUSEKEEPING): UUID {
-        val id = templates.create(templateBody(context))
+    private fun publishedTemplate(
+        context: ChecklistContext = ChecklistContext.HOUSEKEEPING,
+        extraItems: Array<Map<String, Any?>> = emptyArray(),
+    ): UUID {
+        val id = templates.create(templateBody(context, *extraItems))
         templates.publish(id)
         return id
     }
 
-    private fun templateBody(context: ChecklistContext) =
-        templates.templateBody(
-            context = context,
-            // Uma regra que não vale para nenhuma tarefa: o modelo só entra pelo vínculo do tipo.
-            applicability = listOf(mapOf("cleaningTypeIds" to listOf(UuidV7.generate()))),
-            sections =
-                listOf(
-                    templates.section(
-                        "Quarto",
-                        templates.item("bed", extra = mapOf("required" to true)),
-                        templates.item("towels"),
-                    ),
+    private fun templateBody(
+        context: ChecklistContext,
+        vararg extraItems: Map<String, Any?>,
+    ) = templates.templateBody(
+        context = context,
+        // Uma regra que não vale para nenhuma tarefa: o modelo só entra pelo vínculo do tipo.
+        applicability = listOf(mapOf("cleaningTypeIds" to listOf(UuidV7.generate()))),
+        sections =
+            listOf(
+                templates.section(
+                    "Quarto",
+                    templates.item("bed", extra = mapOf("required" to true)),
+                    templates.item("towels"),
+                    *extraItems,
                 ),
-        )
+            ),
+    )
 
     /** Publica a versão 2 do modelo (o rascunho com outro nome). */
     private fun republish(template: UUID) {

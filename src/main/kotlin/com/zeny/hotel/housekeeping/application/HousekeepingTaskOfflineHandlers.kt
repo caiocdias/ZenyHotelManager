@@ -4,6 +4,7 @@ import com.zeny.hotel.checklists.CheckAnswer
 import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistVersionId
+import com.zeny.hotel.checklists.ChecklistsErrorCodes
 import com.zeny.hotel.housekeeping.HousekeepingOffline
 import com.zeny.hotel.housekeeping.HousekeepingPermissions
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
@@ -17,6 +18,7 @@ import com.zeny.hotel.shared.CurrentActor
 import com.zeny.hotel.shared.OfflineCommand
 import com.zeny.hotel.shared.OfflineCommandHandler
 import com.zeny.hotel.shared.OfflineCommandOutcome
+import com.zeny.hotel.shared.OfflineCommandWarning
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import jakarta.validation.constraints.Size
@@ -233,7 +235,8 @@ class RetryHousekeepingTaskHandler(
 /**
  * O handler de `housekeeping.complete-task` ([CompleteHousekeepingTaskPayload]): o horário de cada resposta é o
  * `answeredAt` do aparelho corrigido pela mesma defasagem do `occurredAt` (RN-22), nunca depois dele; as fotos pela
- * política `TOLERATE` (a que não serve fica de fora da resposta, sem recusar o comando, H10).
+ * política `TOLERATE`: a que ainda não chegou ou não serve fica de fora da resposta, sem recusar o comando, e o comando
+ * é aplicado com o alerta `CHECKLIST_PHOTO_MISSING` ou `CHECKLIST_PHOTO_INVALID` (H10).
  */
 @Component
 class CompleteHousekeepingTaskHandler(
@@ -254,18 +257,35 @@ class CompleteHousekeepingTaskHandler(
                 val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(command.occurredAt)
                 answer.toInput(corrected ?: command.occurredAt)
             }
-        access.applyTo(checkNotNull(payload.taskId)) { id, actor ->
-            execution.completeTask(
-                id,
-                answers,
-                payload.foundOccupancy,
-                payload.foundGuestCount,
-                actor,
-                command.occurredAt,
-                expectedVersion = null,
-                ChecklistPhotoPolicy.TOLERATE,
-            )
-        }
-        return OfflineCommandOutcome.APPLIED
+        val completion =
+            access.applyTo(checkNotNull(payload.taskId)) { id, actor ->
+                execution.completeTask(
+                    id,
+                    answers,
+                    payload.foundOccupancy,
+                    payload.foundGuestCount,
+                    actor,
+                    command.occurredAt,
+                    expectedVersion = null,
+                    ChecklistPhotoPolicy.TOLERATE,
+                )
+            }
+        return OfflineCommandOutcome(photoWarnings(completion))
     }
+
+    /** Os alertas das fotos que ficaram de fora (H10, RN-22: aplicado com alerta), os mesmos do `checklists`. */
+    private fun photoWarnings(completion: HousekeepingTaskCompletion): List<OfflineCommandWarning> =
+        completion.missingPhotos.map {
+            OfflineCommandWarning(
+                ChecklistsErrorCodes.CHECKLIST_PHOTO_MISSING,
+                "A foto do item \"$it\" ainda não chegou ao servidor; a resposta ficou sem ela.",
+            )
+        } +
+            completion.rejectedPhotos.map {
+                OfflineCommandWarning(
+                    ChecklistsErrorCodes.CHECKLIST_PHOTO_INVALID,
+                    "A foto do item \"$it\" não serve (outra finalidade, outro autor ou outro registro); a " +
+                        "resposta ficou sem ela.",
+                )
+            }
 }
