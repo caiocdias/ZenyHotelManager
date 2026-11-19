@@ -19,7 +19,6 @@ import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import java.time.Duration
 import java.util.UUID
 
 /**
@@ -113,18 +112,11 @@ class CompleteInspectionHandler(
     @Transactional
     override fun handle(command: OfflineCommand<CompleteInspectionPayload>): OfflineCommandOutcome {
         val payload = command.payload
-        // A defasagem do relógio do aparelho, a mesma que o protocolo aplicou ao occurredAt (RN-22).
-        val skew = Duration.between(command.deviceOccurredAt, command.occurredAt)
-        val answers =
-            payload.answers?.map { answer ->
-                val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(command.occurredAt)
-                answer.toInput(corrected ?: command.occurredAt)
-            }
         val completion =
             inspections.completeInspection(
                 HousekeepingTaskId(checkNotNull(payload.taskId)),
                 checkNotNull(payload.result),
-                answers,
+                command.correctedAnswers(payload.answers),
                 payload.rejectedItems.orEmpty().filterNotNull(),
                 actor.current(),
                 command.occurredAt,

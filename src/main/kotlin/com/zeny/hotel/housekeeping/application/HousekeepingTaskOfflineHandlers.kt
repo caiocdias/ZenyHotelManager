@@ -362,18 +362,11 @@ class CompleteHousekeepingTaskHandler(
     @Transactional
     override fun handle(command: OfflineCommand<CompleteHousekeepingTaskPayload>): OfflineCommandOutcome {
         val payload = command.payload
-        // A defasagem do relógio do aparelho, a mesma que o protocolo aplicou ao occurredAt (RN-22).
-        val skew = Duration.between(command.deviceOccurredAt, command.occurredAt)
         return access.applyTo(command, checkNotNull(payload.taskId), payload::conflictSummary) { id, actor ->
-            val answers =
-                payload.answers?.map { answer ->
-                    val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(command.occurredAt)
-                    answer.toInput(corrected ?: command.occurredAt)
-                }
             val completion =
                 execution.completeTask(
                     id,
-                    answers,
+                    command.correctedAnswers(payload.answers),
                     payload.foundOccupancy,
                     payload.foundGuestCount,
                     actor,
@@ -383,6 +376,21 @@ class CompleteHousekeepingTaskHandler(
                 )
             offlinePhotoWarnings(completion.missingPhotos, completion.rejectedPhotos)
         }
+    }
+}
+
+/**
+ * As respostas de um comando offline como entrada do `checklists` (RN-22): o horário de cada uma é o `answeredAt` do
+ * aparelho corrigido pela mesma defasagem que o protocolo aplicou ao `occurredAt`, nunca depois dele; sem `answeredAt`,
+ * o próprio `occurredAt` corrigido.
+ */
+internal fun OfflineCommand<*>.correctedAnswers(
+    answers: List<HousekeepingOfflineAnswerPayload>?,
+): List<ChecklistAnswerInput>? {
+    val skew = Duration.between(deviceOccurredAt, occurredAt)
+    return answers?.map { answer ->
+        val corrected = answer.answeredAt?.plus(skew)?.coerceAtMost(occurredAt)
+        answer.toInput(corrected ?: occurredAt)
     }
 }
 

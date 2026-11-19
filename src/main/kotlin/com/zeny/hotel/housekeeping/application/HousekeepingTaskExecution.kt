@@ -9,7 +9,6 @@ import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
 import com.zeny.hotel.checklists.ChecklistVersionView
 import com.zeny.hotel.checklists.ChecklistsApi
-import com.zeny.hotel.checklists.ChecklistsErrorCodes
 import com.zeny.hotel.checklists.SubjectAttributes
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.housekeeping.HousekeepingErrorCodes
@@ -28,7 +27,6 @@ import com.zeny.hotel.shared.Actor
 import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.Authorization
-import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ErrorCodes
 import com.zeny.hotel.shared.FieldViolation
 import com.zeny.hotel.shared.FieldViolationCodes
@@ -448,54 +446,6 @@ private fun requireCompletionInput(
         }
     throw InvalidInputException(ErrorCodes.VALIDATION_FAILED, violation.message, listOf(violation))
 }
-
-/**
- * Compara a versão do aparelho ([device]) com a vigente do modelo da tarefa ([current]; D1-E19, e D7-E05 na
- * inspeção): do mesmo modelo e já substituída, `CHECKLIST_VERSION_OUTDATED`; de outro modelo (ou sem modelo na
- * tarefa), `HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH` e o modelo esperado e o recebido em [remarks] (a trilha).
- */
-internal fun compareDeviceVersion(
-    device: ChecklistVersionView,
-    current: ChecklistVersionView?,
-    warnings: MutableList<OfflineCommandWarning>,
-    remarks: MutableMap<String, Any?>,
-) {
-    if (current != null && device.templateId == current.templateId) {
-        if (device.id != current.id) {
-            warnings +=
-                OfflineCommandWarning(
-                    ChecklistsErrorCodes.CHECKLIST_VERSION_OUTDATED,
-                    "O checklist usou a versão ${device.number} do modelo, já substituída; ela ficou guardada.",
-                )
-        }
-        return
-    }
-    remarks["expectedChecklistTemplateId"] = current?.templateId?.toString()
-    remarks["receivedChecklistTemplateId"] = device.templateId.toString()
-    warnings +=
-        OfflineCommandWarning(
-            HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_TEMPLATE_MISMATCH,
-            "O aparelho abriu o checklist de outro modelo; a execução ficou com ele e a troca foi registrada.",
-        )
-}
-
-/**
- * A versão do checklist informada pelo aparelho (D1-E19; D7-E05 na inspeção): publicada e de um modelo do [context],
- * senão `422 HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID` (o payload vem do aparelho, entrada não confiável).
- */
-internal fun ChecklistsApi.deviceVersion(
-    id: ChecklistVersionId,
-    context: ChecklistContext,
-): ChecklistVersionView =
-    version(id)?.takeIf { it.context == context }
-        ?: throw BusinessRuleException(
-            HousekeepingErrorCodes.HOUSEKEEPING_TASK_CHECKLIST_VERSION_INVALID,
-            if (context == ChecklistContext.INSPECTION) {
-                "A versão do checklist informada não existe ou não é de um modelo de inspeção."
-            } else {
-                "A versão do checklist informada não existe ou não é de um modelo de governança."
-            },
-        )
 
 /** O tipo do sujeito da execução do checklist de uma tarefa (o `checklists` não o confere). */
 private const val CHECKLIST_SUBJECT_TYPE = "housekeeping.task"
