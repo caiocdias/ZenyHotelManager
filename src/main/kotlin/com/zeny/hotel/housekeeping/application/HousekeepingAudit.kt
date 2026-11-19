@@ -18,6 +18,9 @@ internal object HousekeepingAudit {
 
     const val TASK = "housekeeping.task"
 
+    /** Um conflito offline registrado (D4-E19): entrada própria, sem texto livre (o resumo já não o tem). */
+    const val TASK_CONFLICT = "housekeeping.task-conflict"
+
     const val REQUEST_TASK = "housekeeping.task.request"
     const val GENERATE_TASK = "housekeeping.task.generate"
     const val START_TASK = "housekeeping.task.start"

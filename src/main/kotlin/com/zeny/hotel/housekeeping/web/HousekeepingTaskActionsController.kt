@@ -304,7 +304,8 @@ data class HousekeepingTaskActionResponse(
     @field:Schema(
         description =
             "Se um comando offline de uma camareira que já não era dona da tarefa (reatribuída, retirada ou " +
-                "cancelada) ficou registrado como conflito (RN-22); a tarefa não mudou por ele.",
+                "cancelada) ficou registrado como conflito (RN-22); a tarefa não mudou por ele. A marca muda a " +
+                "`version` (e o `ETag`), mas não o `updatedAt`.",
     )
     val hasConflict: Boolean,
     val createdAt: Instant,

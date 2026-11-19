@@ -48,6 +48,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.test.web.servlet.request.RequestPostProcessor
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
+import java.math.BigDecimal
 import java.time.Duration
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -305,6 +306,101 @@ class HousekeepingTaskConflictTest(
     }
 
     @Test
+    fun `each conflict has its own trail entry, and no trail entry carries the former owner's free text`() {
+        val ana = execution.attendant()
+        val bia = execution.attendant()
+        val task = task(type(checklistTemplateId = publishedTemplate()), housekeeping.createRoom())
+        execution.assign(task, ana.employee)
+        execution.assign(task, bia.employee)
+        val now = Instant.now()
+        sync(iam.asTestUser(bia.user), command("start-task", mapOf("taskId" to task), now))
+        val secret = "$FREE_TEXT ${UUID.randomUUID()}"
+        val pause = command("pause-task", mapOf("taskId" to task), now)
+        val complete =
+            command(
+                "complete-task",
+                mapOf("taskId" to task, "answers" to listOf(mapOf("itemKey" to "remarks", "text" to secret))),
+                now,
+            )
+
+        sync(iam.asTestUser(ana.user), pause, complete).map { it["status"].asString() } shouldContainExactly
+            List(2) { "APPLIED_WITH_WARNINGS" }
+
+        val entries = conflictTrail(task)
+        assertSoftly {
+            withClue("uma entrada por conflito, também depois da primeira marca") { entries shouldHaveSize 2 }
+            entries.map { it["entity_id"] } shouldContainExactly conflicts(task).map { it["id"].toString() }
+            entries.map { jsonMapper.readTree(it["after"] as String)["commandType"].asString() } shouldContainExactly
+                listOf("housekeeping.pause-task", "housekeeping.complete-task")
+            entries.forEach {
+                val after = jsonMapper.readTree(it["after"] as String)
+                after["employeeId"].asString() shouldBe ana.employee.toString()
+                after["taskStatus"].asString() shouldBe "IN_PROGRESS"
+            }
+            withClue("nenhuma entrada da trilha leva o texto da ex-dona") { trailEntriesContaining(secret) shouldBe 0 }
+        }
+    }
+
+    @Test
+    fun `numbers and quantities outside the checklist limits leave the summary, which keeps only that there was one`() {
+        val ana = execution.attendant()
+        val bia = execution.attendant()
+        val task = task(type(checklistTemplateId = publishedTemplate()), housekeeping.createRoom())
+        execution.assign(task, ana.employee)
+        execution.assign(task, bia.employee)
+        val answers =
+            listOf(
+                mapOf("itemKey" to "cpf", "number" to BigDecimal("12345678901")),
+                mapOf("itemKey" to "exponent", "number" to BigDecimal("1e300")),
+                mapOf("itemKey" to "tiny", "number" to BigDecimal("1e-300")),
+                mapOf("itemKey" to "fine", "number" to BigDecimal("21.5")),
+                mapOf("itemKey" to "fraction", "number" to BigDecimal("1.23456")),
+                mapOf("itemKey" to "stock", "quantity" to BigDecimal("1000000")),
+                mapOf("itemKey" to "negative", "quantity" to BigDecimal("-1")),
+                mapOf("itemKey" to "towels", "quantity" to BigDecimal("3")),
+            )
+        val huge = listOf(mapOf("itemKey" to "huge", "number" to BigDecimal("1e999999999")))
+
+        val results =
+            sync(
+                iam.asTestUser(ana.user),
+                command("complete-task", mapOf("taskId" to task, "answers" to answers), Instant.now()),
+                command("complete-task", mapOf("taskId" to task, "answers" to huge), Instant.now()),
+            )
+
+        withClue(results.toString()) {
+            results[0]["status"].asString() shouldBe "APPLIED_WITH_WARNINGS"
+            // O expoente além do double nem passa pela leitura do payload: recusado pelo protocolo, sem falhar.
+            results[1]["status"].asString() shouldBe "REJECTED"
+            results[1]["code"].asString() shouldBe "COMMAND_PAYLOAD_INVALID"
+        }
+        val conflict = conflicts(task).single()
+        conflict["command_id"] shouldBe results[0]["commandId"].asString().let(UUID::fromString)
+        val byKey =
+            jsonMapper
+                .readTree(conflict["summary"].toString())["answers"]
+                .values()
+                .associateBy { it["itemKey"].asString() }
+        assertSoftly {
+            listOf("cpf", "exponent", "tiny", "fraction").forEach {
+                withClue(it) {
+                    byKey.getValue(it)["number"].isNull shouldBe true
+                    byKey.getValue(it)["hadNumber"].asBoolean() shouldBe true
+                }
+            }
+            listOf("stock", "negative").forEach {
+                withClue(it) {
+                    byKey.getValue(it)["quantity"].isNull shouldBe true
+                    byKey.getValue(it)["hadQuantity"].asBoolean() shouldBe true
+                }
+            }
+            byKey.getValue("fine")["number"].decimalValue().compareTo(BigDecimal("21.5")) shouldBe 0
+            byKey.getValue("towels")["quantity"].decimalValue().compareTo(BigDecimal("3")) shouldBe 0
+            conflictsText(task) shouldNotContain "12345678901"
+        }
+    }
+
+    @Test
     fun `the conflict notification type is in the catalog loaded at startup`() {
         val types =
             with(iam) { call(GET, "/api/v1/notification-preferences", asAdmin()).ok() }["preferences"]
@@ -406,6 +502,28 @@ class HousekeepingTaskConflictTest(
             .sql("SELECT string_agg(row_to_json(c)::text, ' ') FROM housekeeping.task_conflict c WHERE task_id = :t")
             .param("t", task)
             .query(String::class.java)
+            .single()
+
+    /** As entradas da trilha dos conflitos da [task], na ordem: o id do conflito e o retrato "depois". */
+    private fun conflictTrail(task: UUID): List<Map<String, Any?>> =
+        jdbc
+            .sql(
+                """
+                SELECT entity_id, after_state::text AS after FROM audit.audit_entry
+                WHERE entity_type = 'housekeeping.task-conflict' AND after_state ->> 'taskId' = :task
+                ORDER BY id
+                """.trimIndent(),
+            ).param("task", task.toString())
+            .query()
+            .listOfRows()
+
+    private fun trailEntriesContaining(text: String): Int =
+        jdbc
+            .sql(
+                "SELECT count(*) FROM audit.audit_entry " +
+                    "WHERE strpos(coalesce(before_state::text, '') || coalesce(after_state::text, ''), :text) > 0",
+            ).param("text", text)
+            .query(Int::class.java)
             .single()
 
     private fun roomNumber(room: UUID): String = roomsApi.room(RoomId(room)).shouldNotBeNull().number

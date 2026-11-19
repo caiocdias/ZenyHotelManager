@@ -126,16 +126,20 @@ data class HousekeepingOfflineAnswerPayload(
     /**
      * A resposta no resumo do conflito (D4-E19), que é só de inserção e não admite expurgo: o tipo pelo campo
      * preenchido e os valores não textuais (marcação, quantidade, número, escolhas); o texto e a observação só como
-     * "tinha" e a foto só como "tinha", sem o id. A chave do item e as das opções vêm do aparelho sem conferência com o
-     * modelo: fora do formato de chave do `checklists`, ficam de fora (nada de texto livre por elas).
+     * "tinha" e a foto só como "tinha", sem o id. A quantidade e o número só entram dentro dos limites do `checklists`
+     * (fora deles, só "tinha"): um número de 11 dígitos (CPF, telefone) ou com expoente extremo fica de fora. A chave
+     * do item e as das opções vêm do aparelho sem conferência com o modelo: fora do formato de chave do `checklists`,
+     * ficam de fora (nada de texto livre por elas).
      */
     fun conflictSummary(): Map<String, Any?> =
         mapOf(
             "itemKey" to itemKey?.takeIf(KEY::matches),
             "type" to answeredType()?.name,
             "check" to check?.name,
-            "quantity" to quantity,
-            "number" to number,
+            "quantity" to quantity?.takeIf(::isSummaryQuantity),
+            "hadQuantity" to (quantity != null),
+            "number" to number?.takeIf(::isSummaryNumber),
+            "hadNumber" to (number != null),
             "choice" to choice?.takeIf(KEY::matches),
             "choices" to choices?.filter(KEY::matches),
             "hadText" to !text.isNullOrBlank(),
@@ -158,6 +162,19 @@ data class HousekeepingOfflineAnswerPayload(
     private companion object {
         /** O formato das chaves de item e de opção do `checklists` (`ChecklistContentRules.KEY`). */
         val KEY = Regex("[a-z0-9][a-z0-9_-]{0,39}")
+
+        /** Os limites de resposta do `checklists` (`ChecklistAnswers`), que não os expõe a outros módulos. */
+        val MAX_QUANTITY = BigDecimal("999999")
+        const val MAX_QUANTITY_SCALE = 3
+        val MAX_NUMBER = BigDecimal("9999999999")
+        const val MAX_NUMBER_SCALE = 4
+
+        // A comparação vem antes da escala: um expoente extremo nunca é expandido.
+        fun isSummaryQuantity(value: BigDecimal) =
+            value.signum() >= 0 && value <= MAX_QUANTITY && value.stripTrailingZeros().scale() <= MAX_QUANTITY_SCALE
+
+        fun isSummaryNumber(value: BigDecimal) =
+            value.abs() <= MAX_NUMBER && value.stripTrailingZeros().scale() <= MAX_NUMBER_SCALE
     }
 }
 

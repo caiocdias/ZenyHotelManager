@@ -47,6 +47,17 @@ data class TaskConflict(
     val recordedAt: Instant,
 )
 
+/** O retrato da trilha do conflito: os ids, o comando, o status da tarefa e o resumo, que não tem texto livre. */
+private fun TaskConflict.auditState(): Map<String, Any?> =
+    mapOf(
+        "taskId" to taskId.toString(),
+        "commandId" to commandId.toString(),
+        "commandType" to commandType.value,
+        "employeeId" to employeeId.toString(),
+        "taskStatus" to taskStatus.name,
+        "summary" to summary,
+    )
+
 /** O registro dos conflitos offline (D4-E19), só de inserção, na transação corrente. */
 interface TaskConflictStore {
     fun record(conflict: TaskConflict)
@@ -59,7 +70,8 @@ interface TaskConflictStore {
 }
 
 /**
- * O conflito da RN-22 (D4 e D5 da E19), com a tarefa já travada pelo handler: grava o registro, marca `hasConflict`
+ * O conflito da RN-22 (D4 e D5 da E19), com a tarefa já travada pelo handler: grava o registro (com entrada própria
+ * na trilha, [HousekeepingAudit.TASK_CONFLICT]), marca `hasConflict`
  * na tarefa (a versão sobe e a mensagem [HousekeepingRealtime.TASK] vai ao tópico, só na primeira marca), avisa quem
  * distribui as tarefas só no primeiro conflito do par (tarefa, ex-dona) e devolve o comando aplicado com o alerta
  * `HOUSEKEEPING_TASK_CONFLICT`. Status, tempos, checklist, camareira e UH não mudam; as fotos não são vinculadas.
@@ -86,7 +98,7 @@ class HousekeepingTaskConflicts(
         audit.track(HousekeepingAudit.TASK, task.id.value) {
             task.executionAuditState() + ("hasConflict" to task.hasConflict)
         }
-        conflicts.record(
+        val conflict =
             TaskConflict(
                 UuidV7.generate(),
                 task.id,
@@ -98,8 +110,10 @@ class HousekeepingTaskConflicts(
                 task.status,
                 summary,
                 clock.instant(),
-            ),
-        )
+            )
+        conflicts.record(conflict)
+        // Uma entrada por conflito, também quando a tarefa já estava marcada (o track acima não muda então).
+        audit.created(HousekeepingAudit.TASK_CONFLICT, conflict.id) { conflict.auditState() }
         if (task.markConflict()) {
             tasks.update(task)
             realtime.publish(
