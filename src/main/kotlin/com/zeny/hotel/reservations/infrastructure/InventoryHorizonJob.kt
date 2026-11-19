@@ -1,6 +1,7 @@
 package com.zeny.hotel.reservations.infrastructure
 
 import com.zeny.hotel.reservations.application.InventoryRecalculation
+import com.zeny.hotel.shared.ExceptionClasses
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
@@ -29,7 +30,13 @@ class InventoryHorizonJob(
         recalculation.horizonRoomTypes().forEach { type ->
             runCatching { recalculation.extendHorizon(type) }
                 .onSuccess { changed += it }
-                .onFailure { log.warn("Horizonte do inventário do tipo de UH {} falhou", type, it) }
+                .onFailure {
+                    log.warn(
+                        "Horizonte do inventário do tipo de UH {} falhou: {}",
+                        type,
+                        ExceptionClasses.chain(it),
+                    )
+                }
         }
         if (changed > 0) log.info("Horizonte do inventário: {} linhas criadas ou refeitas", changed)
     }
