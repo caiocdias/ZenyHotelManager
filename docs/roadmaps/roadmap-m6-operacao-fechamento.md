@@ -113,7 +113,7 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 
 ## Definição global de pronto
 
-- [ ] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
+- [x] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
 - [x] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
 - [ ] OS corretivas são abertas (manual, recepção, governança ou checklist), executadas online e offline, colocam a UH em OOO/OOS e a devolvem como Suja ao concluir.
 - [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
@@ -232,7 +232,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E19 | Comandos offline, conflito RN-22 e feed da camareira | #concluida | E04 | Comandos `housekeeping.<verbo>-task`, histórico de posse, conflito registrado e sinalizado, fonte `housekeeping-tasks` sem dado de hóspede |
 | E05 | Inspeção e liberação da UH | #concluida | E19 | Aprovação/reprovação, UH Inspecionada, aviso de UH pronta |
 | E06 | Achados e perdidos e danos | #concluida | E19 | `LostAndFoundItem` com prazo de guarda, `DamageReport` lançado na conta |
-| E22 | Hora prevista de chegada e prioridade do early check-in | #em-andamento | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
+| E22 | Hora prevista de chegada e prioridade do early check-in | #concluida | E03, E20 | Hora prevista opcional na reserva; a sugestão põe o early e as chegadas primeiro |
 
 **Manutenção**
 
@@ -2073,7 +2073,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E22 — Hora prevista de chegada e prioridade do early check-in — #em-andamento
+## E22 — Hora prevista de chegada e prioridade do early check-in — #concluida
 
 **Objetivo:** guardar na reserva a hora prevista de chegada (H20 b) e devolver à sugestão de distribuição da E03 a prioridade do early check-in que a H17 adiou (RF-GOV-03, item 2: "prioriza UHs com chegada prevista ou early check-in").
 
@@ -2090,13 +2090,13 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Criar e alterar uma reserva com a hora prevista grava e devolve o valor; omitida, a reserva segue sem hora; `null` na alteração remove a hora.
-- [ ] Hora fora de `HH:mm`/`HH:mm:ss` dá `400 VALIDATION_FAILED` no campo (regra da E20).
-- [ ] Alterar só a hora não muda o preço, o inventário nem a alocação da reserva, e fica na trilha.
-- [ ] Na sugestão, com a mesma entrada, a UH com chegada early vem antes das chegadas sem early, que vêm antes das demais tarefas; entre as chegadas, pela hora prevista, e as sem hora depois das com hora (teste de domínio com determinismo e teste de API).
-- [ ] O dado que a governança recebe do `reservations` não contém nome, documento nem contato de hóspede.
-- [ ] `.github/scripts/check-api-breaking.sh` não acusa `ERR` (campo opcional novo).
-- [ ] Build, testes e verificação do contrato passam.
+- [x] Criar e alterar uma reserva com a hora prevista grava e devolve o valor; omitida, a reserva segue sem hora; `null` na alteração remove a hora.
+- [x] Hora fora de `HH:mm`/`HH:mm:ss` dá `400 VALIDATION_FAILED` no campo (regra da E20).
+- [x] Alterar só a hora não muda o preço, o inventário nem a alocação da reserva, e fica na trilha.
+- [x] Na sugestão, com a mesma entrada, a UH com chegada early vem antes das chegadas sem early, que vêm antes das demais tarefas; entre as chegadas, pela hora prevista, e as sem hora depois das com hora (teste de domínio com determinismo e teste de API).
+- [x] O dado que a governança recebe do `reservations` não contém nome, documento nem contato de hóspede.
+- [x] `.github/scripts/check-api-breaking.sh` não acusa `ERR` (campo opcional novo).
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -2117,12 +2117,77 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e22.md`, com 2 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). A rodada 0 bloqueou por 4 Importantes:
+  - a Task 1 sem a porta e o JDBC da consulta, acima de 12 arquivos;
+  - a hora fora do retrato da história e da trilha;
+  - a hora fora da exportação do titular (RF-HOS-07);
+  - a troca do tipo de `arrivalsByRoom`, que quebraria o teste da E02.
+  Na mesma correção, a ARCHITECTURE §6.1 passou a citar a hora prevista na releitura das chegadas.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `29d445e` (início, com a divisão da E09 pela H23) a `059cce4`.
+  - **Task 1** (hora na reserva): `3c4a451` (desenvolvedor).
+  - **Task 2** (consulta e ordem da sugestão): `322b3f6` (desenvolvedor).
+  - **Testador da etapa:** `4882637`, com 13 testes novos em 4 classes:
+    - pick-up de bloqueio;
+    - exportação pela aprovação;
+    - trilha lida pela chave;
+    - RN-13 com o conjunto exato de chaves da sugestão;
+    - precedência do early;
+    - hora gravada pela API;
+    - porta com lista vazia, que ficou vermelha.
+  - **Correção final, rodada 1:** `059cce4`. O guarda de lista vazia foi para o `JdbcReservationQueries`.
+  - Cada fatia passou por desenvolvedor → verificação mecânica (exit 0) → `revisor-seguranca`. As duas foram aprovadas sem Crítico nem Importante.
+- Entregue:
+  - **Reserva:** `expectedArrivalTime` (`LocalTime`, hora local do hotel, opcional) na criação (`ReservationRequest` da agrupadora), na alteração (`ReservationChangeRequest`) e nas respostas (`ReservationResponse`, `ReservationStateResponse` do histórico).
+    - Coluna `reservations.reservation.expected_arrival_time` (`V2026_11_19_1700`).
+    - Na alteração, ausente ou `null` apaga a hora (D2, substituição como `specialRequests`).
+    - Mudar só a hora não recalcula noites, não mexe em inventário nem alocação e não passa pelo desconto. Vale também para a reserva `IN_HOUSE` e a do pick-up.
+    - A mudança entra em `ReservationFields.changed` e no retrato da história e da trilha. O `ReservationChanged` sai com `changedFields = ["expectedArrivalTime"]`, sem campo novo no evento, e o `fnrh` registra um `UPDATE_RESERVATION`, como numa alteração só de `specialRequests` (D4).
+    - A hora entra na exportação do titular.
+    - Formato fora de `HH:mm`/`HH:mm:ss`: `400 VALIDATION_FAILED` no campo.
+  - **`ReservationsApi.expectedArrivalTimes(ids)`:** devolve só id e hora, sem permissão, trava nem dado de hóspede.
+  - **Governança:**
+    - `ArrivalsByRoom.arrivalTimesByRoom(date)` dá a menor hora por UH. O `arrivalsByRoom` não mudou.
+    - `SuggestionTask` ganhou `arrivalTime` e `earlyCheckIn`, com `require` no `init`.
+    - A sugestão ordena early (hora < `checkInTime` da política, estritamente) → chegadas por hora → chegadas sem hora → demais, e então prioridade, andar, local e id.
+    - A chegada atrasada com hora antes do `checkInTime` também sai early.
+- Revisão final: **aprovado com ressalvas** (`revisor-seguranca`, opus), sem Crítico nem Importante, com 6 Menores:
+  - 3 de teste, cobertos pelo testador;
+  - o formato `"10:30"` na trilha contra `"10:30:00"` na API;
+  - o aviso ao front;
+  - a hipótese de interferência do stub compartilhado da FNRH.
+  
+  Re-revisão escopada de `322b3f6..059cce4`: aprovado (`revisor-seguranca`, sonnet), sem Crítico nem Importante.
+- Gate de integração (`./gradlew build`):
+  - em `322b3f6`, a 1ª rodada teve 1 falha intermitente em `SerproFnrhGatewayAttackTest` (`fnrh`, sem diff na etapa), que passou isolada; a 2ª rodada deu `BUILD SUCCESSFUL`, 4613 testes e 0 falhas;
+  - em `059cce4`: `BUILD SUCCESSFUL`, 4622 testes e 0 falhas.
+- Verificação mecânica: `check_test_integrity.py --base 72f1217`, exit 0, "OK: nenhum apontamento", no fim da construção e depois da correção.
+- Scanner: `osv-scanner` 2.7.1 nos três lockfiles (426 + 74 + 0 pacotes) achou 0 Critical, 0 High, 2 Medium e 3 Low. São todos anteriores à etapa (commons-lang3 3.16.0 no buildscript, opentelemetry-api 1.62.0, logback-core 1.3.16); os lockfiles não mudaram.
+- `check-api-breaking.sh`: nenhuma mudança `ERR`, só campos opcionais novos.
+- Critérios verificados:
+  - criação e alteração com a hora, sem ela e com `null`: `ReservationExpectedArrivalTimeApiTest`;
+  - formato inválido dá `400` no campo: mesmo teste, com 6 valores na criação e na alteração;
+  - só a hora não muda preço, inventário nem alocação e fica na trilha: mesmo teste, inclusive `IN_HOUSE` e pick-up;
+  - ordem early → chegadas por hora → sem hora → demais: `AssignmentSuggesterTest` (domínio, com permutações determinísticas) e `AssignmentPlanEarlyArrivalTest` (API);
+  - nenhum dado de hóspede na governança: assinatura da `expectedArrivalTimes` e conjunto exato de chaves da resposta da sugestão;
+  - oasdiff sem `ERR`: relatório da Task 1;
+  - build, testes e contrato: gate acima.
+- Decisões para o usuário (tomadas pela opção recomendada, revisáveis):
+  - **D2:** na alteração, ausente ou `null` apaga a hora. Quem não reenviar o campo apaga a hora. Alternativa descartada: "ausente mantém", que exigiria distinguir ausente de `null` só neste campo.
+  - **D4:** a alteração só da hora publica `ReservationChanged` e gera `UPDATE_RESERVATION` na FNRH. Custo: um envio a mais à FNRH sem dado novo para ela; o `fnrh` poderia filtrar por `changedFields` (decisão do `arquiteto`).
+  - **D8 (M3 da revisão do plano):** a chegada atrasada com hora antes do `checkInTime` também sai early.
+  - **D1:** a hora aceita segundos, ao contrário dos horários do `hotel`, que são em minuto inteiro.
+- Notas para a próxima etapa:
+  - **Avisar o front desktop:**
+    - a alteração de reserva precisa reenviar `expectedArrivalTime`, ou a hora é apagada (D2);
+    - a criação aceita o campo em cada reserva da agrupadora;
+    - a resposta e o histórico trazem `"HH:mm:ss"`.
+  - **Para o `arquiteto`:**
+    - a falha intermitente de `SerproFnrhGatewayAttackTest.kt:171` (502 lido como `UNKNOWN_OUTCOME`), com a hipótese da revisão final de interferência pelo `FnrhTestServer` compartilhado, já que as alterações de reserva dos testes geram `UPDATE_RESERVATION`;
+    - pick-up, rooming list e walk-in não recebem a hora (D5);
+    - a view `report_reservations` não tem a coluna (a E09 decide);
+    - o mapeamento da hora das OTAs fica para o M8.
+  - **A trilha grava a hora como `LocalTime.toString()`** (`"10:30"`), e a API devolve `"10:30:00"`.
+  - **Testes sem atacar:** o `AssignmentPlanEarlyArrivalTest` assume que o `checkInTime` não fica perto da meia-noite (o padrão é 14:00), porque fixar a política mexeria no perfil do hotel no banco compartilhado.
 
 ---
 
