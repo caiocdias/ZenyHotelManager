@@ -27,6 +27,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.sql.ResultSet
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.util.UUID
 
@@ -238,6 +239,17 @@ class JdbcReservationQueries(
 
     override fun pendingArrivalIds(date: LocalDate): List<ReservationId> =
         ids(ReservationQuerySql.idsUpTo(ReservationStatus.CONFIRMED, "arrival"), date)
+
+    override fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime> =
+        jdbc
+            .sql(
+                "SELECT id, expected_arrival_time FROM reservations.reservation " +
+                    "WHERE id IN (:ids) AND expected_arrival_time IS NOT NULL",
+            ).param("ids", ids.map { it.value }.distinct())
+            .query { rs, _ ->
+                ReservationId(rs.uuid("id")) to rs.getObject("expected_arrival_time", LocalTime::class.java)
+            }.list()
+            .toMap()
 
     override fun pendingDepartureIds(date: LocalDate): List<ReservationId> =
         ids(ReservationQuerySql.idsUpTo(ReservationStatus.IN_HOUSE, "departure"), date)

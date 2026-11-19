@@ -36,6 +36,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.Locale
 
 /**
@@ -179,6 +180,9 @@ interface ReservationQueryStore {
 
     /** Os ids das confirmadas (`CONFIRMED`) com chegada até [date], por id (as chegadas pendentes do fechamento). */
     fun pendingArrivalIds(date: LocalDate): List<ReservationId>
+
+    /** A hora prevista de chegada de cada reserva de [ids] que tem hora; só id e hora (RN-13). */
+    fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime>
 
     /** Os ids das hospedadas (`IN_HOUSE`) com saída até [date], por id (as saídas pendentes do fechamento). */
     fun pendingDepartureIds(date: LocalDate): List<ReservationId>

@@ -45,6 +45,7 @@ import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 
 /** O pedido de limite de overbooking: os tipos de UH, o período, os dias da semana e o limite. */
 data class OverbookingLimitCommand(
@@ -316,6 +317,10 @@ class ReservationsApiService(
     @Transactional(readOnly = true)
     override fun assignedRooms(ids: Collection<ReservationId>): Map<ReservationId, RoomId> =
         assignmentStore.activeRooms(ids)
+
+    @Transactional(readOnly = true)
+    override fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime> =
+        if (ids.isEmpty()) emptyMap() else reservationQueries.expectedArrivalTimes(ids)
 
     @Transactional(readOnly = true)
     override fun chargesDue(
