@@ -1,6 +1,7 @@
 package com.zeny.hotel.notifications
 
 import com.zeny.hotel.billing.BillingNotificationTypes
+import com.zeny.hotel.housekeeping.HousekeepingNotificationTypes
 import com.zeny.hotel.iam.IamApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
@@ -318,7 +319,7 @@ class NotificationsApiTest(
         defaults.map { it["type"].asString() } shouldContainExactly
             (
                 NotificationsTypes.types + NotificationsExampleTypes.types + BillingNotificationTypes.types +
-                    ReservationsNotificationTypes.types
+                    ReservationsNotificationTypes.types + HousekeepingNotificationTypes.types
             ).map { it.code.value }
                 .sorted()
         defaults.forEach {
