@@ -392,14 +392,23 @@ object HousekeepingErrorCodes {
     /** 409: cobrar um dano sem reserva vinculada (D4-E06, Review Focus 2): só registro e dispensa. */
     val HOUSEKEEPING_DAMAGE_NO_RESERVATION = ErrorCode("HOUSEKEEPING_DAMAGE_NO_RESERVATION")
 
-    /** 409: a conta da cobrança não existe, está encerrada ou não é da reserva vinculada ao dano (D4-E06). */
+    /** 409: a conta da cobrança existe, mas está encerrada ou não é da reserva vinculada ao dano (D4-E06). */
     val HOUSEKEEPING_DAMAGE_FOLIO_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_FOLIO_INVALID")
 
-    /** 409: o código de lançamento da revisão não existe, está desativado ou não é `CHARGE` nem `PENALTY` (D4-E06). */
+    /** 409: o código de lançamento da revisão existe, mas está desativado ou não é `CHARGE` nem `PENALTY` (D4-E06). */
     val HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID")
 
-    /** 409: a reserva da revisão (troca do vínculo) não existe ou não está hospedada (`IN_HOUSE`, D4-E06). */
+    /** 409: a reserva da revisão (troca do vínculo) existe, mas não está hospedada (`IN_HOUSE`, D4-E06). */
     val HOUSEKEEPING_DAMAGE_RESERVATION_INVALID = ErrorCode("HOUSEKEEPING_DAMAGE_RESERVATION_INVALID")
+
+    /** 400: o código de lançamento da revisão não existe (campo `transactionCodeId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE")
+
+    /** 400: a conta da cobrança não existe (campo `folioId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO")
+
+    /** 400: a reserva da revisão não existe (campo `reservationId`, H16). */
+    val HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION = ErrorCode("HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")

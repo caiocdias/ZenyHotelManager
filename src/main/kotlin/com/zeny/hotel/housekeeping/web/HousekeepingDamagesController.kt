@@ -43,10 +43,11 @@ private const val DAMAGE_READ_RULES =
         "conta (`folioId`) e o lançamento (`postingId`) só vêm para quem tem `housekeeping.damages.manage`."
 private const val DAMAGE_ACTION_RULES =
     "Exige `housekeeping.damages.manage` (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa do " +
-        "dano, inclusive para quem o registrou; o 400 do corpo e o 428 sem `If-Match` vêm antes). Dano inexistente: " +
-        "404 `HOUSEKEEPING_DAMAGE_NOT_FOUND`. Com o `If-Match` do dano (412 com outra versão; 428 sem ele). Ação " +
-        "fora do status: 409 `HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED` (com `damageStatus` e `action`), sem " +
-        "mudança. Responde o dano com o `ETag` novo."
+        "dano, inclusive para quem o registrou; o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403; o " +
+        "400 de id inexistente no corpo vem depois dele e do status). Dano inexistente: 404 " +
+        "`HOUSEKEEPING_DAMAGE_NOT_FOUND`. Com o `If-Match` do dano (412 com outra versão; 428 sem ele). Ação fora do " +
+        "status: 409 `HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED` (com `damageStatus` e `action`), sem mudança. " +
+        "Responde o dano com o `ETag` novo."
 
 // Os limites dos textos (os do domínio, que os confere), só para o contrato.
 private const val MAX_DAMAGE_DESCRIPTION = 500
@@ -87,8 +88,9 @@ class HousekeepingDamagesController(
                 "vincula a reserva hospedada nela desde antes do fato (visível só a quem tem " +
                 "`housekeeping.damages.manage`). " +
                 "Exige `housekeeping.occurrences.report` (qualquer escopo; 403 `PERMISSION_DENIED` antes de qualquer " +
-                "recusa que dependa do local; o 400 do corpo vem antes). Texto ou valor fora do formato: 400 " +
-                "`HOUSEKEEPING_DATA_INVALID` no campo.",
+                "recusa que dependa do local; o 400 do corpo vem antes). Custo estimado (`estimatedCost`) opcional, " +
+                "de 0 a 99999.99, com até 2 casas. Texto ou valor fora do formato: 400 `HOUSEKEEPING_DATA_INVALID` " +
+                "no campo.",
     )
     @ApiResponse(responseCode = "201", description = "Dano registrado.")
     fun register(
@@ -127,11 +129,14 @@ class HousekeepingDamagesController(
         summary = "Revisar um dano",
         description =
             "Fixa o valor final (`finalAmount`, maior que zero e até 99999.99; um dano sem valor é dispensado), o " +
-                "código de lançamento (`transactionCodeId`: ativo e de tipo `CHARGE` ou `PENALTY`, senão 409 " +
-                "`HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID`) e a reserva vinculada (`reservationId`: a mesma " +
-                "confirma; outra precisa estar hospedada, senão 409 `HOUSEKEEPING_DAMAGE_RESERVATION_INVALID`; nula " +
-                "ou omitida retira o vínculo). Vale em `REPORTED` e `REVIEWED`; o dano vai a `REVIEWED`. " +
-                DAMAGE_ACTION_RULES,
+                "código de lançamento (`transactionCodeId`: inexistente, 400 " +
+                "`HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE` no campo; desativado ou de tipo diferente de " +
+                "`CHARGE` e `PENALTY`, 409 `HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID`) e a reserva vinculada " +
+                "(`reservationId`). **A revisão substitui o vínculo inteiro: para mantê-lo, envie o `reservationId` " +
+                "atual (o do GET); nulo ou omitido retira.** Outra reserva troca o vínculo: inexistente, 400 " +
+                "`HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION` no campo; não hospedada, 409 " +
+                "`HOUSEKEEPING_DAMAGE_RESERVATION_INVALID`; ela não precisa estar na UH do dano (o hóspede pode ter " +
+                "trocado de UH). Vale em `REPORTED` e `REVIEWED`; o dano vai a `REVIEWED`. $DAMAGE_ACTION_RULES",
     )
     fun review(
         @PathVariable id: UUID,
@@ -154,9 +159,14 @@ class HousekeepingDamagesController(
         summary = "Cobrar um dano na conta da reserva",
         description =
             "Lança o valor final do dano revisado na conta `folioId`, que precisa ser uma conta aberta da reserva " +
-                "vinculada (senão 409 `HOUSEKEEPING_DAMAGE_FOLIO_INVALID`): um lançamento só, com o código revisado, " +
-                "sem taxa de serviço, a descrição fixa \"Dano na UH <número>\" e a data operacional corrente; o dano " +
-                "vai a `CHARGED`. Não revisado: 409 `HOUSEKEEPING_DAMAGE_NOT_REVIEWED`; sem reserva vinculada: 409 " +
+                "vinculada (inexistente, 400 `HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO` no campo; encerrada ou de outro " +
+                "dono, 409 `HOUSEKEEPING_DAMAGE_FOLIO_INVALID`): um lançamento só, com o código revisado, sem " +
+                "taxa de serviço, a descrição fixa \"Dano na UH <número>\" e a data operacional corrente; o dano " +
+                "vai a `CHARGED`. Uma regra de roteamento do `billing` pode desviar o lançamento para outra conta: o " +
+                "`folioId` gravado no dano é o da conta final. Recusas do `billing`, sem mudança no dano: 422 " +
+                "`TRANSACTION_CODE_INACTIVE` (código desativado depois da revisão), 409 `ROUTING_TARGET_CLOSED` " +
+                "(destino do roteamento encerrado) e 409 `FOLIO_CLOSED` (conta encerrada durante a cobrança). Não " +
+                "revisado: 409 `HOUSEKEEPING_DAMAGE_NOT_REVIEWED`; sem reserva vinculada: 409 " +
                 "`HOUSEKEEPING_DAMAGE_NO_RESERVATION` (só pode ser dispensado). Não exige `billing.postings.create`. " +
                 DAMAGE_ACTION_RULES,
     )
@@ -220,7 +230,10 @@ data class DamageReviewRequest(
     @field:Schema(description = "O código de lançamento da cobrança, ativo e de tipo `CHARGE` ou `PENALTY`.")
     val transactionCodeId: UUID?,
     @field:Schema(
-        description = "A reserva vinculada: a atual confirma, outra (hospedada) troca, nula ou omitida retira.",
+        description =
+            "A reserva vinculada. A revisão substitui o vínculo inteiro: para mantê-lo, envie o `reservationId` " +
+                "atual (o do GET); nulo ou omitido retira. Outra reserva hospedada troca o vínculo; ela não precisa " +
+                "estar na UH do dano (o hóspede pode ter trocado de UH).",
         nullable = true,
     )
     val reservationId: UUID? = null,

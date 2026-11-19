@@ -215,9 +215,12 @@ class HousekeepingDamages(
     }
 
     /**
-     * Revisa o dano: valor final (> 0, `400`), código ativo de tipo `CHARGE` ou `PENALTY` (senão `409
-     * HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID`) e a reserva vinculada (a mesma confirma; outra precisa estar
-     * hospedada, senão `409 HOUSEKEEPING_DAMAGE_RESERVATION_INVALID`; nula retira).
+     * Revisa o dano: valor final (> 0, `400` de formato, antes da permissão), código ativo de tipo `CHARGE` ou
+     * `PENALTY` (inexistente `400 HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE`; senão `409
+     * HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID`) e a reserva vinculada, que a revisão substitui inteira (a mesma
+     * confirma; outra precisa existir, `400 HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION`, e estar hospedada, `409
+     * HOUSEKEEPING_DAMAGE_RESERVATION_INVALID`, em qualquer UH; nula retira). Os `400` de id inexistente dependem de
+     * consulta: vêm depois da permissão e do status.
      */
     @Audited(HousekeepingAudit.REVIEW_DAMAGE_REPORT)
     @Transactional
@@ -239,8 +242,10 @@ class HousekeepingDamages(
     }
 
     /**
-     * Cobra o dano revisado na conta [folioId] da reserva vinculada: aberta e com a reserva como dona, senão `409
-     * HOUSEKEEPING_DAMAGE_FOLIO_INVALID`. Um lançamento só (trava do dano e chave idempotente).
+     * Cobra o dano revisado na conta [folioId] da reserva vinculada: inexistente `400
+     * HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO` (depois da permissão e do status); encerrada ou de outro dono `409
+     * HOUSEKEEPING_DAMAGE_FOLIO_INVALID`. Um lançamento só (trava do dano e chave idempotente); a conta gravada é a
+     * final, depois do roteamento do `billing`.
      */
     @Audited(HousekeepingAudit.CHARGE_DAMAGE_REPORT)
     @Transactional
@@ -251,9 +256,14 @@ class HousekeepingDamages(
     ): DamageReportView =
         act(id, expectedVersion) { report, by, at ->
             val reservation = report.requireChargeable()
-            val folio = billing.folio(folioId)
-            if (folio == null ||
-                folio.status != FolioStatus.OPEN ||
+            val folio =
+                billing.folio(folioId)
+                    ?: throw HousekeepingRules.invalid(
+                        HousekeepingErrorCodes.HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO,
+                        "folioId",
+                        "A conta não existe.",
+                    )
+            if (folio.status != FolioStatus.OPEN ||
                 folio.owner != FolioOwner(FolioOwnerType.RESERVATION, reservation.value)
             ) {
                 throw ConflictException(
@@ -262,7 +272,8 @@ class HousekeepingDamages(
                 )
             }
             val reviewed = report.reviewed()
-            val number = rooms.room(checkNotNull(report.roomId))?.number
+            val room = checkNotNull(report.roomId) { "Dano ${report.id} com reserva e sem UH" }
+            val number = checkNotNull(rooms.room(room)) { "A UH $room do dano ${report.id} não existe" }.number
             val posting =
                 billing.post(
                     folioId,
@@ -348,8 +359,14 @@ class HousekeepingDamages(
     }
 
     private fun requireChargeCode(id: TransactionCodeId) {
-        val code = billing.transactionCode(id)
-        if (code == null || !code.active || code.kind !in CHARGEABLE_KINDS) {
+        val code =
+            billing.transactionCode(id)
+                ?: throw HousekeepingRules.invalid(
+                    HousekeepingErrorCodes.HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE,
+                    "transactionCodeId",
+                    "O código de lançamento não existe.",
+                )
+        if (!code.active || code.kind !in CHARGEABLE_KINDS) {
             throw ConflictException(
                 HousekeepingErrorCodes.HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID,
                 "Informe um código de lançamento ativo de consumo (CHARGE) ou multa (PENALTY).",
@@ -361,8 +378,14 @@ class HousekeepingDamages(
         id: ReservationId,
         roomId: RoomId?,
     ) {
-        val reservation = reservations.reservation(id)
-        if (roomId == null || reservation?.status != ReservationStatus.IN_HOUSE) {
+        val reservation =
+            reservations.reservation(id)
+                ?: throw HousekeepingRules.invalid(
+                    HousekeepingErrorCodes.HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION,
+                    "reservationId",
+                    "A reserva não existe.",
+                )
+        if (roomId == null || reservation.status != ReservationStatus.IN_HOUSE) {
             throw ConflictException(
                 HousekeepingErrorCodes.HOUSEKEEPING_DAMAGE_RESERVATION_INVALID,
                 "Informe uma reserva hospedada para vincular ao dano de UH.",

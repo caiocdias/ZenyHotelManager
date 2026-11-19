@@ -170,8 +170,33 @@ class HousekeepingDamageApiTest(
                 .problem(409, "HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID")
             support
                 .act(id, "review", asAdmin(), support.reviewBody(UUID.randomUUID()))
-                .problem(409, "HOUSEKEEPING_DAMAGE_TRANSACTION_CODE_INVALID")
+                .problem(400, "HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE")["errors"][0]
+                .let {
+                    it["field"].asString() shouldBe "transactionCodeId"
+                    it["code"].asString() shouldBe "HOUSEKEEPING_DAMAGE_UNKNOWN_TRANSACTION_CODE"
+                }
+            // A reserva da troca: inexistente 400 com o campo; existente e não hospedada 409.
             val code = support.createCode("CHARGE")
+            support
+                .act(id, "review", asAdmin(), support.reviewBody(code, reservationId = UUID.randomUUID()))
+                .problem(400, "HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION")["errors"][0]
+                .let {
+                    it["field"].asString() shouldBe "reservationId"
+                    it["code"].asString() shouldBe "HOUSEKEEPING_DAMAGE_UNKNOWN_RESERVATION"
+                }
+            val (type, _) = reservations.inventory.roomTypeWithRooms(1, hotel.currentBusinessDate())
+            val (confirmed, _) = stays.reservation(type, stays.planFor(type))
+            support
+                .act(id, "review", asAdmin(), support.reviewBody(code, reservationId = confirmed.value))
+                .problem(409, "HOUSEKEEPING_DAMAGE_RESERVATION_INVALID")
+            // Sem damages.manage, o 403 vem antes do 400 de id inexistente (que depende de consulta).
+            val attendant = asTestUser(execution.userWithTemplate(RoleTemplate.ROOM_ATTENDANT))
+            support
+                .act(id, "review", attendant, support.reviewBody(UUID.randomUUID(), reservationId = UUID.randomUUID()))
+                .problem(403, "PERMISSION_DENIED")
+            support
+                .act(id, "charge", attendant, mapOf("folioId" to UUID.randomUUID()))
+                .problem(403, "PERMISSION_DENIED")
             support.act(id, "review", asAdmin(), support.reviewBody(code, finalAmount = "0")).status shouldBe 400
             support.act(id, "review", asAdmin(), support.reviewBody(code, finalAmount = "1.001")).status shouldBe 400
             support.act(id, "review", asAdmin(), support.reviewBody(code, finalAmount = "100000.00")).status shouldBe
@@ -229,7 +254,7 @@ class HousekeepingDamageApiTest(
         }
 
     @Test
-    fun `waive records the reason, a damage without reservation is only waived, and the folio must match`(): Unit =
+    fun `waive records the reason, and a damage without reservation is only registered and waived`(): Unit =
         with(iam) {
             val code = support.createCode("PENALTY")
             val reported = support.registered()
@@ -239,6 +264,10 @@ class HousekeepingDamageApiTest(
             waived["resolvedBy"].asString() shouldBe iam.adminId().toString()
             support
                 .act(reported, "waive", asAdmin(), mapOf("reason" to "De novo"))
+                .problem(409, "HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED")
+            // A transição vem antes do 400 de id inexistente.
+            support
+                .act(reported, "review", asAdmin(), support.reviewBody(UUID.randomUUID()))
                 .problem(409, "HOUSEKEEPING_DAMAGE_TRANSITION_NOT_ALLOWED")
 
             // Sem reserva (UH vazia ou área): só registro e dispensa.
@@ -260,8 +289,12 @@ class HousekeepingDamageApiTest(
                 "WAIVED"
             support.postingsOf(noReservation).shouldBeEmpty()
             support.postingsOf(reported).shouldBeEmpty()
+        }
 
-            // A conta precisa ser aberta e da reserva vinculada.
+    @Test
+    fun `the charge folio must exist, be open and be of the linked reservation, and a reviewed one waives`(): Unit =
+        with(iam) {
+            val code = support.createCode("PENALTY")
             val (room, reservation) = occupiedRoom()
             val (_, other) = occupiedRoom()
             val linked = support.registered(body = support.body(roomId = room))
@@ -273,13 +306,20 @@ class HousekeepingDamageApiTest(
                     .folioId.value
             val closed = billing.openFolio(NewFolio(FolioOwnerType.RESERVATION, reservation.value))
             billing.closeFolio(closed.id)
-            listOf(otherFolio, closed.id.value, UUID.randomUUID()).forEach { folio ->
+            listOf(otherFolio, closed.id.value).forEach { folio ->
                 withClue(folio) {
                     support
                         .act(linked, "charge", asAdmin(), mapOf("folioId" to folio))
                         .problem(409, "HOUSEKEEPING_DAMAGE_FOLIO_INVALID")
                 }
             }
+            support
+                .act(linked, "charge", asAdmin(), mapOf("folioId" to UUID.randomUUID()))
+                .problem(400, "HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO")["errors"][0]
+                .let {
+                    it["field"].asString() shouldBe "folioId"
+                    it["code"].asString() shouldBe "HOUSEKEEPING_DAMAGE_UNKNOWN_FOLIO"
+                }
             support.damage(linked)["status"].asString() shouldBe "REVIEWED"
             support.postingsOf(linked).shouldBeEmpty()
             // Dispensa de REVIEWED.
