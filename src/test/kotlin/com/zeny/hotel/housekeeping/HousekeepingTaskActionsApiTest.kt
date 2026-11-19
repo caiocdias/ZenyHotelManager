@@ -145,7 +145,14 @@ class HousekeepingTaskActionsApiTest(
                 )
             refused.forEach { (action, body) ->
                 withClue(action) {
-                    val problem = execution.act(task, action, auth, body = body).problem(409, "HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED")
+                    val problem =
+                        execution
+                            .act(
+                                task,
+                                action,
+                                auth,
+                                body = body,
+                            ).problem(409, "HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED")
                     problem["taskStatus"].asString() shouldBe "ASSIGNED"
                     problem["action"].asString() shouldBe action.uppercase()
                 }

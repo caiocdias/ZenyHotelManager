@@ -35,7 +35,7 @@ class HousekeepingTaskExecutionPermissionsTest(
     private val execution = HousekeepingExecutionTestSupport(iam, jdbc, staffApi)
 
     @Test
-    fun `the execute permission is OWN and ALL, not sensitive, OWN for the attendant and ALL for housekeeper and manager`() {
+    fun `execute is OWN and ALL, not sensitive, OWN for the attendant, ALL for housekeeper and manager`() {
         val permission = definition(HousekeepingPermissions.TASKS_EXECUTE)
         permission.code.value shouldBe "housekeeping.tasks.execute"
         permission.scopes shouldBe setOf(OWN, ALL)
@@ -67,7 +67,7 @@ class HousekeepingTaskExecutionPermissionsTest(
     }
 
     @Test
-    fun `with OWN, another attendant task is 403 before 404, 409 and 412, and a missing task gives the same body`(): Unit =
+    fun `with OWN, a foreign task is 403 before 404, 409 and 412, and a missing one has the same body`(): Unit =
         with(iam) {
             val mine = execution.attendant()
             val other = execution.attendant()

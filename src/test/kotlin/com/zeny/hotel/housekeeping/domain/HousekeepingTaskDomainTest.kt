@@ -254,7 +254,7 @@ class HousekeepingTaskDomainTest {
     }
 
     @Test
-    fun `the valid transitions reach the SPEC 8_4 targets, including ASSIGNED to PENDING, REJECTED to IN_PROGRESS and REFUSED to ASSIGNED`() {
+    fun `the valid transitions reach the SPEC 8_4 targets, ASSIGNED to PENDING and REFUSED to ASSIGNED included`() {
         taskIn(TaskStatus.ASSIGNED).apply { unassign(now.plusSeconds(60)) }.status shouldBe TaskStatus.PENDING
         taskIn(TaskStatus.ASSIGNED).apply { start(now.plusSeconds(60), date) }.status shouldBe TaskStatus.IN_PROGRESS
         taskIn(TaskStatus.REJECTED).apply { start(now.plusSeconds(60), date) }.status shouldBe TaskStatus.IN_PROGRESS
@@ -320,7 +320,7 @@ class HousekeepingTaskDomainTest {
     }
 
     @Test
-    fun `an instant before the last transition is recorded as the last transition, and the time never goes negative (Review Focus 1)`() {
+    fun `an instant before the last transition becomes the last transition, never a negative time (Review Focus 1)`() {
         val task = assignedTask(now.plusSeconds(500))
         task.start(now.plusSeconds(100), date) // antes da atribuição (500)
         task.startedAt shouldBe now.plusSeconds(500)

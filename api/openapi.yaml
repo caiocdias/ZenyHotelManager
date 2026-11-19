@@ -7079,6 +7079,209 @@ paths:
       summary: Consultar uma tarefa de governança
       tags:
       - housekeeping
+  /api/v1/housekeeping-tasks/{id}/pause:
+    post:
+      description: "Leva a tarefa `IN_PROGRESS` a `PAUSED`; o trecho em andamento\
+        \ entra no tempo trabalhado. Exige `housekeeping.tasks.execute`: com o escopo\
+        \ `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa, ou uma\
+        \ inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente:\
+        \ 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com outra versão;\
+        \ 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
+        \ e o `ETag` novo."
+      operationId: pauseHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pausar uma tarefa de governança
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}/refuse:
+    post:
+      description: "Leva a tarefa `ASSIGNED` a `REFUSED`, com o motivo: `DO_NOT_DISTURB`\
+        \ (a UH com não perturbe) ou `GUEST_REFUSED` (o hóspede recusou o serviço).\
+        \ A camareira continua a mesma; a nova tentativa é o `retry`. Responde 200\
+        \ com a tarefa `REFUSED`. Exige `housekeeping.tasks.execute`: com o escopo\
+        \ `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa, ou uma\
+        \ inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente:\
+        \ 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com outra versão;\
+        \ 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
+        \ e o `ETag` novo."
+      operationId: refuseHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HousekeepingTaskRefuseRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Recusar uma tarefa de governança
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}/resume:
+    post:
+      description: "Leva a tarefa `PAUSED` de volta a `IN_PROGRESS`. Exige `housekeeping.tasks.execute`:\
+        \ com o escopo `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa,\
+        \ ou uma inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa\
+        \ inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com\
+        \ outra versão; 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
+        \ e o `ETag` novo."
+      operationId: resumeHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retomar uma tarefa de governança
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}/retry:
+    post:
+      description: "Leva a tarefa `REFUSED` de volta a `ASSIGNED`, com a mesma camareira\
+        \ e sem o motivo da recusa. Exige `housekeeping.tasks.execute`: com o escopo\
+        \ `OWN` (a Camareira), só na tarefa atribuída a ela; outra tarefa, ou uma\
+        \ inexistente, dá o mesmo 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente:\
+        \ 404 `HOUSEKEEPING_TASK_NOT_FOUND`. Com `If-Match` (412 com outra versão;\
+        \ 428 sem ele). Fora do status de partida: 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED`\
+        \ (com `taskStatus` e `action`). Responde a tarefa **sem as observações**\
+        \ e o `ETag` novo."
+      operationId: retryHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Tentar de novo uma tarefa de governança recusada
+      tags:
+      - housekeeping
+  /api/v1/housekeeping-tasks/{id}/start:
+    post:
+      description: "Leva a tarefa `ASSIGNED` (ou a `REJECTED`, para refazer) a `IN_PROGRESS`;\
+        \ o primeiro início fica gravado. Só até a data operacional: tarefa de data\
+        \ posterior, 422 `HOUSEKEEPING_TASK_NOT_DUE` (as de datas anteriores seguem\
+        \ válidas). Exige `housekeeping.tasks.execute`: com o escopo `OWN` (a Camareira),\
+        \ só na tarefa atribuída a ela; outra tarefa, ou uma inexistente, dá o mesmo\
+        \ 403 `RESOURCE_OUT_OF_SCOPE`. Com `ALL`, tarefa inexistente: 404 `HOUSEKEEPING_TASK_NOT_FOUND`.\
+        \ Com `If-Match` (412 com outra versão; 428 sem ele). Fora do status de partida:\
+        \ 409 `HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED` (com `taskStatus` e `action`).\
+        \ Responde a tarefa **sem as observações** e o `ETag` novo."
+      operationId: startHousekeepingTask
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingTaskActionResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Iniciar uma tarefa de governança
+      tags:
+      - housekeeping
   /api/v1/meta/version:
     get:
       description: "Público, sem autenticação. A versão da API muda só com mudanç\
@@ -21010,6 +21213,144 @@ components:
           - REJECT_INSPECTION
       required:
       - transition
+    HousekeepingTaskActionResponse:
+      type: object
+      description: "Uma tarefa de governança na resposta das ações da execução: **sem\
+        \ as observações** da recepção, que só a consulta com `housekeeping.tasks.read`\
+        \ mostra."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum; nula numa tarefa de UH.
+          nullable: true
+        arrivalExpected:
+          type: boolean
+          description: Se a UH tinha chegada prevista na data (retrato do momento
+            da geração).
+        assignedEmployeeId:
+          type: string
+          format: uuid
+          description: A camareira publicada pelo plano do dia; nula sem camareira.
+          nullable: true
+        assignmentPosition:
+          type: integer
+          format: int32
+          description: "A posição publicada na ordem de execução da camareira, de\
+            \ 1 em diante; nula sem camareira."
+          nullable: true
+        cleanedBy:
+          type: string
+          format: uuid
+          description: O usuário que concluiu a tarefa; nulo antes da conclusão.
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        credits:
+          type: integer
+          format: int32
+          description: Os créditos do tipo de limpeza para o tipo da UH; 0 numa área
+            ou sem crédito.
+        date:
+          type: string
+          format: date
+          description: A data operacional da tarefa.
+        finishedAt:
+          type: string
+          format: date-time
+          description: A conclusão; nula antes dela e depois de um refazer.
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        priority:
+          type: integer
+          format: int32
+          description: "A prioridade, de 1 (mais baixa) a 5 (mais alta)."
+        refusalReason:
+          type: string
+          description: "O motivo da recusa, só em `REFUSED` (trate um valor desconhecido\
+            \ sem falhar)."
+          nullable: true
+          x-extensible-enum:
+          - DO_NOT_DISTURB
+          - GUEST_REFUSED
+        roomId:
+          type: string
+          format: uuid
+          description: A UH; nula numa tarefa de área.
+          nullable: true
+        scheduledCleaningId:
+          type: string
+          format: uuid
+          description: A faxina programada que gerou a tarefa; nula nas outras origens.
+          nullable: true
+        source:
+          type: string
+          description: A origem da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - CHECKOUT
+          - ROOM_MOVE
+          - STAYOVER
+          - PRE_ARRIVAL
+          - SCHEDULED
+          - AD_HOC
+        startedAt:
+          type: string
+          format: date-time
+          description: O primeiro início; um refazer não o muda. Nulo antes do início.
+          nullable: true
+        status:
+          type: string
+          description: O status da tarefa (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - PENDING
+          - ASSIGNED
+          - IN_PROGRESS
+          - PAUSED
+          - AWAITING_INSPECTION
+          - REJECTED
+          - DONE
+          - REFUSED
+          - CANCELLED
+        updatedAt:
+          type: string
+          format: date-time
+        workedSeconds:
+          type: integer
+          format: int64
+          description: "O tempo trabalhado, em segundos: só os trechos em andamento,\
+            \ sem as pausas."
+      required:
+      - arrivalExpected
+      - cleaningTypeId
+      - createdAt
+      - credits
+      - date
+      - id
+      - priority
+      - source
+      - status
+      - updatedAt
+      - workedSeconds
+    HousekeepingTaskRefuseRequest:
+      type: object
+      description: A recusa de uma tarefa de governança.
+      properties:
+        reason:
+          type: string
+          description: "O motivo: `DO_NOT_DISTURB` (não perturbe) ou `GUEST_REFUSED`\
+            \ (o hóspede recusou)."
+          enum:
+          - DO_NOT_DISTURB
+          - GUEST_REFUSED
+          nullable: true
+      required:
+      - reason
     HousekeepingTaskRequest:
       type: object
       description: "Uma solicitação avulsa de limpeza, numa UH ou numa área comum\

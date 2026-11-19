@@ -127,7 +127,7 @@ class HousekeepingTaskTransitionNotAllowedException(
  */
 @Entity
 @Table(name = "housekeeping_task", schema = "housekeeping")
-@Suppress("LongParameterList") // os campos da tarefa, só pelo create
+@Suppress("LongParameterList", "TooManyFunctions") // os campos da tarefa, só pelo create; as transições da §8.4
 class HousekeepingTask private constructor(
     @Id
     val id: HousekeepingTaskId,
