@@ -1681,7 +1681,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - modelos gerais HOUSEKEEPING não são duráveis no banco compartilhado (helper acima);
     - o `HousekeepingTaskLockTest` serializa as operações e não prova a ausência de ciclo com duas operações em andamento;
     - as janelas de tempo do `HousekeepingTaskRealtimeTest` são as primeiras suspeitas se houver intermitência.
-- Capturas do brain: CAPTURA_E04.
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E04 - 44c67e4e.md`.
 
 ---
 
