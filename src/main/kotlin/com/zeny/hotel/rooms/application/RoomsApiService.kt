@@ -15,6 +15,7 @@ import com.zeny.hotel.rooms.RoomFeatureKey
 import com.zeny.hotel.rooms.RoomFeatureSummary
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomStatus
+import com.zeny.hotel.rooms.RoomStatusOutcome
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomSummary
 import com.zeny.hotel.rooms.RoomTypeId
@@ -191,6 +192,25 @@ class RoomsApiService(
             room.setServiceFlag(flag, now).also { changed = it.isNotEmpty() }
         }
         return changed
+    }
+
+    @Audited(RoomsAudit.MARK_INSPECTED)
+    @Transactional
+    override fun markInspectedIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome {
+        var before: RoomStatus? = null
+        // A pendência conferida com a linha travada pelo changer; sem ela, nada muda (D5 da M6 E05).
+        val after =
+            changer.change(id, source) { room, now ->
+                before = room.statusView(overlays.current(id)).status()
+                if (room.housekeepingStatus != HousekeepingStatus.CLEAN || !room.inspectionPending) {
+                    return@change emptyList()
+                }
+                room.markInspected(now)
+            }
+        return RoomStatusOutcome(checkNotNull(before), after.status())
     }
 
     @Audited(RoomsAudit.RECORD_OBSERVATION)

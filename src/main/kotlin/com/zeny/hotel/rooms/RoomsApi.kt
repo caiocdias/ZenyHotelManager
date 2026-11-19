@@ -157,6 +157,18 @@ interface RoomsApi {
     ): Boolean
 
     /**
+     * Inspeção aprovada (D5 da M6 E05): com a linha da UH travada, leva a Inspecionada só a UH **Limpa com inspeção
+     * pendente**, como [markInspected]; a UH que perdeu a pendência (Suja pelo check-out ou pelo fechamento, Limpa sem
+     * pendência, já Inspecionada) não muda e não é recusada. Devolve o status antes e depois, com a prontidão de cada
+     * um decidida com a linha travada. Auditada como [markInspected] quando muda. UH inexistente: `404
+     * ROOM_NOT_FOUND`.
+     */
+    fun markInspectedIfPending(
+        id: RoomId,
+        source: RoomStatusSource,
+    ): RoomStatusOutcome
+
+    /**
      * Registra o que a governança encontrou na UH (RF-UH-08) com as regras do endpoint de observação: a ocupação, o
      * número de pessoas opcional (de 1 a 40 e só com a UH ocupada, senão `400 GUEST_COUNT_INVALID`), quem observou
      * ([observedBy]) e quando ([observedAt]), informados por quem chama (a conclusão da tarefa, M6 E04). Uma ocupação
@@ -337,6 +349,18 @@ data class CheckInOccupation(
     val ready: Boolean,
     val status: RoomStatus,
 )
+
+/**
+ * O resultado de uma operação condicional de status (M6 E05): o status da UH antes e depois, lidos com a linha
+ * travada, cada um com o `readyForCheckIn` dele. [changed] diz se a operação mudou a UH.
+ */
+data class RoomStatusOutcome(
+    val before: RoomStatus,
+    val after: RoomStatus,
+) {
+    val changed: Boolean
+        get() = before != after
+}
 
 /**
  * O status de uma UH (RF-UH-04): ocupação e número de hóspedes informados pela recepção, status de

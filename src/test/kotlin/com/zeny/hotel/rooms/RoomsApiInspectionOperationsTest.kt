@@ -1,0 +1,110 @@
+package com.zeny.hotel.rooms
+
+import com.zeny.hotel.iam.IamTestConfiguration
+import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.testsupport.IntegrationTest
+import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import org.junit.jupiter.api.Test
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.simple.JdbcClient
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * A operação condicional da inspeção na `RoomsApi` (M6 E05, Task 1, D5): `markInspectedIfPending` leva a Inspecionada
+ * só a UH Limpa **com** inspeção pendente, decidindo com a linha travada, e devolve o status antes e depois (com o
+ * `readyForCheckIn` de cada um); a UH que perdeu a pendência (Suja, Limpa sem pendência, Inspecionada) não muda e não
+ * é recusada (Review Focus 1).
+ */
+@IntegrationTest
+@Import(IamTestConfiguration::class)
+class RoomsApiInspectionOperationsTest(
+    @Autowired iam: IamTestSupport,
+    @Autowired private val jdbc: JdbcClient,
+    @Autowired private val roomsApi: RoomsApi,
+) {
+    private val rooms = RoomsTestSupport(iam)
+
+    private fun newRoom() = RoomId(rooms.createRoom(rooms.createRoomType()))
+
+    private fun status(room: RoomId) = roomsApi.status(room).shouldNotBeNull()
+
+    @Test
+    fun `markInspectedIfPending inspects only a clean room with the inspection pending, with before and after`() {
+        val pending = newRoom()
+        roomsApi.markClean(pending, requiresInspection = true, source = RoomStatusSource.MANUAL)
+        val before = status(pending)
+
+        val outcome = roomsApi.markInspectedIfPending(pending, RoomStatusSource.TASK)
+
+        outcome.changed shouldBe true
+        outcome.before shouldBe before
+        outcome.before.readyForCheckIn shouldBe false
+        // O instante em memória tem nanossegundos; o gravado, microssegundos.
+        outcome.after.copy(changedAt = Instant.EPOCH) shouldBe status(pending).copy(changedAt = Instant.EPOCH)
+        outcome.after.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+        outcome.after.inspectionPending shouldBe false
+        outcome.after.readyForCheckIn shouldBe true
+        historySources(pending).last() shouldBe "TASK"
+    }
+
+    @Test
+    fun `a room that lost the pending inspection does not change and is not refused (Review Focus 1)`() {
+        val dirty = newRoom()
+        val cleanWithout = newRoom()
+        roomsApi.markClean(cleanWithout, requiresInspection = false, source = RoomStatusSource.MANUAL)
+        val inspected = newRoom()
+        roomsApi.markClean(inspected, requiresInspection = true, source = RoomStatusSource.MANUAL)
+        roomsApi.markInspected(inspected, RoomStatusSource.MANUAL)
+
+        listOf(dirty, cleanWithout, inspected).forEach { room ->
+            withClue(room) {
+                val before = status(room)
+
+                val outcome = roomsApi.markInspectedIfPending(room, RoomStatusSource.TASK)
+
+                outcome.changed shouldBe false
+                outcome.before shouldBe before
+                outcome.after shouldBe before
+                status(room) shouldBe before
+                historySources(room).none { it == "TASK" } shouldBe true
+            }
+        }
+        status(cleanWithout).readyForCheckIn shouldBe true
+        status(dirty).readyForCheckIn shouldBe false
+    }
+
+    @Test
+    fun `an occupied room with the inspection pending is inspected but stays not ready`() {
+        val occupied = newRoom()
+        roomsApi.markClean(occupied, requiresInspection = true, source = RoomStatusSource.MANUAL)
+        roomsApi.markOccupied(occupied, 2, RoomStatusSource.CHECK_IN)
+
+        val outcome = roomsApi.markInspectedIfPending(occupied, RoomStatusSource.TASK)
+
+        outcome.changed shouldBe true
+        outcome.after.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+        outcome.before.readyForCheckIn shouldBe false
+        outcome.after.readyForCheckIn shouldBe false
+    }
+
+    @Test
+    fun `a missing room is 404`() {
+        shouldThrow<NotFoundException> {
+            roomsApi.markInspectedIfPending(RoomId(UUID.randomUUID()), RoomStatusSource.TASK)
+        }.code.value shouldBe "ROOM_NOT_FOUND"
+    }
+
+    private fun historySources(room: RoomId): List<String> =
+        jdbc
+            .sql("SELECT source FROM rooms.room_status_change WHERE room_id = :id ORDER BY changed_at, id")
+            .param("id", room.value)
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
+}
