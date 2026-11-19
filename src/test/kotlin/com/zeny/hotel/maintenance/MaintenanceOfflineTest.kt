@@ -199,7 +199,7 @@ class MaintenanceOfflineTest(
                     "maintenance.work-order.resume-offline",
                     "maintenance.work-order.complete-offline",
                 )
-            // O replay do mesmo lote não muda nada.
+            // Não é replay: o comando é novo (outro commandId) e a ordem já está DONE, então a transição é recusada.
             sync(auth, command("start-work-order", ref(offline))).let {
                 statuses(it) shouldContainExactly
                     listOf("REJECTED")
@@ -367,7 +367,7 @@ class MaintenanceOfflineTest(
     }
 
     @Test
-    fun `a note offline with a bad text or the id of an existing note is rejected`() {
+    fun `a note offline with a bad text is rejected, and the replay of an applied note id returns the stored result`() {
         val auth = iam.asAdmin()
         val order = support.openedId()
         val first = command("add-work-order-note", ref(order) + ("text" to "Primeira"))
