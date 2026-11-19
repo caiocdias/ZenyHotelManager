@@ -227,9 +227,9 @@ class ModularityTest {
     }
 
     @Test
-    fun `maintenance depends only on shared, hotel, rooms, staff`() {
+    fun `maintenance depends only on shared, hotel, rooms, staff, files, notifications`() {
         val maintenance = modules.getModuleByName("maintenance").orElseThrow()
-        val allowed = setOf("shared", "hotel", "rooms", "staff")
+        val allowed = setOf("shared", "hotel", "rooms", "staff", "files", "notifications")
         val dependencies =
             maintenance
                 .getDirectDependencies(modules)
@@ -237,9 +237,10 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1 (camada Operação), M6 E07 Task 1: shared, hotel (a data operacional do número legível, pela
-        // HotelApi), rooms (a UH e a área da ordem, pela RoomsApi) e staff (o responsável e o dono no escopo OWN, pela
-        // StaffApi), exatamente. Sem checklists (E08) nem inventory (M9).
+        // ARCHITECTURE §3.1 (camada Operação), M6 E07 Tasks 1 e 2: shared, hotel (a data operacional do número legível,
+        // pela HotelApi), rooms (a UH e a área da ordem, pela RoomsApi), staff (o responsável e o dono no escopo OWN,
+        // pela StaffApi), files (os anexos, pela FilesApi) e notifications (o aviso da OS urgente, pela
+        // NotificationsApi), exatamente. Sem checklists (E08) nem inventory (M9).
         dependencies.toSet() shouldBe allowed
         MaintenanceModule::class.java
             .getAnnotation(ApplicationModule::class.java)

@@ -1,11 +1,14 @@
 package com.zeny.hotel.maintenance.web
 
+import com.zeny.hotel.files.FileId
 import com.zeny.hotel.maintenance.WorkOrderCategory
 import com.zeny.hotel.maintenance.WorkOrderId
 import com.zeny.hotel.maintenance.WorkOrderOrigin
 import com.zeny.hotel.maintenance.WorkOrderPriority
 import com.zeny.hotel.maintenance.WorkOrderStatus
 import com.zeny.hotel.maintenance.application.NewWorkOrder
+import com.zeny.hotel.maintenance.application.WorkOrderAttachmentView
+import com.zeny.hotel.maintenance.application.WorkOrderAttachments
 import com.zeny.hotel.maintenance.application.WorkOrderCompletion
 import com.zeny.hotel.maintenance.application.WorkOrderFilter
 import com.zeny.hotel.maintenance.application.WorkOrderView
@@ -27,6 +30,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -55,6 +59,10 @@ private const val COST_DESCRIPTION = "De 0.00 a 99999.99, com até 2 casas."
 // O schema de Money sobrescreve a descrição do campo: a faixa dos custos também vai na descrição das operações.
 private const val COST_RANGE = "Cada custo vai de 0.00 a 99999.99, com até 2 casas."
 
+private const val ATTACHMENT_RULES =
+    "Não pede `If-Match` e não muda a versão nem o `ETag` da ordem (a versão não cobre a lista de anexos). Ordem " +
+        "`DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`."
+
 private const val READ_RULES =
     "Exige `maintenance.workorders.read`; com o escopo `OWN`, só as ordens que o usuário abriu ou de que o " +
         "colaborador dele é o responsável (a ordem de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`)."
@@ -74,8 +82,10 @@ private const val ACTION_RULES =
 @ApiV1Controller
 @RequestMapping("/work-orders")
 @Tag(name = MAINTENANCE_TAG, description = MAINTENANCE_TAG_DESCRIPTION)
+@Suppress("TooManyFunctions") // uma função por operação da API
 class WorkOrdersController(
     private val workOrders: WorkOrdersService,
+    private val attachments: WorkOrderAttachments,
 ) {
     @GetMapping
     @Operation(
@@ -261,6 +271,43 @@ class WorkOrdersController(
     ): ResponseEntity<WorkOrderResponse> =
         respond(workOrders.cancel(WorkOrderId(id), request.reason, ETags.expectedVersion(ifMatch)))
 
+    @PostMapping("/{id}/attachments")
+    @Operation(
+        operationId = "attachWorkOrderFile",
+        summary = "Vincular um anexo à ordem de serviço",
+        description =
+            "O anexo já enviado por `POST /api/v1/files` com `maintenance.work-order-photo` (JPEG ou PNG, sem " +
+                "EXIF/GPS) ou `maintenance.work-order-document` (PDF), até 10 MB. Responde a ordem com a lista de " +
+                "`attachments` vigentes; o download de cada um é pela URL assinada " +
+                "(`GET /api/v1/files/{id}/download-url`, com `maintenance.workorders.read`). $ATTACHMENT_RULES Com " +
+                "`maintenance.workorders.manage` (no escopo dele) ou, sem ela, com `maintenance.workorders.request` " +
+                "na ordem que o próprio usuário abriu; a ordem alheia é 403 `PERMISSION_DENIED`. Anexo inexistente: " +
+                "400 `UNKNOWN_FILE` no campo `fileId`; de outra finalidade: 422 `WORK_ORDER_ATTACHMENT_INVALID`; já " +
+                "vinculado a outro registro: 409 `FILE_ALREADY_ATTACHED`. Já vinculado a esta ordem: 200, sem mudar " +
+                "nada.",
+    )
+    fun attach(
+        @PathVariable id: UUID,
+        @Valid @RequestBody request: WorkOrderAttachRequest,
+    ): ResponseEntity<WorkOrderResponse> =
+        respond(attachments.attach(WorkOrderId(id), FileId(checkNotNull(request.fileId))))
+
+    @PostMapping("/{id}/attachments/{fileId}/detach")
+    @Operation(
+        operationId = "detachWorkOrderFile",
+        summary = "Desvincular um anexo da ordem de serviço",
+        description =
+            "O anexo sai da lista da ordem e volta a órfão no `files` (o expurgo o apaga depois da retenção). " +
+                "Responde a ordem. $ATTACHMENT_RULES Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED` " +
+                "antes de qualquer recusa que dependa da ordem; com `OWN`, só nas ordens do usuário). Ordem " +
+                "inexistente: 404 `WORK_ORDER_NOT_FOUND`; anexo que não está vinculado a esta ordem: 404 " +
+                "`WORK_ORDER_ATTACHMENT_NOT_FOUND`.",
+    )
+    fun detach(
+        @PathVariable id: UUID,
+        @PathVariable fileId: UUID,
+    ): ResponseEntity<WorkOrderResponse> = respond(attachments.detach(WorkOrderId(id), FileId(fileId)))
+
     private fun respond(view: WorkOrderView) =
         ResponseEntity.ok().eTag(ETags.of(view.version)).body(WorkOrderResponse.of(view))
 }
@@ -315,6 +362,29 @@ data class WorkOrderUpdateRequest(
     @field:Schema(description = "O custo das peças informadas. $COST_DESCRIPTION", example = "0.00")
     val partsCost: Money,
 )
+
+@Schema(description = "O vínculo de um anexo (já enviado ao `files`) com a ordem de serviço.")
+data class WorkOrderAttachRequest(
+    @field:Schema(
+        description = "O id do anexo, de `maintenance.work-order-photo` ou `maintenance.work-order-document`.",
+    )
+    @field:NotNull
+    val fileId: UUID?,
+)
+
+@Schema(description = "O anexo vigente de uma ordem de serviço (foto ou PDF).")
+data class WorkOrderAttachmentResponse(
+    @field:Schema(description = "O id do anexo no `files` (para `GET /api/v1/files/{id}/download-url`).")
+    val id: UUID,
+    @field:Schema(
+        description = "A finalidade do anexo: `maintenance.work-order-photo` ou `maintenance.work-order-document`.",
+    )
+    val purpose: String,
+) {
+    companion object {
+        fun of(view: WorkOrderAttachmentView) = WorkOrderAttachmentResponse(view.fileId.value, view.purpose.value)
+    }
+}
 
 @Schema(description = "A espera de uma ordem de serviço.")
 data class WorkOrderHoldRequest(
@@ -393,6 +463,12 @@ data class WorkOrderResponse(
     @field:Schema(description = "O período OOO/OOS aberto para a ordem; nulo sem bloqueio.", nullable = true)
     val outOfOrderId: UUID?,
     val updatedAt: Instant,
+    @field:Schema(
+        description =
+            "Os anexos vigentes, em ordem de vínculo. A versão e o `ETag` da ordem não cobrem esta lista (vincular e " +
+                "desvincular não os mudam).",
+    )
+    val attachments: List<WorkOrderAttachmentResponse>,
 ) {
     companion object {
         fun of(view: WorkOrderView) =
@@ -421,6 +497,7 @@ data class WorkOrderResponse(
                 view.cancellationReason,
                 view.outOfOrderId?.value,
                 view.updatedAt,
+                view.attachments.map(WorkOrderAttachmentResponse::of),
             )
     }
 }

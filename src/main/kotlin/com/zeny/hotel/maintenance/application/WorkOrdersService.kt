@@ -1,5 +1,7 @@
 package com.zeny.hotel.maintenance.application
 
+import com.zeny.hotel.files.FileId
+import com.zeny.hotel.files.FilePurposeCode
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.maintenance.MaintenanceErrorCodes
 import com.zeny.hotel.maintenance.MaintenancePermissions
@@ -11,6 +13,9 @@ import com.zeny.hotel.maintenance.WorkOrderStatus
 import com.zeny.hotel.maintenance.domain.WorkOrder
 import com.zeny.hotel.maintenance.domain.WorkOrderEdit
 import com.zeny.hotel.maintenance.domain.WorkOrderRules
+import com.zeny.hotel.notifications.NotificationRecipients
+import com.zeny.hotel.notifications.NotificationsApi
+import com.zeny.hotel.notifications.NotificationsTypes
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.OutOfOrderId
 import com.zeny.hotel.rooms.RoomId
@@ -100,6 +105,12 @@ data class WorkOrderCompletion(
     val partsCost: Money?,
 )
 
+/** Um anexo vigente da ordem: o id do arquivo no `files` e a finalidade (foto ou PDF). */
+data class WorkOrderAttachmentView(
+    val fileId: FileId,
+    val purpose: FilePurposeCode,
+)
+
 /** Uma ordem de serviço para a resposta. */
 data class WorkOrderView(
     val id: WorkOrderId,
@@ -127,6 +138,8 @@ data class WorkOrderView(
     val outOfOrderId: OutOfOrderId?,
     val updatedAt: Instant,
     val version: Long,
+    /** Os anexos vigentes, em ordem de vínculo; a versão da ordem não os cobre. */
+    val attachments: List<WorkOrderAttachmentView>,
 )
 
 /**
@@ -137,6 +150,10 @@ data class WorkOrderView(
  *   que o usuário abriu ou de que o colaborador dele é o responsável; a ordem de outro, ou inexistente, dá o mesmo
  *   `403 RESOURCE_OUT_OF_SCOPE` (com `ALL`, a inexistente é `404 WORK_ORDER_NOT_FOUND`);
  * - depois, a trava da ordem (`FOR UPDATE`), a versão (`412`) e o estado (`409`).
+ *
+ * Uma ordem criada `URGENT`, ou editada de outra prioridade para `URGENT`, avisa quem tem `manage` (D6), menos o ator,
+ * com o número, o local e a categoria; editar uma ordem que já era urgente não avisa de novo. Os anexos são do
+ * [WorkOrderAttachments].
  *
  * A descrição, os motivos, as notas e o nome do terceiro são texto livre do operador (**sem dado de hóspede**, RN-13) e
  * não vão à trilha.
@@ -149,6 +166,8 @@ class WorkOrdersService(
     private val staff: StaffApi,
     private val hotel: HotelApi,
     private val numbers: DocumentNumberGenerator,
+    private val attachments: WorkOrderAttachmentStore,
+    private val notifications: NotificationsApi,
     private val authorization: Authorization,
     private val actor: CurrentActor,
     private val audit: AuditContext,
@@ -186,7 +205,8 @@ class WorkOrdersService(
             )
         store.insert(order)
         audit.created(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
-        return view(order)
+        if (order.priority == WorkOrderPriority.URGENT) notifyUrgent(order)
+        return view(order, emptyList())
     }
 
     @Transactional(readOnly = true)
@@ -209,14 +229,16 @@ class WorkOrdersService(
                 }
             }
         val after = page.decodedCursor()?.let { WorkOrderPageKey(it.instant(0), it.uuid(1)) }
-        return CursorPage
-            .fromRows(store.page(scoped, after, page.limit + 1), page.limit) {
+        val rows =
+            CursorPage.fromRows(store.page(scoped, after, page.limit + 1), page.limit) {
                 PageCursor.of(it.openedAt.toString(), it.id.toString())
-            }.map(::view)
+            }
+        val attached = attachments.active(rows.items.map { it.id })
+        return rows.map { view(it, attached[it.id].orEmpty()) }
     }
 
     @Transactional(readOnly = true)
-    fun get(id: WorkOrderId): WorkOrderView = view(load(id, MaintenancePermissions.READ, lock = false))
+    fun get(id: WorkOrderId): WorkOrderView = viewOf(load(id, MaintenancePermissions.READ, lock = false))
 
     /**
      * Substitui os campos editáveis de uma ordem que não é final: local, categoria, prioridade, descrição, responsável
@@ -235,7 +257,9 @@ class WorkOrdersService(
             order.checkUpdate(edit)
             if (edit.roomId != order.roomId || edit.areaId != order.areaId) requireLocation(edit.roomId, edit.areaId)
             if (edit.assigneeEmployeeId != order.assigneeEmployeeId) requireAssignee(edit.assigneeEmployeeId)
+            val becomesUrgent = edit.priority == WorkOrderPriority.URGENT && order.priority != WorkOrderPriority.URGENT
             order.update(edit, now)
+            if (becomesUrgent) notifyUrgent(order)
         }
 
     @Audited(MaintenanceAudit.START_WORK_ORDER)
@@ -293,7 +317,42 @@ class WorkOrdersService(
         audit.track(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
         change(order, now())
         store.update(order)
-        return view(order)
+        return viewOf(order)
+    }
+
+    /** A ordem [id] travada (`FOR UPDATE`) sob a [permission], com o escopo e os `403`/`404` do [load]. */
+    internal fun loadLocked(
+        id: WorkOrderId,
+        permission: PermissionCode,
+    ): WorkOrder = load(id, permission, lock = true)
+
+    /** A ordem [id] travada, ou `404 WORK_ORDER_NOT_FOUND`; a permissão é de quem chama (sem escopo). */
+    internal fun lockedOrNotFound(id: WorkOrderId): WorkOrder =
+        store.findForUpdate(id)
+            ?: throw NotFoundException(MaintenanceErrorCodes.WORK_ORDER_NOT_FOUND, "Ordem de serviço não encontrada.")
+
+    /** A ordem para a resposta, com os anexos vigentes dela. */
+    internal fun viewOf(order: WorkOrder): WorkOrderView =
+        view(order, attachments.active(listOf(order.id))[order.id].orEmpty())
+
+    /**
+     * Avisa quem tem `manage`, menos o ator (D6): o número, o local (número da UH ou nome da área) e a categoria. Sem
+     * a descrição (texto livre) nem dado de hóspede (RN-13): o aviso vai ao painel e ao push.
+     */
+    private fun notifyUrgent(order: WorkOrder) {
+        val place =
+            order.roomId?.let { "UH ${rooms.room(it)?.number}" }
+                ?: order.areaId?.let { "Área ${rooms.area(it)?.name}" }
+                ?: error("A ordem sem local")
+        notifications.notify(
+            NotificationsTypes.URGENT_WORK_ORDER,
+            "OS urgente ${order.number}",
+            "${order.number}: $place, ${CATEGORY_LABELS.getValue(order.category)}.",
+            NotificationRecipients(
+                permissions = setOf(MaintenancePermissions.MANAGE),
+                except = setOf(actor.current().userId),
+            ),
+        )
     }
 
     /**
@@ -366,36 +425,49 @@ class WorkOrdersService(
         val unknown: ErrorCode,
     )
 
-    private fun view(order: WorkOrder) =
-        WorkOrderView(
-            order.id,
-            order.number.toString(),
-            order.roomId,
-            order.areaId,
-            order.category,
-            order.priority,
-            order.description,
-            order.origin,
-            order.assigneeEmployeeId,
-            order.thirdPartyName,
-            order.status,
-            order.holdReason,
-            order.laborCost,
-            order.thirdPartyCost,
-            order.partsCost,
-            order.openedBy.value,
-            order.openedAt,
-            order.dueAt,
-            order.startedAt,
-            order.closedAt,
-            order.completionNotes,
-            order.cancellationReason,
-            order.outOfOrderId,
-            order.updatedAt,
-            order.version,
-        )
+    private fun view(
+        order: WorkOrder,
+        attached: List<WorkOrderAttachmentRow>,
+    ) = WorkOrderView(
+        order.id,
+        order.number.toString(),
+        order.roomId,
+        order.areaId,
+        order.category,
+        order.priority,
+        order.description,
+        order.origin,
+        order.assigneeEmployeeId,
+        order.thirdPartyName,
+        order.status,
+        order.holdReason,
+        order.laborCost,
+        order.thirdPartyCost,
+        order.partsCost,
+        order.openedBy.value,
+        order.openedAt,
+        order.dueAt,
+        order.startedAt,
+        order.closedAt,
+        order.completionNotes,
+        order.cancellationReason,
+        order.outOfOrderId,
+        order.updatedAt,
+        order.version,
+        attached.map { WorkOrderAttachmentView(it.fileId, it.purpose) },
+    )
 
     private companion object {
+        /** Os nomes das categorias no aviso. */
+        val CATEGORY_LABELS =
+            mapOf(
+                WorkOrderCategory.ELECTRICAL to "Elétrica",
+                WorkOrderCategory.PLUMBING to "Hidráulica",
+                WorkOrderCategory.AIR_CONDITIONING to "Ar-condicionado",
+                WorkOrderCategory.FURNITURE to "Mobiliário",
+                WorkOrderCategory.OTHER to "Outra categoria",
+            )
+
         /** O número legível da ordem: `OS-<ano da data operacional>-NNNNNN`. */
         val WORK_ORDER_NUMBER = DocumentNumberType("OS", "maintenance.work_order_number_seq")
     }

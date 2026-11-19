@@ -86,4 +86,13 @@ object MaintenanceErrorCodes {
 
     /** 409: a ação não vale no estado da ordem (inclusive editar uma ordem final). */
     val WORK_ORDER_TRANSITION_NOT_ALLOWED = ErrorCode("WORK_ORDER_TRANSITION_NOT_ALLOWED")
+
+    /** 400: o anexo do corpo não existe ou foi apagado (campo `fileId`). */
+    val UNKNOWN_FILE = ErrorCode("UNKNOWN_FILE")
+
+    /** 422: o anexo é de uma finalidade que não é de ordem de serviço (foto ou PDF da ordem). */
+    val WORK_ORDER_ATTACHMENT_INVALID = ErrorCode("WORK_ORDER_ATTACHMENT_INVALID")
+
+    /** 404: o anexo não está vinculado a esta ordem (nem vigente). */
+    val WORK_ORDER_ATTACHMENT_NOT_FOUND = ErrorCode("WORK_ORDER_ATTACHMENT_NOT_FOUND")
 }

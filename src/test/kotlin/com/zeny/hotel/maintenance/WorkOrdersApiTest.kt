@@ -410,8 +410,11 @@ class WorkOrdersApiTest(
             contract shouldNotContain "deleteWorkOrder"
             // A faixa dos custos vem na descrição das operações, porque o schema de Money sobrescreve a do campo.
             val paths = json(call(GET, "/v3/api-docs", asAdmin()))["paths"]
-            listOf("put" to "/api/v1/work-orders/{id}", "post" to "/api/v1/work-orders/{id}/complete").forEach { (m, p) ->
-                withClue(p) { paths[p][m]["description"].asString() shouldContain "0.00 a 99999.99" }
+            listOf(
+                "put" to "/api/v1/work-orders/{id}",
+                "post" to "/api/v1/work-orders/{id}/complete",
+            ).forEach { (method, path) ->
+                withClue(path) { paths[path][method]["description"].asString() shouldContain "0.00 a 99999.99" }
             }
             contract shouldContain "/api/v1/work-orders/{id}/cancel"
         }

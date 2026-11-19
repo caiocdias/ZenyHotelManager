@@ -28,6 +28,8 @@ enum class WorkOrderAction {
     RESUME,
     COMPLETE,
     CANCEL,
+    ATTACH,
+    DETACH,
 }
 
 /** `409 WORK_ORDER_TRANSITION_NOT_ALLOWED`, com o estado em `workOrderStatus` e a ação em `action`. */
@@ -227,6 +229,11 @@ class WorkOrder private constructor(
         holdReason = null
         closedAt = now
         move(WorkOrderStatus.CANCELLED, now)
+    }
+
+    /** Vincular ou desvincular anexo (D5-E07) só vale numa ordem que não é final; não muda a ordem nem a versão. */
+    fun requireAttachable(action: WorkOrderAction) {
+        requireStatus(action, WorkOrderStatus.OPEN, WorkOrderStatus.IN_PROGRESS, WorkOrderStatus.ON_HOLD)
     }
 
     /**

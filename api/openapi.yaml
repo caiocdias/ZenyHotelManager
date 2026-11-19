@@ -15620,6 +15620,90 @@ paths:
       summary: Editar uma ordem de serviço
       tags:
       - maintenance
+  /api/v1/work-orders/{id}/attachments:
+    post:
+      description: "O anexo já enviado por `POST /api/v1/files` com `maintenance.work-order-photo`\
+        \ (JPEG ou PNG, sem EXIF/GPS) ou `maintenance.work-order-document` (PDF),\
+        \ até 10 MB. Responde a ordem com a lista de `attachments` vigentes; o download\
+        \ de cada um é pela URL assinada (`GET /api/v1/files/{id}/download-url`, com\
+        \ `maintenance.workorders.read`). Não pede `If-Match` e não muda a versão\
+        \ nem o `ETag` da ordem (a versão não cobre a lista de anexos). Ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`. Com `maintenance.workorders.manage`\
+        \ (no escopo dele) ou, sem ela, com `maintenance.workorders.request` na ordem\
+        \ que o próprio usuário abriu; a ordem alheia é 403 `PERMISSION_DENIED`. Anexo\
+        \ inexistente: 400 `UNKNOWN_FILE` no campo `fileId`; de outra finalidade:\
+        \ 422 `WORK_ORDER_ATTACHMENT_INVALID`; já vinculado a outro registro: 409\
+        \ `FILE_ALREADY_ATTACHED`. Já vinculado a esta ordem: 200, sem mudar nada."
+      operationId: attachWorkOrderFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderAttachRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Vincular um anexo à ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/attachments/{fileId}/detach:
+    post:
+      description: "O anexo sai da lista da ordem e volta a órfão no `files` (o expurgo\
+        \ o apaga depois da retenção). Responde a ordem. Não pede `If-Match` e nã\
+        o muda a versão nem o `ETag` da ordem (a versão não cobre a lista de anexos).\
+        \ Ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`. Exige\
+        \ `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de qualquer\
+        \ recusa que dependa da ordem; com `OWN`, só nas ordens do usuário). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`; anexo que não está vinculado a\
+        \ esta ordem: 404 `WORK_ORDER_ATTACHMENT_NOT_FOUND`."
+      operationId: detachWorkOrderFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: fileId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desvincular um anexo da ordem de serviço
+      tags:
+      - maintenance
   /api/v1/work-orders/{id}/cancel:
     post:
       description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `CANCELLED` e grava `closedAt`,\
@@ -31316,6 +31400,31 @@ components:
       - restrictionAlerts
       - room
       - total
+    WorkOrderAttachRequest:
+      type: object
+      description: O vínculo de um anexo (já enviado ao `files`) com a ordem de serviço.
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: "O id do anexo, de `maintenance.work-order-photo` ou `maintenance.work-order-document`."
+          nullable: true
+      required:
+      - fileId
+    WorkOrderAttachmentResponse:
+      type: object
+      description: O anexo vigente de uma ordem de serviço (foto ou PDF).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "O id do anexo no `files` (para `GET /api/v1/files/{id}/download-url`)."
+        purpose:
+          type: string
+          description: "A finalidade do anexo: `maintenance.work-order-photo` ou `maintenance.work-order-document`."
+      required:
+      - id
+      - purpose
     WorkOrderCancelRequest:
       type: object
       description: O cancelamento de uma ordem de serviço.
@@ -31446,6 +31555,12 @@ components:
           format: uuid
           description: O colaborador responsável; nulo sem responsável.
           nullable: true
+        attachments:
+          type: array
+          description: "Os anexos vigentes, em ordem de vínculo. A versão e o `ETag`\
+            \ da ordem não cobrem esta lista (vincular e desvincular não os mudam)."
+          items:
+            $ref: "#/components/schemas/WorkOrderAttachmentResponse"
         cancellationReason:
           type: string
           description: O motivo do cancelamento; nulo fora de `CANCELLED`.
@@ -31559,6 +31674,7 @@ components:
           type: string
           format: date-time
       required:
+      - attachments
       - category
       - description
       - id
