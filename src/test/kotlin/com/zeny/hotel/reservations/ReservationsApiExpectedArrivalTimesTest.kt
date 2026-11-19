@@ -3,6 +3,7 @@ package com.zeny.hotel.reservations
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.reservations.application.ReservationQueryStore
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.maps.shouldBeEmpty
@@ -30,6 +31,7 @@ class ReservationsApiExpectedArrivalTimesTest(
     @Autowired jdbc: JdbcClient,
     @Autowired private val hotelApi: HotelApi,
     @Autowired private val reservationsApi: ReservationsApi,
+    @Autowired private val store: ReservationQueryStore,
     @Autowired mockMvc: MockMvc,
     @Autowired jsonMapper: JsonMapper,
 ) {
@@ -57,6 +59,21 @@ class ReservationsApiExpectedArrivalTimesTest(
     @Test
     fun `expected arrival times of no reservation is empty`() {
         reservationsApi.expectedArrivalTimes(emptyList()).shouldBeEmpty()
+    }
+
+    @Test
+    fun `the store with an empty list does not fail and gives an empty map`() {
+        store.expectedArrivalTimes(emptyList()).shouldBeEmpty()
+    }
+
+    @Test
+    fun `the same id repeated in the list gives one entry`() {
+        val (type, _) = inventory.roomTypeWithRooms(1, today)
+        val plan = support.plan(listOf(type))
+        support.setPrices(plan.id, listOf(type), today, today.plusDays(PRICED_DAYS))
+        val id = created(type, plan.id, "07:05")
+
+        reservationsApi.expectedArrivalTimes(listOf(id, id, id)) shouldBe mapOf(id to LocalTime.of(7, 5))
     }
 
     // --- Apoio ----------------------------------------------------------------------------------------------------

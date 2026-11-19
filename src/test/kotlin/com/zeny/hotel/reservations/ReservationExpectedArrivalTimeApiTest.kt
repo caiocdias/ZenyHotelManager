@@ -1,12 +1,17 @@
 package com.zeny.hotel.reservations
 
+import com.zeny.hotel.guests.GuestsPermissions
+import com.zeny.hotel.guests.GuestsTestSupport
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.iam.TestGrant
+import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldStartWith
@@ -39,7 +44,7 @@ class ReservationExpectedArrivalTimeApiTest(
     @Autowired jdbc: JdbcClient,
     @Autowired private val hotelApi: HotelApi,
     @Autowired mockMvc: MockMvc,
-    @Autowired jsonMapper: JsonMapper,
+    @Autowired private val jsonMapper: JsonMapper,
 ) {
     private val support = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
     private val inventory = support.inventory
@@ -226,6 +231,111 @@ class ReservationExpectedArrivalTimeApiTest(
         section["reservations"].values().single()["expectedArrivalTime"].asString() shouldBe "16:20:00"
     }
 
+    @Test
+    fun `changing only the time of a block pick-up reservation keeps the group rate, total and block counters`() {
+        val (type, _) = inventory.roomTypeWithRooms(3, today)
+        val plan = support.plan(listOf(type))
+        support.setPrices(plan.id, listOf(type), today, today.plusDays(20))
+        val arrival = today.plusDays(5)
+        val block =
+            support.createdBlock(
+                support.blockBody(
+                    plan.id,
+                    today.plusDays(3),
+                    support.allocation(type, arrival, arrival.plusDays(1), 2, "250.00"),
+                    holderGuest = support.guest(),
+                ),
+            )
+        val blockId = UUID.fromString(block["id"].asString())
+        val picked =
+            with(support.billing) {
+                support.pickUp(blockId, support.blockReservation(type, arrival, arrival.plusDays(2))).expect(201)
+            }["reservations"][0]
+        val id = picked.id()
+        picked["expectedArrivalTime"].isNull shouldBe true
+        val current = support.reservation(id)["reservation"]
+        val soldBefore = inventory.row(type, arrival)!!.sold
+        val blockedBefore = inventory.row(type, arrival)!!.blocked
+        val allocationBefore = support.allocationRow(blockId, type, arrival)
+        val blockBefore = support.block(blockId)
+
+        val after =
+            with(support.billing) { support.change(id, changeBody(current, "08:45")).expect(200)["reservation"] }
+
+        after["expectedArrivalTime"].asString() shouldBe "08:45:00"
+        after["blockId"].asString() shouldBe blockId.toString()
+        after["total"].asString() shouldBe current["total"].asString()
+        after["nightlyRates"] shouldBe current["nightlyRates"]
+        after["status"].asString() shouldBe current["status"].asString()
+        inventory.row(type, arrival)!!.sold shouldBe soldBefore
+        inventory.row(type, arrival)!!.blocked shouldBe blockedBefore
+        support.allocationRow(blockId, type, arrival) shouldBe allocationBefore
+        support.block(blockId)["totalPickedUp"].asInt() shouldBe blockBefore["totalPickedUp"].asInt()
+        support.reservation(id)["reservation"]["expectedArrivalTime"].asString() shouldBe "08:45:00"
+    }
+
+    @Test
+    fun `the audit trail carries the time under the expectedArrivalTime key, before and after`() {
+        val (type, _) = inventory.roomTypeWithRooms(1, today)
+        val plan = support.plan(listOf(type))
+        support.setPrices(plan.id, listOf(type), today, today.plusDays(10))
+        val reservation = created(type, plan.id, today.plusDays(2), "10:30")
+        val id = reservation.id()
+        val current = support.reservation(id)["reservation"]
+        with(support.billing) { support.change(id, changeBody(current, "14:45")).expect(200) }
+
+        val change = support.auditEntries(id).single { it["action"] == "reservations.reservation.change" }
+        val before = jsonMapper.readTree(change["before"] as String)
+        val after = jsonMapper.readTree(change["after"] as String)
+        before["expectedArrivalTime"].asString() shouldBe "10:30" // LocalTime.toString, sem os segundos zerados
+        after["expectedArrivalTime"].asString() shouldBe "14:45"
+    }
+
+    @Test
+    fun `the holder data export through the approval flow has the expected arrival time`() {
+        val (type, _) = inventory.roomTypeWithRooms(1, today)
+        val plan = support.plan(listOf(type))
+        support.setPrices(plan.id, listOf(type), today, today.plusDays(10))
+        val holder = support.guest()
+        support.created(
+            support.booking(
+                holder,
+                support.reservation(type, plan.id, today.plusDays(2), today.plusDays(3)) +
+                    ("expectedArrivalTime" to "16:20"),
+            ),
+        )
+        val requester = ReservationsTestSupport.Operator(iam.createUser())
+        val approver =
+            iam.createUserWith(TestGrant(GuestsTestSupport.definition(GuestsPermissions.DATA_EXPORT), ALL))
+        iam.setPin(approver, APPROVER_PIN)
+
+        val exported =
+            with(iam) {
+                val path = "/api/v1/guests/$holder/export"
+                val required = call(POST, path, requester.auth).problem(403, "APPROVAL_REQUIRED")
+                val token =
+                    call(
+                        POST,
+                        "/api/v1/auth/approvals",
+                        requester.auth,
+                        mapOf(
+                            "action" to required["action"].asString(),
+                            "permission" to required["permission"].asString(),
+                            "resourceRef" to required["resourceRef"].asString(),
+                            "approverLogin" to approver.login,
+                            "approverPin" to APPROVER_PIN,
+                            "reason" to "Pedido do titular",
+                        ),
+                    ).expectStatus(201)!!["approvalToken"].asString()
+                call(POST, path, requester.auth, approvalToken = token).ok()
+            }
+
+        val section = exported["sections"].values().single { it["name"].asString() == "reservations" }["data"]
+        val item = section["reservations"].values().single()
+        item["expectedArrivalTime"] shouldNotBe null
+        item["expectedArrivalTime"].asString() shouldBe "16:20:00"
+    }
+
     private fun created(
         type: UUID,
         plan: UUID,
@@ -245,4 +355,8 @@ class ReservationExpectedArrivalTimeApiTest(
     ): Map<String, Any?> = support.changeBody(current) + ("expectedArrivalTime" to time)
 
     private fun JsonNode.id(): UUID = UUID.fromString(this["id"].asString())
+
+    private companion object {
+        const val APPROVER_PIN = "7391"
+    }
 }

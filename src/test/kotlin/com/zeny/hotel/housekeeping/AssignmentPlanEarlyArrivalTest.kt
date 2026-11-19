@@ -12,6 +12,7 @@ import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.staff.StaffApi
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
@@ -25,6 +26,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.UUID
+import io.kotest.matchers.string.shouldNotContain as stringShouldNotContain
 
 /**
  * A ordem da sugestão com a hora prevista de chegada (M6 E22, Task 2; D6 a D8): early check-in (hora estritamente antes
@@ -46,8 +48,8 @@ class AssignmentPlanEarlyArrivalTest(
 ) {
     private val housekeeping = HousekeepingTestSupport(iam, jdbc)
     private val plans = AssignmentPlanTestSupport(iam, jdbc, staffApi)
-    private val stays =
-        HousekeepingStays(ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc), reservationsApi, hotel)
+    private val reservationsSupport = ReservationsTestSupport(iam, mockMvc, jsonMapper, jdbc)
+    private val stays = HousekeepingStays(reservationsSupport, reservationsApi, hotel)
     private val checkIn: LocalTime get() = hotel.policy().checkInTime
 
     @Test
@@ -81,13 +83,82 @@ class AssignmentPlanEarlyArrivalTest(
         val attendant = plans.attendant(date)
         val roomType = housekeeping.rooms.createRoomType()
         val plan = stays.planFor(roomType)
-        val earlier = arrival(roomType, plan, date, checkIn.plusMinutes(1))
+        val afterCheckIn = arrival(roomType, plan, date, checkIn.plusMinutes(1))
         val equal = arrival(roomType, plan, date, checkIn)
         val urgentOther = plans.insertTask(date, room = housekeeping.createRoom(), priority = 5)
 
         val (suggested, _) = plans.suggested(date, listOf(attendant))
 
-        orderOf(suggested, attendant) shouldContainExactly listOf(equal.task, earlier.task, urgentOther)
+        orderOf(suggested, attendant) shouldContainExactly listOf(equal.task, afterCheckIn.task, urgentOther)
+    }
+
+    @Test
+    fun `a time written through the API, on creation and on change, drives the suggestion`() {
+        val date = hotel.currentBusinessDate().plusDays(5)
+        val attendant = plans.attendant(date)
+        val roomType = housekeeping.rooms.createRoomType()
+        val plan = stays.planFor(roomType)
+        val earlyRoom = housekeeping.rooms.createRoom(roomType)
+        val changedRoom = housekeeping.rooms.createRoom(roomType)
+        val untouchedRoom = housekeeping.rooms.createRoom(roomType)
+        apiReservation(roomType, plan, date, checkIn.minusHours(EARLY_MARGIN), earlyRoom)
+        val toChange = apiReservation(roomType, plan, date, null, changedRoom)
+        apiReservation(roomType, plan, date, null, untouchedRoom)
+        val earlyTask = plans.insertTask(date, room = earlyRoom, priority = 3)
+        val changedTask = plans.insertTask(date, room = changedRoom, priority = 3)
+        val untouchedTask = plans.insertTask(date, room = untouchedRoom, priority = 3)
+        val current = reservationsSupport.reservation(toChange.value)["reservation"]
+        with(reservationsSupport.billing) {
+            reservationsSupport
+                .change(
+                    toChange.value,
+                    reservationsSupport.changeBody(current) +
+                        ("expectedArrivalTime" to checkIn.minusHours(EARLY_MARGIN).toString()),
+                ).expect(200)
+        }
+
+        val (suggested, _) = plans.suggested(date, listOf(attendant))
+
+        // As duas com hora antes do check-in vêm antes da sem hora, que fica por último.
+        orderOf(suggested, attendant).last() shouldBe untouchedTask
+        orderOf(suggested, attendant).toSet() shouldBe setOf(earlyTask, changedTask, untouchedTask)
+        orderOf(suggested, attendant).take(2).toSet() shouldBe setOf(earlyTask, changedTask)
+    }
+
+    @Test
+    fun `the suggestion response has no guest or reservation data, only the known keys`() {
+        val date = hotel.currentBusinessDate().plusDays(6)
+        val attendant = plans.attendant(date)
+        val roomType = housekeeping.rooms.createRoomType()
+        val plan = stays.planFor(roomType)
+        val name = "Hospede Sigiloso ${UUID.randomUUID().toString().takeLast(SUFFIX)}"
+        val room = housekeeping.rooms.createRoom(roomType)
+        val (reservation, holder) = stays.reservation(roomType, plan, arrival = date, name = name)
+        reservationsApi.assignRoom(reservation, RoomId(room))
+        plans.insertTask(date, room = room, priority = 3)
+
+        val (suggested, _) = plans.suggested(date, listOf(attendant))
+
+        val keys = mutableSetOf<String>()
+
+        fun walk(node: tools.jackson.databind.JsonNode) {
+            if (node.isObject) {
+                node.propertyNames().forEach { key ->
+                    keys += key
+                    walk(node[key])
+                }
+            }
+            if (node.isArray) node.forEach { walk(it) }
+        }
+        walk(suggested)
+        listOf("guest", "guestId", "holder", "holderGuestId", "reservation", "reservationId", "fullName", "name")
+            .forEach { forbidden -> keys.map { it.lowercase() } shouldNotContain forbidden.lowercase() }
+        keys.filter { it.contains("arrival", ignoreCase = true) || it.contains("early", ignoreCase = true) } shouldBe
+            emptyList()
+        suggested.toString() stringShouldNotContain name
+        suggested.toString() stringShouldNotContain "$holder"
+        suggested.toString() stringShouldNotContain "${reservation.value}"
+        keys shouldBe setOf("date", "employeeId", "id", "items", "position", "status", "taskId", "unassigned")
     }
 
     /**
@@ -136,6 +207,26 @@ class AssignmentPlanEarlyArrivalTest(
         return Arrival(reservation, plans.insertTask(date, room = room, priority = 3))
     }
 
+    /** Uma reserva que chega em [date], criada pela API com a hora (nula: sem o campo), alocada à [room]. */
+    private fun apiReservation(
+        type: UUID,
+        plan: UUID,
+        date: LocalDate,
+        time: LocalTime?,
+        room: UUID,
+    ): ReservationId {
+        val body =
+            reservationsSupport.reservation(type, plan, date, date.plusDays(1), adults = 1) +
+                ("expectedArrivalTime" to time?.toString())
+        val created =
+            reservationsSupport.created(
+                reservationsSupport.booking(reservationsSupport.guest(), body),
+            )["reservations"][0]
+        val id = ReservationId(UUID.fromString(created["id"].asString()))
+        reservationsApi.assignRoom(id, RoomId(room))
+        return id
+    }
+
     /** Uma reserva confirmada que chega em [date], com a hora gravada e alocada à [room]. */
     private fun reservation(
         type: UUID,
@@ -152,5 +243,10 @@ class AssignmentPlanEarlyArrivalTest(
             .param("id", id.value)
             .update() shouldBe 1
         return id
+    }
+
+    private companion object {
+        const val EARLY_MARGIN = 2L
+        const val SUFFIX = 8
     }
 }

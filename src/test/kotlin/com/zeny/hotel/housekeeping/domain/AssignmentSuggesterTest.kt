@@ -242,6 +242,34 @@ class AssignmentSuggesterTest {
     }
 
     @Test
+    fun `an early check-in comes before a non-early arrival with an earlier time`() {
+        // A precedência é do early, não da hora: 08:00 sem early vem depois de 12:00 com early.
+        val earlier = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(8, 0))
+        val early = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(12, 0), early = true)
+
+        AssignmentSuggester
+            .suggest(listOf(earlier, early), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(early.taskId, earlier.taskId)
+        AssignmentSuggester
+            .suggest(listOf(early, earlier), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(early.taskId, earlier.taskId)
+    }
+
+    @Test
+    fun `a time without an expected arrival does not reorder a task that is not an arrival`() {
+        // `arrivalTime` só pesa entre chegadas (KDoc): a saída com hora anômala não passa na frente da chegada.
+        val arrivalNoTime = task(floor = "1", credits = 2, arrival = true)
+        val checkout = task(floor = "1", credits = 2, arrival = false, arrivalTime = LocalTime.of(6, 0))
+
+        AssignmentSuggester
+            .suggest(listOf(checkout, arrivalNoTime), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(arrivalNoTime.taskId, checkout.taskId)
+    }
+
+    @Test
     fun `the order is the same for any permutation of the input`() {
         val tasks = earlyScenario()
         val expected = AssignmentSuggester.suggest(tasks, listOf(ana))
