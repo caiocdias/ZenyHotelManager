@@ -11,6 +11,7 @@ import com.zeny.hotel.reservations.ReservationsTestSupport
 import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.staff.StaffApi
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.InventoryListenersQuiescence
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
@@ -133,6 +134,7 @@ class AssignmentPlanEarlyArrivalTest(
         val plan = stays.planFor(roomType)
         val name = "Hospede Sigiloso ${UUID.randomUUID().toString().takeLast(SUFFIX)}"
         val room = housekeeping.rooms.createRoom(roomType)
+        InventoryListenersQuiescence.await(jdbc)
         val (reservation, holder) = stays.reservation(roomType, plan, arrival = date, name = name)
         reservationsApi.assignRoom(reservation, RoomId(room))
         plans.insertTask(date, room = room, priority = 3)
@@ -215,6 +217,7 @@ class AssignmentPlanEarlyArrivalTest(
         time: LocalTime?,
         room: UUID,
     ): ReservationId {
+        InventoryListenersQuiescence.await(jdbc)
         val body =
             reservationsSupport.reservation(type, plan, date, date.plusDays(1), adults = 1) +
                 ("expectedArrivalTime" to time?.toString())
@@ -235,6 +238,9 @@ class AssignmentPlanEarlyArrivalTest(
         time: LocalTime?,
         room: UUID,
     ): ReservationId {
+        // O inventário do tipo e das UHs novas é refeito por listeners assíncronos: sem esperá-los, a data do teste
+        // (+3 dias) pode ainda estar fora do horizonte (422 INVENTORY_DATE_OUT_OF_HORIZON).
+        InventoryListenersQuiescence.await(jdbc)
         val (id, _) = stays.reservation(type, plan, arrival = date)
         reservationsApi.assignRoom(id, RoomId(room))
         jdbc
