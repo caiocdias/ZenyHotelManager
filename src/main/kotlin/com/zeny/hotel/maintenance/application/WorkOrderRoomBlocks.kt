@@ -3,11 +3,13 @@ package com.zeny.hotel.maintenance.application
 import com.zeny.hotel.maintenance.MaintenanceErrorCodes
 import com.zeny.hotel.maintenance.WorkOrderId
 import com.zeny.hotel.maintenance.domain.WorkOrder
+import com.zeny.hotel.maintenance.domain.WorkOrderRules
 import com.zeny.hotel.rooms.OutOfOrderKind
 import com.zeny.hotel.rooms.OutOfOrderPeriod
 import com.zeny.hotel.rooms.OutOfOrderRequest
 import com.zeny.hotel.rooms.RoomStatusSource
 import com.zeny.hotel.rooms.RoomsApi
+import com.zeny.hotel.rooms.RoomsErrorCodes
 import com.zeny.hotel.rooms.RoomsPermissions
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.ConflictException
@@ -15,13 +17,33 @@ import com.zeny.hotel.shared.SensitiveAction
 import com.zeny.hotel.staff.StaffApi
 import org.springframework.stereotype.Component
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
-/** O pedido de bloqueio da UH: o tipo e as datas de negócio, inclusive. */
+/**
+ * O pedido de bloqueio da UH: o tipo e as datas de negócio, inclusive. O período incoerente (o fim antes do início, ou
+ * com [MAX_DAYS] dias ou mais) é `400 OUT_OF_ORDER_PERIOD_INVALID` no campo `endsOn`, conferido já na construção, antes
+ * de qualquer permissão, aprovação ou estado da ordem (o `rooms` só o confere depois do step-up).
+ */
 data class WorkOrderRoomBlockRequest(
     val kind: OutOfOrderKind,
     val startsOn: LocalDate,
     val endsOn: LocalDate,
-)
+) {
+    init {
+        if (endsOn.isBefore(startsOn) || ChronoUnit.DAYS.between(startsOn, endsOn) >= MAX_DAYS) {
+            throw WorkOrderRules.invalid(
+                "endsOn",
+                "Informe um período de até $MAX_DAYS dias, com o fim igual ou depois do início.",
+                RoomsErrorCodes.OUT_OF_ORDER_PERIOD_INVALID,
+            )
+        }
+    }
+
+    private companion object {
+        /** O limite do `rooms` (`OutOfOrder.MAX_DAYS`, interno dele), repetido para conferir antes do step-up. */
+        const val MAX_DAYS = 365L
+    }
+}
 
 /**
  * O bloqueio da UH pela ordem de serviço (D7-E07, RF-MAN-03): um período OOO/OOS do `rooms`, aberto pela
@@ -67,19 +89,7 @@ class WorkOrderRoomBlocks(
         request: WorkOrderRoomBlockRequest,
         approvalToken: String?,
     ): OutOfOrderPeriod {
-        val ref = ref(order.id)
-        when (request.kind) {
-            OutOfOrderKind.OUT_OF_ORDER -> {
-                authorization.requireOrApproval(
-                    SensitiveAction(BLOCK_ROOM, RoomsPermissions.OUT_OF_ORDER_MANAGE, ref),
-                    approvalToken,
-                )
-            }
-
-            OutOfOrderKind.OUT_OF_SERVICE -> {
-                authorization.require(RoomsPermissions.OUT_OF_SERVICE_MANAGE)
-            }
-        }
+        authorize(request.kind, BLOCK_ROOM, ref(order.id), approvalToken)
         return rooms.openOutOfOrder(
             checkNotNull(order.roomId),
             request.kind,
@@ -98,10 +108,25 @@ class WorkOrderRoomBlocks(
         approvalToken: String?,
     ) {
         val period = inEffect(order) ?: return
-        when (period.kind) {
+        authorize(period.kind, CANCEL, ref(order.id), approvalToken)
+    }
+
+    /** Libera o período da ordem (concluir ou cancelar); sem bloqueio ou já liberado, não muda nada. */
+    fun release(order: WorkOrder) {
+        order.outOfOrderId?.let { rooms.releaseOutOfOrder(it, RoomStatusSource.MANUAL) }
+    }
+
+    /** OOO: `requireOrApproval` (sensível, a aprovação vale para esta ação e esta ordem); OOS: `require`. */
+    private fun authorize(
+        kind: OutOfOrderKind,
+        action: String,
+        resourceRef: String,
+        approvalToken: String?,
+    ) {
+        when (kind) {
             OutOfOrderKind.OUT_OF_ORDER -> {
                 authorization.requireOrApproval(
-                    SensitiveAction(CANCEL, RoomsPermissions.OUT_OF_ORDER_MANAGE, ref(order.id)),
+                    SensitiveAction(action, RoomsPermissions.OUT_OF_ORDER_MANAGE, resourceRef),
                     approvalToken,
                 )
             }
@@ -110,11 +135,6 @@ class WorkOrderRoomBlocks(
                 authorization.require(RoomsPermissions.OUT_OF_SERVICE_MANAGE)
             }
         }
-    }
-
-    /** Libera o período da ordem (concluir ou cancelar); sem bloqueio ou já liberado, não muda nada. */
-    fun release(order: WorkOrder) {
-        order.outOfOrderId?.let { rooms.releaseOutOfOrder(it, RoomStatusSource.MANUAL) }
     }
 
     private fun ref(id: WorkOrderId) = "maintenance.work-order:$id"

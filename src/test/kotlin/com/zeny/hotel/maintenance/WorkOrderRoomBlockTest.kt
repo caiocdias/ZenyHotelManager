@@ -121,8 +121,9 @@ class WorkOrderRoomBlockTest(
         auth: RequestPostProcessor = iam.asAdmin(),
         token: String? = null,
         ifMatch: String? = support.etag(id),
+        reason: String = "Já resolvido",
     ): MockHttpServletResponse =
-        iam.call(POST, "$WORK_ORDERS/$id/cancel", auth, mapOf("reason" to "Já resolvido"), ifMatch, token)
+        iam.call(POST, "$WORK_ORDERS/$id/cancel", auth, mapOf("reason" to reason), ifMatch, token)
 
     private fun complete(
         id: UUID,
@@ -265,6 +266,14 @@ class WorkOrderRoomBlockTest(
             cancel(order, technician.auth, token).ok()["status"].asString() shouldBe "CANCELLED"
             housekeeping(room) shouldBe HousekeepingStatus.DIRTY
             periodRow(support.order(order)["outOfOrderId"].asString())["released_on"].shouldNotBeNull()
+            // A trilha do cancelamento referencia a aprovação.
+            jdbc
+                .sql(
+                    "SELECT count(*) FROM audit.audit_entry WHERE action = 'maintenance.work-order.cancel' " +
+                        "AND entity_id = :id AND approval_id IS NOT NULL",
+                ).param("id", order.toString())
+                .query(Int::class.java)
+                .single() shouldBe 1
 
             // OOS: `rooms.outofservice.manage`, sem aprovação; quem não a tem leva 403.
             val oosOrder = support.openedId()
@@ -324,8 +333,10 @@ class WorkOrderRoomBlockTest(
             val technician = Technician()
             val nobody = asTestUser(createUser())
 
-            // 400 do corpo (kind ausente) antes de tudo; 403 sem manage antes do 404.
+            // 400 do corpo (kind ausente) antes de tudo, inclusive do 403 de quem não tem `manage`.
             block(support.openedId(), technician.auth, blockBody(kind = null)).problem(400, "VALIDATION_FAILED")
+            block(support.openedId(), nobody, blockBody(kind = null)).problem(400, "VALIDATION_FAILED")
+            // 403 sem manage antes do 404.
             block(UUID.randomUUID(), nobody, ifMatch = "\"0\"").problem(403, "PERMISSION_DENIED")
             block(UUID.randomUUID(), technician.auth, ifMatch = "\"0\"").problem(404, "WORK_ORDER_NOT_FOUND")
 
@@ -345,12 +356,51 @@ class WorkOrderRoomBlockTest(
             block(blocked).ok()
             block(blocked, technician.auth).problem(409, "WORK_ORDER_ROOM_ALREADY_BLOCKED")
 
-            // Cancelar: o estado final (409) vem antes do step-up (403).
+            // Cancelar uma ordem sem bloqueio: o estado final (409) vem antes da permissão sobre o período.
             cancel(finalOrder, technician.auth).problem(409, "WORK_ORDER_TRANSITION_NOT_ALLOWED")
             // Sem versão certa (412) também antes do step-up.
             cancel(blocked, technician.auth, ifMatch = "\"9\"").problem(412, "PRECONDITION_FAILED")
             // Sem permissão `manage`: 403 de permissão, não o de aprovação.
             cancel(blocked, nobody).problem(403, "PERMISSION_DENIED")
+        }
+
+    @Test
+    fun `an incoherent period is 400 before the 403, without the OOO permission or without manage`(): Unit =
+        with(iam) {
+            val technician = Technician()
+            val nobody = asTestUser(createUser())
+            val order = support.openedId()
+            val inverted =
+                mapOf(
+                    "kind" to "OUT_OF_ORDER",
+                    "startsOn" to today().plusDays(3).toString(),
+                    "endsOn" to today().toString(),
+                )
+            val tooLong =
+                mapOf(
+                    "kind" to "OUT_OF_ORDER",
+                    "startsOn" to today().toString(),
+                    "endsOn" to today().plusDays(365).toString(),
+                )
+            listOf(technician.auth, nobody).forEach { auth ->
+                listOf(inverted, tooLong).forEach { body ->
+                    block(order, auth, body)
+                        .problem(400, "OUT_OF_ORDER_PERIOD_INVALID")["errors"]
+                        .first()["field"]
+                        .asString() shouldBe "endsOn"
+                }
+            }
+            support.order(order)["outOfOrderId"].isNull shouldBe true
+        }
+
+    @Test
+    fun `cancelling a blocked order with a reason above 500 characters is 400 before APPROVAL_REQUIRED`(): Unit =
+        with(iam) {
+            val technician = Technician()
+            val order = support.openedId()
+            block(order).ok()
+            cancel(order, technician.auth, reason = "x".repeat(501)).problem(400, "VALIDATION_FAILED")
+            cancel(order, technician.auth).problem(403, "APPROVAL_REQUIRED")
         }
 
     @Test
