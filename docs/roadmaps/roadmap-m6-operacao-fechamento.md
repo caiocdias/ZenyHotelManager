@@ -239,7 +239,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E07 | Ordens de serviço corretivas e OOO/OOS | #concluida | — | `WorkOrder` com estados, custos, anexos e bloqueio da UH |
-| E08 | OS por checklist e app offline da manutenção | #pendente | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
+| E08 | OS por checklist e app offline da manutenção | #em-andamento | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
 
 **Relatórios**
 
@@ -2319,7 +2319,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E08 — OS por checklist e app offline da manutenção — #pendente
+## E08 — OS por checklist e app offline da manutenção — #em-andamento
 
 **Objetivo:** abrir OS automaticamente a partir de ocorrências `MAINTENANCE` de `ChecklistCompleted` (RF-CHK-05, ARCHITECTURE §6.2) e permitir ao técnico operar a OS offline (RF-MAN-07), na mesma base de sincronização do app da governança.
 
