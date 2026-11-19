@@ -229,11 +229,11 @@ class WorkOrder private constructor(
         move(WorkOrderStatus.CANCELLED, now)
     }
 
-    /** Substitui os campos editáveis (`PUT`) de uma ordem que não é final. */
-    fun update(
-        edit: WorkOrderEdit,
-        now: Instant,
-    ) {
+    /**
+     * Confere a edição [edit] como o [update] a confere (ordem não final, um só local, textos e custos), sem mudar
+     * nada: o caso de uso a chama antes de validar as referências (local e responsável) com os valores novos.
+     */
+    fun checkUpdate(edit: WorkOrderEdit) {
         requireStatus(
             WorkOrderAction.UPDATE,
             WorkOrderStatus.OPEN,
@@ -241,11 +241,21 @@ class WorkOrder private constructor(
             WorkOrderStatus.ON_HOLD,
         )
         WorkOrderRules.requireOneLocation(edit.roomId, edit.areaId)
-        val text = WorkOrderRules.freeText("description", edit.description, MAX_DESCRIPTION)
-        val third = WorkOrderRules.optionalFreeText("thirdPartyName", edit.thirdPartyName, MAX_THIRD_PARTY)
+        WorkOrderRules.freeText("description", edit.description, MAX_DESCRIPTION)
+        WorkOrderRules.optionalFreeText("thirdPartyName", edit.thirdPartyName, MAX_THIRD_PARTY)
         WorkOrderRules.requireCost("laborCost", edit.laborCost)
         WorkOrderRules.requireCost("thirdPartyCost", edit.thirdPartyCost)
         WorkOrderRules.requireCost("partsCost", edit.partsCost)
+    }
+
+    /** Substitui os campos editáveis (`PUT`) de uma ordem que não é final. */
+    fun update(
+        edit: WorkOrderEdit,
+        now: Instant,
+    ) {
+        checkUpdate(edit)
+        val text = WorkOrderRules.freeText("description", edit.description, MAX_DESCRIPTION)
+        val third = WorkOrderRules.optionalFreeText("thirdPartyName", edit.thirdPartyName, MAX_THIRD_PARTY)
         roomId = edit.roomId
         areaId = edit.areaId
         category = edit.category

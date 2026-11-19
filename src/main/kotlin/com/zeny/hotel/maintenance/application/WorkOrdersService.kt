@@ -231,12 +231,11 @@ class WorkOrdersService(
         expectedVersion: Long,
     ): WorkOrderView =
         act(id, expectedVersion) { order, now ->
-            val room = order.roomId
-            val area = order.areaId
-            val assignee = order.assigneeEmployeeId
+            // Confere a edição e as referências com os valores novos antes de mudar o agregado.
+            order.checkUpdate(edit)
+            if (edit.roomId != order.roomId || edit.areaId != order.areaId) requireLocation(edit.roomId, edit.areaId)
+            if (edit.assigneeEmployeeId != order.assigneeEmployeeId) requireAssignee(edit.assigneeEmployeeId)
             order.update(edit, now)
-            if (order.roomId != room || order.areaId != area) requireLocation(order.roomId, order.areaId)
-            if (order.assigneeEmployeeId != assignee) requireAssignee(order.assigneeEmployeeId)
         }
 
     @Audited(MaintenanceAudit.START_WORK_ORDER)

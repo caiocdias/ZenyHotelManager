@@ -52,6 +52,9 @@ private const val TEXT_WARNING =
     "**Não escreva dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
 private const val COST_DESCRIPTION = "De 0.00 a 99999.99, com até 2 casas."
 
+// O schema de Money sobrescreve a descrição do campo: a faixa dos custos também vai na descrição das operações.
+private const val COST_RANGE = "Cada custo vai de 0.00 a 99999.99, com até 2 casas."
+
 private const val READ_RULES =
     "Exige `maintenance.workorders.read`; com o escopo `OWN`, só as ordens que o usuário abriu ou de que o " +
         "colaborador dele é o responsável (a ordem de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`)."
@@ -162,7 +165,7 @@ class WorkOrdersController(
                 "prazo e os três custos (obrigatórios, sem valor padrão). Responsável inexistente: 400 " +
                 "`UNKNOWN_EMPLOYEE`; desativado: 422 `WORK_ORDER_ASSIGNEE_INACTIVE`. Local inexistente: 400 " +
                 "`UNKNOWN_ROOM` ou `UNKNOWN_AREA`; desativado: 422 `WORK_ORDER_LOCATION_INACTIVE` (conferidos só " +
-                "quando mudam). Custo negativo, com mais de 2 casas ou acima de 99999.99: 400 no campo. Vale " +
+                "quando mudam). $COST_RANGE Custo fora da faixa ou com mais de 2 casas: 400 no campo. Vale " +
                 "enquanto a ordem não é final (`DONE` ou `CANCELLED`: 409). $ACTION_RULES",
     )
     fun update(
@@ -230,7 +233,7 @@ class WorkOrdersController(
         summary = "Concluir uma ordem de serviço",
         description =
             "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `DONE` e grava `closedAt`, com as notas e os custos que vierem " +
-                "(os omitidos mantêm o valor gravado). $ACTION_RULES",
+                "(os omitidos mantêm o valor gravado). $COST_RANGE $ACTION_RULES",
     )
     fun complete(
         @PathVariable id: UUID,
@@ -285,9 +288,9 @@ data class WorkOrderOpenRequest(
 @Schema(description = "A edição de uma ordem de serviço: substitui todos os campos editáveis.")
 data class WorkOrderUpdateRequest(
     @field:Schema(description = "A UH da ordem; informe esta ou `areaId`, uma só.", nullable = true)
-    val roomId: UUID? = null,
+    val roomId: UUID?,
     @field:Schema(description = "A área comum da ordem; informe esta ou `roomId`, uma só.", nullable = true)
-    val areaId: UUID? = null,
+    val areaId: UUID?,
     @field:Schema(description = "A categoria do problema.")
     val category: WorkOrderCategory,
     @field:Schema(description = "A prioridade da ordem.")
@@ -296,15 +299,15 @@ data class WorkOrderUpdateRequest(
     @field:Schema(description = "O problema, até 2000 caracteres. $TEXT_WARNING", maxLength = MAX_DESCRIPTION)
     val description: String?,
     @field:Schema(description = "O colaborador responsável; nulo ou omitido retira.", nullable = true)
-    val assigneeEmployeeId: UUID? = null,
+    val assigneeEmployeeId: UUID?,
     @field:Schema(
         description = "O terceiro contratado, até 200 caracteres; nulo ou omitido retira.",
         nullable = true,
         maxLength = MAX_THIRD_PARTY,
     )
-    val thirdPartyName: String? = null,
+    val thirdPartyName: String?,
     @field:Schema(description = "O prazo; nulo ou omitido retira.", nullable = true)
-    val dueAt: Instant? = null,
+    val dueAt: Instant?,
     @field:Schema(description = "O custo de mão de obra. $COST_DESCRIPTION", example = "0.00")
     val laborCost: Money,
     @field:Schema(description = "O custo de terceiros. $COST_DESCRIPTION", example = "0.00")

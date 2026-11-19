@@ -15574,16 +15574,17 @@ paths:
         \ sem valor padrão). Responsável inexistente: 400 `UNKNOWN_EMPLOYEE`; desativado:\
         \ 422 `WORK_ORDER_ASSIGNEE_INACTIVE`. Local inexistente: 400 `UNKNOWN_ROOM`\
         \ ou `UNKNOWN_AREA`; desativado: 422 `WORK_ORDER_LOCATION_INACTIVE` (conferidos\
-        \ só quando mudam). Custo negativo, com mais de 2 casas ou acima de 99999.99:\
-        \ 400 no campo. Vale enquanto a ordem não é final (`DONE` ou `CANCELLED`:\
-        \ 409). Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes\
-        \ de qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas ordens\
-        \ do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
-        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
-        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
-        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
-        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
-        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+        \ só quando mudam). Cada custo vai de 0.00 a 99999.99, com até 2 casas. Custo\
+        \ fora da faixa ou com mais de 2 casas: 400 no campo. Vale enquanto a ordem\
+        \ não é final (`DONE` ou `CANCELLED`: 409). Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
       operationId: updateWorkOrder
       parameters:
       - in: path
@@ -15669,14 +15670,15 @@ paths:
     post:
       description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `DONE` e grava `closedAt`,\
         \ com as notas e os custos que vierem (os omitidos mantêm o valor gravado).\
-        \ Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de\
-        \ qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas ordens\
-        \ do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
-        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
-        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
-        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
-        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
-        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+        \ Cada custo vai de 0.00 a 99999.99, com até 2 casas. Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
       operationId: completeWorkOrder
       parameters:
       - in: path

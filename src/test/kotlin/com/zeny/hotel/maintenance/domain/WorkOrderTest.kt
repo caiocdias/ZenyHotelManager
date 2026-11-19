@@ -217,6 +217,19 @@ class WorkOrderTest {
     }
 
     @Test
+    fun `checkUpdate validates an edit like update does and never changes the order`() {
+        val order = open()
+        val before = order.auditState()
+        order.checkUpdate(edit(third = "50.00", thirdParty = "Hidráulica Silva"))
+        order.auditState() shouldBe before
+        order.updatedAt shouldBe t0
+        shouldThrow<InvalidInputException> { order.checkUpdate(edit().copy(areaId = AreaId(UUID.randomUUID()))) }
+        shouldThrow<InvalidInputException> { order.checkUpdate(edit(third = "100000.00")) }
+        shouldThrow<WorkOrderTransitionNotAllowedException> { inStatus(DONE).checkUpdate(edit()) }
+        order.auditState() shouldBe before
+    }
+
+    @Test
     fun `update replaces the editable fields of an order that is not final, including on hold`() {
         val order = inStatus(ON_HOLD)
         val assignee =
