@@ -254,6 +254,7 @@ class WorkOrderTest {
         order.auditState()["status"] shouldBe "ON_HOLD"
     }
 
+    @Suppress("LongParameterList") // os campos da edição, com padrões
     private fun edit(
         room: RoomId? = null,
         area: AreaId? = null,

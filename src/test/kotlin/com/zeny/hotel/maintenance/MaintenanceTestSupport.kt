@@ -29,6 +29,7 @@ class MaintenanceTestSupport(
     val rooms = RoomsTestSupport(iam)
     val staff = StaffTestSupport(iam)
 
+    @Suppress("LongParameterList") // os campos do corpo, com padrões
     fun body(
         roomId: UUID? = null,
         areaId: UUID? = null,
@@ -48,7 +49,7 @@ class MaintenanceTestSupport(
             "dueAt" to dueAt,
         )
 
-    /** O corpo do `PUT`: a substituição inteira, com os campos de [base] (a resposta da ordem) trocados por [changes]. */
+    /** O corpo do `PUT`: os campos de [base] (a resposta da ordem) com os [changes]. */
     fun updateBody(
         base: JsonNode,
         vararg changes: Pair<String, Any?>,

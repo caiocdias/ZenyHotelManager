@@ -229,7 +229,7 @@ class WorkOrder private constructor(
         move(WorkOrderStatus.CANCELLED, now)
     }
 
-    /** Substitui os campos editáveis (`PUT`), numa ordem que não é final; os valores já foram resolvidos pelo caso de uso. */
+    /** Substitui os campos editáveis (`PUT`) de uma ordem que não é final. */
     fun update(
         edit: WorkOrderEdit,
         now: Instant,

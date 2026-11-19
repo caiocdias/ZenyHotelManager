@@ -283,7 +283,7 @@ class WorkOrdersService(
         expectedVersion: Long,
     ): WorkOrderView = act(id, expectedVersion) { order, now -> order.cancel(reason, now) }
 
-    /** A ação [change] na ordem travada, na ordem: permissão e escopo, trava, `404`, versão (`412`) e a regra do domínio. */
+    /** A ação [change] na ordem travada: permissão e escopo, trava, `404`, versão (`412`) e a regra do domínio. */
     private fun act(
         id: WorkOrderId,
         expectedVersion: Long,
@@ -324,7 +324,7 @@ class WorkOrdersService(
         roomId: RoomId?,
         areaId: AreaId?,
     ) {
-        val (known, active, field, unknown) =
+        val location =
             if (roomId != null) {
                 val room = rooms.room(roomId)
                 Location(room != null, room?.active == true, "roomId", MaintenanceErrorCodes.UNKNOWN_ROOM)
@@ -332,8 +332,10 @@ class WorkOrdersService(
                 val area = rooms.area(checkNotNull(areaId))
                 Location(area != null, area?.active == true, "areaId", MaintenanceErrorCodes.UNKNOWN_AREA)
             }
-        if (!known) throw WorkOrderRules.invalid(field, "O local da ordem de serviço não existe.", unknown)
-        if (!active) {
+        if (!location.known) {
+            throw WorkOrderRules.invalid(location.field, "O local da ordem de serviço não existe.", location.unknown)
+        }
+        if (!location.active) {
             throw BusinessRuleException(
                 MaintenanceErrorCodes.WORK_ORDER_LOCATION_INACTIVE,
                 "A UH ou a área da ordem de serviço está desativada.",
