@@ -122,9 +122,9 @@ class AssignmentPlansController(
                 "retirada (`ASSIGNED` da data do plano, ou de antes no plano da data operacional, fora do rascunho) " +
                 "voltam a `PENDING`. A tarefa terminada (`DONE` ou `CANCELLED`) nunca é tocada, e o item dela sai do " +
                 "plano publicado. A tarefa que já andou (fora de `PENDING` e `ASSIGNED`, e não terminada) nunca é " +
-                "tocada: o item dela com a mesma camareira é ignorado, inclusive a posição, e o item que a passaria a " +
-                "outra " +
-                "camareira recusa a publicação com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids das tarefas em " +
+                "tocada: o item dela com a mesma camareira é ignorado, inclusive a posição, e o item que a " +
+                "passaria a outra camareira recusa a publicação com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os " +
+                "ids das tarefas em " +
                 "`errors[].field`. O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`) só as camareiras " +
                 "com tarefa incluída ou removida; as não avisadas vêm em `notNotified`. Publica " +
                 "`housekeeping.assignment-plan` no tópico `housekeeping`. $PLAN_MANAGE Exige o `If-Match` (ausente: " +
