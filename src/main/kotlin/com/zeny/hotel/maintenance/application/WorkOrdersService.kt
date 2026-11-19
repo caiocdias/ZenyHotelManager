@@ -1,9 +1,11 @@
 package com.zeny.hotel.maintenance.application
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.files.FileId
 import com.zeny.hotel.files.FilePurposeCode
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.maintenance.MaintenanceErrorCodes
+import com.zeny.hotel.maintenance.MaintenanceOffline
 import com.zeny.hotel.maintenance.MaintenancePermissions
 import com.zeny.hotel.maintenance.WorkOrderCategory
 import com.zeny.hotel.maintenance.WorkOrderId
@@ -12,6 +14,7 @@ import com.zeny.hotel.maintenance.WorkOrderPriority
 import com.zeny.hotel.maintenance.WorkOrderStatus
 import com.zeny.hotel.maintenance.domain.WorkOrder
 import com.zeny.hotel.maintenance.domain.WorkOrderAction
+import com.zeny.hotel.maintenance.domain.WorkOrderChecklistLink
 import com.zeny.hotel.maintenance.domain.WorkOrderEdit
 import com.zeny.hotel.maintenance.domain.WorkOrderRules
 import com.zeny.hotel.notifications.NotificationRecipients
@@ -33,11 +36,13 @@ import com.zeny.hotel.shared.DocumentNumberType
 import com.zeny.hotel.shared.ErrorCode
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.OfflineTombstones
 import com.zeny.hotel.shared.OwnedResource
 import com.zeny.hotel.shared.PageCursor
 import com.zeny.hotel.shared.PageParams
 import com.zeny.hotel.shared.PermissionCode
 import com.zeny.hotel.shared.ScopeFilter
+import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.requireCurrentVersion
 import com.zeny.hotel.staff.EmployeeId
 import com.zeny.hotel.staff.StaffApi
@@ -77,6 +82,12 @@ interface WorkOrderStore {
     /** A ordem com a linha travada (`FOR UPDATE`), ou `null` se não existe. */
     fun findForUpdate(id: WorkOrderId): WorkOrder?
 
+    /** A ordem aberta pelo item [itemKey] da execução de referência [referenceExecution], ou `null` (D2-E08). */
+    fun findByChecklistItem(
+        referenceExecution: ChecklistExecutionId,
+        itemKey: String,
+    ): WorkOrder?
+
     /** Grava a ordem travada e sobe a versão; a nova já vale em [order]. */
     fun update(order: WorkOrder)
 
@@ -97,6 +108,21 @@ data class NewWorkOrder(
     val description: String?,
     val origin: WorkOrderOrigin,
     val dueAt: Instant?,
+)
+
+/**
+ * A ordem a abrir por um item de checklist "não ok" (D2-E08), pelo ouvinte de `ChecklistCompleted` (sem requisição):
+ * o local já conferido, a categoria, a descrição (rótulo do item, categoria e observação), quem executou
+ * ([openedBy]), o instante da conclusão ([openedAt]) e o vínculo à execução e ao item.
+ */
+data class ChecklistWorkOrderDraft(
+    val roomId: RoomId?,
+    val areaId: AreaId?,
+    val category: WorkOrderCategory,
+    val description: String,
+    val openedBy: UserId,
+    val openedAt: Instant,
+    val link: WorkOrderChecklistLink,
 )
 
 /** A edição (`PUT`): todos os campos editáveis, os três custos inclusive; o caso de uso a passa ao domínio. */
@@ -201,6 +227,7 @@ class WorkOrdersService(
     private val attachments: WorkOrderAttachmentStore,
     private val blocks: WorkOrderRoomBlocks,
     private val notifications: NotificationsApi,
+    private val tombstones: OfflineTombstones,
     private val authorization: Authorization,
     private val actor: CurrentActor,
     private val audit: AuditContext,
@@ -240,6 +267,39 @@ class WorkOrdersService(
         audit.created(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
         if (order.priority == WorkOrderPriority.URGENT) notifyUrgent(order)
         return view(order, emptyList())
+    }
+
+    /**
+     * Abre a ordem de um item de checklist "não ok" (D2-E08): origem `CHECKLIST`, prioridade `NORMAL`, aberta por quem
+     * executou, em `openedAt`, sem permissão nem aviso (o sistema abre, sem requisição). Idempotente pela execução de
+     * referência e o item: a reentrega do evento e a execução registrada à parte do mesmo item devolvem a ordem já
+     * gravada, sem outra entrada na trilha. O local é conferido por quem chama.
+     */
+    @Audited(MaintenanceAudit.OPEN_WORK_ORDER_FROM_CHECKLIST)
+    @Transactional
+    fun openFromChecklist(draft: ChecklistWorkOrderDraft): WorkOrderView {
+        store.findByChecklistItem(draft.link.referenceExecutionId, draft.link.itemKey)?.let {
+            audit.noChanges()
+            return viewOf(it)
+        }
+        val order =
+            WorkOrder.open(
+                WorkOrderId.new(),
+                numbers.next(WORK_ORDER_NUMBER, hotel.currentBusinessDate().year),
+                draft.roomId,
+                draft.areaId,
+                draft.category,
+                WorkOrderPriority.NORMAL,
+                draft.description,
+                WorkOrderOrigin.CHECKLIST,
+                dueAt = null,
+                draft.openedBy,
+                draft.openedAt.truncatedTo(ChronoUnit.MICROS),
+                draft.link,
+            )
+        store.insert(order)
+        audit.created(MaintenanceAudit.WORK_ORDER, order.id.value) { order.auditState() }
+        return viewOf(order)
     }
 
     @Transactional(readOnly = true)
@@ -300,7 +360,9 @@ class WorkOrdersService(
             }
             if (edit.assigneeEmployeeId != order.assigneeEmployeeId) requireAssignee(edit.assigneeEmployeeId)
             val becomesUrgent = edit.priority == WorkOrderPriority.URGENT && order.priority != WorkOrderPriority.URGENT
+            val previousAssignee = order.assigneeEmployeeId
             order.update(edit, now)
+            if (edit.assigneeEmployeeId != previousAssignee) leftOfflineScope(order, previousAssignee)
             if (becomesUrgent) notifyUrgent(order)
         }
 
@@ -424,6 +486,20 @@ class WorkOrdersService(
                 except = setOf(actor.current().userId),
             ),
         )
+    }
+
+    /**
+     * O responsável anterior sai do escopo `OWN` da fonte offline (D4-E08): o *tombstone* vai só ao usuário dele, e
+     * só se ele não abriu a ordem (quem abriu continua com ela).
+     */
+    private fun leftOfflineScope(
+        order: WorkOrder,
+        previous: EmployeeId?,
+    ) {
+        val user = previous?.let { staff.employees(listOf(it))[it]?.userId } ?: return
+        if (user != order.openedBy) {
+            tombstones.record(MaintenanceOffline.WORK_ORDERS, order.id.value, setOf(user))
+        }
     }
 
     private fun room(id: RoomId) = requireNotNull(rooms.room(id)) { "A UH $id da ordem de serviço não existe" }

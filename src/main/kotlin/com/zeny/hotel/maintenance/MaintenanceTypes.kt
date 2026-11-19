@@ -42,8 +42,9 @@ enum class WorkOrderPriority {
 }
 
 /**
- * Origem de uma ordem de serviço: quem a pediu. `CHECKLIST` é reservada à E08 (o pedido por item de checklist) e o
- * `POST` a recusa. O conjunto pode crescer (a preventiva, no M10): o cliente trata um valor desconhecido sem falhar.
+ * Origem de uma ordem de serviço: quem a pediu. `CHECKLIST` é a do pedido por item de checklist (E08), aberta só pelo
+ * sistema; o `POST` a recusa. O conjunto pode crescer (a preventiva, no M10): o cliente trata um valor desconhecido
+ * sem falhar.
  */
 enum class WorkOrderOrigin {
     RECEPTION,

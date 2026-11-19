@@ -1,5 +1,6 @@
 package com.zeny.hotel.maintenance.domain
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.maintenance.MaintenanceErrorCodes
 import com.zeny.hotel.maintenance.WorkOrderCategory
 import com.zeny.hotel.maintenance.WorkOrderId
@@ -46,6 +47,17 @@ class WorkOrderTransitionNotAllowedException(
         get() = mapOf("workOrderStatus" to status.name, "action" to action.name)
 }
 
+/**
+ * O vínculo da ordem ao item de checklist que a abriu (D2-E08): a execução real ([executionId]), o item ([itemKey]) e a
+ * execução de referência ([referenceExecutionId]: a da rotina de que a execução registrada à parte, `duplicateOf`, é
+ * cópia, ou a própria), que com o item é único: o mesmo item "não ok" não abre uma segunda ordem.
+ */
+data class WorkOrderChecklistLink(
+    val executionId: ChecklistExecutionId,
+    val itemKey: String,
+    val referenceExecutionId: ChecklistExecutionId,
+)
+
 /** O que a edição (`PUT`) substitui: todos os campos editáveis, os três custos inclusive. */
 data class WorkOrderEdit(
     val roomId: RoomId?,
@@ -64,7 +76,8 @@ data class WorkOrderEdit(
 /**
  * Uma ordem de serviço corretiva (RF-MAN-01 e RF-MAN-02, SPEC §5.15, D2-E07): numa UH **ou** numa área, com a
  * [description] (texto livre do operador: **não escreva dado de hóspede**, RN-13), a categoria, a prioridade, a
- * origem, o responsável, o terceiro e os três custos (de 0 a [MAX_COST]). Máquina de estados (D3-E07):
+ * origem (a `CHECKLIST` tem o [checklistLink]), o responsável, o terceiro e os três custos (de 0 a [MAX_COST]).
+ * Máquina de estados (D3-E07):
  * `OPEN → IN_PROGRESS` ([start]), `IN_PROGRESS → ON_HOLD` ([hold], com motivo), `ON_HOLD → IN_PROGRESS` ([resume]),
  * `OPEN | IN_PROGRESS | ON_HOLD → DONE` ([complete]) e `→ CANCELLED` ([cancel], com motivo). `DONE` e `CANCELLED` são
  * finais: editar ou agir numa ordem final é [WorkOrderTransitionNotAllowedException]. Uma ação recusada não muda
@@ -97,6 +110,7 @@ class WorkOrder private constructor(
     outOfOrderId: OutOfOrderId?,
     updatedAt: Instant,
     version: Long,
+    val checklistLink: WorkOrderChecklistLink?,
 ) {
     var roomId: RoomId? = roomId
         private set
@@ -338,6 +352,8 @@ class WorkOrder private constructor(
             "startedAt" to startedAt?.toString(),
             "closedAt" to closedAt?.toString(),
             "outOfOrderId" to outOfOrderId?.toString(),
+            "checklistExecutionId" to checklistLink?.executionId?.toString(),
+            "checklistItemKey" to checklistLink?.itemKey,
         )
 
     private fun length(text: String) = text.codePointCount(0, text.length)
@@ -380,6 +396,7 @@ class WorkOrder private constructor(
             dueAt: Instant?,
             openedBy: UserId,
             now: Instant,
+            checklistLink: WorkOrderChecklistLink? = null,
         ): WorkOrder {
             WorkOrderRules.requireOneLocation(roomId, areaId)
             return WorkOrder(
@@ -408,6 +425,7 @@ class WorkOrder private constructor(
                 null,
                 now,
                 0,
+                checklistLink,
             )
         }
 
@@ -439,6 +457,7 @@ class WorkOrder private constructor(
             outOfOrderId: OutOfOrderId?,
             updatedAt: Instant,
             version: Long,
+            checklistLink: WorkOrderChecklistLink? = null,
         ) = WorkOrder(
             id,
             number,
@@ -465,6 +484,7 @@ class WorkOrder private constructor(
             outOfOrderId,
             updatedAt,
             version,
+            checklistLink,
         )
     }
 }

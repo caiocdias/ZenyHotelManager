@@ -1,5 +1,6 @@
 package com.zeny.hotel.maintenance.infrastructure
 
+import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.maintenance.WorkOrderCategory
 import com.zeny.hotel.maintenance.WorkOrderId
 import com.zeny.hotel.maintenance.WorkOrderOrigin
@@ -9,6 +10,7 @@ import com.zeny.hotel.maintenance.application.WorkOrderFilter
 import com.zeny.hotel.maintenance.application.WorkOrderPageKey
 import com.zeny.hotel.maintenance.application.WorkOrderStore
 import com.zeny.hotel.maintenance.domain.WorkOrder
+import com.zeny.hotel.maintenance.domain.WorkOrderChecklistLink
 import com.zeny.hotel.rooms.AreaId
 import com.zeny.hotel.rooms.OutOfOrderId
 import com.zeny.hotel.rooms.RoomId
@@ -40,10 +42,12 @@ class WorkOrderPersistence(
                 INSERT INTO $TABLE (id, number, room_id, area_id, category, priority, description, origin,
                     assignee_employee_id, third_party_name, status, hold_reason, labor_cost, third_party_cost,
                     parts_cost, opened_by, opened_at, due_at, started_at, closed_at, completion_notes,
-                    cancellation_reason, out_of_order_id, updated_at, version)
+                    cancellation_reason, out_of_order_id, updated_at, version, checklist_execution_id,
+                    checklist_item_key, checklist_reference_execution_id)
                 VALUES (:id, :number, :room, :area, :category, :priority, :description, :origin, :assignee,
                     :thirdParty, :status, :holdReason, :labor, :third, :parts, :openedBy, :openedAt, :dueAt,
-                    :startedAt, :closedAt, :notes, :cancellation, :outOfOrder, :updatedAt, :version)
+                    :startedAt, :closedAt, :notes, :cancellation, :outOfOrder, :updatedAt, :version, :checklistExecution,
+                    :checklistItem, :checklistReference)
                 """.trimIndent(),
             ).param("id", order.id.value)
             .param("number", order.number.toString())
@@ -70,8 +74,25 @@ class WorkOrderPersistence(
             .param("outOfOrder", order.outOfOrderId?.value)
             .param("updatedAt", utc(order.updatedAt))
             .param("version", order.version)
+            .param("checklistExecution", order.checklistLink?.executionId?.value)
+            .param("checklistItem", order.checklistLink?.itemKey)
+            .param("checklistReference", order.checklistLink?.referenceExecutionId?.value)
             .update()
     }
+
+    override fun findByChecklistItem(
+        referenceExecution: ChecklistExecutionId,
+        itemKey: String,
+    ): WorkOrder? =
+        jdbc
+            .sql(
+                "SELECT * FROM $TABLE WHERE checklist_reference_execution_id = :reference " +
+                    "AND checklist_item_key = :item",
+            ).param("reference", referenceExecution.value)
+            .param("item", itemKey)
+            .query { rs, _ -> order(rs) }
+            .optional()
+            .orElse(null)
 
     override fun find(id: WorkOrderId): WorkOrder? = byId(id, lock = false)
 
@@ -206,7 +227,17 @@ class WorkOrderPersistence(
             rs.getObject("out_of_order_id", UUID::class.java)?.let(::OutOfOrderId),
             checkNotNull(instant(rs, "updated_at")),
             rs.getLong("version"),
+            checklistLink(rs),
         )
+
+    private fun checklistLink(rs: ResultSet): WorkOrderChecklistLink? {
+        val execution = rs.getObject("checklist_execution_id", UUID::class.java) ?: return null
+        return WorkOrderChecklistLink(
+            ChecklistExecutionId(execution),
+            checkNotNull(rs.getString("checklist_item_key")),
+            ChecklistExecutionId(checkNotNull(rs.getObject("checklist_reference_execution_id", UUID::class.java))),
+        )
+    }
 
     private fun instant(
         rs: ResultSet,

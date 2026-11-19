@@ -6,6 +6,7 @@ internal object MaintenanceAudit {
     const val WORK_ORDER_ATTACHMENT = "maintenance.work-order-attachment"
 
     const val OPEN_WORK_ORDER = "maintenance.work-order.open"
+    const val OPEN_WORK_ORDER_FROM_CHECKLIST = "maintenance.work-order.open-from-checklist"
     const val UPDATE_WORK_ORDER = "maintenance.work-order.update"
     const val START_WORK_ORDER = "maintenance.work-order.start"
     const val HOLD_WORK_ORDER = "maintenance.work-order.hold"
