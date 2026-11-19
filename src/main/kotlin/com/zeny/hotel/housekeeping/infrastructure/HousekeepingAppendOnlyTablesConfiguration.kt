@@ -11,5 +11,6 @@ import org.springframework.context.annotation.Configuration
 @Configuration(proxyBeanMethods = false)
 class HousekeepingAppendOnlyTablesConfiguration {
     @Bean
-    fun housekeepingAppendOnlyTables(): AppendOnlyTables = AppendOnlyTables { setOf(TASK_ASSIGNMENT_TABLE, TASK_CONFLICT_TABLE) }
+    fun housekeepingAppendOnlyTables(): AppendOnlyTables =
+        AppendOnlyTables { setOf(TASK_ASSIGNMENT_TABLE, TASK_CONFLICT_TABLE) }
 }

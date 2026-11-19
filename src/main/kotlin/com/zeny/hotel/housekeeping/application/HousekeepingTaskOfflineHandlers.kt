@@ -80,8 +80,8 @@ data class CompleteHousekeepingTaskPayload(
     val foundGuestCount: Int? = null,
 ) {
     /**
-     * O resumo do conflito (D4-E19), sem texto livre: cada resposta ([HousekeepingOfflineAnswerPayload.conflictSummary]),
-     * a contagem das fotos e a ocupação encontrada.
+     * O resumo do conflito (D4-E19), sem texto livre: cada resposta
+     * ([HousekeepingOfflineAnswerPayload.conflictSummary]), a contagem das fotos e a ocupação encontrada.
      */
     fun conflictSummary(): Map<String, Any?> =
         mapOf(

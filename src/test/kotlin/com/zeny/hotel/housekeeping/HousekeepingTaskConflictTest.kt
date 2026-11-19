@@ -87,6 +87,7 @@ class HousekeepingTaskConflictTest(
     fun neutralizeGeneralTemplates() = execution.neutralizeGeneralHousekeepingTemplates()
 
     @Test
+    @Suppress("LongMethod") // o resultado, a tarefa intacta, o registro sem texto livre, o aviso e o reenvio
     fun `the former owner's commands on a task completed by the new owner are a recorded, notified conflict`() {
         val ana = execution.attendant()
         val bia = execution.attendant()
