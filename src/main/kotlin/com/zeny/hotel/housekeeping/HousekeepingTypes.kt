@@ -90,6 +90,16 @@ enum class TaskStatus {
 }
 
 /**
+ * Por que a camareira recusou a tarefa (SPEC §8.4, M6 E04): `DO_NOT_DISTURB`, a UH com o sinal de não perturbe;
+ * `GUEST_REFUSED`, o hóspede recusou o serviço. O conjunto pode crescer: o cliente trata um valor desconhecido sem
+ * falhar.
+ */
+enum class RefusalReason {
+    DO_NOT_DISTURB,
+    GUEST_REFUSED,
+}
+
+/**
  * Origem de uma tarefa de governança (RF-GOV-02): saída, troca de UH (na UH de origem), permanência, pré-chegada,
  * faxina programada ou solicitação avulsa da recepção. O conjunto pode crescer: o cliente trata um valor desconhecido
  * sem falhar.
@@ -207,6 +217,15 @@ object HousekeepingErrorCodes {
 
     /** 409: já há tarefa no mesmo local, na mesma data e com o mesmo tipo de limpeza, em qualquer status (D5-E02). */
     val HOUSEKEEPING_TASK_ALREADY_EXISTS = ErrorCode("HOUSEKEEPING_TASK_ALREADY_EXISTS")
+
+    /**
+     * 409: a ação da execução não vale no status atual da tarefa (SPEC §8.4), com `taskStatus` e `action` no problema
+     * (padrão `RESERVATION_TRANSITION_NOT_ALLOWED`).
+     */
+    val HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED = ErrorCode("HOUSEKEEPING_TASK_TRANSITION_NOT_ALLOWED")
+
+    /** 422: iniciar uma tarefa de data posterior à data operacional (D11-E04). */
+    val HOUSEKEEPING_TASK_NOT_DUE = ErrorCode("HOUSEKEEPING_TASK_NOT_DUE")
 
     /** 404: ainda não há plano do dia na data. */
     val ASSIGNMENT_PLAN_NOT_FOUND = ErrorCode("ASSIGNMENT_PLAN_NOT_FOUND")
