@@ -63,6 +63,13 @@ class HousekeepingTaskSchemaTest(
                 "version",
                 "assigned_employee_id",
                 "assignment_position",
+                "started_at",
+                "finished_at",
+                "worked_seconds",
+                "in_progress_since",
+                "last_transition_at",
+                "cleaned_by",
+                "refusal_reason",
             )
     }
 
