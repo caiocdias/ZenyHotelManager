@@ -969,7 +969,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - o reconhecimento do primitivo ausente depende do texto "Missing required creator property" do Jackson (preso pelo `RequiredRequestPropertiesApiTest`).
   - **Menores restantes da revisão final e das fatias:** `@param:` e `@field:` duplicados em `SyncCommandRequest`; `Byte` e `BigInteger` fora da D4 (nenhum DTO os usa); a regra do `required` duplicada entre o teste e a produção (de propósito); o gate não gravava o SHA no arquivo (corrigido a partir desta etapa); um padrão solto `includedInRate = false` em `PackageResponse` (`rates/web/RatesDtos.kt:363`, DTO de resposta, sem efeito no contrato), resquício da rodada final.
   - **Padrão para os DTOs novos (E04 em diante):** um campo opcional é anulável sem anotação ou tem valor padrão; num DTO só de alteração, o padrão não pode sobrescrever o estado.
-- Capturas do brain: CAPTURA_E20.
+- Capturas do brain: `00 Inbox/2026-11-19 - ZenyHotelManager - atualização m6-operacao-fechamento E20 - 27e226dd.md`.
 
 ---
 
