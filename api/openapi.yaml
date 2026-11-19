@@ -364,20 +364,22 @@ paths:
         \ com a camareira e a posição (`assignedEmployeeId` e `assignmentPosition`,\
         \ que um novo rascunho não muda); a sem camareira e a retirada (`ASSIGNED`\
         \ da data do plano, ou de antes no plano da data operacional, fora do rascunho)\
-        \ voltam a `PENDING`. A tarefa que já andou (fora de `PENDING` e `ASSIGNED`)\
-        \ nunca é tocada: o item dela com a mesma camareira é ignorado, inclusive\
-        \ a posição, e o item que a passaria a outra camareira recusa a publicaçã\
-        o com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids das tarefas em `errors[].field`.\
-        \ O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`) só as camareiras\
-        \ com tarefa incluída ou removida; as não avisadas vêm em `notNotified`. Publica\
-        \ `housekeeping.assignment-plan` no tópico `housekeeping`. Exige `housekeeping.assignments.manage`.\
-        \ Exige o `If-Match` (ausente: 428; versão diferente, ou outra escrita numa\
-        \ tarefa durante a publicação: 412). A data vai da data operacional até 7\
-        \ dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID` (o plano\
-        \ de uma data que ficou para trás está congelado). Sem plano na data: 404\
-        \ `ASSIGNMENT_PLAN_NOT_FOUND`. Só recebe tarefa quem está na escala da data\
-        \ no setor de governança; fora dela, ou colaborador inexistente, 422 `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`.\
-        \ Nada é gravado quando a publicação é recusada."
+        \ voltam a `PENDING`. A tarefa terminada (`DONE` ou `CANCELLED`) nunca é tocada,\
+        \ e o item dela sai do plano publicado. A tarefa que já andou (fora de `PENDING`\
+        \ e `ASSIGNED`, e não terminada) nunca é tocada: o item dela com a mesma camareira\
+        \ é ignorado, inclusive a posição, e o item que a passaria a outra camareira\
+        \ recusa a publicação com 422 `ASSIGNMENT_TASK_NOT_ASSIGNABLE`, com os ids\
+        \ das tarefas em `errors[].field`. O plano fica `PUBLISHED`. Avisa (`notifications.task-assigned`)\
+        \ só as camareiras com tarefa incluída ou removida; as não avisadas vêm em\
+        \ `notNotified`. Publica `housekeeping.assignment-plan` no tópico `housekeeping`.\
+        \ Exige `housekeeping.assignments.manage`. Exige o `If-Match` (ausente: 428;\
+        \ versão diferente, ou outra escrita numa tarefa durante a publicação: 412).\
+        \ A data vai da data operacional até 7 dias depois dela; fora disso, 422 `ASSIGNMENT_PLAN_DATE_INVALID`\
+        \ (o plano de uma data que ficou para trás está congelado). Sem plano na data:\
+        \ 404 `ASSIGNMENT_PLAN_NOT_FOUND`. Só recebe tarefa quem está na escala da\
+        \ data no setor de governança; fora dela, ou colaborador inexistente, 422\
+        \ `ASSIGNMENT_EMPLOYEE_NOT_SCHEDULED`. Nada é gravado quando a publicação\
+        \ é recusada."
       operationId: publishAssignmentPlan
       parameters:
       - description: A data operacional do plano (YYYY-MM-DD).
@@ -21565,6 +21567,12 @@ components:
           description: "A posição publicada na ordem de execução da camareira, de\
             \ 1 em diante; nula sem camareira. Não muda com um novo rascunho do plano,\
             \ só com a publicação seguinte."
+          nullable: true
+        checklistExecutionId:
+          type: string
+          format: uuid
+          description: A execução do checklist aberta no último início (id opaco do
+            `checklists`); nula numa tarefa sem checklist ou ainda não iniciada.
           nullable: true
         cleaningTypeId:
           type: string

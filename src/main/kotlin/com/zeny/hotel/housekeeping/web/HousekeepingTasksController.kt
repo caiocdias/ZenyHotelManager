@@ -198,6 +198,13 @@ data class HousekeepingTaskResponse(
         nullable = true,
     )
     val assignmentPosition: Int?,
+    @field:Schema(
+        description =
+            "A execução do checklist aberta no último início (id opaco do `checklists`); nula numa tarefa sem " +
+                "checklist ou ainda não iniciada.",
+        nullable = true,
+    )
+    val checklistExecutionId: UUID?,
     val createdAt: Instant,
     val updatedAt: Instant,
 ) {
@@ -218,6 +225,7 @@ data class HousekeepingTaskResponse(
                 view.notes,
                 view.assignedEmployeeId?.value,
                 view.assignmentPosition,
+                view.checklistExecutionId?.value,
                 view.createdAt,
                 view.updatedAt,
             )

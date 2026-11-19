@@ -205,6 +205,9 @@ class HousekeepingTaskCompletionApiTest(
 
             // O id da execução vai na resposta (M1 da revisão): o cliente sabe que há checklist e manda `answers`.
             started["checklistExecutionId"].asString() shouldBe checklistOf(task).shouldNotBeNull().value.toString()
+            // E no `GET` da tarefa (revisão da Task 2), para quem lê as tarefas.
+            execution.plans.task(task)["checklistExecutionId"].asString() shouldBe
+                checklistOf(task).shouldNotBeNull().value.toString()
             val checklist = checklistsApi.execution(checklistOf(task).shouldNotBeNull()).shouldNotBeNull()
             checklist.status shouldBe ChecklistExecutionStatus.IN_PROGRESS
             checklist.templateId.value shouldBe template
@@ -228,6 +231,7 @@ class HousekeepingTaskCompletionApiTest(
             val task = task(attendant, type, room = housekeeping.createRoom())
 
             json(execution.acted(task, "start", auth).second)["checklistExecutionId"].isNull shouldBe true
+            execution.plans.task(task)["checklistExecutionId"].isNull shouldBe true
             checklistOf(task).shouldBeNull()
 
             val problem = complete(task, auth, answers = listOf(check("bed"))).problem(400, "VALIDATION_FAILED")
