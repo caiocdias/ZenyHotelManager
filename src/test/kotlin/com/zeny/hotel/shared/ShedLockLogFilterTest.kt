@@ -1,5 +1,6 @@
 package com.zeny.hotel.shared
 
+import com.zeny.hotel.shared.infrastructure.scheduling.ShedLockLogFilter
 import com.zeny.hotel.testsupport.IntegrationTest
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -54,6 +55,20 @@ class ShedLockLogFilterTest(
     }
 
     @Test
+    fun `an event with an exception from another logger still shows up`(output: CapturedOutput) {
+        LoggerFactory.getLogger("com.zeny.hotel.e21.OtherLogger").error("other failure visible", sentinelFailure())
+
+        output.all shouldContain "other failure visible"
+    }
+
+    @Test
+    fun `a message with a non-throwable parameter from the shedlock logger still shows up`(output: CapturedOutput) {
+        shedLockLogger.error("Lock {} released", "job-y")
+
+        output.all shouldContain "Lock job-y released"
+    }
+
+    @Test
     fun `a real lock provider that fails in the command leaves the sentinel out of the log`(output: CapturedOutput) {
         val provider =
             JdbcTemplateLockProvider(
@@ -75,7 +90,7 @@ class ShedLockLogFilterTest(
     private fun sentinelFailure() = IllegalStateException("banco: $SENTINEL", SQLException("causa $SENTINEL"))
 
     private companion object {
-        const val SHEDLOCK_LOGGER = "net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateStorageAccessor"
+        const val SHEDLOCK_LOGGER = ShedLockLogFilter.SHEDLOCK_STORAGE_LOGGER
 
         // Minúsculo e sem hífen: o PostgreSQL ecoa o nome da tabela inexistente na mensagem do erro.
         const val SENTINEL = "sentinela_e21_shedlock"

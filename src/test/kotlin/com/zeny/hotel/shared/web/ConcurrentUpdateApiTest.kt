@@ -287,6 +287,29 @@ class ConcurrentUpdateApiTest(
     }
 
     @Test
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    fun `a retry with the same key after a failed release answers 409 IDEMPOTENCY_KEY_IN_USE and does not run`() {
+        doThrow(DataAccessResourceFailureException("release failed", SQLException("x", "08006")))
+            .`when`(idempotencyRecords)
+            .deleteInProgress(anyUuid())
+        val row = newRow()
+        val key = UUID.randomUUID().toString()
+        val path = "/api/v1/test-concurrency/idempotent-locked?row=$row"
+
+        val first = holdingRow(row) { post(path, key) }
+        first.status shouldBe 409
+        jsonMapper.readTree(first.getContentAsString(Charsets.UTF_8))["code"].asString() shouldBe "CONCURRENT_UPDATE"
+        probe.idempotentLockedRuns.get() shouldBe 1
+
+        val retry = post(path, key)
+
+        retry.status shouldBe 409
+        jsonMapper.readTree(retry.getContentAsString(Charsets.UTF_8))["code"].asString() shouldBe
+            "IDEMPOTENCY_KEY_IN_USE"
+        probe.idempotentLockedRuns.get() shouldBe 1
+    }
+
+    @Test
     fun `another 409 stays stored, and the retry with the same key replays it without running`() {
         val key = UuidV7.generate().toString()
         val path = "/api/v1/test-concurrency/idempotent-conflict"
