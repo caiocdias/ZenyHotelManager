@@ -30,8 +30,9 @@ class StoredFileWriter(
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
-     * Grava [content] (já validado e, se a finalidade pede, reencodado) como o anexo [id], vinculado a
-     * [ownerEntityId] se informado.
+     * Grava [content] como o anexo [id], vinculado a [ownerEntityId] se informado. Só chamar depois de
+     * [com.zeny.hotel.files.domain.FileContentRules.validate] sobre o mesmo conteúdo (e, se a finalidade reencoda, do
+     * reencode); o escritor não confere tipo nem tamanho.
      */
     @Suppress("LongParameterList") // o anexo e como ele nasce
     fun write(

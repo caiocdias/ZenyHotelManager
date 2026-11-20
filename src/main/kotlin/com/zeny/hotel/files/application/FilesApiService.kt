@@ -103,6 +103,9 @@ class FilesApiService(
     ): FileSummary {
         val definition = requireNotNull(catalog.find(purpose)) { "Finalidade de anexo desconhecida: $purpose" }
         require(ownerEntityId.isNotBlank()) { "Dono do anexo vazio" }
+        require(definition.reencode == null) {
+            "A finalidade $purpose reencoda imagens, e o conteúdo gravado pelo servidor não é reencodado"
+        }
         val upload =
             try {
                 FileContentRules.validate(definition, content, name)

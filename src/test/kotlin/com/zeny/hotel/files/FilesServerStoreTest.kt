@@ -137,6 +137,19 @@ class FilesServerStoreTest(
     }
 
     @Test
+    fun `refuses a purpose that reencodes images, because the server content is not reencoded`() {
+        val before = files.countRows(FileExamplePurposes.REENCODED_PHOTO.value)
+
+        val refused =
+            shouldThrow<IllegalArgumentException> {
+                filesApi.store(FileExamplePurposes.REENCODED_PHOTO, "owner-81", "foto.png", png(seed = 6))
+            }
+
+        refused.message shouldContain "reencoda"
+        files.countRows(FileExamplePurposes.REENCODED_PHOTO.value) shouldBe before
+    }
+
+    @Test
     fun `a transaction that rolls back removes the stored object`() {
         var key = ""
 
