@@ -246,7 +246,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E09 | Relatórios operacionais e painel do dia | #concluida | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
-| E23 | Snapshot diário e arquivo dos PDFs | #pendente | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
+| E23 | Snapshot diário e arquivo dos PDFs | #em-andamento | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
 | E13 | Snapshot e arquivo do fechamento | #pendente | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
@@ -2545,7 +2545,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E23 — Snapshot diário e arquivo dos PDFs — #pendente
+## E23 — Snapshot diário e arquivo dos PDFs — #em-andamento
 
 **Objetivo:** dar ao `reporting` a API pública que o fechamento (E13) chama: o snapshot `DailyStatistics` da data (SPEC §8.2.9) e o arquivo dos PDFs da data em `files`, com a listagem e o download por URL assinada (H6). Saiu da E09 na divisão da H23 (a).
 
