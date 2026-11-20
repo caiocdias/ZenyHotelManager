@@ -253,7 +253,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #em-andamento | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -2736,10 +2736,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - O fechamento real tem 11 etapas (100 a 1000, com 800, 900 e 950); o cenário da Fase 1 deve conferir o snapshot, o `DAY_REPORT` e as pendências da data.
   - Menores para quem tocar nos testes: o `EndOfDayAdvanceStepTest` passou a olhar só as pendências da etapa de avanço; o `EndOfDayReportingIdentityTest` não afirma a falha antes do `settle`; o `EndOfDayPreE13VariantsTest` não afirma `attempts = 1` das etapas 100–300; os filtros `step_name <> …` descartam nulos (protegidos por guarda); WARN de fonte do PDFBox nos testes; o `SerproFnrhGatewayAttackTest` com `readTimeout` de 100 ms é frágil sob carga.
   - Os gates desta máquina levam de 21 a 30 min ociosa e até 54 min com outra sessão; use `timeout 3600` e o resolvedor ajustado (E23).
+- Captura do brain: `00 Inbox/2026-11-20 - ZenyHotelManager - atualização m6-operacao-fechamento E13 - a78fbc91.md`.
 
 ---
 
-## E12 — Gate do marco M6 e fim da Fase 1 — #pendente
+## E12 — Gate do marco M6 e fim da Fase 1 — #em-andamento
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório, que a definição global de pronto do M6 é atendida e que o cenário ponta a ponta da Fase 1 funciona com os módulos reais; deixar o roadmap do M7 pronto para ser sincronizado.
 
