@@ -245,7 +245,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E09 | Relatórios operacionais e painel do dia | #em-andamento | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
+| E09 | Relatórios operacionais e painel do dia | #concluida | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
 | E23 | Snapshot diário e arquivo dos PDFs | #pendente | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
 | E13 | Snapshot e arquivo do fechamento | #pendente | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
@@ -2433,7 +2433,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E09 — Relatórios operacionais e painel do dia — #em-andamento
+## E09 — Relatórios operacionais e painel do dia — #concluida
 
 **Objetivo:** criar o módulo `reporting` com o painel do dia (RF-REL-01), os relatórios operacionais de governança e manutenção (RF-REL-06, RF-GOV-11), a exportação CSV/XLSX (RF-REL-07) e o relatório de pendências do fechamento (RF-FEC-04), consultando só views `report_*` publicadas pelos módulos (ARCHITECTURE §11). O snapshot `DailyStatistics` e o arquivo dos PDFs saíram para a E23 (H23 a).
 
@@ -2444,19 +2444,19 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Escopo:**
 
 - Views `report_*` (migrações nos schemas donos, como parte da API de cada módulo): `rooms` (status), `reservations` (chegadas, saídas, hospedados, ocupação futura), `housekeeping` (tarefas, tempos, créditos, reprovações), `maintenance` (OS por estado, categoria e tempo), `billing` (contas com saldo de hóspedes que saíram, caixas abertos). `fnrh.report_submissions` vem da M5 E08.
-- `reporting` (a criar): `GET /api/v1/reports/day-panel`, relatórios de governança e manutenção com filtros, exportação `?format=csv|xlsx` (H7 e H23 b: fastexcel), relatório de pendências.
+- `reporting` (a criar): `GET /api/v1/reports/day-panel`, relatórios de governança e manutenção com filtros, exportação CSV/XLSX por rota própria (`…/csv`, `…/xlsx`, precedente da ARCHITECTURE §7 "Documentos impressos"; decisão do plano da E09, I6) (H7 e H23 b: fastexcel), relatório de pendências.
 
 **Fora de escopo:** KPIs comparativos e relatórios gerenciais (M10); snapshot `DailyStatistics`, PDFs, arquivo por data e as arestas `reporting` → `printing` e `reporting` → `files` (E23).
 
 **Critérios de aceite:**
 
-- [ ] `GET /api/v1/reports/day-panel` devolve chegadas, saídas, hospedados, UHs por status e ocupação de hoje e dos próximos dias, conferidos contra dados semeados.
-- [ ] Relatórios de governança (UHs e créditos por camareira, tempo médio por tipo, taxa de reprovação) e de manutenção (OS por estado, categoria e tempo) conferidos contra dados semeados.
-- [ ] `?format=csv` e `?format=xlsx` geram arquivos que, relidos no teste, têm as mesmas linhas da resposta JSON.
-- [ ] Relatório de pendências lista contas com saldo de hóspedes que saíram, caixas não fechados e FNRH pendentes.
-- [ ] Teste de arquitetura confirma que `reporting` não referencia classes nem tabelas internas de outros módulos.
-- [ ] Nenhum relatório operacional de governança ou manutenção expõe dados pessoais de hóspede.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `GET /api/v1/reports/day-panel` devolve chegadas, saídas, hospedados, UHs por status e ocupação de hoje e dos próximos dias, conferidos contra dados semeados.
+- [x] Relatórios de governança (UHs e créditos por camareira, tempo médio por tipo, taxa de reprovação) e de manutenção (OS por estado, categoria e tempo) conferidos contra dados semeados.
+- [x] As rotas `…/csv` e `…/xlsx` (no lugar do `?format=` previsto, decisão do plano da E09) geram arquivos que, relidos no teste, têm as mesmas linhas da resposta JSON.
+- [x] Relatório de pendências lista contas com saldo de hóspedes que saíram, caixas não fechados e FNRH pendentes.
+- [x] Teste de arquitetura confirma que `reporting` não referencia classes nem tabelas internas de outros módulos.
+- [x] Nenhum relatório operacional de governança ou manutenção expõe dados pessoais de hóspede.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -2475,12 +2475,73 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e09.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 2 (`revisor-arquitetura`, opus).
+  - A rodada 0 bloqueou por 12 Importantes:
+    - view lendo a data operacional;
+    - ocupação fora da H9;
+    - view de saldo condicional;
+    - FNRH `INVALID`;
+    - `?date=`;
+    - `?format=` contra o §7;
+    - neutralização que estragava negativos;
+    - agregados no banco compartilhado;
+    - "só as views" sem prova;
+    - tempo com pausas;
+    - permissão única;
+    - tamanho.
+  - A rodada 1 bloqueou por 3: Task 1 grande, saídas futuras e JSON sem tipo.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `e956a91` (início e plano) a o fechamento.
+  - **Task 1** (views, módulo e governança): `952572c`, `920c3b6` e `0e7efca` (testador, lista do Gerente no `AuthorizationTest`), mais a rodada 1 em `8a156f6` (voluntárias por diferença).
+  - **Task 2** (painel e pendências): `d5c9719`.
+  - **Task 3** (manutenção e exportação, com os Menores da Task 2): `45b1c90`, `06ccec2` (fastexcel 0.20.2 pelo catálogo) e `d0c64c8`.
+  - **Fim da etapa:**
+    - `8f15a3e`, rodada 1: os testes gravavam OS por SQL com número fora do formato e a listagem de OS dava 500; números válidos e CHECK do formato no banco;
+    - `8411ffd`, rodada 2: CHECK do ano da OS de 2000 a 9999 (`V2026_11_19_2101`, vermelho do testador); status e categoria desconhecidos tolerados no relatório de manutenção; dias dos testes disjuntos por classe.
+  - **Testador da etapa:** `a1d9c3b` (`ReportTableTest`, `ReportingPermissionsTest` e `ReportingAttackTest`: 401 nas 12 rotas, 403 cruzado, datas, texto livre fora dos arquivos, `=HYPERLINK` neutralizado, CHECKs e a guarda dos enums locais; ajustes de delta, `next_attempt_at` distante e `RESET ROLE` no `finally`).
+- Entregue:
+  - **Views novas** (só sobre o próprio schema, sem texto livre, `GRANT SELECT`/`REVOKE` por view):
+    - `rooms.report_room_status` e `rooms.report_out_of_order`;
+    - `housekeeping.report_tasks` (com `finished_at` e `worked_seconds`) e `housekeeping.report_inspections`;
+    - `maintenance.report_work_orders`.
+  - **Módulo `reporting`** (`shared` e `hotel`; aresta `reporting → hotel` na §3.1; regra ArchUnit; prova "só as views" por `SET ROLE` sobre todo método da porta).
+  - **Permissões:** `reporting.dashboard.read` (Gerente, Recepcionista, Governanta), `reporting.housekeeping.read` (Gerente, Governanta), `reporting.maintenance.read` (Gerente, Manutenção) e `reporting.pending.read` (Gerente, Financeiro, Recepcionista).
+  - **`GET /api/v1/reports/housekeeping?from=&to=`:** por camareira, UHs de tarefas de UH concluídas e créditos de todas; tempo médio por tipo de limpeza × tipo de UH por `worked_seconds`; taxa de reprovação `null` sem inspeção; voluntárias à parte.
+  - **`GET /api/v1/reports/maintenance?from=&to=`:** pelo `opened_at`; OS por status e categoria; tempo médio e custos das `DONE` abertas no período.
+  - **`GET /api/v1/reports/day-panel?days=`:**
+    - chegadas e saídas pela lista de "vendida", inclusive `CHECKED_OUT`;
+    - hospedados sem day use;
+    - ocupação pela H9, `null` sem capacidade ou acima de 999,9999%;
+    - UHs de hoje por status e OOO de UH ativa.
+  - **`GET /api/v1/reports/end-of-day-pending`:** contas abertas com saldo de reservas `CHECKED_OUT` (postings − payments, todas as contas da reserva), caixas `OPEN`, FNRH `PENDING`/`FAILED`/`INVALID`; sem nome de hóspede.
+  - **Exportação `…/csv` e `…/xlsx`** de cada relatório (precedente da §7 "Documentos impressos"):
+    - CSV UTF-8 com BOM, `;`, decimal `,`, RFC 4180, neutralização de fórmula só em texto;
+    - XLSX tipado (datas como texto ISO);
+    - `Cache-Control: no-store`, erros em problem+json.
+  - **CHECK do formato do número da OS** no `maintenance` (`V2026_11_19_2100`, corrigido para o ano de 2000 a 9999 em `V2026_11_19_2101`), a mesma regra do `DocumentNumber`.
+- Revisão final: **aprovado com ressalvas** (`revisor-seguranca`, opus), sem Crítico nem Importante no código; o bloqueio era só o gate pendente. Menores fechados nas rodadas: CHECK do ano, enums tolerantes, faixas de ano, `RESET ROLE`. Re-revisão escopada `8f15a3e..8411ffd`: aprovada; o apontamento `DEV_TESTE_DO_TESTADOR` no `ReportExportTest` (só o sorteio do dia, a pedido do orquestrador) foi julgado justificado.
+- Gate de integração: em `d0c64c8` deu 3 falhas (números de OS inválidos gravados pelos testes da E09 quebravam a listagem de OS), corrigidas em `8f15a3e`, que passou (4819 testes, 0 falhas); final em `8411ffd`: `BUILD SUCCESSFUL`, 4836 testes e 0 falhas.
+- Verificação mecânica: `check_test_integrity.py --base e9f5df2`, exit 0, sem apontamentos.
+- Scanner: `osv-scanner` nos 3 lockfiles (431 + 74 + 0 pacotes, com a fastexcel) com 0 Critical e 0 High. Os 2 Medium e 3 Low são anteriores à etapa.
+- `check-api-breaking.sh`: sem `ERR`.
+- Critérios verificados:
+  - painel: `DayPanelApiTest`, por diferença, e `DayPanelServiceTest`;
+  - relatórios de governança e manutenção: `HousekeepingReportApiTest`, `MaintenanceReportApiTest` e os testes de unidade;
+  - CSV/XLSX relidos com as mesmas linhas do JSON: `ReportExportTest` e `ReportExportFormatTest`;
+  - pendências: `EndOfDayPendingApiTest`;
+  - "só as views": `ReportingViewsOnlyTest` e a regra ArchUnit;
+  - sem dado de hóspede: testes com marcador;
+  - build: gate.
+- Decisões para o usuário (tomadas pela opção recomendada, sob a autorização de 2026-11-19, e revisáveis):
+  - exportação por rota própria por formato (`…/csv`, `…/xlsx`), não `?format=` como dizia o roadmap (precedente da §7);
+  - permissões de relatório separadas por assunto; pendências também na Recepcionista;
+  - "UHs" conta só tarefa de UH, e "créditos", todas;
+  - "concluídas" da manutenção são as `DONE` abertas no período;
+  - datas como texto no XLSX.
+- Notas para a próxima etapa (E23 e E13):
+  - O `byStatus` do relatório de manutenção ignora status desconhecido (a guarda dos CHECKs pega a divergência na CI); o contrato não diz isso. O assert trivial do id em `EndOfDayPendingApiTest:177` ficou. Um ponto de caixa de teste com nome `=HYPERLINK(...)` fica no banco compartilhado dos testes.
+  - **API para o fechamento:** a `ReportingApi` (snapshot e arquivo) é da E23. O `ReportTable` e o `ReportExport` estão prontos para reuso.
+  - **Enums locais:** o relatório de manutenção usa enums locais do status e da categoria da OS, guardados por teste contra os CHECKs do banco.
+  - **Instabilidade:** as faixas de ano dos testes foram separadas; o `AssignmentPlanEarlyArrivalTest` e o `HousekeepingOccurrenceListenerTest` têm histórico de falha ocasional (handoffs da E07 e da E08).
 
 ---
 
