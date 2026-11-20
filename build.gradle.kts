@@ -126,6 +126,8 @@ dependencies {
     // Documentos do módulo printing (M5 E11).
     implementation(libs.thymeleaf.spring6)
     implementation(libs.openhtmltopdf.pdfbox)
+    // Exportação XLSX dos relatórios (M6 E09).
+    implementation(libs.fastexcel)
 
     // Observabilidade (ARCHITECTURE §16): actuator só com liveness, readiness e prometheus;
     // métricas Micrometer no formato Prometheus; tracing pela ponte OpenTelemetry do Micrometer,
@@ -149,6 +151,7 @@ dependencies {
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.mockk)
     testImplementation(libs.pdfbox)
+    testImplementation(libs.fastexcel.reader)
     // Testes de contrato das integrações (ARCHITECTURE §12): o FCM HTTP v1 do módulo notifications.
     testImplementation(libs.wiremock.standalone)
     testRuntimeOnly(libs.junit.platform.launcher)
