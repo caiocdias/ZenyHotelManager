@@ -166,7 +166,7 @@ data class ArchivedReportResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun of(report: ArchivedReport) = ArchivedReportResponse(report.kind, report.fileId.value, report.createdAt)
+        fun of(report: ArchivedReport) = ArchivedReportResponse(report.kind, report.fileId, report.createdAt)
     }
 }
 

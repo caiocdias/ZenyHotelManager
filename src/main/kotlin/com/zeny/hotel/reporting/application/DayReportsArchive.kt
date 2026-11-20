@@ -84,7 +84,12 @@ class DayReportsArchive(
     }
 
     private fun archiveDayReport(date: LocalDate): ArchivedReport {
-        val model = DayReportModel.of(snapshots.snapshotDailyStatistics(date), panel.load(1), pending.load())
+        val model =
+            DayReportModel.of(
+                snapshots.snapshotDailyStatistics(date),
+                panel.loadWithoutAuthorization(1),
+                pending.loadWithoutAuthorization(),
+            )
         val pdf = printing.render(DocumentRequest(ReportingDocumentTemplates.DAY_REPORT, model), DocumentFormat.PDF)
         val id = UuidV7.generate()
         val file = files.store(ReportingFilePurposes.DAY_REPORT, id.toString(), "fechamento-$date.pdf", pdf.content)
@@ -93,7 +98,7 @@ class DayReportsArchive(
                 id = id,
                 businessDate = date,
                 kind = ArchivedReportKind.DAY_REPORT,
-                fileId = file.id,
+                fileId = file.id.value,
                 createdAt = clock.instant().truncatedTo(ChronoUnit.MICROS),
             )
         archive.insert(report)

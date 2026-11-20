@@ -1,6 +1,5 @@
 package com.zeny.hotel.reporting.infrastructure
 
-import com.zeny.hotel.files.FileId
 import com.zeny.hotel.reporting.ArchivedReport
 import com.zeny.hotel.reporting.ArchivedReportKind
 import com.zeny.hotel.reporting.application.ArchivedReportStore
@@ -50,7 +49,7 @@ class JdbcArchivedReportStore(
             ).param("id", report.id)
             .param("date", report.businessDate)
             .param("kind", report.kind.name)
-            .param("fileId", report.fileId.value)
+            .param("fileId", report.fileId)
             .param("createdAt", report.createdAt.atOffset(ZoneOffset.UTC))
             .update()
     }
@@ -67,7 +66,7 @@ class JdbcArchivedReportStore(
             id = getObject("id", UUID::class.java),
             businessDate = getObject("business_date", LocalDate::class.java),
             kind = ArchivedReportKind.valueOf(getString("kind")),
-            fileId = FileId(getObject("file_id", UUID::class.java)),
+            fileId = getObject("file_id", UUID::class.java),
             createdAt = getObject("created_at", OffsetDateTime::class.java).toInstant(),
         )
 }

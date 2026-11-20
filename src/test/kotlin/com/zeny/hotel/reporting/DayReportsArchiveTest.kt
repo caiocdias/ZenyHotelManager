@@ -1,6 +1,5 @@
 package com.zeny.hotel.reporting
 
-import com.zeny.hotel.files.FileId
 import com.zeny.hotel.files.FilePurposeCode
 import com.zeny.hotel.files.FilesTestConfiguration
 import com.zeny.hotel.files.FilesTestSupport
@@ -114,14 +113,14 @@ class DayReportsArchiveTest(
 
         archived.businessDate shouldBe date
         archived.kind shouldBe ArchivedReportKind.DAY_REPORT
-        val row = files.storedRow(archived.fileId.value)
+        val row = files.storedRow(archived.fileId)
         row["purpose"] shouldBe purpose
         row["sensitive"] shouldBe true
         row["content_type"] shouldBe "application/pdf"
         row["owner_entity_id"] shouldBe archived.id.toString()
         row["created_by"] shouldBe null
         // Cifrado no bucket: o objeto não é um PDF.
-        String(files.rawObject("reporting/day-report/${archived.fileId.value}"), Charsets.ISO_8859_1) shouldNotContain
+        String(files.rawObject("reporting/day-report/${archived.fileId}"), Charsets.ISO_8859_1) shouldNotContain
             "%PDF"
         filesOf(archived.id) shouldBe 1
 
@@ -132,9 +131,9 @@ class DayReportsArchiveTest(
         body["date"].asString() shouldBe date.toString()
         body["reports"].size() shouldBe 1
         body["reports"][0]["kind"].asString() shouldBe "DAY_REPORT"
-        body["reports"][0]["fileId"].asString() shouldBe archived.fileId.value.toString()
+        body["reports"][0]["fileId"].asString() shouldBe archived.fileId.toString()
 
-        val (url, _) = files.downloadUrlOk(archived.fileId.value, reader)
+        val (url, _) = files.downloadUrlOk(archived.fileId, reader)
         val response = files.serverGet(url)
         response.status shouldBe 200
         val content = response.contentAsByteArray
@@ -154,9 +153,9 @@ class DayReportsArchiveTest(
         text shouldContain "Situacao das UHs"
         text shouldContain "Pendencias do fechamento"
 
-        files.auditOf(archived.fileId.value).map { it.action } shouldContain "files.file.store"
-        files.auditOf(archived.fileId.value).map { it.action } shouldContain "files.file.issue-download-url"
-        files.auditOf(archived.fileId.value).map { it.action } shouldContain "files.file.download"
+        files.auditOf(archived.fileId).map { it.action } shouldContain "files.file.store"
+        files.auditOf(archived.fileId).map { it.action } shouldContain "files.file.issue-download-url"
+        files.auditOf(archived.fileId).map { it.action } shouldContain "files.file.download"
     }
 
     @Test
@@ -183,7 +182,7 @@ class DayReportsArchiveTest(
 
         others.forEach { other ->
             iam.call(GET, "/api/v1/reports/archive?date=$date", other).status shouldBe 403
-            files.downloadUrl(archived.fileId.value, other).status shouldBe 403
+            files.downloadUrl(archived.fileId, other).status shouldBe 403
         }
         iam.call(GET, "/api/v1/reports/archive?date=$date", iam.asAdmin()).status shouldBe 200
         files
@@ -256,7 +255,7 @@ class DayReportsArchiveTest(
             UuidV7.generate(),
             LocalDate.of(2056, 1, 1),
             ArchivedReportKind.DAY_REPORT,
-            FileId(UuidV7.generate()),
+            UuidV7.generate(),
             Instant.EPOCH,
         )
 

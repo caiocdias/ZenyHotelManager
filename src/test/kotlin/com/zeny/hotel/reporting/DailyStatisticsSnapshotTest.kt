@@ -3,6 +3,7 @@ package com.zeny.hotel.reporting
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
+import com.zeny.hotel.reporting.application.ReportingQueries
 import com.zeny.hotel.reservations.InventoryTestConfiguration
 import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsTestSupport
@@ -27,13 +28,13 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
- * `ReportingApi.snapshotDailyStatistics` (M6 E23, D1) contra o banco. As reservas são pelo inventário e pela API numa
- * data operacional futura própria da classe (a API só cria reservas dentro do horizonte de 730 dias, então não cabe
- * uma faixa de anos à parte: 640 dias adiante), e os lançamentos, que a API só faz na data corrente, são gravados por
- * SQL válido nas linhas só de inserção do `billing`, com `business_date` = essa data, em códigos de transação
- * existentes e numa conta aberta pela API. O dia sem movimento usa uma data de 2052, fora do horizonte (sem
- * inventário nem reservas). O banco é compartilhado: a disponibilidade, que vem do inventário de todos os tipos de UH
- * dos outros testes, é lida das views na hora de afirmar.
+ * `ReportingApi.snapshotDailyStatistics` (M6 E23, D1) contra o banco. As reservas são pelo inventário e pela API
+ * numa data operacional futura própria da classe (a API só cria reservas dentro do horizonte de 730 dias, então não
+ * cabe uma faixa de anos à parte: 715 dias adiante, deslocamento que nenhum outro teste usa), e os lançamentos, que
+ * a API só faz na data corrente, são gravados por SQL válido nas linhas só de inserção do `billing`, com
+ * `business_date` = essa data, em códigos de transação existentes e numa conta aberta pela API. O dia sem movimento
+ * usa uma data de 2052, fora do horizonte (sem inventário nem reservas). O banco é compartilhado: a disponibilidade,
+ * que vem do inventário de todos os tipos de UH dos outros testes, é lida das views na hora de afirmar.
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class, InventoryTestConfiguration::class)
@@ -44,6 +45,7 @@ class DailyStatisticsSnapshotTest(
     @Autowired private val hotel: HotelApi,
     @Autowired private val reporting: ReportingApi,
     @Autowired private val reservationsApi: ReservationsApi,
+    @Autowired private val queries: ReportingQueries,
     @Autowired mockMvc: MockMvc,
     @Autowired jsonMapper: JsonMapper,
 ) {
@@ -102,6 +104,14 @@ class DailyStatisticsSnapshotTest(
         val houseUse = seed.plan(type, "HOUSE_USE", day.minusDays(1))
         val holder = support.guest()
         InventoryListenersQuiescence.await(jdbc)
+        // A base da data antes de semear (o banco é compartilhado): o snapshot é "base + o que este teste semeou".
+        val zone = hotel.timezone()
+        val base0 =
+            queries.dailyStatisticsInput(
+                day,
+                day.atStartOfDay(zone).toInstant(),
+                day.plusDays(1).atStartOfDay(zone).toInstant(),
+            )
 
         // Duas noites normais, uma cortesia e uma de uso da casa na data (as quatro chegam e saem no dia seguinte).
         repeat(2) { seed.book(holder, support.reservation(type, normal, day, day.plusDays(1), adults = 1)) }
@@ -147,26 +157,29 @@ class DailyStatisticsSnapshotTest(
 
         snapshot.businessDate shouldBe day
         // Só as duas normais: o day use, a que saiu na data, a cancelada e o no-show ficam fora das noites.
-        snapshot.roomsSold shouldBe 2
-        snapshot.roomsComplimentary shouldBe 1
-        snapshot.roomsHouseUse shouldBe 1
+        snapshot.roomsSold shouldBe base0.roomsSold + 2
+        snapshot.roomsComplimentary shouldBe base0.roomsComplimentary + 1
+        snapshot.roomsHouseUse shouldBe base0.roomsHouseUse + 1
         snapshot.roomsAvailable shouldBe available
         snapshot.roomsOutOfOrder shouldBe outOfOrder
         // Chegam na data: duas normais, cortesia, uso da casa e day use (o no-show e a cancelada não contam).
-        snapshot.arrivals shouldBe 5
+        snapshot.arrivals shouldBe base0.arrivals + 5
         // Saem na data: o day use e a da véspera.
-        snapshot.departures shouldBe 2
-        snapshot.noShows shouldBe 1
-        snapshot.cancellations shouldBe 1
-        snapshot.roomRevenue shouldBe Money.of("200.01")
-        snapshot.foodBeverageRevenue shouldBe Money.of("42.50")
+        snapshot.departures shouldBe base0.departures + 2
+        snapshot.noShows shouldBe base0.noShows + 1
+        snapshot.cancellations shouldBe base0.cancellations + 1
+        val roomRevenue = base0.roomRevenue + Money.of("200.01")
+        snapshot.roomRevenue shouldBe roomRevenue
+        snapshot.foodBeverageRevenue shouldBe base0.foodBeverageRevenue + Money.of("42.50")
         snapshot.eventsRevenue shouldBe Money.ZERO
-        snapshot.otherRevenue shouldBe Money.of("15.25")
+        snapshot.otherRevenue shouldBe base0.otherRevenue + Money.of("15.25")
+        val sold = base0.roomsSold + 2
+        val occupied = sold + base0.roomsComplimentary + 1
         snapshot.occupancy shouldBe
-            Percent.of(BigDecimal((2 + 1) * HUNDRED).divide(BigDecimal(available), 2, RoundingMode.HALF_UP))
-        snapshot.adr shouldBe Money.of("100.00") // 200,01 / 2 = 100,005 -> HALF_EVEN
+            Percent.of(BigDecimal(occupied * HUNDRED).divide(BigDecimal(available), 2, RoundingMode.HALF_UP))
+        snapshot.adr shouldBe Money.of(roomRevenue.amount.divide(BigDecimal(sold), 2, RoundingMode.HALF_EVEN))
         snapshot.revpar shouldBe
-            Money.of(BigDecimal("200.01").divide(BigDecimal(available), 2, RoundingMode.HALF_EVEN))
+            Money.of(roomRevenue.amount.divide(BigDecimal(available), 2, RoundingMode.HALF_EVEN))
 
         // Gravado uma vez e devolvido como está, mesmo com um lançamento novo na data: não recalcula.
         post(folio, "ROOM_CHARGE", "500.00", day)
@@ -216,8 +229,8 @@ class DailyStatisticsSnapshotTest(
 
     private companion object {
         const val ROOMS = 8
-        const val SCENARIO_OFFSET = 640L
-        const val PARALLEL_OFFSET = 650L
+        const val SCENARIO_OFFSET = 715L
+        const val PARALLEL_OFFSET = 720L
         const val EMPTY_YEAR = 2052
         const val HUNDRED = 100L
         const val THREADS = 8

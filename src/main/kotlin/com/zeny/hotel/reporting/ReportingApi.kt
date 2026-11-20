@@ -1,6 +1,5 @@
 package com.zeny.hotel.reporting
 
-import com.zeny.hotel.files.FileId
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import java.time.Instant
@@ -50,7 +49,7 @@ data class ArchivedReport(
     val id: UUID,
     val businessDate: LocalDate,
     val kind: ArchivedReportKind,
-    val fileId: FileId,
+    val fileId: UUID,
     val createdAt: Instant,
 )
 
@@ -78,6 +77,12 @@ interface ReportingApi {
      * simultâneas da mesma data dão um anexo e uma linha por tipo. A falha de render ou de gravação propaga e desfaz o
      * tipo (sem anexo órfão vinculado), para o fechamento ser retomado. O PDF traz o painel do dia e as pendências **no
      * momento do arquivo**; **só para a data que fecha** (como o snapshot). Não confere permissão.
+     *
+     * **O snapshot de [date] tem de estar confirmado (commit) antes da chamada**, em etapa ou transação anterior: o
+     * arquivo abre `REQUIRES_NEW` e não vê o que a transação de quem chama ainda não gravou; com o snapshot pendente
+     * lá, o `INSERT` da transação interna espera a chave única da externa e falha por `lock_timeout` (`55P03`) em
+     * toda tentativa. Um segundo arquivo simultâneo da mesma data também pode falhar por `lock_timeout` (10 s) durante
+     * um render longo; o motor do fechamento (E13) serializa as chamadas.
      */
     fun archiveDayReports(date: LocalDate): List<ArchivedReport>
 }
