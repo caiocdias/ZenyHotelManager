@@ -159,13 +159,13 @@ class HousekeepingReportApiTest(
 
     @Test
     fun `the voluntary inspections of the period are apart, without a type`() {
+        // Total do hotel: lido antes e depois de semear, e afirmado por diferença (a taxa exata é do teste de unidade).
+        val before = with(iam) { report(day, day.plusDays(1)).ok() }["voluntaryInspections"]
         dataset()
-
         val body = with(iam) { report(day, day.plusDays(1)).ok() }
 
-        body["voluntaryInspections"]["inspections"].asLong() shouldBe 2
-        body["voluntaryInspections"]["rejections"].asLong() shouldBe 1
-        body["voluntaryInspections"]["rejectionRate"].asString() shouldBe "50.0000"
+        body["voluntaryInspections"]["inspections"].asLong() - before["inspections"].asLong() shouldBe 2
+        body["voluntaryInspections"]["rejections"].asLong() - before["rejections"].asLong() shouldBe 1
         body["from"].asString() shouldBe "$day"
         body["to"].asString() shouldBe "${day.plusDays(1)}"
     }
