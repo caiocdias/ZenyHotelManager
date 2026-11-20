@@ -147,6 +147,7 @@ class DatabaseRolesTest(
         appendOnlyTables shouldContain "housekeeping.task_conflict"
         appendOnlyTables shouldContain "maintenance.work_order_note"
         appendOnlyTables shouldContain "reporting.daily_statistics"
+        appendOnlyTables shouldContain "reporting.archived_report"
 
         tables shouldContainAll NO_DELETE_TABLES
 
