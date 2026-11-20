@@ -1,6 +1,7 @@
 package com.zeny.hotel.housekeeping
 
 import com.zeny.hotel.shared.UuidV7
+import com.zeny.hotel.testsupport.HousekeepingReportSeed
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.ReportViewAssertions
 import io.kotest.matchers.shouldBe
@@ -20,18 +21,19 @@ import java.util.UUID
 class HousekeepingReportViewsTest(
     @Autowired private val jdbc: JdbcClient,
 ) {
+    private val seed = HousekeepingReportSeed(jdbc)
     private val day = LocalDate.of(2031, 4, 12)
-    private val startedAt = Instant.parse("2031-04-12T12:00:00Z")
-    private val finishedAt = Instant.parse("2031-04-12T13:00:00Z")
+    private val startedAt = Instant.parse("2031-04-12T14:00:00Z")
+    private val finishedAt = Instant.parse("2031-04-12T15:00:00Z")
 
     @Test
     fun `tasks have one row each with the assignee, the credits and the worked time without pauses`() {
-        val type = cleaningType()
+        val type = seed.cleaningType()
         val room = UuidV7.generate()
         val area = UuidV7.generate()
         val employee = UuidV7.generate()
-        val done = task(type, room = room, status = "DONE", employee = employee, worked = 1800)
-        val pending = task(type, area = area, status = "PENDING", notes = "Texto livre da recepção")
+        val done = seed.task(type, day, room = room, status = "DONE", employee = employee, worked = 1800)
+        val pending = seed.task(type, day, area = area, status = "PENDING", notes = "Texto livre da recepção")
 
         fun row(id: UUID) =
             jdbc
@@ -78,12 +80,11 @@ class HousekeepingReportViewsTest(
 
     @Test
     fun `inspections list only the completed ones, with a nullable task for the voluntary one`() {
-        val type = cleaningType()
+        val type = seed.cleaningType()
         val room = UuidV7.generate()
-        val task = task(type, room = room, status = "AWAITING_INSPECTION")
-        val inspector = UuidV7.generate()
-        val rejected = inspection(task, room, "REJECTED", inspector)
-        val voluntary = inspection(null, room, "APPROVED", inspector)
+        val task = seed.task(type, day, room = room, status = "AWAITING_INSPECTION")
+        val rejected = seed.inspection(task, room, "REJECTED")
+        val voluntary = seed.inspection(null, room, "APPROVED")
         val inProgress = UuidV7.generate()
         jdbc
             .sql(
@@ -92,7 +93,7 @@ class HousekeepingReportViewsTest(
             ).param("id", inProgress)
             .param("task", task)
             .param("room", room)
-            .param("inspector", inspector)
+            .param("inspector", UuidV7.generate())
             .update()
 
         fun row(id: UUID) =
@@ -108,8 +109,8 @@ class HousekeepingReportViewsTest(
                         rs.getObject("inspector_id", UUID::class.java),
                     )
                 }.list()
-        row(rejected).single() shouldBe listOf(task, room, "REJECTED", true, inspector)
-        row(voluntary).single() shouldBe listOf(null, room, "APPROVED", true, inspector)
+        row(rejected).single() shouldBe listOf(task, room, "REJECTED", true, inspectorOf(rejected))
+        row(voluntary).single() shouldBe listOf(null, room, "APPROVED", true, inspectorOf(voluntary))
         row(inProgress) shouldBe emptyList()
         ReportViewAssertions.shouldHaveColumns(
             jdbc,
@@ -134,84 +135,10 @@ class HousekeepingReportViewsTest(
         }
     }
 
-    private fun cleaningType(): UUID {
-        val id = UuidV7.generate()
+    private fun inspectorOf(id: UUID): UUID =
         jdbc
-            .sql(
-                "INSERT INTO housekeeping.cleaning_type (id, code, name, requires_inspection, default_priority, " +
-                    "active, created_at, updated_at, version) VALUES (:id, :code, 'Tipo de teste', true, 3, true, " +
-                    "now(), now(), 0)",
-            ).param("id", id)
-            .param(
-                "code",
-                "RV" +
-                    id
-                        .toString()
-                        .takeLast(CODE_SUFFIX)
-                        .uppercase()
-                        .replace("-", "0"),
-            ).update()
-        return id
-    }
-
-    @Suppress("LongParameterList") // os campos que variam nos casos
-    private fun task(
-        type: UUID,
-        room: UUID? = null,
-        area: UUID? = null,
-        status: String,
-        employee: UUID? = null,
-        worked: Long = 0,
-        notes: String? = null,
-    ): UUID {
-        val id = UuidV7.generate()
-        val finished = status in setOf("DONE", "AWAITING_INSPECTION")
-        jdbc
-            .sql(
-                "INSERT INTO housekeeping.housekeeping_task (id, room_id, area_id, business_date, " +
-                    "cleaning_type_id, source, status, priority, credits, arrival_expected, notes, created_at, " +
-                    "updated_at, version, assigned_employee_id, assignment_position, started_at, finished_at, " +
-                    "worked_seconds, cleaned_by) VALUES (:id, :room, :area, :day, :type, 'CHECKOUT', :status, 3, 3, " +
-                    "false, :notes, now(), now(), 0, :employee, :position, :started, :finished, :worked, :cleanedBy)",
-            ).param("id", id)
-            .param("room", room)
-            .param("area", area)
-            .param("day", day)
-            .param("type", type)
-            .param("status", status)
-            .param("notes", notes)
-            .param("employee", employee)
-            .param("position", employee?.let { 1 })
-            .param("started", if (finished) startedAt.atOffset(java.time.ZoneOffset.UTC) else null)
-            .param("finished", if (finished) finishedAt.atOffset(java.time.ZoneOffset.UTC) else null)
-            .param("worked", worked)
-            .param("cleanedBy", if (finished) UuidV7.generate() else null)
-            .update()
-        return id
-    }
-
-    private fun inspection(
-        task: UUID?,
-        room: UUID,
-        result: String,
-        inspector: UUID,
-    ): UUID {
-        val id = UuidV7.generate()
-        jdbc
-            .sql(
-                "INSERT INTO housekeeping.inspection (id, task_id, room_id, status, result, inspector_id, " +
-                    "started_at, completed_at) VALUES (:id, :task, :room, 'COMPLETED', :result, :inspector, " +
-                    "now() - interval '1 minute', now())",
-            ).param("id", id)
-            .param("task", task)
-            .param("room", room)
-            .param("result", result)
-            .param("inspector", inspector)
-            .update()
-        return id
-    }
-
-    private companion object {
-        const val CODE_SUFFIX = 12
-    }
+            .sql("SELECT inspector_id FROM housekeeping.inspection WHERE id = :id")
+            .param("id", id)
+            .query(UUID::class.java)
+            .single()
 }

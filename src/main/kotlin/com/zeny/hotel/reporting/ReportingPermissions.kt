@@ -1,0 +1,59 @@
+package com.zeny.hotel.reporting
+
+import com.zeny.hotel.shared.ModulePermissions
+import com.zeny.hotel.shared.PermissionCode
+import com.zeny.hotel.shared.PermissionDefinition
+import com.zeny.hotel.shared.PermissionScope.ALL
+import com.zeny.hotel.shared.RoleTemplate
+import com.zeny.hotel.shared.TemplateGrant
+
+/**
+ * Permissões do módulo `reporting` (RF-ACS-02, M6 E09, D2), separadas por assunto. Os relatórios são do hotel todo,
+ * sem dono, então só aceitam o escopo `ALL`, e nenhuma é sensível (nenhum relatório traz dado de hóspede nem texto
+ * livre, RN-13).
+ */
+object ReportingPermissions : ModulePermissions {
+    override val module = "reporting"
+
+    /** O painel do dia (chegadas, saídas, ocupação e UHs). */
+    val DASHBOARD_READ = PermissionCode("reporting.dashboard.read")
+
+    /** Os relatórios de governança. */
+    val HOUSEKEEPING_READ = PermissionCode("reporting.housekeeping.read")
+
+    /** Os relatórios de manutenção. */
+    val MAINTENANCE_READ = PermissionCode("reporting.maintenance.read")
+
+    /** As pendências do fechamento do dia (contas, caixas e FNRH). */
+    val PENDING_READ = PermissionCode("reporting.pending.read")
+
+    private fun grantedTo(vararg templates: RoleTemplate) = templates.associateWith { TemplateGrant(ALL) }
+
+    override val permissions =
+        listOf(
+            PermissionDefinition(
+                DASHBOARD_READ,
+                "Consultar o painel do dia: chegadas, saídas, ocupação e situação das UHs",
+                setOf(ALL),
+                templates = grantedTo(RoleTemplate.MANAGER, RoleTemplate.RECEPTIONIST, RoleTemplate.HOUSEKEEPER),
+            ),
+            PermissionDefinition(
+                HOUSEKEEPING_READ,
+                "Consultar os relatórios de governança: produtividade, tempo médio e reprovação",
+                setOf(ALL),
+                templates = grantedTo(RoleTemplate.MANAGER, RoleTemplate.HOUSEKEEPER),
+            ),
+            PermissionDefinition(
+                MAINTENANCE_READ,
+                "Consultar os relatórios de manutenção: ordens, tempo de atendimento e custos",
+                setOf(ALL),
+                templates = grantedTo(RoleTemplate.MANAGER, RoleTemplate.MAINTENANCE),
+            ),
+            PermissionDefinition(
+                PENDING_READ,
+                "Consultar as pendências do fechamento do dia: contas, caixas abertos e FNRH",
+                setOf(ALL),
+                templates = grantedTo(RoleTemplate.MANAGER, RoleTemplate.FINANCE, RoleTemplate.RECEPTIONIST),
+            ),
+        )
+}

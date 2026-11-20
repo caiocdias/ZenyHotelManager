@@ -30,6 +30,8 @@ tags:
   name: billing
 - description: "Agentes de impressão, impressoras e fila de impressão."
   name: Printing
+- description: "Relatórios operacionais, painel do dia e pendências do fechamento."
+  name: reporting
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
@@ -9913,6 +9915,48 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reports/housekeeping:
+    get:
+      description: "Pelo `businessDate` das tarefas: por camareira, as UHs limpas\
+        \ e os créditos das limpezas concluídas (`AWAITING_INSPECTION` e `DONE`);\
+        \ por tipo de limpeza e tipo de UH (só tarefas de UH), o tempo médio em minutos\
+        \ (do tempo trabalhado, sem as pausas) e a taxa de reprovação das inspeçõ\
+        es concluídas das tarefas do período, nula sem inspeção; as inspeções voluntá\
+        rias à parte. Período em datas (`from` e `to`, obrigatórias, inclusive nas\
+        \ duas pontas), de no máximo 366 dias; fim antes do início ou período maior:\
+        \ 400 `REPORT_PERIOD_INVALID`. Exige `reporting.housekeeping.read`."
+      operationId: getHousekeepingReport
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança
+      tags:
+      - reporting
   /api/v1/reservations:
     get:
       description: "Os filtros combinam com \"e\" (os ausentes não filtram), em ordem\
@@ -16565,6 +16609,28 @@ components:
           nullable: true
       required:
       - fileId
+    AttendantReportResponse:
+      type: object
+      description: A produtividade de uma camareira no período.
+      properties:
+        credits:
+          type: integer
+          format: int64
+          description: "A soma dos créditos de todas as tarefas concluídas, de UH\
+            \ ou de área."
+        employeeId:
+          type: string
+          format: uuid
+          description: O colaborador (staff) da camareira.
+        rooms:
+          type: integer
+          format: int64
+          description: "As UHs limpas: tarefas de UH concluídas (`AWAITING_INSPECTION`\
+            \ e `DONE`)."
+      required:
+      - credits
+      - employeeId
+      - rooms
     AuditEntryResponse:
       type: object
       description: Uma entrada da trilha de auditoria.
@@ -18860,6 +18926,46 @@ components:
       required:
       - credits
       - roomTypeId
+    CleaningTypeReportResponse:
+      type: object
+      description: Um tipo de limpeza num tipo de UH.
+      properties:
+        averageMinutes:
+          type: number
+          description: "O tempo médio das limpezas concluídas em minutos, com 1 casa;\
+            \ nulo sem limpeza concluída."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        inspections:
+          type: integer
+          format: int64
+          description: As inspeções concluídas das tarefas do período.
+        rejectionRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        rejections:
+          type: integer
+          format: int64
+          description: As inspeções reprovadas.
+        roomTypeId:
+          type: string
+          format: uuid
+        tasks:
+          type: integer
+          format: int64
+          description: As limpezas concluídas.
+      required:
+      - cleaningTypeId
+      - inspections
+      - rejections
+      - roomTypeId
+      - tasks
     CleaningTypeRequest:
       type: object
       description: "Os dados de um tipo de limpeza; na edição, os créditos são a lista\
@@ -23011,6 +23117,35 @@ components:
       - observedBy
       - occupancy
       - roomId
+    HousekeepingReportResponse:
+      type: object
+      description: O relatório de governança do período.
+      properties:
+        attendants:
+          type: array
+          description: "As camareiras com tarefa atribuída no período, das que mais\
+            \ fizeram às que menos."
+          items:
+            $ref: "#/components/schemas/AttendantReportResponse"
+        cleaningTypes:
+          type: array
+          description: Os tipos de limpeza por tipo de UH com tarefa de UH no período.
+          items:
+            $ref: "#/components/schemas/CleaningTypeReportResponse"
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        voluntaryInspections:
+          $ref: "#/components/schemas/VoluntaryInspectionsResponse"
+      required:
+      - attendants
+      - cleaningTypes
+      - from
+      - to
+      - voluntaryInspections
     HousekeepingRoomInspectionRequest:
       type: object
       description: A inspeção voluntária de uma UH.
@@ -31385,6 +31520,27 @@ components:
       - active
       - id
       - name
+    VoluntaryInspectionsResponse:
+      type: object
+      description: "As inspeções voluntárias (sem tarefa) concluídas no período, à\
+        \ parte dos tipos de limpeza."
+      properties:
+        inspections:
+          type: integer
+          format: int64
+        rejectionRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        rejections:
+          type: integer
+          format: int64
+      required:
+      - inspections
+      - rejections
     WalkInRequest:
       type: object
       description: "O walk-in (RF-REC-02): a reserva criada na data operacional, a\

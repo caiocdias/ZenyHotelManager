@@ -128,7 +128,7 @@ flowchart LR
 | `pos` | PDV | Pontos de venda, cardápio, comandas, produção e fichas técnicas | shared, hotel, staff, billing, payments, fiscal, inventory, reservations, printing |
 | `events` | EVT | Espaços, eventos, propostas, contratos e BEO | shared, guests, reservations, billing, payments, pos, checklists, files, printing |
 | `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting, notifications |
-| `reporting` | REL | Estatísticas diárias, KPIs, relatórios e arquivo de PDFs do fechamento | shared, files, printing, mais as *views* de leitura publicadas pelos módulos (§11) |
+| `reporting` | REL | Estatísticas diárias, KPIs, relatórios e arquivo de PDFs do fechamento | shared, hotel, files, printing (estes dois desde a E23), mais as *views* de leitura publicadas pelos módulos (§11) |
 
 O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo.
 

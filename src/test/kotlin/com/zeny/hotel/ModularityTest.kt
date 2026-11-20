@@ -12,6 +12,7 @@ import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
 import com.zeny.hotel.printing.PrintingModule
 import com.zeny.hotel.rates.RatesModule
+import com.zeny.hotel.reporting.ReportingModule
 import com.zeny.hotel.reservations.ReservationsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -255,6 +256,35 @@ class ModularityTest {
             .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.maintenance.") }
             .filter { !it.startsWith("com.zeny.hotel.shared.") }
             .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `reporting depends only on shared, hotel`() {
+        val reporting = modules.getModuleByName("reporting").orElseThrow()
+        val allowed = setOf("shared", "hotel")
+        val dependencies =
+            reporting
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1 (camada Gestão), M6 E09: só shared e hotel (a data operacional e o fuso, pela HotelApi). Os
+        // dados dos outros módulos chegam só pelas views report_* (SQL), nunca por classe; files e printing entram
+        // com a E23.
+        dependencies.toSet() shouldBe allowed
+        ReportingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Só a raiz do hotel (a API pública); verify() também barra os pacotes internos.
+        reporting
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.hotel.") }
+            .filter { it.substringBeforeLast('.') != "com.zeny.hotel.hotel" }
             .toList() shouldBe emptyList()
     }
 

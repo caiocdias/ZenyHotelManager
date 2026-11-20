@@ -21,8 +21,6 @@ class MaintenanceReportViewsTest(
 ) {
     @Test
     fun `a work order is one row with the contract columns and the costs`() {
-        val room = UuidV7.generate()
-        val open = insert(room = room, status = "OPEN")
         val done = insert(area = UuidV7.generate(), status = "DONE", closedAt = Instant.parse("2031-05-02T10:00:00Z"))
 
         jdbc
@@ -56,13 +54,6 @@ class MaintenanceReportViewsTest(
                 BigDecimal("5.25"),
                 null,
             )
-        jdbc
-            .sql(
-                "SELECT room_id, closed_at, status, number FROM maintenance.report_work_orders WHERE work_order_id = :id",
-            ).param("id", open)
-            .query { rs, _ ->
-                listOf(rs.getObject("room_id", UUID::class.java), rs.getTimestamp("closed_at"), rs.getString("status"))
-            }.single() shouldBe listOf(room, null, "OPEN")
         ReportViewAssertions.shouldHaveColumns(
             jdbc,
             "maintenance",
@@ -84,6 +75,20 @@ class MaintenanceReportViewsTest(
                 "parts_cost:numeric",
             ),
         )
+    }
+
+    @Test
+    fun `an open order has no closing and keeps its room`() {
+        val room = UuidV7.generate()
+        val open = insert(room = room, status = "OPEN")
+
+        jdbc
+            .sql(
+                "SELECT room_id, closed_at, status FROM maintenance.report_work_orders WHERE work_order_id = :id",
+            ).param("id", open)
+            .query { rs, _ ->
+                listOf(rs.getObject("room_id", UUID::class.java), rs.getTimestamp("closed_at"), rs.getString("status"))
+            }.single() shouldBe listOf(room, null, "OPEN")
     }
 
     @Test
