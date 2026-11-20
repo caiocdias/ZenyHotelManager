@@ -2,6 +2,7 @@ package com.zeny.hotel.reporting.infrastructure
 
 import com.zeny.hotel.reporting.application.AttendantProductivityRow
 import com.zeny.hotel.reporting.application.CleaningTypeRow
+import com.zeny.hotel.reporting.application.CompletedWorkOrdersRow
 import com.zeny.hotel.reporting.application.DayCapacityRow
 import com.zeny.hotel.reporting.application.DayMovementsRow
 import com.zeny.hotel.reporting.application.InspectionCountsRow
@@ -11,6 +12,7 @@ import com.zeny.hotel.reporting.application.OutOfOrderCountsRow
 import com.zeny.hotel.reporting.application.PendingFnrhSubmissionRow
 import com.zeny.hotel.reporting.application.ReportingQueries
 import com.zeny.hotel.reporting.application.RoomCountsRow
+import com.zeny.hotel.reporting.application.WorkOrderCountRow
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.sql.ResultSet
@@ -27,6 +29,7 @@ import java.util.UUID
  * as views. Cada linha das views é um fato; a agregação é daqui.
  */
 @Component
+@Suppress("TooManyFunctions") // implementa a porta, uma consulta por método
 class JdbcReportingQueries(
     private val jdbc: JdbcClient,
 ) : ReportingQueries {
@@ -270,6 +273,63 @@ class JdbcReportingQueries(
                     rs.getObject("created_at", OffsetDateTime::class.java).toInstant(),
                 )
             }.list()
+
+    override fun workOrdersByStatus(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow> = countWorkOrdersBy("status", from, to)
+
+    override fun workOrdersByCategory(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow> = countWorkOrdersBy("category", from, to)
+
+    /** [column] é sempre um literal daqui (`status` ou `category`), nunca entrada externa. */
+    private fun countWorkOrdersBy(
+        column: String,
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow> =
+        jdbc
+            .sql(
+                """
+                SELECT $column AS key, count(*) AS orders
+                FROM maintenance.report_work_orders
+                WHERE opened_at >= :from AND opened_at < :to
+                GROUP BY $column
+                ORDER BY $column
+                """.trimIndent(),
+            ).param("from", from.atOffset(ZoneOffset.UTC))
+            .param("to", to.atOffset(ZoneOffset.UTC))
+            .query { rs, _ -> WorkOrderCountRow(rs.getString("key"), rs.getLong("orders")) }
+            .list()
+
+    override fun completedWorkOrders(
+        from: Instant,
+        to: Instant,
+    ): CompletedWorkOrdersRow =
+        jdbc
+            .sql(
+                """
+                SELECT count(*) AS orders,
+                       coalesce(sum(extract(epoch FROM closed_at - opened_at)), 0) AS seconds,
+                       coalesce(sum(labor_cost), 0) AS labor_cost,
+                       coalesce(sum(third_party_cost), 0) AS third_party_cost,
+                       coalesce(sum(parts_cost), 0) AS parts_cost
+                FROM maintenance.report_work_orders
+                WHERE status = 'DONE' AND closed_at IS NOT NULL AND opened_at >= :from AND opened_at < :to
+                """.trimIndent(),
+            ).param("from", from.atOffset(ZoneOffset.UTC))
+            .param("to", to.atOffset(ZoneOffset.UTC))
+            .query { rs, _ ->
+                CompletedWorkOrdersRow(
+                    rs.getLong("orders"),
+                    rs.getBigDecimal("seconds"),
+                    rs.getBigDecimal("labor_cost"),
+                    rs.getBigDecimal("third_party_cost"),
+                    rs.getBigDecimal("parts_cost"),
+                )
+            }.single()
 
     private fun ResultSet.uuid(column: String): UUID = getObject(column, UUID::class.java)
 

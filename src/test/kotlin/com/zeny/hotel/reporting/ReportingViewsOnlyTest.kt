@@ -61,6 +61,9 @@ class ReportingViewsOnlyTest(
         queries.openFolioBalances()
         queries.openCashierShifts()
         queries.pendingFnrhSubmissions()
+        queries.workOrdersByStatus(now, now.plusSeconds(1))
+        queries.workOrdersByCategory(now, now.plusSeconds(1))
+        queries.completedWorkOrders(now, now.plusSeconds(1))
     }
 
     private fun withViewsOnlyRole(block: (JdbcClient, ReportingQueries) -> Unit) {
@@ -97,6 +100,7 @@ class ReportingViewsOnlyTest(
                 "reservations" to listOf("report_reservations", "report_room_nights", "report_inventory"),
                 "billing" to listOf("report_folios", "report_postings", "report_payments", "report_cashier_shifts"),
                 "fnrh" to listOf("report_submissions"),
+                "maintenance" to listOf("report_work_orders"),
             )
 
         /** Os métodos da porta que [callEveryMethod] chama. */
@@ -112,6 +116,9 @@ class ReportingViewsOnlyTest(
                 "openFolioBalances",
                 "openCashierShifts",
                 "pendingFnrhSubmissions",
+                "workOrdersByStatus",
+                "workOrdersByCategory",
+                "completedWorkOrders",
             )
     }
 }

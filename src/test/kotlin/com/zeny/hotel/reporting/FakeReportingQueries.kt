@@ -2,6 +2,7 @@ package com.zeny.hotel.reporting
 
 import com.zeny.hotel.reporting.application.AttendantProductivityRow
 import com.zeny.hotel.reporting.application.CleaningTypeRow
+import com.zeny.hotel.reporting.application.CompletedWorkOrdersRow
 import com.zeny.hotel.reporting.application.DayCapacityRow
 import com.zeny.hotel.reporting.application.DayMovementsRow
 import com.zeny.hotel.reporting.application.InspectionCountsRow
@@ -11,6 +12,8 @@ import com.zeny.hotel.reporting.application.OutOfOrderCountsRow
 import com.zeny.hotel.reporting.application.PendingFnrhSubmissionRow
 import com.zeny.hotel.reporting.application.ReportingQueries
 import com.zeny.hotel.reporting.application.RoomCountsRow
+import com.zeny.hotel.reporting.application.WorkOrderCountRow
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
 
@@ -50,4 +53,19 @@ open class FakeReportingQueries : ReportingQueries {
     override fun openCashierShifts(): List<OpenCashierShiftRow> = emptyList()
 
     override fun pendingFnrhSubmissions(): List<PendingFnrhSubmissionRow> = emptyList()
+
+    override fun workOrdersByStatus(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow> = emptyList()
+
+    override fun workOrdersByCategory(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow> = emptyList()
+
+    override fun completedWorkOrders(
+        from: Instant,
+        to: Instant,
+    ) = CompletedWorkOrdersRow(0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
 }

@@ -1,11 +1,8 @@
 package com.zeny.hotel.reporting.application
 
 import com.zeny.hotel.hotel.HotelApi
-import com.zeny.hotel.reporting.ReportingErrorCodes
 import com.zeny.hotel.reporting.ReportingPermissions
 import com.zeny.hotel.shared.Authorization
-import com.zeny.hotel.shared.FieldViolation
-import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.Percent
 import com.zeny.hotel.shared.StorableRange
 import org.springframework.stereotype.Service
@@ -13,11 +10,7 @@ import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
 import java.util.UUID
-
-/** O período máximo de um relatório, em dias, as duas pontas inclusive. */
-const val MAX_REPORT_DAYS = 366L
 
 private const val SECONDS_PER_MINUTE = 60L
 private const val PERCENT = 100L
@@ -75,7 +68,7 @@ class HousekeepingReportService(
         to: LocalDate,
     ): HousekeepingReport {
         authorization.require(ReportingPermissions.HOUSEKEEPING_READ)
-        requireValidPeriod(from, to)
+        requireValidReportPeriod(from, to)
         val zone = hotel.timezone()
         val voluntary =
             queries.voluntaryInspections(
@@ -122,30 +115,4 @@ class HousekeepingReportService(
         total.takeIf { it > 0 }?.let {
             Percent.of(BigDecimal(part * PERCENT).divide(BigDecimal(it), Percent.SCALE, RoundingMode.HALF_UP))
         }
-
-    private fun requireValidPeriod(
-        from: LocalDate,
-        to: LocalDate,
-    ) {
-        val message =
-            when {
-                !StorableRange.contains(from) || !StorableRange.contains(to) -> {
-                    "Data fora do intervalo aceito."
-                }
-
-                to.isBefore(from) -> {
-                    "O fim do período não pode ser antes do início."
-                }
-
-                ChronoUnit.DAYS.between(from, to) + 1 > MAX_REPORT_DAYS -> {
-                    "O período não pode passar de $MAX_REPORT_DAYS dias."
-                }
-
-                else -> {
-                    return
-                }
-            }
-        val code = ReportingErrorCodes.REPORT_PERIOD_INVALID
-        throw InvalidInputException(code, message, listOf(FieldViolation("to", code.value, message)))
-    }
 }

@@ -248,6 +248,7 @@ class DayPanelApiTest(
         val base = read()["businessDate"].asString().let(LocalDate::parse)
         val before = read()["rooms"]
         val (_, created) = inventory.roomTypeWithRooms(ROOMS, base)
+
         fun open(
             room: UUID,
             kind: String,

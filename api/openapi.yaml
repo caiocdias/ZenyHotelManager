@@ -9954,6 +9954,78 @@ paths:
       summary: Painel do dia
       tags:
       - reporting
+  /api/v1/reports/day-panel/csv:
+    get:
+      description: "O painel do dia (`GET /reports/day-panel`) como CSV. CSV em UTF-8\
+        \ com BOM, separado por `;`, decimal com vírgula e datas ISO; um relatório\
+        \ de várias tabelas escreve cada uma sob uma linha com o título dela, separadas\
+        \ por uma linha vazia. Os mesmos parâmetros, a mesma permissão e o mesmo resultado\
+        \ da operação JSON. Qualquer erro sai em `application/problem+json`, mesmo\
+        \ com `Accept: text/csv`. O arquivo não é guardado em cache."
+      operationId: getDayPanelCsv
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia em CSV
+      tags:
+      - reporting
+  /api/v1/reports/day-panel/xlsx:
+    get:
+      description: "O painel do dia (`GET /reports/day-panel`) como planilha. XLSX\
+        \ com uma aba por tabela e os números em células numéricas. Os mesmos parâ\
+        metros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer erro\
+        \ sai em `application/problem+json`, mesmo com `Accept: text/csv`. O arquivo\
+        \ não é guardado em cache."
+      operationId: getDayPanelXlsx
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia em XLSX
+      tags:
+      - reporting
   /api/v1/reports/end-of-day-pending:
     get:
       description: "O estado corrente, sem parâmetro de data: as contas abertas com\
@@ -9977,6 +10049,56 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Pendências do fechamento do dia
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending/csv:
+    get:
+      description: "As pendências (`GET /reports/end-of-day-pending`) como CSV. CSV\
+        \ em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO; um\
+        \ relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+      operationId: getEndOfDayPendingCsv
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia em CSV
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending/xlsx:
+    get:
+      description: "As pendências (`GET /reports/end-of-day-pending`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
+        \ arquivo não é guardado em cache."
+      operationId: getEndOfDayPendingXlsx
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia em XLSX
       tags:
       - reporting
   /api/v1/reports/housekeeping:
@@ -10019,6 +10141,208 @@ paths:
                 $ref: "#/components/schemas/Problem"
           description: "Erro no formato RFC 9457, com `code` estável."
       summary: Relatório de governança
+      tags:
+      - reporting
+  /api/v1/reports/housekeeping/csv:
+    get:
+      description: "O relatório de governança (`GET /reports/housekeeping`) como CSV.\
+        \ CSV em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO;\
+        \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+      operationId: getHousekeepingReportCsv
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança em CSV
+      tags:
+      - reporting
+  /api/v1/reports/housekeeping/xlsx:
+    get:
+      description: "O relatório de governança (`GET /reports/housekeeping`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
+        \ arquivo não é guardado em cache."
+      operationId: getHousekeepingReportXlsx
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança em XLSX
+      tags:
+      - reporting
+  /api/v1/reports/maintenance:
+    get:
+      description: "Pela abertura das ordens de serviço (data local do hotel): as\
+        \ ordens por status e por categoria; das concluídas (`DONE`), o tempo médio\
+        \ de atendimento (da abertura à conclusão) em horas com 1 casa, nulo sem ordem\
+        \ concluída, e a soma dos custos (mão de obra, terceiros e peças). As canceladas\
+        \ contam por status e categoria, não nos custos. Sem texto livre. Período\
+        \ em datas (`from` e `to`, obrigatórias, inclusive nas duas pontas), de no\
+        \ máximo 366 dias; fim antes do início ou período maior: 400 `REPORT_PERIOD_INVALID`.\
+        \ Exige `reporting.maintenance.read`."
+      operationId: getMaintenanceReport
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção
+      tags:
+      - reporting
+  /api/v1/reports/maintenance/csv:
+    get:
+      description: "O relatório de manutenção (`GET /reports/maintenance`) como CSV.\
+        \ CSV em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO;\
+        \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+      operationId: getMaintenanceReportCsv
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção em CSV
+      tags:
+      - reporting
+  /api/v1/reports/maintenance/xlsx:
+    get:
+      description: "O relatório de manutenção (`GET /reports/maintenance`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
+        \ arquivo não é guardado em cache."
+      operationId: getMaintenanceReportXlsx
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção em XLSX
       tags:
       - reporting
   /api/v1/reservations:
@@ -19294,6 +19618,48 @@ components:
       - id
       - legalName
       - updatedAt
+    CompletedWorkOrdersResponse:
+      type: object
+      description: As ordens concluídas (`DONE`) abertas no período.
+      properties:
+        averageHours:
+          type: number
+          description: "O tempo médio da abertura à conclusão em horas, com 1 casa;\
+            \ nulo sem ordem concluída."
+          nullable: true
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        orders:
+          type: integer
+          format: int64
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        totalCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - laborCost
+      - orders
+      - partsCost
+      - thirdPartyCost
+      - totalCost
     ConsentListResponse:
       type: object
       description: "Os consentimentos de um perfil, do mais recente ao mais antigo."
@@ -24273,6 +24639,72 @@ components:
           nullable: true
       required:
       - storagePlace
+    MaintenanceCategoryCountResponse:
+      type: object
+      description: As ordens de serviço de uma categoria.
+      properties:
+        category:
+          type: string
+          x-extensible-enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        orders:
+          type: integer
+          format: int64
+      required:
+      - category
+      - orders
+    MaintenanceReportResponse:
+      type: object
+      description: O relatório de manutenção do período.
+      properties:
+        byCategory:
+          type: array
+          description: "As ordens abertas no período por categoria, só as categorias\
+            \ com ordem."
+          items:
+            $ref: "#/components/schemas/MaintenanceCategoryCountResponse"
+        byStatus:
+          type: array
+          description: "As ordens abertas no período por status, só os status com\
+            \ ordem."
+          items:
+            $ref: "#/components/schemas/MaintenanceStatusCountResponse"
+        completed:
+          $ref: "#/components/schemas/CompletedWorkOrdersResponse"
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+      required:
+      - byCategory
+      - byStatus
+      - completed
+      - from
+      - to
+    MaintenanceStatusCountResponse:
+      type: object
+      description: As ordens de serviço de um status.
+      properties:
+        orders:
+          type: integer
+          format: int64
+        status:
+          type: string
+          x-extensible-enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+      required:
+      - orders
+      - status
     MeResponse:
       type: object
       description: "O usuário corrente, as roles ativas e as permissões efetivas."

@@ -98,12 +98,31 @@ data class PendingFnrhSubmissionRow(
     val createdAt: Instant,
 )
 
+/** Quantas ordens de serviço há para um valor de status ou de categoria. */
+data class WorkOrderCountRow(
+    val key: String,
+    val orders: Long,
+)
+
+/**
+ * As ordens de serviço concluídas (`DONE`) no período: quantas, a soma dos tempos de atendimento (segundos, da abertura
+ * à conclusão) e a soma de cada custo.
+ */
+data class CompletedWorkOrdersRow(
+    val orders: Long,
+    val totalSeconds: BigDecimal,
+    val laborCost: BigDecimal,
+    val thirdPartyCost: BigDecimal,
+    val partsCost: BigDecimal,
+)
+
 /**
  * As consultas dos relatórios (M6 E09). A implementação lê **só** as views `report_*` dos módulos (ARCHITECTURE §11),
  * nunca as tabelas internas: o `ReportingViewsOnlyTest` roda cada método com um papel que só lê as views. Cada
  * relatório novo acrescenta métodos aqui. O período em datas é o `business_date`; o em instantes, `from` inclusive e
  * `to` exclusive.
  */
+@Suppress("TooManyFunctions") // uma consulta por assunto dos relatórios; cada fatia acrescenta as suas
 interface ReportingQueries {
     /**
      * As camareiras com tarefa atribuída no período, em ordem de créditos (maior primeiro): as UHs e os créditos das
@@ -155,4 +174,22 @@ interface ReportingQueries {
 
     /** As submissões à FNRH `PENDING`, `FAILED` e `INVALID`, da mais antiga à mais nova. */
     fun pendingFnrhSubmissions(): List<PendingFnrhSubmissionRow>
+
+    /** As ordens de serviço abertas no intervalo de instantes, por status, em ordem de status. */
+    fun workOrdersByStatus(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow>
+
+    /** As ordens de serviço abertas no intervalo de instantes, por categoria, em ordem de categoria. */
+    fun workOrdersByCategory(
+        from: Instant,
+        to: Instant,
+    ): List<WorkOrderCountRow>
+
+    /** As ordens `DONE` abertas no intervalo de instantes, com o tempo de atendimento e os custos somados. */
+    fun completedWorkOrders(
+        from: Instant,
+        to: Instant,
+    ): CompletedWorkOrdersRow
 }

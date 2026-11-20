@@ -12,11 +12,16 @@ import com.zeny.hotel.reporting.application.EndOfDayPendingService
 import com.zeny.hotel.reporting.application.HousekeepingReport
 import com.zeny.hotel.reporting.application.HousekeepingReportService
 import com.zeny.hotel.reporting.application.MAX_PANEL_DAYS
+import com.zeny.hotel.reporting.application.MaintenanceCategory
+import com.zeny.hotel.reporting.application.MaintenanceReport
+import com.zeny.hotel.reporting.application.MaintenanceReportService
+import com.zeny.hotel.reporting.application.MaintenanceStatus
 import com.zeny.hotel.reporting.application.PendingCashierShift
 import com.zeny.hotel.reporting.application.PendingFnrhSubmission
 import com.zeny.hotel.reporting.application.PendingFolio
 import com.zeny.hotel.reporting.application.VoluntaryInspectionsReport
 import com.zeny.hotel.shared.ApiV1Controller
+import com.zeny.hotel.shared.ExtensibleEnum
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import io.swagger.v3.oas.annotations.Operation
@@ -46,6 +51,7 @@ private const val PERIOD_RULE =
 @Tag(name = "reporting", description = "Relatórios operacionais, painel do dia e pendências do fechamento.")
 class ReportsController(
     private val housekeeping: HousekeepingReportService,
+    private val maintenance: MaintenanceReportService,
     private val dayPanel: DayPanelService,
     private val pending: EndOfDayPendingService,
 ) {
@@ -99,7 +105,86 @@ class ReportsController(
         @Parameter(description = "Última data (YYYY-MM-DD), inclusive.")
         @RequestParam to: LocalDate,
     ): HousekeepingReportResponse = HousekeepingReportResponse.of(housekeeping.report(from, to))
+
+    @GetMapping("/maintenance")
+    @Operation(
+        operationId = "getMaintenanceReport",
+        summary = "Relatório de manutenção",
+        description =
+            "Pela abertura das ordens de serviço (data local do hotel): as ordens por status e por categoria; " +
+                "das concluídas (`DONE`), o tempo médio de atendimento (da abertura à conclusão) em horas com 1 " +
+                "casa, nulo sem ordem concluída, e a soma dos custos (mão de obra, terceiros e peças). As " +
+                "canceladas contam por status e categoria, não nos custos. Sem texto livre. $PERIOD_RULE Exige " +
+                "`reporting.maintenance.read`.",
+    )
+    fun maintenance(
+        @Parameter(description = "Primeira data (YYYY-MM-DD).")
+        @RequestParam from: LocalDate,
+        @Parameter(description = "Última data (YYYY-MM-DD), inclusive.")
+        @RequestParam to: LocalDate,
+    ): MaintenanceReportResponse = MaintenanceReportResponse.of(maintenance.report(from, to))
 }
+
+@Schema(description = "O relatório de manutenção do período.")
+data class MaintenanceReportResponse(
+    val from: LocalDate,
+    val to: LocalDate,
+    @field:Schema(description = "As ordens abertas no período por status, só os status com ordem.")
+    val byStatus: List<MaintenanceStatusCountResponse>,
+    @field:Schema(description = "As ordens abertas no período por categoria, só as categorias com ordem.")
+    val byCategory: List<MaintenanceCategoryCountResponse>,
+    val completed: CompletedWorkOrdersResponse,
+) {
+    companion object {
+        fun of(report: MaintenanceReport) =
+            MaintenanceReportResponse(
+                report.from,
+                report.to,
+                report.byStatus.map { MaintenanceStatusCountResponse(it.status, it.orders) },
+                report.byCategory.map { MaintenanceCategoryCountResponse(it.category, it.orders) },
+                CompletedWorkOrdersResponse(
+                    report.completed.orders,
+                    report.completed.averageHours,
+                    report.completed.laborCost,
+                    report.completed.thirdPartyCost,
+                    report.completed.partsCost,
+                    report.completed.totalCost,
+                ),
+            )
+    }
+}
+
+@Schema(description = "As ordens de serviço de um status.")
+data class MaintenanceStatusCountResponse(
+    @field:ExtensibleEnum
+    val status: MaintenanceStatus,
+    val orders: Long,
+)
+
+@Schema(description = "As ordens de serviço de uma categoria.")
+data class MaintenanceCategoryCountResponse(
+    @field:ExtensibleEnum
+    val category: MaintenanceCategory,
+    val orders: Long,
+)
+
+@Schema(description = "As ordens concluídas (`DONE`) abertas no período.")
+data class CompletedWorkOrdersResponse(
+    val orders: Long,
+    @field:Schema(
+        description = "O tempo médio da abertura à conclusão em horas, com 1 casa; nulo sem ordem concluída.",
+        nullable = true,
+    )
+    val averageHours: BigDecimal?,
+    @field:Schema(description = "A soma da mão de obra.")
+    val laborCost: Money,
+    @field:Schema(description = "A soma dos custos de terceiros.")
+    val thirdPartyCost: Money,
+    @field:Schema(description = "A soma das peças.")
+    val partsCost: Money,
+    @field:Schema(description = "A soma dos três custos.")
+    val totalCost: Money,
+)
 
 @Schema(description = "O relatório de governança do período.")
 data class HousekeepingReportResponse(
@@ -334,8 +419,11 @@ data class PendingCashierShiftResponse(
 
 @Schema(description = "Uma submissão à FNRH pendente.")
 data class PendingFnrhSubmissionResponse(
-    @field:Schema(description = "A operação: `REGISTER_RESERVATION`, `UPDATE_RESERVATION`, `CANCEL_RESERVATION`, `CHECK_IN`, " +
-                "`UNDO_CHECK_IN`, `CHECK_OUT` ou `NO_SHOW`; a lista pode crescer, trate o valor desconhecido.")
+    @field:Schema(
+        description =
+            "A operação: `REGISTER_RESERVATION`, `UPDATE_RESERVATION`, `CANCEL_RESERVATION`, `CHECK_IN`, " +
+                "`UNDO_CHECK_IN`, `CHECK_OUT` ou `NO_SHOW`; a lista pode crescer, trate o valor desconhecido.",
+    )
     val operation: String,
     @field:Schema(description = "`PENDING`, `FAILED` ou `INVALID`; a lista pode crescer.")
     val status: String,
