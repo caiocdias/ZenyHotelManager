@@ -9915,6 +9915,39 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reports/archive:
+    get:
+      description: "Os documentos arquivados do fechamento da data operacional `date`\
+        \ (hoje, o PDF `DAY_REPORT`), só com os ids: o tipo, o id do anexo e o instante\
+        \ do arquivo; data sem arquivo devolve a lista vazia. O PDF é baixado pela\
+        \ URL do `files` (`GET /api/v1/files/{id}/download-url`), anexo sensível,\
+        \ com a trilha dele; o anexo é gravado só pelo servidor, no fechamento, e\
+        \ nunca por upload. Exige `reporting.archive.read` na consulta e no download."
+      operationId: getReportsArchive
+      parameters:
+      - description: A data operacional (YYYY-MM-DD).
+        in: query
+        name: date
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchivedReportsResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Arquivo do fechamento por data
+      tags:
+      - reporting
   /api/v1/reports/day-panel:
     get:
       description: "Para a data operacional e as `days` − 1 seguintes: as chegadas\
@@ -16764,6 +16797,42 @@ components:
       - approvalToken
       - approverId
       - expiresAt
+    ArchivedReportResponse:
+      type: object
+      description: Um documento arquivado do fechamento.
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+        fileId:
+          type: string
+          format: uuid
+          description: "O anexo (PDF sensível): baixe por `GET /api/v1/files/{id}/download-url`,\
+            \ com a permissão `reporting.archive.read`."
+        kind:
+          type: string
+          x-extensible-enum:
+          - DAY_REPORT
+      required:
+      - createdAt
+      - fileId
+      - kind
+    ArchivedReportsResponse:
+      type: object
+      description: Os documentos arquivados do fechamento de uma data.
+      properties:
+        date:
+          type: string
+          format: date
+        reports:
+          type: array
+          description: "Um item por tipo de documento arquivado da data, em ordem\
+            \ do tipo."
+          items:
+            $ref: "#/components/schemas/ArchivedReportResponse"
+      required:
+      - date
+      - reports
     AreaRequest:
       type: object
       description: Dados de uma área comum.

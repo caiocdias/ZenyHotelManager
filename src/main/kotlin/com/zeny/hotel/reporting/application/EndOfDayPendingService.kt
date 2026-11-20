@@ -60,7 +60,16 @@ class EndOfDayPendingService(
     @Transactional(readOnly = true)
     fun pending(): EndOfDayPending {
         authorization.require(ReportingPermissions.PENDING_READ)
-        return EndOfDayPending(
+        return load()
+    }
+
+    /**
+     * As mesmas pendências **sem conferir permissão**, para o arquivo por data (M6 E23), que quem chama (o fechamento)
+     * já se autorizou. Roda na transação de quem chama.
+     */
+    @Transactional(readOnly = true)
+    fun load(): EndOfDayPending =
+        EndOfDayPending(
             folios =
                 queries.openFolioBalances().map {
                     PendingFolio(
@@ -96,5 +105,4 @@ class EndOfDayPendingService(
                     )
                 },
         )
-    }
 }

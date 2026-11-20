@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Corpo do PDF do fechamento da data (M6 E23, D3): o layout do printing põe o cabeçalho e o rodapé. Só as construções
+  permitidas (DocumentTemplatesSafetyTest); o modelo chega limpo como document.*. Sem nome de hóspede.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<body>
+<h1 th:text="|Fechamento do dia ${fmt.date(document.date)}|">Fechamento do dia</h1>
+<h2>Estatisticas da data</h2>
+<p>
+<span th:text="|Quartos vendidos: ${document.snapshot.roomsSold}|">Vendidos</span><br />
+<span th:text="|Quartos de cortesia: ${document.snapshot.roomsComplimentary}|">Cortesia</span><br />
+<span th:text="|Quartos de uso da casa: ${document.snapshot.roomsHouseUse}|">Uso da casa</span><br />
+<span th:text="|Quartos disponiveis: ${document.snapshot.roomsAvailable}|">Disponiveis</span><br />
+<span th:text="|Quartos fora de ordem: ${document.snapshot.roomsOutOfOrder}|">Fora de ordem</span><br />
+<span th:text="|Chegadas: ${document.snapshot.arrivals}|">Chegadas</span><br />
+<span th:text="|Saidas: ${document.snapshot.departures}|">Saidas</span><br />
+<span th:text="|No-shows: ${document.snapshot.noShows}|">No-shows</span><br />
+<span th:text="|Cancelamentos: ${document.snapshot.cancellations}|">Cancelamentos</span>
+</p>
+<p>
+<span th:text="|Receita de hospedagem: ${fmt.money(document.snapshot.roomRevenue)}|">Hospedagem</span><br />
+<span th:text="|Receita de alimentos e bebidas: ${fmt.money(document.snapshot.foodBeverageRevenue)}|">A&amp;B</span><br />
+<span th:text="|Receita de eventos: ${fmt.money(document.snapshot.eventsRevenue)}|">Eventos</span><br />
+<span th:text="|Outras receitas: ${fmt.money(document.snapshot.otherRevenue)}|">Outras</span>
+</p>
+<p>
+<span th:text="|Ocupacao: ${document.snapshot.occupancy != null ? fmt.percent(document.snapshot.occupancy) : '-'}|">Ocupacao</span><br />
+<span th:text="|Diaria media (ADR): ${document.snapshot.adr != null ? fmt.money(document.snapshot.adr) : '-'}|">ADR</span><br />
+<span th:text="|RevPAR: ${document.snapshot.revpar != null ? fmt.money(document.snapshot.revpar) : '-'}|">RevPAR</span>
+</p>
+<h2>Situacao das UHs</h2>
+<p class="muted" th:text="|No momento do arquivo, data operacional ${fmt.date(document.panel.businessDate)}|">Momento</p>
+<p>
+<span th:text="|UHs ativas: ${document.panel.rooms.active}|">Ativas</span><br />
+<span th:text="|Ocupadas: ${document.panel.rooms.occupied}|">Ocupadas</span><br />
+<span th:text="|Vagas: ${document.panel.rooms.vacant}|">Vagas</span><br />
+<span th:text="|Sujas: ${document.panel.rooms.dirty}|">Sujas</span><br />
+<span th:text="|Limpas: ${document.panel.rooms.clean}|">Limpas</span><br />
+<span th:text="|Inspecionadas: ${document.panel.rooms.inspected}|">Inspecionadas</span><br />
+<span th:text="|Aguardando inspecao: ${document.panel.rooms.inspectionPending}|">Inspecao</span><br />
+<span th:text="|Fora de ordem (OOO): ${document.panel.rooms.outOfOrder}|">OOO</span><br />
+<span th:text="|Fora de servico (OOS): ${document.panel.rooms.outOfService}|">OOS</span>
+</p>
+<h2>Pendencias do fechamento</h2>
+<p class="muted">No momento do arquivo.</p>
+<h2>Contas abertas com saldo</h2>
+<p th:if="${document.pending.folios.isEmpty()}">Nenhuma.</p>
+<table class="lines" th:if="${!document.pending.folios.isEmpty()}">
+<tr th:each="folio : ${document.pending.folios}">
+<td th:text="|Conta ${folio.number} · reserva ${folio.reservationCode} · saida ${fmt.date(folio.departure)}|">Conta</td>
+<td class="amount" th:text="${fmt.money(folio.balance)}">R$ 0,00</td>
+</tr>
+</table>
+<h2>Caixas abertos</h2>
+<p th:if="${document.pending.cashierShifts.isEmpty()}">Nenhum.</p>
+<table class="lines" th:if="${!document.pending.cashierShifts.isEmpty()}">
+<tr th:each="shift : ${document.pending.cashierShifts}">
+<td th:text="|Turno ${shift.number} · ${shift.cashPoint} · aberto em ${fmt.date(shift.openedOn)} · operador ${shift.operatorId}|">Turno</td>
+</tr>
+</table>
+<h2>Envios a FNRH pendentes</h2>
+<p th:if="${document.pending.fnrhSubmissions.isEmpty()}">Nenhum.</p>
+<table class="lines" th:if="${!document.pending.fnrhSubmissions.isEmpty()}">
+<tr th:each="submission : ${document.pending.fnrhSubmissions}">
+<td th:text="|${submission.operation} · ${submission.status} · reserva ${submission.reservationCode} · tentativas ${submission.attempts}|">Envio</td>
+<td th:text="${submission.lastFailure}">Falha</td>
+</tr>
+</table>
+</body>
+</html>

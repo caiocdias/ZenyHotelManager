@@ -56,6 +56,15 @@ class DayPanelService(
     @Transactional(readOnly = true)
     fun panel(days: Int): DayPanel {
         authorization.require(ReportingPermissions.DASHBOARD_READ)
+        return load(days)
+    }
+
+    /**
+     * O mesmo painel **sem conferir permissão**, para o arquivo por data (M6 E23), que quem chama (o fechamento) já se
+     * autorizou. Roda na transação de quem chama.
+     */
+    @Transactional(readOnly = true)
+    fun load(days: Int): DayPanel {
         require(days in 1..MAX_PANEL_DAYS) { "days fora de 1..$MAX_PANEL_DAYS: $days" }
         val today = hotel.currentBusinessDate()
         val last = today.plusDays(days - 1L)

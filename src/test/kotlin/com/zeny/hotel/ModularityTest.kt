@@ -260,9 +260,9 @@ class ModularityTest {
     }
 
     @Test
-    fun `reporting depends only on shared, hotel`() {
+    fun `reporting depends only on shared, hotel, printing, files`() {
         val reporting = modules.getModuleByName("reporting").orElseThrow()
-        val allowed = setOf("shared", "hotel")
+        val allowed = setOf("shared", "hotel", "printing", "files")
         val dependencies =
             reporting
                 .getDirectDependencies(modules)
@@ -270,15 +270,15 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1 (camada Gestão), M6 E09: só shared e hotel (a data operacional e o fuso, pela HotelApi). Os
-        // dados dos outros módulos chegam só pelas views report_* (SQL), nunca por classe; files e printing entram
-        // com a E23.
+        // ARCHITECTURE §3.1 (camada Gestão), M6 E09: shared e hotel (a data operacional e o fuso, pela HotelApi). Os
+        // dados dos outros módulos chegam só pelas views report_* (SQL), nunca por classe; printing (o PDF da data,
+        // só a PrintingApi e os tipos dela) e files (o anexo sensível, só a FilesApi e os tipos dela) entram com a E23.
         dependencies.toSet() shouldBe allowed
         ReportingModule::class.java
             .getAnnotation(ApplicationModule::class.java)
             .allowedDependencies
             .toSet() shouldBe allowed
-        // Só a raiz do hotel (a API pública); verify() também barra os pacotes internos.
+        // Só a raiz de hotel, printing e files (a API pública); verify() também barra os pacotes internos.
         reporting
             .getDirectDependencies(modules)
             .stream()
@@ -286,6 +286,15 @@ class ModularityTest {
             .filter { it.startsWith("com.zeny.hotel.hotel.") }
             .filter { it.substringBeforeLast('.') != "com.zeny.hotel.hotel" }
             .toList() shouldBe emptyList()
+        listOf("printing", "files").forEach { module ->
+            reporting
+                .getDirectDependencies(modules)
+                .stream()
+                .map { it.targetType.name }
+                .filter { it.startsWith("com.zeny.hotel.$module.") }
+                .filter { it.substringBeforeLast('.') != "com.zeny.hotel.$module" }
+                .toList() shouldBe emptyList()
+        }
     }
 
     @Test

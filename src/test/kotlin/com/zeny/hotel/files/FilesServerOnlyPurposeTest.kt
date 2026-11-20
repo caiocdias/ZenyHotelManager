@@ -6,6 +6,7 @@ import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.iam.application.PermissionCatalogSynchronizer
+import com.zeny.hotel.reporting.ReportingFilePurposes
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.MutableClockConfiguration
@@ -43,9 +44,10 @@ class FilesServerOnlyPurposeTest(
     @Test
     fun `the catalog accepts a server-only purpose and the others stay open to upload`() {
         catalog.find(FileExamplePurposes.SERVER_ONLY_DOCUMENT)!!.serverOnly shouldBe true
-        catalog.all().filter { it.code != FileExamplePurposes.SERVER_ONLY_DOCUMENT }.forEach {
-            it.serverOnly shouldBe false
-        }
+        // As finalidades só do servidor: a de teste e o PDF do fechamento do reporting (M6 E23).
+        val serverOnly = setOf(FileExamplePurposes.SERVER_ONLY_DOCUMENT, ReportingFilePurposes.DAY_REPORT)
+        catalog.all().filter { it.code !in serverOnly }.forEach { it.serverOnly shouldBe false }
+        catalog.find(ReportingFilePurposes.DAY_REPORT)!!.serverOnly shouldBe true
     }
 
     @Test
