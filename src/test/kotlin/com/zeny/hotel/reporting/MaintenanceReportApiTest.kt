@@ -6,6 +6,7 @@ import com.zeny.hotel.iam.TestGrant
 import com.zeny.hotel.shared.PermissionScope.ALL
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.WorkOrderNumbers
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.Test
@@ -67,7 +68,7 @@ class MaintenanceReportApiTest(
                     ":status, :labor, :thirdParty, :parts, :by, :openedAt, null, :closedAt, :notes, :cancellation, " +
                     "now(), 0)",
             ).param("id", id)
-            .param("number", "RV-" + id.toString().takeLast(NUMBER_SUFFIX))
+            .param("number", WorkOrderNumbers.next())
             .param("room", UuidV7.generate())
             .param("category", category)
             .param("status", status)
@@ -195,12 +196,11 @@ class MaintenanceReportApiTest(
             setOf("orders", "averageHours", "laborCost", "thirdPartyCost", "partsCost", "totalCost")
         raw shouldNotContain "sigiloso"
         raw shouldNotContain "Sigiloso"
-        raw shouldNotContain "RV-"
+        raw shouldNotContain WorkOrderNumbers.PREFIX
     }
 
     private companion object {
         const val DAY_SPREAD = 3000L
         const val HOUR_OPEN = 12
-        const val NUMBER_SUFFIX = 12
     }
 }

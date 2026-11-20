@@ -64,9 +64,10 @@ class ReportsController(
                 "`CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`; o day use entra nas duas; `CANCELLED` e `NO_SHOW` não " +
                 "contam), os hospedados (noites vendidas da data, sem o day use) e a ocupação (noites vendidas de " +
                 "plano normal ou cortesia, sem o uso da casa nem o day use, sobre as UHs ativas menos as fora de " +
-                "ordem, em percentual; nula sem inventário na data). Para hoje, as UHs ativas por ocupação e status " +
-                "de governança e as UHs em OOO e OOS em vigor. Só contagens, sem dado de hóspede. `days` de 1 a " +
-                "$MAX_PANEL_DAYS (padrão $DEFAULT_PANEL_DAYS); fora disso, 400. Exige `reporting.dashboard.read`.",
+                "ordem, em percentual; nula sem inventário na data e acima de 999,9999%). Para hoje, as UHs ativas " +
+                "por ocupação e status de governança e as UHs em OOO e OOS em vigor. Só contagens, sem dado de " +
+                "hóspede. `days` de 1 a $MAX_PANEL_DAYS (padrão $DEFAULT_PANEL_DAYS); fora disso, 400. Exige " +
+                "`reporting.dashboard.read`.",
     )
     fun dayPanel(
         @Parameter(description = "Quantos dias, a partir da data operacional (de 1 a $MAX_PANEL_DAYS).")
@@ -303,7 +304,7 @@ data class DayPanelDayResponse(
     @field:Schema(
         description =
             "Noites vendidas que contam na ocupação sobre as UHs ativas menos as fora de ordem, em pontos " +
-                "percentuais; nula se a data não tem inventário.",
+                "percentuais; nula se a data não tem inventário ou se passa de 999,9999%.",
         nullable = true,
     )
     val occupancy: Percent?,

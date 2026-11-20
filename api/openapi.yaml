@@ -9922,10 +9922,10 @@ paths:
         \ o day use entra nas duas; `CANCELLED` e `NO_SHOW` não contam), os hospedados\
         \ (noites vendidas da data, sem o day use) e a ocupação (noites vendidas de\
         \ plano normal ou cortesia, sem o uso da casa nem o day use, sobre as UHs\
-        \ ativas menos as fora de ordem, em percentual; nula sem inventário na data).\
-        \ Para hoje, as UHs ativas por ocupação e status de governança e as UHs em\
-        \ OOO e OOS em vigor. Só contagens, sem dado de hóspede. `days` de 1 a 30\
-        \ (padrão 7); fora disso, 400. Exige `reporting.dashboard.read`."
+        \ ativas menos as fora de ordem, em percentual; nula sem inventário na data\
+        \ e acima de 999,9999%). Para hoje, as UHs ativas por ocupação e status de\
+        \ governança e as UHs em OOO e OOS em vigor. Só contagens, sem dado de hó\
+        spede. `days` de 1 a 30 (padrão 7); fora disso, 400. Exige `reporting.dashboard.read`."
       operationId: getDayPanel
       parameters:
       - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
@@ -9961,7 +9961,7 @@ paths:
         \ de várias tabelas escreve cada uma sob uma linha com o título dela, separadas\
         \ por uma linha vazia. Os mesmos parâmetros, a mesma permissão e o mesmo resultado\
         \ da operação JSON. Qualquer erro sai em `application/problem+json`, mesmo\
-        \ com `Accept: text/csv`. O arquivo não é guardado em cache."
+        \ com outro `Accept`. O arquivo não é guardado em cache."
       operationId: getDayPanelCsv
       parameters:
       - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
@@ -9995,8 +9995,8 @@ paths:
       description: "O painel do dia (`GET /reports/day-panel`) como planilha. XLSX\
         \ com uma aba por tabela e os números em células numéricas. Os mesmos parâ\
         metros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer erro\
-        \ sai em `application/problem+json`, mesmo com `Accept: text/csv`. O arquivo\
-        \ não é guardado em cache."
+        \ sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo nã\
+        o é guardado em cache."
       operationId: getDayPanelXlsx
       parameters:
       - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
@@ -10058,7 +10058,7 @@ paths:
         \ relatório de várias tabelas escreve cada uma sob uma linha com o título\
         \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
         o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
-        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
       operationId: getEndOfDayPendingCsv
       responses:
         "200":
@@ -10081,8 +10081,8 @@ paths:
       description: "As pendências (`GET /reports/end-of-day-pending`) como planilha.\
         \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
         \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
-        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
-        \ arquivo não é guardado em cache."
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
       operationId: getEndOfDayPendingXlsx
       responses:
         "200":
@@ -10150,7 +10150,7 @@ paths:
         \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
         \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
         o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
-        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
       operationId: getHousekeepingReportCsv
       parameters:
       - description: Primeira data (YYYY-MM-DD).
@@ -10188,8 +10188,8 @@ paths:
       description: "O relatório de governança (`GET /reports/housekeeping`) como planilha.\
         \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
         \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
-        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
-        \ arquivo não é guardado em cache."
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
       operationId: getHousekeepingReportXlsx
       parameters:
       - description: Primeira data (YYYY-MM-DD).
@@ -10272,7 +10272,7 @@ paths:
         \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
         \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
         o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
-        \ mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
       operationId: getMaintenanceReportCsv
       parameters:
       - description: Primeira data (YYYY-MM-DD).
@@ -10310,8 +10310,8 @@ paths:
       description: "O relatório de manutenção (`GET /reports/maintenance`) como planilha.\
         \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
         \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
-        \ erro sai em `application/problem+json`, mesmo com `Accept: text/csv`. O\
-        \ arquivo não é guardado em cache."
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
       operationId: getMaintenanceReportXlsx
       parameters:
       - description: Primeira data (YYYY-MM-DD).

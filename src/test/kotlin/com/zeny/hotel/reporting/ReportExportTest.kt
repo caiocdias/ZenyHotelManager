@@ -5,6 +5,7 @@ import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.HousekeepingReportSeed
 import com.zeny.hotel.testsupport.IntegrationTest
+import com.zeny.hotel.testsupport.WorkOrderNumbers
 import io.kotest.assertions.withClue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -239,7 +240,7 @@ class ReportExportTest(
                         "updated_at, version) VALUES (:id, :number, :room, :category, 'HIGH', 'x', 'RECEPTION', " +
                         ":status, 10.50, 0, 2.25, :by, :opened, :closed, now(), 0)",
                 ).param("id", id)
-                .param("number", "EX-" + id.toString().takeLast(SUFFIX))
+                .param("number", WorkOrderNumbers.next())
                 .param("room", UuidV7.generate())
                 .param("category", category)
                 .param("status", status)
@@ -437,6 +438,5 @@ class ReportExportTest(
     private companion object {
         const val DAY_SPREAD = 3000L
         const val HOUR = 12
-        const val SUFFIX = 12
     }
 }

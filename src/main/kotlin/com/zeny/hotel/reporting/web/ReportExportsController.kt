@@ -30,7 +30,7 @@ private const val XLSX = "application/vnd.openxmlformats-officedocument.spreadsh
 
 private const val EXPORT_RULE =
     "Os mesmos parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer erro sai em " +
-        "`application/problem+json`, mesmo com `Accept: text/csv`. O arquivo não é guardado em cache."
+        "`application/problem+json`, mesmo com outro `Accept`. O arquivo não é guardado em cache."
 private const val CSV_RULE =
     "CSV em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO; um relatório de várias tabelas escreve " +
         "cada uma sob uma linha com o título dela, separadas por uma linha vazia."

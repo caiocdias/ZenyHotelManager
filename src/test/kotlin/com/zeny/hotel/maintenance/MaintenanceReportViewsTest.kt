@@ -3,6 +3,7 @@ package com.zeny.hotel.maintenance
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.testsupport.IntegrationTest
 import com.zeny.hotel.testsupport.ReportViewAssertions
+import com.zeny.hotel.testsupport.WorkOrderNumbers
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -112,7 +113,7 @@ class MaintenanceReportViewsTest(
                     ":room, :area, 'PLUMBING', 'HIGH', 'Texto livre', 'RECEPTION', 'Terceiro Ltda', :status, " +
                     "10.50, 20.00, 5.25, :by, :openedAt, :startedAt, :closedAt, :notes, now(), 0)",
             ).param("id", id)
-            .param("number", "RV-" + id.toString().takeLast(NUMBER_SUFFIX))
+            .param("number", WorkOrderNumbers.next())
             .param("room", room)
             .param("area", area)
             .param("status", status)
@@ -123,9 +124,5 @@ class MaintenanceReportViewsTest(
             .param("notes", closedAt?.let { "Notas livres" })
             .update()
         return id
-    }
-
-    private companion object {
-        const val NUMBER_SUFFIX = 12
     }
 }
