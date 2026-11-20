@@ -47,7 +47,19 @@
 
 ## Revisão de arquitetura
 
-(preenchida depois da revisão)
+- **Veredito:** aprovado, na rodada 2 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 7 Importantes:
+  - finalidade sem upload que mudava o `files` além da `FilesApi`;
+  - fórmulas do snapshot (`COURTESY`, `sold AND`, fonte única da receita);
+  - corrida e transação do arquivo;
+  - endpoint de estatísticas sem requisito;
+  - Task 3 com 13 arquivos;
+  - critérios sem comando;
+  - gravação sem ator.
+
+  Havia também 9 Menores. Corrigido em `6cf1f47`, pelas opções recomendadas (autorização do usuário de 2026-11-19).
+- **Rodada 1:** bloqueado por 1 Importante: a guarda de data futura contra as datas de teste. Havia também 3 Menores. Corrigido em `0be02d0`.
+- **Para o usuário (sem bloquear):** PDFs mantidos sensíveis sem nome de hóspede (D3); finalidade só do servidor (D2); lista sem URLs (D5); ADR pela receita `ROOM` dos lançamentos (D1); sem endpoint de estatísticas (KPIs no M10).
 
 ---
 
