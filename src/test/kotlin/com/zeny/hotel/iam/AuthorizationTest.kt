@@ -279,6 +279,10 @@ class AuthorizationTest(
                 "maintenance.workorders.read:ALL",
                 "maintenance.workorders.request:ALL",
                 "maintenance.workorders.manage:ALL",
+                "reporting.dashboard.read:ALL",
+                "reporting.housekeeping.read:ALL",
+                "reporting.maintenance.read:ALL",
+                "reporting.pending.read:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(
