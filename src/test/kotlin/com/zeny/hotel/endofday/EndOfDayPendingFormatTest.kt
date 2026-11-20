@@ -79,7 +79,7 @@ class EndOfDayPendingFormatTest(
                     .param("refs", listOf("${seeded.folioId}", "${seeded.shiftId}", "${seeded.reservationId}"))
                     .query(String::class.java)
                     .list()
-            .filterNotNull()
+                    .filterNotNull()
             mine shouldHaveSize 3
         } finally {
             EndOfDayTestRuns.settle(context)
