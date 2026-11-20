@@ -13,8 +13,8 @@
 **Riscos:**
 - **autenticação ou autorização:** permissões novas de relatório, separadas por assunto; quem vê pendências (contas e caixas) (Tasks 1 e 2);
 - **dado pessoal ou segredo:** relatórios sem dado de hóspede (RN-13) nem texto livre; pendências só com números e saldos; views sem texto livre; exportação com `Cache-Control: no-store` (Tasks 1 a 3);
-- **cálculo de valor monetário:** saldo das contas nas pendências, custos de OS (Tasks 1 e 2);
-- **parsing de entrada externa não confiável:** filtros de período e `days` (Tasks 1 e 2);
+- **cálculo de valor monetário:** saldo das contas nas pendências (Task 2), custos de OS (Task 3);
+- **parsing de entrada externa não confiável:** filtros de período e `days` (Tasks 1 a 3);
 - **migração ou escrita destrutiva de dados:** views novas e seus privilégios (Task 1).
 
 ## Global Constraints
@@ -53,11 +53,15 @@
 - **D3 — painel** `GET /api/v1/reports/day-panel?days=N` (N de 1 a 30, padrão 7): para a data operacional e as N−1 seguintes, chegadas (reservas `PROVISIONAL`/`CONFIRMED`/`IN_HOUSE`/`CHECKED_OUT` com `arrival` na data; day use incluído; a que já chegou e saiu hoje continua contando como chegada do dia), saídas (`PROVISIONAL`/`CONFIRMED`/`IN_HOUSE`/`CHECKED_OUT` com `departure` na data, a mesma lista de "vendida" de `report_room_nights`), hospedados (UHs com noite vendida na data, `report_room_nights` `sold AND NOT day_use`), ocupação = noites `sold AND counts_in_occupancy` ÷ (`total − out_of_order` de `report_inventory`), em percentual com 2 casas (`null` se o denominador for 0); só para hoje, UHs ativas por status de governança e ocupação, e UHs em OOO/OOS em vigor. Sem nome de hóspede (contagens). `CANCELLED` e `NO_SHOW` não contam.
 - **D4 — pendências** `GET /api/v1/reports/end-of-day-pending` (estado corrente, sem parâmetro de data): contas **abertas** com saldo ≠ 0 de reservas `CHECKED_OUT` (todas as contas da reserva: `owner_type = 'RESERVATION' AND owner_id = reservation_id`; número da conta, código da reserva, saldo, data de saída; sem nome), caixas `OPEN` (número, ponto, aberto em, operador id) e submissões FNRH `PENDING`, `FAILED` e `INVALID` (operação, reserva, tentativas, última falha). Notas rejeitadas e ARI: M7/M8.
 - **D5 — relatórios operacionais** (governança na Task 1, manutenção na Task 3): `GET /api/v1/reports/housekeeping?from=&to=` pelo `business_date` da tarefa — por camareira (`assigned_employee_id`): UHs (tarefas de UH concluídas) e créditos; por tipo de limpeza × tipo de UH (só tarefas de UH): tempo médio em minutos de `worked_seconds`; taxa de reprovação = inspeções reprovadas ÷ inspeções concluídas de tarefas do período (voluntárias à parte, sem tipo), `null` sem inspeção. `GET /api/v1/reports/maintenance?from=&to=` pelo `opened_at` (data local): OS por status e por categoria; tempo médio de atendimento (`opened_at` → `closed_at`, em horas com 1 casa) das concluídas no período; soma dos custos das concluídas.
-- **D6 — exportação** (Task 3): para cada relatório e o painel, `GET …/csv` e `GET …/xlsx` com os mesmos parâmetros, sobre o mesmo `ReportTable` da resposta JSON; CSV em UTF-8 com BOM, separador `;`, decimal com `,` (pt-BR), datas ISO, RFC 4180, neutralização (prefixo `'`) só em colunas de texto que começam com `=`, `+`, `-`, `@`, TAB ou CR; XLSX pela fastexcel, uma aba por tabela, números como célula numérica, cabeçalhos em pt-BR; `Content-Disposition: attachment; filename="<relatorio>-<data>.<ext>"`; `Cache-Control: no-store`; erros em problem+json.
+- **D6 — exportação** (Task 3): para cada relatório e o painel, `GET …/csv` e `GET …/xlsx` com os mesmos parâmetros, sobre o mesmo resultado do caso de uso que a resposta JSON (DTO tipado), convertido no `ReportTable` só para a exportação; CSV em UTF-8 com BOM, separador `;`, decimal com `,` (pt-BR), datas ISO, RFC 4180, neutralização (prefixo `'`) só em colunas de texto que começam com `=`, `+`, `-`, `@`, TAB ou CR; XLSX pela fastexcel, uma aba por tabela, números como célula numérica, cabeçalhos em pt-BR; `Content-Disposition: attachment; filename="<relatorio>-<data>.<ext>"`; `Cache-Control: no-store`; erros em problem+json.
 
 ## Revisão de arquitetura
 
-(preenchida depois da revisão)
+- **Veredito:** aprovado com notas, na rodada 2 (`revisor-arquitetura`, modelo opus).
+- **Rodada 0:** bloqueado por 12 Importantes: `report_room_status` lendo a data operacional e filtrando UHs; ocupação fora da H9; view de saldo condicional; FNRH `INVALID`; `?date=` sem semântica; `?format=` contra o §7; neutralização que estragava negativos; agregados no banco compartilhado; "só as views" sem prova na Task 3; tempo com pausas; permissão única; tamanho das fatias. Havia também 7 Menores. Corrigido em `6406b92`, pelas opções recomendadas (autorização do usuário de 2026-11-19).
+- **Rodada 1:** bloqueado por 3 Importantes: Task 1 acima do limite; saídas futuras subcontadas; JSON sem tipo. Havia também 3 Menores. Corrigido em `17a3828`.
+- **Notas Menores da rodada 2, aplicadas neste texto:** `ReportTable` só da exportação nos objetivos (N4); tasks do cabeçalho `Riscos:` (N5).
+- **Para o usuário (sem bloquear):** exportação por rota própria (§7); permissões separadas por assunto e pendências também na Recepcionista.
 
 ---
 
@@ -83,12 +87,12 @@
 
 ### Task 2: Painel do dia e pendências do fechamento
 
-**Objetivo:** D3 e D4, sobre o `ReportTable` e a porta da Task 1.
+**Objetivo:** D3 e D4, com resposta em DTO tipado, pela porta da Task 1 (o `ReportTable` é só da exportação).
 
 **Critérios de aceite:**
-- `DayPanelApiTest` (`@IntegrationTest`, novo, por diferença): chegadas, saídas, hospedados e ocupação de hoje e dos próximos dias mudam como esperado depois de semear reservas próprias, inclusive uma reserva futura (`CONFIRMED`) cuja saída cai dentro da janela e um day use (chegada, sem hospedado); cortesia conta na ocupação, uso da casa e day use não (Review Focus 3); UHs por status e OOO de hoje; `days` fora de 1..30 → `400`; sem `reporting.dashboard.read` → `403`.
+- `DayPanelApiTest` (`@IntegrationTest`, novo, por diferença): chegadas, saídas, hospedados e ocupação de hoje e dos próximos dias mudam como esperado depois de semear reservas próprias, inclusive uma reserva futura (`CONFIRMED`) cuja saída cai dentro da janela e um day use (chegada, sem hospedado); cortesia conta na ocupação, uso da casa e day use não (Review Focus 3); UHs por status e OOO de hoje; `days` fora de 1..30 → `400`; sem `reporting.dashboard.read` → `403`; DTO tipado no contrato.
 - `DayPanelServiceTest` (unidade, porta falsa): dia sem movimento e data sem inventário dão zeros e ocupação `null` (Review Focus 1).
-- `EndOfDayPendingApiTest` (`@IntegrationTest`, novo): conta aberta com saldo de reserva `CHECKED_OUT` (com transferência, reembolso e depósito), caixa aberto de outro dia e submissões FNRH `PENDING`, `FAILED` e `INVALID` aparecem; saldo zero e caixa fechado não (Review Focus 5); nenhum nome de hóspede; sem `reporting.pending.read` → `403`.
+- `EndOfDayPendingApiTest` (`@IntegrationTest`, novo): conta aberta com saldo de reserva `CHECKED_OUT` (com transferência, reembolso e depósito), caixa aberto de outro dia e submissões FNRH `PENDING`, `FAILED` e `INVALID` aparecem; saldo zero e caixa fechado não (Review Focus 5); nenhum nome de hóspede; sem `reporting.pending.read` → `403`; DTO tipado no contrato (saldo como string decimal).
 - `ReportingViewsOnlyTest` estendido com as consultas novas. Verificação: `timeout 900 ./gradlew test --tests '*DayPanel*' --tests '*EndOfDayPendingApiTest' --tests '*ReportingViewsOnlyTest'`.
 - Contrato regenerado; `timeout 900 ./gradlew checkOpenApi lint` verde.
 
