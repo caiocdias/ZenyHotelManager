@@ -33,7 +33,7 @@ class HousekeepingReportServiceTest {
         val attendants: List<AttendantProductivityRow> = emptyList(),
         val types: List<CleaningTypeRow> = emptyList(),
         val voluntary: InspectionCountsRow = InspectionCountsRow(0, 0),
-    ) : ReportingQueries {
+    ) : FakeReportingQueries() {
         var voluntaryRange: Pair<Instant, Instant>? = null
 
         override fun attendantProductivity(

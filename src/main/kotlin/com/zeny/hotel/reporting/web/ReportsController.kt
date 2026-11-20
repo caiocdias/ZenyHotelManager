@@ -2,19 +2,34 @@ package com.zeny.hotel.reporting.web
 
 import com.zeny.hotel.reporting.application.AttendantReportRow
 import com.zeny.hotel.reporting.application.CleaningTypeReportRow
+import com.zeny.hotel.reporting.application.DEFAULT_PANEL_DAYS
+import com.zeny.hotel.reporting.application.DayPanel
+import com.zeny.hotel.reporting.application.DayPanelDay
+import com.zeny.hotel.reporting.application.DayPanelRooms
+import com.zeny.hotel.reporting.application.DayPanelService
+import com.zeny.hotel.reporting.application.EndOfDayPending
+import com.zeny.hotel.reporting.application.EndOfDayPendingService
 import com.zeny.hotel.reporting.application.HousekeepingReport
 import com.zeny.hotel.reporting.application.HousekeepingReportService
+import com.zeny.hotel.reporting.application.MAX_PANEL_DAYS
+import com.zeny.hotel.reporting.application.PendingCashierShift
+import com.zeny.hotel.reporting.application.PendingFnrhSubmission
+import com.zeny.hotel.reporting.application.PendingFolio
 import com.zeny.hotel.reporting.application.VoluntaryInspectionsReport
 import com.zeny.hotel.shared.ApiV1Controller
+import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import java.math.BigDecimal
+import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
 
@@ -31,7 +46,42 @@ private const val PERIOD_RULE =
 @Tag(name = "reporting", description = "Relatórios operacionais, painel do dia e pendências do fechamento.")
 class ReportsController(
     private val housekeeping: HousekeepingReportService,
+    private val dayPanel: DayPanelService,
+    private val pending: EndOfDayPendingService,
 ) {
+    @GetMapping("/day-panel")
+    @Operation(
+        operationId = "getDayPanel",
+        summary = "Painel do dia",
+        description =
+            "Para a data operacional e as `days` − 1 seguintes: as chegadas e as saídas (reservas `PROVISIONAL`, " +
+                "`CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`; o day use entra nas duas; `CANCELLED` e `NO_SHOW` não " +
+                "contam), os hospedados (noites vendidas da data, sem o day use) e a ocupação (noites vendidas de " +
+                "plano normal ou cortesia, sem o uso da casa nem o day use, sobre as UHs ativas menos as fora de " +
+                "ordem, em percentual; nula sem inventário na data). Para hoje, as UHs ativas por ocupação e status " +
+                "de governança e as UHs em OOO e OOS em vigor. Só contagens, sem dado de hóspede. `days` de 1 a " +
+                "$MAX_PANEL_DAYS (padrão $DEFAULT_PANEL_DAYS); fora disso, 400. Exige `reporting.dashboard.read`.",
+    )
+    fun dayPanel(
+        @Parameter(description = "Quantos dias, a partir da data operacional (de 1 a $MAX_PANEL_DAYS).")
+        @RequestParam(required = false, defaultValue = "$DEFAULT_PANEL_DAYS")
+        @Min(1)
+        @Max(MAX_PANEL_DAYS.toLong()) days: Int,
+    ): DayPanelResponse = DayPanelResponse.of(dayPanel.panel(days))
+
+    @GetMapping("/end-of-day-pending")
+    @Operation(
+        operationId = "getEndOfDayPending",
+        summary = "Pendências do fechamento do dia",
+        description =
+            "O estado corrente, sem parâmetro de data: as contas abertas com saldo diferente de zero de reservas " +
+                "`CHECKED_OUT` (o saldo é o total lançado menos o recebido líquido, com transferências, reembolsos e " +
+                "depósitos; positivo é o que o hóspede deve), os turnos de caixa abertos de qualquer data e as " +
+                "submissões à FNRH `PENDING`, `FAILED` e `INVALID`. Só números, códigos e ids, sem nome de hóspede. " +
+                "Exige `reporting.pending.read`.",
+    )
+    fun endOfDayPending(): EndOfDayPendingResponse = EndOfDayPendingResponse.of(pending.pending())
+
     @GetMapping("/housekeeping")
     @Operation(
         operationId = "getHousekeepingReport",
@@ -135,5 +185,177 @@ data class VoluntaryInspectionsResponse(
     companion object {
         fun of(row: VoluntaryInspectionsReport) =
             VoluntaryInspectionsResponse(row.inspections, row.rejections, row.rejectionRate)
+    }
+}
+
+@Schema(description = "O painel do dia: uma linha por data e a situação das UHs de hoje.")
+data class DayPanelResponse(
+    @field:Schema(description = "A data operacional do hotel (a primeira data do painel).")
+    val businessDate: LocalDate,
+    @field:Schema(description = "Uma linha por data, da data operacional em diante, em ordem.")
+    val days: List<DayPanelDayResponse>,
+    val rooms: DayPanelRoomsResponse,
+) {
+    companion object {
+        fun of(panel: DayPanel) =
+            DayPanelResponse(
+                panel.businessDate,
+                panel.days.map(DayPanelDayResponse::of),
+                DayPanelRoomsResponse.of(panel.rooms),
+            )
+    }
+}
+
+@Schema(description = "O movimento e a ocupação de uma data.")
+data class DayPanelDayResponse(
+    val date: LocalDate,
+    @field:Schema(description = "As reservas que chegam na data, o day use incluído.")
+    val arrivals: Long,
+    @field:Schema(description = "As reservas que saem na data, o day use incluído.")
+    val departures: Long,
+    @field:Schema(description = "Os hospedados: noites vendidas da data, sem o day use.")
+    val hosted: Long,
+    @field:Schema(
+        description =
+            "Noites vendidas que contam na ocupação sobre as UHs ativas menos as fora de ordem, em pontos " +
+                "percentuais; nula se a data não tem inventário.",
+        nullable = true,
+    )
+    val occupancy: Percent?,
+) {
+    companion object {
+        fun of(day: DayPanelDay) =
+            DayPanelDayResponse(day.date, day.arrivals, day.departures, day.hosted, day.occupancy)
+    }
+}
+
+@Schema(description = "As UHs de hoje.")
+data class DayPanelRoomsResponse(
+    @field:Schema(description = "As UHs ativas.")
+    val active: Long,
+    val occupied: Long,
+    val vacant: Long,
+    @field:Schema(description = "Status de governança sujo (`DIRTY`).")
+    val dirty: Long,
+    @field:Schema(description = "Status de governança limpo (`CLEAN`).")
+    val clean: Long,
+    @field:Schema(description = "Status de governança inspecionado (`INSPECTED`).")
+    val inspected: Long,
+    @field:Schema(description = "As limpas à espera de inspeção.")
+    val inspectionPending: Long,
+    @field:Schema(description = "As UHs com fora de ordem (OOO) em vigor hoje.")
+    val outOfOrder: Long,
+    @field:Schema(description = "As UHs com fora de serviço (OOS) em vigor hoje.")
+    val outOfService: Long,
+) {
+    companion object {
+        fun of(rooms: DayPanelRooms) =
+            DayPanelRoomsResponse(
+                rooms.active,
+                rooms.occupied,
+                rooms.vacant,
+                rooms.dirty,
+                rooms.clean,
+                rooms.inspected,
+                rooms.inspectionPending,
+                rooms.outOfOrder,
+                rooms.outOfService,
+            )
+    }
+}
+
+@Schema(description = "As pendências do fechamento do dia, no estado corrente.")
+data class EndOfDayPendingResponse(
+    @field:Schema(description = "As contas abertas de reservas encerradas com saldo diferente de zero.")
+    val folios: List<PendingFolioResponse>,
+    @field:Schema(description = "Os turnos de caixa abertos, de qualquer data operacional.")
+    val cashierShifts: List<PendingCashierShiftResponse>,
+    @field:Schema(description = "As submissões à FNRH ainda não enviadas com sucesso.")
+    val fnrhSubmissions: List<PendingFnrhSubmissionResponse>,
+) {
+    companion object {
+        fun of(pending: EndOfDayPending) =
+            EndOfDayPendingResponse(
+                pending.folios.map(PendingFolioResponse::of),
+                pending.cashierShifts.map(PendingCashierShiftResponse::of),
+                pending.fnrhSubmissions.map(PendingFnrhSubmissionResponse::of),
+            )
+    }
+}
+
+@Schema(description = "Uma conta aberta de reserva encerrada com saldo.")
+data class PendingFolioResponse(
+    val folioId: UUID,
+    val folioNumber: String,
+    val reservationId: UUID,
+    val reservationCode: String,
+    @field:Schema(description = "A data de saída da reserva.")
+    val departure: LocalDate,
+    @field:Schema(description = "Lançamentos menos recebimentos líquidos; positivo é o que o hóspede deve.")
+    val balance: Money,
+) {
+    companion object {
+        fun of(folio: PendingFolio) =
+            PendingFolioResponse(
+                folio.folioId,
+                folio.folioNumber,
+                folio.reservationId,
+                folio.reservationCode,
+                folio.departure,
+                folio.balance,
+            )
+    }
+}
+
+@Schema(description = "Um turno de caixa aberto.")
+data class PendingCashierShiftResponse(
+    val shiftId: UUID,
+    val shiftNumber: String,
+    @field:Schema(description = "O nome do ponto de caixa (configuração).")
+    val cashPointName: String,
+    @field:Schema(description = "O usuário que opera o turno.")
+    val operatorId: UUID,
+    @field:Schema(description = "A data operacional da abertura.")
+    val openedOn: LocalDate,
+    val openedAt: Instant,
+) {
+    companion object {
+        fun of(shift: PendingCashierShift) =
+            PendingCashierShiftResponse(
+                shift.shiftId,
+                shift.shiftNumber,
+                shift.cashPointName,
+                shift.operatorId,
+                shift.openedOn,
+                shift.openedAt,
+            )
+    }
+}
+
+@Schema(description = "Uma submissão à FNRH pendente.")
+data class PendingFnrhSubmissionResponse(
+    @field:Schema(description = "A operação (`REGISTER_RESERVATION`, `CHECK_IN`…); a lista pode crescer.")
+    val operation: String,
+    @field:Schema(description = "`PENDING`, `FAILED` ou `INVALID`.")
+    val status: String,
+    val reservationId: UUID,
+    @field:Schema(description = "O código da reserva; nulo se a reserva não existe mais.", nullable = true)
+    val reservationCode: String?,
+    val attempts: Int,
+    @field:Schema(description = "A causa da última falha; nula sem falha. A lista pode crescer.", nullable = true)
+    val lastFailure: String?,
+    val createdAt: Instant,
+) {
+    companion object {
+        fun of(submission: PendingFnrhSubmission) =
+            PendingFnrhSubmissionResponse(
+                submission.operation,
+                submission.status,
+                submission.reservationId,
+                submission.reservationCode,
+                submission.attempts,
+                submission.lastFailure,
+                submission.createdAt,
+            )
     }
 }

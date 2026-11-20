@@ -54,6 +54,13 @@ class ReportingViewsOnlyTest(
         queries.attendantProductivity(day, day)
         queries.cleaningByType(day, day)
         queries.voluntaryInspections(now, now.plusSeconds(1))
+        queries.dayMovements(day, day.plusDays(1))
+        queries.dayCapacity(day, day.plusDays(1))
+        queries.roomCounts()
+        queries.outOfOrderOn(day)
+        queries.openFolioBalances()
+        queries.openCashierShifts()
+        queries.pendingFnrhSubmissions()
     }
 
     private fun withViewsOnlyRole(block: (JdbcClient, ReportingQueries) -> Unit) {
@@ -86,10 +93,25 @@ class ReportingViewsOnlyTest(
         val VIEWS =
             mapOf(
                 "housekeeping" to listOf("report_tasks", "report_inspections"),
-                "rooms" to listOf("report_room_status"),
+                "rooms" to listOf("report_room_status", "report_out_of_order"),
+                "reservations" to listOf("report_reservations", "report_room_nights", "report_inventory"),
+                "billing" to listOf("report_folios", "report_postings", "report_payments", "report_cashier_shifts"),
+                "fnrh" to listOf("report_submissions"),
             )
 
         /** Os métodos da porta que [callEveryMethod] chama. */
-        val CALLED = setOf("attendantProductivity", "cleaningByType", "voluntaryInspections")
+        val CALLED =
+            setOf(
+                "attendantProductivity",
+                "cleaningByType",
+                "voluntaryInspections",
+                "dayMovements",
+                "dayCapacity",
+                "roomCounts",
+                "outOfOrderOn",
+                "openFolioBalances",
+                "openCashierShifts",
+                "pendingFnrhSubmissions",
+            )
     }
 }

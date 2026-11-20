@@ -9915,6 +9915,70 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reports/day-panel:
+    get:
+      description: "Para a data operacional e as `days` − 1 seguintes: as chegadas\
+        \ e as saídas (reservas `PROVISIONAL`, `CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`;\
+        \ o day use entra nas duas; `CANCELLED` e `NO_SHOW` não contam), os hospedados\
+        \ (noites vendidas da data, sem o day use) e a ocupação (noites vendidas de\
+        \ plano normal ou cortesia, sem o uso da casa nem o day use, sobre as UHs\
+        \ ativas menos as fora de ordem, em percentual; nula sem inventário na data).\
+        \ Para hoje, as UHs ativas por ocupação e status de governança e as UHs em\
+        \ OOO e OOS em vigor. Só contagens, sem dado de hóspede. `days` de 1 a 30\
+        \ (padrão 7); fora disso, 400. Exige `reporting.dashboard.read`."
+      operationId: getDayPanel
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPanelResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending:
+    get:
+      description: "O estado corrente, sem parâmetro de data: as contas abertas com\
+        \ saldo diferente de zero de reservas `CHECKED_OUT` (o saldo é o total lanç\
+        ado menos o recebido líquido, com transferências, reembolsos e depósitos;\
+        \ positivo é o que o hóspede deve), os turnos de caixa abertos de qualquer\
+        \ data e as submissões à FNRH `PENDING`, `FAILED` e `INVALID`. Só números,\
+        \ códigos e ids, sem nome de hóspede. Exige `reporting.pending.read`."
+      operationId: getEndOfDayPending
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayPendingResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia
+      tags:
+      - reporting
   /api/v1/reports/housekeeping:
     get:
       description: "Pelo `businessDate` das tarefas: por camareira, as UHs limpas\
@@ -20657,6 +20721,104 @@ components:
           nullable: true
       required:
       - reason
+    DayPanelDayResponse:
+      type: object
+      description: O movimento e a ocupação de uma data.
+      properties:
+        arrivals:
+          type: integer
+          format: int64
+          description: "As reservas que chegam na data, o day use incluído."
+        date:
+          type: string
+          format: date
+        departures:
+          type: integer
+          format: int64
+          description: "As reservas que saem na data, o day use incluído."
+        hosted:
+          type: integer
+          format: int64
+          description: "Os hospedados: noites vendidas da data, sem o day use."
+        occupancy:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+      required:
+      - arrivals
+      - date
+      - departures
+      - hosted
+    DayPanelResponse:
+      type: object
+      description: "O painel do dia: uma linha por data e a situação das UHs de hoje."
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional do hotel (a primeira data do painel).
+        days:
+          type: array
+          description: "Uma linha por data, da data operacional em diante, em ordem."
+          items:
+            $ref: "#/components/schemas/DayPanelDayResponse"
+        rooms:
+          $ref: "#/components/schemas/DayPanelRoomsResponse"
+      required:
+      - businessDate
+      - days
+      - rooms
+    DayPanelRoomsResponse:
+      type: object
+      description: As UHs de hoje.
+      properties:
+        active:
+          type: integer
+          format: int64
+          description: As UHs ativas.
+        clean:
+          type: integer
+          format: int64
+          description: Status de governança limpo (`CLEAN`).
+        dirty:
+          type: integer
+          format: int64
+          description: Status de governança sujo (`DIRTY`).
+        inspected:
+          type: integer
+          format: int64
+          description: Status de governança inspecionado (`INSPECTED`).
+        inspectionPending:
+          type: integer
+          format: int64
+          description: As limpas à espera de inspeção.
+        occupied:
+          type: integer
+          format: int64
+        outOfOrder:
+          type: integer
+          format: int64
+          description: As UHs com fora de ordem (OOO) em vigor hoje.
+        outOfService:
+          type: integer
+          format: int64
+          description: As UHs com fora de serviço (OOS) em vigor hoje.
+        vacant:
+          type: integer
+          format: int64
+      required:
+      - active
+      - clean
+      - dirty
+      - inspected
+      - inspectionPending
+      - occupied
+      - outOfOrder
+      - outOfService
+      - vacant
     DeliveredJobResponse:
       type: object
       description: "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`)."
@@ -21152,6 +21314,30 @@ components:
       - message
       - resolved
       - runId
+    EndOfDayPendingResponse:
+      type: object
+      description: "As pendências do fechamento do dia, no estado corrente."
+      properties:
+        cashierShifts:
+          type: array
+          description: "Os turnos de caixa abertos, de qualquer data operacional."
+          items:
+            $ref: "#/components/schemas/PendingCashierShiftResponse"
+        fnrhSubmissions:
+          type: array
+          description: As submissões à FNRH ainda não enviadas com sucesso.
+          items:
+            $ref: "#/components/schemas/PendingFnrhSubmissionResponse"
+        folios:
+          type: array
+          description: As contas abertas de reservas encerradas com saldo diferente
+            de zero.
+          items:
+            $ref: "#/components/schemas/PendingFolioResponse"
+      required:
+      - cashierShifts
+      - fnrhSubmissions
+      - folios
     EndOfDayRunResponse:
       type: object
       description: "Uma execução do fechamento do dia (RN-21: uma por data operacional),\
@@ -25007,6 +25193,101 @@ components:
       - receivedAt
       - receivedBy
       - type
+    PendingCashierShiftResponse:
+      type: object
+      description: Um turno de caixa aberto.
+      properties:
+        cashPointName:
+          type: string
+          description: O nome do ponto de caixa (configuração).
+        openedAt:
+          type: string
+          format: date-time
+        openedOn:
+          type: string
+          format: date
+          description: A data operacional da abertura.
+        operatorId:
+          type: string
+          format: uuid
+          description: O usuário que opera o turno.
+        shiftId:
+          type: string
+          format: uuid
+        shiftNumber:
+          type: string
+      required:
+      - cashPointName
+      - openedAt
+      - openedOn
+      - operatorId
+      - shiftId
+      - shiftNumber
+    PendingFnrhSubmissionResponse:
+      type: object
+      description: Uma submissão à FNRH pendente.
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        lastFailure:
+          type: string
+          description: A causa da última falha; nula sem falha. A lista pode crescer.
+          nullable: true
+        operation:
+          type: string
+          description: "A operação (`REGISTER_RESERVATION`, `CHECK_IN`…); a lista\
+            \ pode crescer."
+        reservationCode:
+          type: string
+          description: O código da reserva; nulo se a reserva não existe mais.
+          nullable: true
+        reservationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: "`PENDING`, `FAILED` ou `INVALID`."
+      required:
+      - attempts
+      - createdAt
+      - operation
+      - reservationId
+      - status
+    PendingFolioResponse:
+      type: object
+      description: Uma conta aberta de reserva encerrada com saldo.
+      properties:
+        balance:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        departure:
+          type: string
+          format: date
+          description: A data de saída da reserva.
+        folioId:
+          type: string
+          format: uuid
+        folioNumber:
+          type: string
+        reservationCode:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+      required:
+      - balance
+      - departure
+      - folioId
+      - folioNumber
+      - reservationCode
+      - reservationId
     PendingGuaranteeResponse:
       type: object
       description: "Uma reserva que ainda deve a garantia: o tipo do item (`PROVISIONAL`,\
