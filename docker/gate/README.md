@@ -16,14 +16,16 @@ Ferramentas do gate de marco (a partir do M5 E12): sobem o ambiente completo do 
 | `compose.gate.yaml` | Override do `docker/compose.yaml`: a `api` com a imagem `zeny-hotel-manager:gate` e as duas URLs da FNRH (`zeny.fnrh.homologation-url` e `zeny.fnrh.production-url`, pelas variáveis `ZENY_FNRH_HOMOLOGATIONURL` e `ZENY_FNRH_PRODUCTIONURL`) apontadas para `http://fnrh-mock:8080/FNRH_API/rest/v2`: o compose do gate nunca chama o Serpro real, em nenhum ambiente; o serviço `fnrh-mock` (WireMock 3.13.2 fixado por digest, sem porta publicada, com `--global-response-templating`). |
 | `fnrh-mock/mappings/*.json` | Os stubs da API v2.4, com os mesmos contratos do `FnrhTestServer` dos testes (ver abaixo). |
 | `m5-roteiro.sh <base-url> <projeto> <env-file>` | O roteiro `curl` do gate do M5, pelo proxy (ver [Roteiro do M5](#roteiro-do-m5)). |
-| `run-gate.sh <workdir> <porta> [projeto]` | O ciclo completo: gera o env, sobe, espera o readiness, roda o roteiro e faz `down -v` por `trap`, também em falha (ver [Uso](#uso)). |
+| `m6-roteiro.sh <base-url> <projeto> <env-file>` | O roteiro `curl` do gate do M6 (cenário da Fase 1), pelo proxy, com as mesmas regras do M5 (ver [Roteiro do M6](#roteiro-do-m6)). |
+| `run-gate.sh <workdir> <porta> [projeto] [roteiro]` | O ciclo completo: gera o env, sobe, espera o readiness, roda o roteiro (`m5`, o padrão, ou `m6`) e faz `down -v` por `trap`, também em falha (ver [Uso](#uso)). |
 
 ## Uso
 
 Na raiz do projeto (ou da cópia limpa), com um diretório de trabalho **fora** do repositório e uma porta livre:
 
 ```bash
-docker/gate/run-gate.sh /caminho/fora/do/repositorio 18112 zeny-gate   # ex.: o scratchpad da sessão
+docker/gate/run-gate.sh /caminho/fora/do/repositorio 18112 zeny-gate      # o roteiro do M5 (padrão)
+docker/gate/run-gate.sh /caminho/fora/do/repositorio 18120 zeny-gate m6   # o roteiro do M6
 ```
 
 O `run-gate.sh`:
@@ -32,7 +34,7 @@ O `run-gate.sh`:
 2. gera `<workdir>/gate.env` pelo `gate-env.sh` (que recusa um `<workdir>` dentro do projeto ou de um repositório git);
 3. arma o `trap … EXIT` (também em erro e em Ctrl+C) que faz `down -v --remove-orphans`, apaga o `gate.env` e conta as sobras do projeto (`sobras: contêineres 0, volumes 0, redes 0`);
 4. roda `config -q` e `up -d --build`, espera o readiness (até 300 s) e mostra os serviços;
-5. roda o `m5-roteiro.sh` (a saída fica em `<workdir>/m5-roteiro.out`) e conta os níveis do log da `api`;
+5. roda o roteiro escolhido, `m5-roteiro.sh` (padrão) ou `m6-roteiro.sh` (a saída fica em `<workdir>/<roteiro>-roteiro.out`), e conta os níveis do log da `api`;
 6. sai com o código do roteiro (`0` sem falhas, `1` com falhas) ou `1` se o ambiente não subiu.
 
 Passo a passo, à mão (o `down -v` fica com você, também em falha):
@@ -98,3 +100,21 @@ As operações da recepção são feitas pelos operadores dos modelos de role do
 13. **Varredura:** `docker compose logs --no-color` da `api`, do `db`, do `proxy`, do `storage` e do `storage-init` (o `fnrh-mock` fica de fora: faz o papel do Serpro) e a própria saída do roteiro (`m5-roteiro.out`) não contêm nenhum valor registrado com `secret`: nomes, CPFs (com e sem máscara) e e-mails dos hóspedes, a descrição de gênero, o texto do recado, o usuário, a senha e o Basic da FNRH, o token do agente, os access e refresh tokens, o token de aprovação, o PIN (como palavra inteira), as senhas do admin e dos usuários, as senhas do banco e do MinIO e as chaves de cifragem e do JWT do env; nem `eyJ`. Na falha, a conferência diz só o tipo do valor achado, nunca o valor. O diário do mock termina sem pedido não casado.
 
 Os 39 `WARN` do PDFBox ("Using fallback font LiberationSans", decisão D-E11-4: sem fontes embutidas) no log da `api` são esperados e não são vazamento, assim como os `WARN` da falha de envio à FNRH durante a queda da seção 11: a varredura procura valores, não exige zero `WARN`. O `run-gate.sh` mostra a contagem dos níveis (`log.level` do JSON do profile `prod`) no fim.
+
+## Roteiro do M6
+
+`m6-roteiro.sh <base-url> <projeto> <env-file>` faz o cenário da Fase 1 (D1 do plano da E12) pelo proxy, no ambiente **recém-subido**, com o mesmo cabeçalho, as mesmas recusas, o mesmo `check`/`redact` e a mesma varredura do `m5-roteiro.sh` (cópia fiel; a saída vai para `<dir do env>/m6-roteiro.out` ou `M6_ROTEIRO_OUT`). Ele fecha dois dias de verdade: a data operacional do banco do gate avança duas vezes, então não roda duas vezes no mesmo banco. Os operadores são os dos modelos de role (`recepcao`, `gerente` com PIN, `governanta` e `camareira`); o admin inicial só muda o horário do fechamento e liga a FNRH. Os comandos offline levam um `commandId` UUIDv7 gerado no roteiro. Seções (a varredura fica por último; seção nova entra antes dela em `SECTIONS`):
+
+1. **Públicos:** readiness, `meta/version`, `/actuator/prometheus` `404` e `/end-of-day/runs` sem token `401`.
+2. **Usuários:** a troca obrigatória da senha do admin; os quatro operadores pelos modelos de role, cada um com a troca de senha.
+3. **Configuração mínima:** o horário do fechamento `06:00` pelo admin (o Gerente recebe `403`): antes do meio-dia, o automático de D só vence em D+1, ao menos 6 h depois de qualquer hora em que o roteiro rode; o tipo de UH e a UH 1301 inspecionada, as políticas, o plano e os preços (Gerente); os créditos da permanência e da saída no tipo de UH, os modelos de governança e de inspeção e a rotina diária na UH (Governanta); a Camareira como colaboradora da governança, escalada em D1 e D2 (Gerente); a FNRH em homologação contra o mock (admin).
+4. **D0:** a reserva D0–D2 de 1 adulto com a hora prevista de chegada (E22), duas noites a `300.00`; check-in na 1301; registro e check-in `SENT` na FNRH.
+5. **Fechamento de D0:** a Recepcionista recebe `403 APPROVAL_REQUIRED` (sem execução criada); o Gerente aprova com login e PIN na sessão dela; a execução `MANUAL` termina `COMPLETED` com as 11 etapas; a diária de D0 uma vez (`END_OF_DAY`, e um lançamento por noite pelo `psql`), a UH Suja, a data em D1, nenhuma pendência da reserva, da conta ou da UH e a execução da rotina de D1.
+6. **Permanência de D1:** gerada pelo avanço, com o tipo e os créditos configurados; o plano sugerido, ajustado e publicado pela Governanta; a atribuição no painel da Camareira; início e conclusão pelo `POST /sync/commands` (`APPLIED`), checklist concluído com o modelo do gate; a inspeção voluntária deixa a UH Inspecionada.
+7. **Fechamento de D1:** pelo Gerente (com a permissão); a diária de D1 uma vez, a UH Suja, a data em D2 e nenhuma permanência para quem sai em D2.
+8. **Check-out em D2:** turno de caixa, pagamento do saldo (as duas diárias), check-out sem diária a mais com a conta encerrada e saldo zero, a UH Vaga e Suja, o turno fechado sem diferença.
+9. **Tarefa de saída:** gerada pelo `GuestCheckedOut`, executada offline (`AWAITING_INSPECTION`), inspecionada e aprovada pela tarefa: `DONE` e a UH Vaga e Inspecionada.
+10. **FNRH:** registro, check-in e check-out `SENT`, o `GuestCheckedOut` `COMPLETED` no listener do `fnrh` e o diário do mock sem pedido não casado, com `Basic` em todos.
+11. **Varredura:** os logs da `api`, do `db`, do `proxy`, do `storage` e do `storage-init` e a própria saída sem segredo, dado de hóspede nem `eyJ`.
+
+`psql` só onde a API não mostra: a contagem de lançamentos de diária por noite e a conclusão, pelo listener da governança, do avanço para D2.

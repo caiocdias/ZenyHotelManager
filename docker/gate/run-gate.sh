@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# Ciclo completo do gate do M5 (E12): env sorteado, compose isolado, readiness, roteiro e down -v, sempre.
+# Ciclo completo do gate de marco (M5 E12, M6 E12): env sorteado, compose isolado, readiness, roteiro e down -v, sempre.
 #
-#   docker/gate/run-gate.sh <workdir> <porta> [projeto]
+#   docker/gate/run-gate.sh <workdir> <porta> [projeto] [roteiro]
 #
 #   <workdir>  diretório de trabalho fora do repositório (o gate-env.sh recusa um dentro do projeto ou de um repositório
-#              git); recebe o gate.env (apagado no fim) e o m5-roteiro.out (a saída do roteiro, sem segredo)
+#              git); recebe o gate.env (apagado no fim) e o <roteiro>-roteiro.out (a saída do roteiro, sem segredo)
 #   <porta>    porta livre do proxy em 127.0.0.1, ex.: 18112
 #   [projeto]  o projeto Compose do gate (padrão zeny-gate); nunca zeny, o do usuário
+#   [roteiro]  o roteiro do marco: m5 (padrão, o docker/gate/m5-roteiro.sh) ou m6 (o docker/gate/m6-roteiro.sh)
 #
 # Gera o env pelo gate-env.sh, confere a composição (config -q), sobe com up -d --build, espera o readiness, roda o
-# m5-roteiro.sh e, na saída (também em falha, erro ou Ctrl+C, por trap EXIT), faz down -v, apaga o env e conta as
+# roteiro escolhido e, na saída (também em falha, erro ou Ctrl+C, por trap EXIT), faz down -v, apaga o env e conta as
 # sobras do projeto (contêineres, volumes e redes). Recusa (saída 2) um projeto que já tenha contêiner, volume ou rede:
 # o roteiro precisa de um banco novo e o down -v do fim nunca apaga o que não subiu. Sai com o código do roteiro (0 sem
 # falhas, 1 com falhas) ou 1 se o ambiente não subiu. Requer docker com o Compose v2, curl, jq, openssl e o coreutils.
@@ -17,14 +18,23 @@ set -uo pipefail
 umask 077
 
 usage() {
-    echo "uso: $0 <workdir fora do repositório> <porta> [projeto]" >&2
+    echo "uso: $0 <workdir fora do repositório> <porta> [projeto] [m5|m6]" >&2
     exit 2
 }
 
-[ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
+[ "$#" -ge 2 ] && [ "$#" -le 4 ] || usage
 WORKDIR=$1
 PORT=$2
 PROJECT=${3:-zeny-gate}
+ROTEIRO=${4:-m5}
+
+case $ROTEIRO in
+    m5 | m6) ;;
+    *)
+        echo "recusado: roteiro desconhecido: $ROTEIRO (use m5 ou m6)" >&2
+        exit 2
+        ;;
+esac
 
 if ! [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || [ "$PROJECT" = zeny ]; then
     echo "recusado: projeto inválido ou do usuário: $PROJECT" >&2
@@ -90,8 +100,9 @@ done
 echo "readiness HTTP 200 após ~$((SECONDS - started))s"
 "${DC[@]}" ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 
-echo "== roteiro"
-"$script_dir/m5-roteiro.sh" "$BASE" "$PROJECT" "$ENV_FILE"
+echo "== roteiro $ROTEIRO"
+# A saída fica em <workdir>/<roteiro>-roteiro.out (o roteiro a grava ao lado do env).
+"$script_dir/$ROTEIRO-roteiro.sh" "$BASE" "$PROJECT" "$ENV_FILE"
 rc=$?
 echo "roteiro exit=$rc"
 
