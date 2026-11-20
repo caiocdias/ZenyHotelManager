@@ -239,7 +239,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E07 | Ordens de serviço corretivas e OOO/OOS | #concluida | — | `WorkOrder` com estados, custos, anexos e bloqueio da UH |
-| E08 | OS por checklist e app offline da manutenção | #em-andamento | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
+| E08 | OS por checklist e app offline da manutenção | #concluida | E07 | Abertura por `ChecklistCompleted` e comandos offline da OS |
 
 **Relatórios**
 
@@ -2319,7 +2319,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E08 — OS por checklist e app offline da manutenção — #em-andamento
+## E08 — OS por checklist e app offline da manutenção — #concluida
 
 **Objetivo:** abrir OS automaticamente a partir de ocorrências `MAINTENANCE` de `ChecklistCompleted` (RF-CHK-05, ARCHITECTURE §6.2) e permitir ao técnico operar a OS offline (RF-MAN-07), na mesma base de sincronização do app da governança.
 
@@ -2333,11 +2333,11 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] `ChecklistCompleted` com item `MAINTENANCE` marcado "não ok" gera exatamente uma OS com origem checklist e vínculo à execução; reprocessar não duplica.
-- [ ] OS aberta offline é persistida com o UUID do cliente; o mesmo `commandId` reenviado não cria outra.
-- [ ] Iniciar, pausar e concluir offline produzem o mesmo estado que online.
-- [ ] O feed de sync do técnico contém suas OS e locais, sem dados pessoais de hóspede.
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `ChecklistCompleted` com item `MAINTENANCE` marcado "não ok" gera exatamente uma OS com origem checklist e vínculo à execução; reprocessar não duplica.
+- [x] OS aberta offline é persistida com o UUID do cliente; o mesmo `commandId` reenviado não cria outra.
+- [x] Iniciar, pausar e concluir offline produzem o mesmo estado que online.
+- [x] O feed de sync do técnico contém suas OS e locais, sem dados pessoais de hóspede.
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -2356,12 +2356,80 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-19-m6-operacao-fechamento-e08.md`, com 3 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). O D1 (local da execução no `checklists`) foi validado como a melhor alternativa. A rodada 0 bloqueou por 7 Importantes:
+  - texto livre no feed;
+  - mecânica do feed;
+  - conclusão offline × liberação;
+  - ordem dos instantes;
+  - posse e conflito RN-22;
+  - local inválido no ouvinte;
+  - tamanho da Task 3.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `e63ea84` (início e plano) a o fechamento.
+  - **Task 1** (local da execução no `checklists`): `1f34ea8`.
+  - **Task 2** (OS por checklist e feed offline): `89bfc3b` e `e247702` (`ModularityTest` com `checklists`), mais a rodada 1 em `d8d1872` (`ChecklistTriggeredAction.describe` na raiz do `checklists`, sem duplicar a regra da E06; `openFromChecklist` `internal`).
+  - **Task 3** (observações e comandos offline): `1d516c7` e `b38c1e2`.
+  - **Testador da etapa:** `8f5a60a` (descrição por code points, local offline e da cópia, evento antigo, observação offline com `WORK_ORDER_ID_IN_USE` real, origem `CHECKLIST` forjada, `cancel`/`block-room` offline dão `UNKNOWN_COMMAND_TYPE`, feed com valores e sem notas, ponta a ponta da avulsa forjada) e `d5279db` (vermelho: entregas simultâneas do `ChecklistCompleted` deixavam publicação incompleta).
+  - **Fim da etapa:** `2d6f42f` (rodada 1: trava consultiva por referência + item no `openFromChecklist`; aviso RN-13 no campo `note` das respostas de checklist).
+- Entregue:
+  - **`checklists`:** `ChecklistLocation(roomId | areaId)` na raiz.
+    - `ChecklistsApi.startExecution(..., location)`, com o parâmetro obrigatório.
+    - Colunas `location_room_id`/`location_area_id` na execução (`V2026_11_19_1900`).
+    - `ChecklistExecutionView.location` e `ChecklistCompleted.location` (padrão `null`).
+    - Na rotina de sujeito `rooms.room`/`rooms.area`, o local é o sujeito. A execução avulsa do cliente (endpoint e comando offline) fica sem local, e a duplicata copia o da original.
+    - O local não sai na resposta HTTP da execução.
+  - **`housekeeping`:** passa a UH ou a área da tarefa em `startExecution` (tarefa e inspeção). A descrição da ocorrência usa `ChecklistTriggeredAction.describe`.
+  - **`maintenance` → `checklists`** (aresta já na §3.1; `ModularityTest` exato).
+  - **`MaintenanceChecklistListener`:** cada `OPEN_OCCURRENCE`/`MAINTENANCE` com local existente e ativo abre uma OS:
+    - `origin = CHECKLIST`, `priority = NORMAL`, categoria mapeada ou `OTHER`;
+    - descrição = rótulo, categoria e nota, até 2000;
+    - `openedBy` = executor;
+    - vínculo à execução real e ao item, mais `checklist_reference_execution_id` (`duplicateOf ?: executionId`) com índice único (`V2026_11_19_1910`).
+    - Local inexistente, desativado ou ausente: ignorado com log só de ids.
+  - **Fonte offline `maintenance-work-orders`:**
+    - exige `maintenance.workorders.manage`; `OWN` = quem abriu ou responsável;
+    - leva só OS não finais, com número, local (ids, número da UH e nome da área, que podem ficar defasados), categoria, prioridade, status, **descrição**, responsável e prazo;
+    - posição de mudança por gatilho (`V2026_11_19_1911`);
+    - *tombstone* na OS final e na troca de responsável (`leftScopeOf`).
+  - **Observações:**
+    - `POST /api/v1/work-orders/{id}/notes` (`manage`, ou `request` na OS que abriu; 1 a 1000);
+    - tabela `maintenance.work_order_note` só de inserção (`V2026_11_19_1920`/`1921`), listada na resposta da OS (`notes`);
+    - o texto fica fora da trilha;
+    - código novo `409 WORK_ORDER_ID_IN_USE`.
+  - **Comandos offline:**
+    - `maintenance.open-work-order` (`commandId` = id da OS), `start`, `hold`, `resume` e `complete-work-order` (este libera o bloqueio como o online), mais `add-work-order-note` (`commandId` = id da observação);
+    - instante = `max(occurredAt corrigido, updatedAt)`;
+    - trilha `-offline`;
+    - recusa vira `REJECTED` com o código do online;
+    - o offline não abre bloqueio nem cancela.
+- Revisão final: **aprovado com ressalvas** (`revisor-seguranca`, opus), sem Crítico; 2 Importantes fechados na rodada 1: a `note` da camareira no feed (aceita como exceção do D4, com aviso RN-13 no campo) e lacunas de teste de step-up, origem forjada e da avulsa (cobertas pelo testador). Re-revisão escopada `b38c1e2..2d6f42f`: aprovada.
+- Gate de integração: `BUILD SUCCESSFUL` em `b38c1e2` (4735 testes, 0 falhas); final: `BUILD SUCCESSFUL` em `2d6f42f`, 4758 testes e 0 falhas.
+- Verificação mecânica: `check_test_integrity.py --base b817443`, exit 0, sem apontamentos.
+- Scanner: `osv-scanner` com 0 Critical e 0 High (lockfiles sem mudança).
+- `check-api-breaking.sh`: sem `ERR`.
+- Critérios verificados:
+  - OS por checklist: exatamente uma, reprocessar não duplica (`WorkOrderChecklistListenerTest`);
+  - OS offline persistida com o UUID do cliente e o mesmo `commandId` não cria outra (`MaintenanceOfflineTest`);
+  - iniciar, pausar e concluir offline com o mesmo estado do online (`MaintenanceOfflineTest`);
+  - o feed do técnico com as OS e os locais, sem dados de hóspede (`MaintenanceOfflineFeedTest`, conjunto exato de chaves);
+  - build, testes e contrato: gate.
+- Decisões para o usuário (tomadas pelo orquestrador pela opção recomendada, sob a autorização de 2026-11-19, e revisáveis):
+  - **D1 (arquitetura):** o `checklists` guarda e publica o local da execução, informado pelo dono do sujeito. Assim o `maintenance` não depende do `housekeeping`. Alternativas descartadas: aresta `maintenance → housekeeping`, porta `ChecklistSubjectLocator`, só rotinas.
+  - **D4:** a descrição da OS vai ao feed do técnico como exceção à regra "nada de texto livre no feed". Na OS de checklist, ela inclui a nota digitada pela camareira.
+  - **D5:** um comando offline recusado (OS final, fora do escopo) vira `REJECTED`, sem registro de conflito. As notas e os custos digitados offline se perdem nesse caso.
+  - **D3:** as observações também online (`POST /notes`), além do comando offline.
+  - **D2:** o mesmo defeito marcado em dias diferentes abre uma OS por execução.
+- Notas para a próxima etapa:
+  - **ARCHITECTURE:** atualizar a §6.2 (local da execução, ouvinte da manutenção) e a §9 (fonte e comandos da manutenção). Feito no fechamento da etapa (§6.2, local da execução e ouvinte; §9, fonte e comandos).
+  - **Avisar o front desktop:** `notes` na resposta da OS, `POST /notes`, `409 WORK_ORDER_ID_IN_USE` e a fonte e os comandos offline novos.
+  - **Menores aceitos:**
+    - `loadLockedForNote` também serve aos anexos (nome);
+    - o `201` da observação aponta para a OS;
+    - observações sem limite por OS na listagem;
+    - N+1 de `rooms.room`/`area` por linha no feed (30 UHs);
+    - oráculo de existência de OS por `WORK_ORDER_ID_IN_USE` a quem tem só `request` (UUIDv7).
+  - **Instabilidade:** `HousekeepingOccurrenceListenerTest > an inspection checklist records the damage…` falhou uma vez por modelo geral de governança deixado por outro teste no banco compartilhado (`CHECKLIST_REQUIRED_ITEMS_MISSING`); para uma etapa de manutenção de testes.
+  - **Menores da re-revisão:** as travas do ouvinte seguem a ordem das ações (ordenar por `itemKey` eliminaria um deadlock improvável entre original e cópia); o aviso também ficou no `note` do DTO de resposta, onde só informa; a Task 2 teve o código antes dos testes (compensado com mutação).
+  - **Payload fora do formato:** o protocolo do `shared` devolve `REJECTED` e não o guarda (desenho do M2).
 
 ---
 
