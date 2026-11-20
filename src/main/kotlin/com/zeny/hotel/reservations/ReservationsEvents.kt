@@ -49,7 +49,8 @@ data class ReservationCreated(
 
 /**
  * A reserva [reservationId] foi alterada (SPEC §8.3; M4 E08, RF-RES-05): a estadia, a ocupação, o plano ou o segmento
- * ([changedFields], os nomes dos campos da reserva). Traz a situação, a estadia de agora e a anterior (tipo de UH,
+ * ou a hora prevista de chegada ([changedFields], os nomes dos campos da reserva; `expectedArrivalTime` não muda a
+ * estadia). Traz a situação, a estadia de agora e a anterior (tipo de UH,
  * plano, chegada e saída), as contagens e a [version] depois da alteração. Publicado por `reservations` pelo outbox na
  * transação da alteração, só quando algo mudou. Sem hóspede, pedido especial nem preço. Escutado pela distribuição (M8)
  * e pela FNRH (M5).

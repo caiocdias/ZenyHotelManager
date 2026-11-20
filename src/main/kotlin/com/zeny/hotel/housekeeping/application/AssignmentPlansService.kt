@@ -481,10 +481,13 @@ class AssignmentPlansService(
         date: LocalDate,
     ): List<SuggestionTask> {
         if (eligible.isEmpty()) return emptyList()
-        val arriving = arrivals.arrivalsByRoom(date)
+        val arriving = arrivals.arrivalTimesByRoom(date)
+        val checkInTime = hotel.policy().checkInTime
         val activeRooms = rooms.activeRooms().associateBy { it.id }
         return eligible.map { task ->
             val room = task.roomId?.let { activeRooms[it] ?: rooms.room(it) }
+            val arrivalExpected = task.roomId != null && task.roomId in arriving
+            val arrivalTime = task.roomId?.let { arriving[it] }
             SuggestionTask(
                 task.id,
                 room?.number,
@@ -492,11 +495,13 @@ class AssignmentPlansService(
                 room?.floor,
                 task.credits,
                 task.priority,
-                arrivalExpected = task.roomId != null && task.roomId in arriving,
+                arrivalExpected = arrivalExpected,
                 source = task.source,
                 doNotDisturb =
                     task.source == TaskSource.STAYOVER &&
                         task.roomId?.let { rooms.status(it)?.serviceFlag } == GuestServiceFlag.DO_NOT_DISTURB,
+                arrivalTime = arrivalTime,
+                earlyCheckIn = arrivalExpected && arrivalTime != null && arrivalTime < checkInTime,
             )
         }
     }

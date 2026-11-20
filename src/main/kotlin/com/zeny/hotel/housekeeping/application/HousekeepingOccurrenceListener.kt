@@ -7,6 +7,7 @@ import com.zeny.hotel.checklists.ChecklistVersionId
 import com.zeny.hotel.checklists.ChecklistsApi
 import com.zeny.hotel.checklists.ItemActionType
 import com.zeny.hotel.checklists.OccurrenceKind
+import com.zeny.hotel.checklists.describe
 import com.zeny.hotel.housekeeping.DamageReportId
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.InspectionId
@@ -69,7 +70,9 @@ class HousekeepingOccurrenceListener(
                 ?.items
                 ?.associate { it.key to it.label }
                 .orEmpty()
-        occurrences.forEach { record(event, place, it, description(labels[it.itemKey] ?: it.itemKey, it)) }
+        occurrences.forEach {
+            record(event, place, it, it.describe(labels[it.itemKey] ?: it.itemKey, LostAndFoundItem.MAX_DESCRIPTION))
+        }
     }
 
     private fun record(
@@ -182,24 +185,5 @@ class HousekeepingOccurrenceListener(
         const val AREA_SUBJECT = "rooms.area"
 
         val RECORDED_KINDS = setOf(OccurrenceKind.LOST_AND_FOUND, OccurrenceKind.DAMAGE)
-
-        /**
-         * A descrição do registro: o rótulo do item, a categoria e a observação da ação (os presentes, nesta ordem,
-         * separados por " - "), cortada em [LostAndFoundItem.MAX_DESCRIPTION] (o mesmo limite do dano) code points.
-         */
-        fun description(
-            label: String,
-            action: ChecklistTriggeredAction,
-        ): String {
-            val text =
-                listOf(label, action.category, action.note)
-                    .mapNotNull { part -> part?.replace(NUL, "")?.trim()?.takeIf { it.isNotEmpty() } }
-                    .joinToString(" - ")
-            val limit = LostAndFoundItem.MAX_DESCRIPTION
-            if (text.codePointCount(0, text.length) <= limit) return text
-            return text.substring(0, text.offsetByCodePoints(0, limit))
-        }
-
-        const val NUL = "\u0000"
     }
 }

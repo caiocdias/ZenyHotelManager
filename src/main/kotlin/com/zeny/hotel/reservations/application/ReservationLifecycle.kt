@@ -320,6 +320,7 @@ class ReservationLifecycle(
             childAges = command.childAges,
             segment = command.segment,
             specialRequests = command.specialRequests,
+            expectedArrivalTime = command.expectedArrivalTime,
             nightlyRates = nights,
             roomTotal = roomTotal,
             additionalPackagesTotal = additional,

@@ -67,6 +67,7 @@ import org.springframework.web.bind.annotation.RequestParam
 import java.net.URI
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 private const val UNKNOWN = "A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido sem falhar."
@@ -112,6 +113,12 @@ data class ReservationRequest(
     val specialRequests: String? = null,
     val guests: List<@Valid StayGuestRequest> = emptyList(),
     val nightlyRates: List<@Valid NightlyRateRequest> = emptyList(),
+    @field:Schema(
+        description =
+            "A hora prevista de chegada, hora local do hotel (`HH:mm` ou `HH:mm:ss`); opcional. Mais tarde, a " +
+                "recepção a ajusta pela alteração.",
+    )
+    val expectedArrivalTime: LocalTime? = null,
 ) {
     fun toNew() =
         NewReservation(
@@ -123,6 +130,7 @@ data class ReservationRequest(
             childAges = childAges,
             segment = checkNotNull(segment),
             specialRequests = specialRequests,
+            expectedArrivalTime = expectedArrivalTime,
             guests = guests.map { NewStayGuest(GuestId(checkNotNull(it.guestId)), it.primary) },
             nightlyRates = nightlyRates.map { NightlyRateOverride(checkNotNull(it.date), checkNotNull(it.roomAmount)) },
         )
@@ -425,6 +433,8 @@ data class ReservationResponse(
     @field:Schema(description = "Segmento de mercado. $UNKNOWN")
     val segment: MarketSegment,
     val specialRequests: String?,
+    @field:Schema(description = "A hora prevista de chegada, hora local do hotel; nula sem ela.")
+    val expectedArrivalTime: LocalTime?,
     val guests: List<StayGuestResponse>,
     val nightlyRates: List<NightlyRateResponse>,
     val roomTotal: Money,
@@ -504,6 +514,7 @@ data class ReservationResponse(
             childAges = reservation.childAges,
             segment = reservation.segment,
             specialRequests = reservation.specialRequests,
+            expectedArrivalTime = reservation.expectedArrivalTime,
             guests = reservation.guests.map(StayGuestResponse::of),
             nightlyRates = reservation.nightlyRates.map(NightlyRateResponse::of),
             roomTotal = reservation.roomTotal,

@@ -2,6 +2,7 @@ package com.zeny.hotel.housekeeping.domain
 
 import com.zeny.hotel.housekeeping.HousekeepingTaskId
 import com.zeny.hotel.housekeeping.TaskSource
+import java.time.LocalTime
 import java.util.UUID
 
 /**
@@ -16,8 +17,10 @@ value class AttendantId(
 /**
  * Uma tarefa elegível para a sugestão, com o que o algoritmo usa: o local (o número da UH ou o nome da área), o andar
  * (texto livre do cadastro; `null` sem andar), os créditos, a prioridade, a chegada prevista (recalculada pela
- * `application`), a origem e se a UH está em "Não perturbe" no momento da sugestão. Os créditos nunca são negativos:
- * a prova de término de [AssignmentSuggester] depende disso.
+ * `application`), a hora prevista dessa chegada ([arrivalTime], a menor da UH; `null` sem hora), se é um early
+ * check-in ([earlyCheckIn]: hora estritamente antes do `checkInTime` da política, decidido pela `application`), a
+ * origem e se a UH está em "Não perturbe" no momento da sugestão. Os créditos nunca são negativos: a prova de término
+ * de [AssignmentSuggester] depende disso. O early exige chegada prevista e hora.
  */
 data class SuggestionTask(
     val taskId: HousekeepingTaskId,
@@ -29,9 +32,14 @@ data class SuggestionTask(
     val arrivalExpected: Boolean,
     val source: TaskSource,
     val doNotDisturb: Boolean,
+    val arrivalTime: LocalTime? = null,
+    val earlyCheckIn: Boolean = false,
 ) {
     init {
         require(credits >= 0) { "Créditos negativos: $credits" }
+        require(!earlyCheckIn || (arrivalExpected && arrivalTime != null)) {
+            "Early check-in sem chegada prevista ou sem hora"
+        }
     }
 }
 
@@ -55,9 +63,9 @@ data class Suggestion(
  * determinística, não ótima, que balanceia os créditos entre as camareiras e agrupa por andar.
  *
  * 1. **DND:** a `STAYOVER` de UH em "Não perturbe" fica sem camareira; as outras origens entram normalmente.
- * 2. **Ordem:** as tarefas são ordenadas por chegada prevista (desc), prioridade (desc), andar em ordem natural
- *    (números como números, depois texto, depois sem andar), número da UH ou nome da área (também em ordem natural)
- *    e id.
+ * 2. **Ordem:** as tarefas são ordenadas por early check-in (desc), chegada prevista (desc), hora da chegada
+ *    (crescente, sem hora por último; só pesa entre chegadas), prioridade (desc), andar em ordem natural (números
+ *    como números, depois texto, depois sem andar), número da UH ou nome da área (também em ordem natural) e id.
  * 3. **Andares inteiros:** os grupos por andar (o "sem andar" é um grupo) vão, do maior total de créditos para o
  *    menor (desempate pela ordem natural do andar), cada um para a camareira menos carregada (desempate por nome e
  *    depois id).
@@ -66,7 +74,8 @@ data class Suggestion(
  *    passo 2) vai para a menos carregada. Cada movimento usa um crédito c com 0 < c ≤ maior crédito < M − m, e a soma
  *    dos quadrados das cargas muda em 2c(c − (M − m)) < 0: ela é um inteiro não negativo que cai a cada passo, então o
  *    laço termina. Ao terminar, a diferença é ≤ o maior crédito; se o passo 3 já a cumpria, nenhum andar é dividido.
- * 5. **Ordem de execução:** a de cada camareira segue a do passo 2.
+ * 5. **Ordem de execução:** a de cada camareira segue a do passo 2: o early vem primeiro, depois as chegadas por hora
+ *    (as sem hora no fim delas) e então as demais tarefas.
  *
  * A saída não depende da ordem das listas de entrada. Sem camareira, todas as tarefas ficam sem camareira.
  */
@@ -140,7 +149,9 @@ object AssignmentSuggester {
         compareBy<String?>({ it == null }, { it?.toBigIntegerOrNull() == null }, { it?.toBigIntegerOrNull() }, { it })
 
     private val EXECUTION_ORDER: Comparator<SuggestionTask> =
-        compareByDescending<SuggestionTask> { it.arrivalExpected }
+        compareByDescending<SuggestionTask> { it.earlyCheckIn }
+            .thenByDescending { it.arrivalExpected }
+            .thenBy(nullsLast()) { it.arrivalTime }
             .thenByDescending { it.priority }
             .thenBy(NATURAL) { it.floor }
             .thenBy(NATURAL) { it.roomNumber ?: it.areaName }

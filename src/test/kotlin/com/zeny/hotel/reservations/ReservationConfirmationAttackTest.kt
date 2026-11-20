@@ -137,15 +137,16 @@ class ReservationConfirmationAttackTest(
     fun `hostile policy text is literal in the PDF and gives no ESC-POS command nor bidi`() {
         val booked = book()
         val baselineBytes = escPosBytes(printedJob(booked.id))
-        val hostile = "<script>alert(1)</script> \${7*191} [[\${1+1}]] th:text ESC\u001B@\u001DVB\u0007x ‮oculto⁦"
+        val hostile =
+            "<script>alert(1)</script> \${7*191+100000} [[\${1+1}]] th:text ESC\u001B@\u001DVB\u0007x ‮oculto⁦"
         withPolicy(mapOf("stayPolicyText" to hostile, "additionalPolicyText" to "<b>$hostile</b>")) {
             val response = pdf(booked.id, iam.asAdmin())
             response.status shouldBe 200
             val text = pdfText(response.contentAsByteArray)
             text shouldContain "<script>alert(1)</script>"
-            text shouldContain "\${7*191}"
+            text shouldContain "\${7*191+100000}"
             text shouldContain "[[\${1+1}]]"
-            text shouldNotContain "1337"
+            text shouldNotContain "101337"
             text shouldNotContain "\u001B"
             text shouldNotContain "‮"
             text shouldNotContain "⁦"
@@ -155,13 +156,13 @@ class ReservationConfirmationAttackTest(
             count(bytes, 0x1D) shouldBe count(baselineBytes, 0x1D)
             count(bytes, 0x07) shouldBe count(baselineBytes, 0x07)
             commandFree(bytes) shouldContain "<script>alert(1)</script>"
-            commandFree(bytes) shouldNotContain "1337"
+            commandFree(bytes) shouldNotContain "101337"
         }
     }
 
     @Test
     fun `hostile holder name and a 4000 character text keep the PDF literal and complete`() {
-        val hostile = "Ana <b>X</b> \${7*191} [[\${1+1}]] ‮civil"
+        val hostile = "Ana <b>X</b> \${7*191+100000} [[\${1+1}]] ‮civil"
         val holder = guest(mapOf("fullName" to hostile))
         val booked = book(holder = holder.first)
         val body = (1..430).joinToString(" ") { "texto$it" } + " FIMDOTEXTO"
@@ -170,8 +171,8 @@ class ReservationConfirmationAttackTest(
             response.status shouldBe 200
             val text = pdfText(response.contentAsByteArray)
             text shouldContain "<b>X</b>"
-            text shouldContain "\${7*191}"
-            text shouldNotContain "1337"
+            text shouldContain "\${7*191+100000}"
+            text shouldNotContain "101337"
             text shouldNotContain "‮"
             text shouldContain "FIMDOTEXTO"
             text shouldContain "Total R$ 800,00"

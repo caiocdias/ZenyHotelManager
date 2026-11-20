@@ -30,6 +30,8 @@ tags:
   name: billing
 - description: "Agentes de impressão, impressoras e fila de impressão."
   name: Printing
+- description: "Relatórios operacionais, painel do dia e pendências do fechamento."
+  name: reporting
 - description: "Modelos de checklist, rascunhos e versões publicadas."
   name: checklists
 - description: "Recepção (RF-REC): check-in orquestrado numa transação, desfazer check-in,\
@@ -41,6 +43,8 @@ tags:
   name: frontdesk
 - description: "Planos tarifários, políticas de cancelamento e de garantia e pacotes."
   name: rates
+- description: "Manutenção: ordens de serviço corretivas."
+  name: maintenance
 - description: "Anexos: upload por finalidade e download por URL assinada."
   name: files
 - description: "Governança: tipos de limpeza, créditos por tipo de UH, faxinas programadas\
@@ -9911,6 +9915,436 @@ paths:
       summary: Gravar restrições em massa
       tags:
       - rates
+  /api/v1/reports/day-panel:
+    get:
+      description: "Para a data operacional e as `days` − 1 seguintes: as chegadas\
+        \ e as saídas (reservas `PROVISIONAL`, `CONFIRMED`, `IN_HOUSE` e `CHECKED_OUT`;\
+        \ o day use entra nas duas; `CANCELLED` e `NO_SHOW` não contam), os hospedados\
+        \ (noites vendidas da data, sem o day use) e a ocupação (noites vendidas de\
+        \ plano normal ou cortesia, sem o uso da casa nem o day use, sobre as UHs\
+        \ ativas menos as fora de ordem, em percentual; nula sem inventário na data\
+        \ e acima de 999,9999%). Para hoje, as UHs ativas por ocupação e status de\
+        \ governança e as UHs em OOO e OOS em vigor. Só contagens, sem dado de hó\
+        spede. `days` de 1 a 30 (padrão 7); fora disso, 400. Exige `reporting.dashboard.read`."
+      operationId: getDayPanel
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPanelResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia
+      tags:
+      - reporting
+  /api/v1/reports/day-panel/csv:
+    get:
+      description: "O painel do dia (`GET /reports/day-panel`) como CSV. CSV em UTF-8\
+        \ com BOM, separado por `;`, decimal com vírgula e datas ISO; um relatório\
+        \ de várias tabelas escreve cada uma sob uma linha com o título dela, separadas\
+        \ por uma linha vazia. Os mesmos parâmetros, a mesma permissão e o mesmo resultado\
+        \ da operação JSON. Qualquer erro sai em `application/problem+json`, mesmo\
+        \ com outro `Accept`. O arquivo não é guardado em cache."
+      operationId: getDayPanelCsv
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia em CSV
+      tags:
+      - reporting
+  /api/v1/reports/day-panel/xlsx:
+    get:
+      description: "O painel do dia (`GET /reports/day-panel`) como planilha. XLSX\
+        \ com uma aba por tabela e os números em células numéricas. Os mesmos parâ\
+        metros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer erro\
+        \ sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo nã\
+        o é guardado em cache."
+      operationId: getDayPanelXlsx
+      parameters:
+      - description: "Quantos dias, a partir da data operacional (de 1 a 30)."
+        in: query
+        name: days
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 7
+          maximum: 30
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Painel do dia em XLSX
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending:
+    get:
+      description: "O estado corrente, sem parâmetro de data: as contas abertas com\
+        \ saldo diferente de zero de reservas `CHECKED_OUT` (o saldo é o total lanç\
+        ado menos o recebido líquido, com transferências, reembolsos e depósitos;\
+        \ positivo é o que o hóspede deve), os turnos de caixa abertos de qualquer\
+        \ data e as submissões à FNRH `PENDING`, `FAILED` e `INVALID`. Só números,\
+        \ códigos e ids, sem nome de hóspede. Exige `reporting.pending.read`."
+      operationId: getEndOfDayPending
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EndOfDayPendingResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending/csv:
+    get:
+      description: "As pendências (`GET /reports/end-of-day-pending`) como CSV. CSV\
+        \ em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO; um\
+        \ relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
+      operationId: getEndOfDayPendingCsv
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia em CSV
+      tags:
+      - reporting
+  /api/v1/reports/end-of-day-pending/xlsx:
+    get:
+      description: "As pendências (`GET /reports/end-of-day-pending`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
+      operationId: getEndOfDayPendingXlsx
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pendências do fechamento do dia em XLSX
+      tags:
+      - reporting
+  /api/v1/reports/housekeeping:
+    get:
+      description: "Pelo `businessDate` das tarefas: por camareira, as UHs limpas\
+        \ e os créditos das limpezas concluídas (`AWAITING_INSPECTION` e `DONE`);\
+        \ por tipo de limpeza e tipo de UH (só tarefas de UH), o tempo médio em minutos\
+        \ (do tempo trabalhado, sem as pausas) e a taxa de reprovação das inspeçõ\
+        es concluídas das tarefas do período, nula sem inspeção; as inspeções voluntá\
+        rias à parte. Período em datas (`from` e `to`, obrigatórias, inclusive nas\
+        \ duas pontas), de no máximo 366 dias; fim antes do início ou período maior:\
+        \ 400 `REPORT_PERIOD_INVALID`. Exige `reporting.housekeeping.read`."
+      operationId: getHousekeepingReport
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HousekeepingReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança
+      tags:
+      - reporting
+  /api/v1/reports/housekeeping/csv:
+    get:
+      description: "O relatório de governança (`GET /reports/housekeeping`) como CSV.\
+        \ CSV em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO;\
+        \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
+      operationId: getHousekeepingReportCsv
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança em CSV
+      tags:
+      - reporting
+  /api/v1/reports/housekeeping/xlsx:
+    get:
+      description: "O relatório de governança (`GET /reports/housekeeping`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
+      operationId: getHousekeepingReportXlsx
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de governança em XLSX
+      tags:
+      - reporting
+  /api/v1/reports/maintenance:
+    get:
+      description: "Pela abertura das ordens de serviço (data local do hotel): as\
+        \ ordens por status e por categoria; das concluídas (`DONE`), o tempo médio\
+        \ de atendimento (da abertura à conclusão) em horas com 1 casa, nulo sem ordem\
+        \ concluída, e a soma dos custos (mão de obra, terceiros e peças). As canceladas\
+        \ contam por status e categoria, não nos custos. Sem texto livre. Período\
+        \ em datas (`from` e `to`, obrigatórias, inclusive nas duas pontas), de no\
+        \ máximo 366 dias; fim antes do início ou período maior: 400 `REPORT_PERIOD_INVALID`.\
+        \ Exige `reporting.maintenance.read`."
+      operationId: getMaintenanceReport
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MaintenanceReportResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção
+      tags:
+      - reporting
+  /api/v1/reports/maintenance/csv:
+    get:
+      description: "O relatório de manutenção (`GET /reports/maintenance`) como CSV.\
+        \ CSV em UTF-8 com BOM, separado por `;`, decimal com vírgula e datas ISO;\
+        \ um relatório de várias tabelas escreve cada uma sob uma linha com o título\
+        \ dela, separadas por uma linha vazia. Os mesmos parâmetros, a mesma permissã\
+        o e o mesmo resultado da operação JSON. Qualquer erro sai em `application/problem+json`,\
+        \ mesmo com outro `Accept`. O arquivo não é guardado em cache."
+      operationId: getMaintenanceReportCsv
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            text/csv:
+              schema:
+                type: string
+          description: O arquivo CSV.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção em CSV
+      tags:
+      - reporting
+  /api/v1/reports/maintenance/xlsx:
+    get:
+      description: "O relatório de manutenção (`GET /reports/maintenance`) como planilha.\
+        \ XLSX com uma aba por tabela e os números em células numéricas. Os mesmos\
+        \ parâmetros, a mesma permissão e o mesmo resultado da operação JSON. Qualquer\
+        \ erro sai em `application/problem+json`, mesmo com outro `Accept`. O arquivo\
+        \ não é guardado em cache."
+      operationId: getMaintenanceReportXlsx
+      parameters:
+      - description: Primeira data (YYYY-MM-DD).
+        in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date
+      - description: "Última data (YYYY-MM-DD), inclusive."
+        in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+          description: A planilha XLSX.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Relatório de manutenção em XLSX
+      tags:
+      - reporting
   /api/v1/reservations:
     get:
       description: "Os filtros combinam com \"e\" (os ausentes não filtram), em ordem\
@@ -15416,6 +15850,638 @@ paths:
       summary: "Fazer o walk-in: criar a reserva, alocar a UH e fazer o check-in"
       tags:
       - frontdesk
+  /api/v1/work-orders:
+    get:
+      description: "Da mais recente para a mais antiga, com os filtros opcionais.\
+        \ Exige `maintenance.workorders.read`; com o escopo `OWN`, só as ordens que\
+        \ o usuário abriu ou de que o colaborador dele é o responsável (a ordem de\
+        \ outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`)."
+      operationId: listWorkOrders
+      parameters:
+      - description: Só as ordens neste estado.
+        in: query
+        name: status
+        required: false
+        schema:
+          type: string
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+      - description: Só as ordens desta UH.
+        in: query
+        name: roomId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as ordens desta área comum.
+        in: query
+        name: areaId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Só as ordens desta prioridade.
+        in: query
+        name: priority
+        required: false
+        schema:
+          type: string
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+      - description: Só as ordens deste colaborador responsável.
+        in: query
+        name: assigneeEmployeeId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - description: Cursor opaco devolvido em `nextCursor` pela página anterior;
+          omita na primeira página.
+        in: query
+        name: cursor
+        required: false
+        schema:
+          type: string
+      - description: Quantidade máxima de itens na página.
+        in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 50
+          maximum: 200
+          minimum: 1
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CursorPageWorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Listar as ordens de serviço
+      tags:
+      - maintenance
+    post:
+      description: "Numa UH (`roomId`) ou numa área comum (`areaId`), exatamente um:\
+        \ os dois ou nenhum, 400 `WORK_ORDER_LOCATION_INVALID`; local inexistente,\
+        \ 400 `UNKNOWN_ROOM` ou `UNKNOWN_AREA` no campo; local desativado, 422 `WORK_ORDER_LOCATION_INACTIVE`.\
+        \ A ordem nasce `OPEN`, com número `OS-<ano>-NNNNNN` (ano da data operacional),\
+        \ quem a abriu em `openedBy` e os três custos em zero. A origem (`origin`)\
+        \ aceita `RECEPTION`, `HOUSEKEEPING` e `MAINTENANCE`; `CHECKLIST` é reservada\
+        \ ao pedido por item de checklist e dá 400 no campo. Responsável, terceiro\
+        \ e custos só entram pela edição (`PUT`), por quem tem `maintenance.workorders.manage`:\
+        \ o corpo da abertura não os tem, e o que vier a mais é ignorado. Exige `maintenance.workorders.request`\
+        \ (só `ALL`; 403 `PERMISSION_DENIED` antes de qualquer recusa que dependa\
+        \ do local; o 400 do corpo vem antes)."
+      operationId: openWorkOrder
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderOpenRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: Ordem aberta.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Abrir uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}:
+    get:
+      description: "Exige `maintenance.workorders.read`; com o escopo `OWN`, só as\
+        \ ordens que o usuário abriu ou de que o colaborador dele é o responsável\
+        \ (a ordem de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`). Inexistente:\
+        \ 404 `WORK_ORDER_NOT_FOUND` (com `OWN`, 403)."
+      operationId: getWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Consultar uma ordem de serviço
+      tags:
+      - maintenance
+    put:
+      description: "Substitui os campos editáveis inteiros: local, categoria, prioridade,\
+        \ descrição, responsável, terceiro, prazo e os três custos (obrigatórios,\
+        \ sem valor padrão). Responsável inexistente: 400 `UNKNOWN_EMPLOYEE`; desativado:\
+        \ 422 `WORK_ORDER_ASSIGNEE_INACTIVE`. Local inexistente: 400 `UNKNOWN_ROOM`\
+        \ ou `UNKNOWN_AREA`; desativado: 422 `WORK_ORDER_LOCATION_INACTIVE` (conferidos\
+        \ só quando mudam). Cada custo vai de 0.00 a 99999.99, com até 2 casas. Custo\
+        \ fora da faixa ou com mais de 2 casas: 400 no campo. Vale enquanto a ordem\
+        \ não é final (`DONE` ou `CANCELLED`: 409). Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
+      operationId: updateWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderUpdateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Editar uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/attachments:
+    post:
+      description: "O anexo já enviado por `POST /api/v1/files` com `maintenance.work-order-photo`\
+        \ (JPEG ou PNG, sem EXIF/GPS) ou `maintenance.work-order-document` (PDF),\
+        \ até 10 MB. Responde a ordem com a lista de `attachments` vigentes; o download\
+        \ de cada um é pela URL assinada (`GET /api/v1/files/{id}/download-url`, com\
+        \ `maintenance.workorders.read`). Não pede `If-Match` e não muda a versão\
+        \ nem o `ETag` da ordem (a versão não cobre a lista de anexos). Ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`. Com `maintenance.workorders.manage`\
+        \ (no escopo dele) ou, sem ela, com `maintenance.workorders.request` na ordem\
+        \ que o próprio usuário abriu; a ordem alheia é 403 `PERMISSION_DENIED`. Anexo\
+        \ inexistente: 400 `UNKNOWN_FILE` no campo `fileId`; de outra finalidade:\
+        \ 422 `WORK_ORDER_ATTACHMENT_INVALID`; já vinculado a outro registro: 409\
+        \ `FILE_ALREADY_ATTACHED`. Já vinculado a esta ordem: 200, sem mudar nada."
+      operationId: attachWorkOrderFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderAttachRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Vincular um anexo à ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/attachments/{fileId}/detach:
+    post:
+      description: "O anexo sai da lista da ordem e volta a órfão no `files` (o expurgo\
+        \ o apaga depois da retenção). Responde a ordem. Não pede `If-Match` e nã\
+        o muda a versão nem o `ETag` da ordem (a versão não cobre a lista de anexos).\
+        \ Ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`. Exige\
+        \ `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de qualquer\
+        \ recusa que dependa da ordem; com `OWN`, só nas ordens do usuário). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`; anexo que não está vinculado a\
+        \ esta ordem: 404 `WORK_ORDER_ATTACHMENT_NOT_FOUND`."
+      operationId: detachWorkOrderFile
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: path
+        name: fileId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Desvincular um anexo da ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/cancel:
+    post:
+      description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `CANCELLED` e grava `closedAt`,\
+        \ com o motivo obrigatório. Com bloqueio da UH vigente, libera o período e\
+        \ exige o que o `rooms` exige para liberar: OOO, `rooms.outoforder.manage`\
+        \ ou a aprovação de um superior (403 `APPROVAL_REQUIRED`, repetido com `X-Approval-Token`;\
+        \ vem depois do 409 de ordem final); OOS, `rooms.outofservice.manage`. Exige\
+        \ `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de qualquer\
+        \ recusa que dependa da ordem; com o escopo `OWN`, só nas ordens do usuário,\
+        \ e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato\
+        \ do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem inexistente: 404\
+        \ `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412 com outra versão;\
+        \ 428 sem ele). Ação fora do estado, ou numa ordem `DONE` ou `CANCELLED`:\
+        \ 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus` e `action`),\
+        \ sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: cancelWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderCancelRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Cancelar uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/complete:
+    post:
+      description: "`OPEN`, `IN_PROGRESS` ou `ON_HOLD` vai a `DONE` e grava `closedAt`,\
+        \ com as notas e os custos que vierem (os omitidos mantêm o valor gravado).\
+        \ Cada custo vai de 0.00 a 99999.99, com até 2 casas. Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
+      operationId: completeWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderCompleteRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Concluir uma ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/hold:
+    post:
+      description: "`IN_PROGRESS` vai a `ON_HOLD` (aguardando peça ou terceiro), com\
+        \ o motivo obrigatório. Exige `maintenance.workorders.manage` (403 `PERMISSION_DENIED`\
+        \ antes de qualquer recusa que dependa da ordem; com o escopo `OWN`, só nas\
+        \ ordens do usuário, e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`;\
+        \ o 400 de formato do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem\
+        \ inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412\
+        \ com outra versão; 428 sem ele). Ação fora do estado, ou numa ordem `DONE`\
+        \ ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus`\
+        \ e `action`), sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: holdWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderHoldRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Pôr uma ordem de serviço em espera
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/notes:
+    post:
+      description: "Texto livre de 1 a 1000 caracteres (400 no campo `text` se vazio\
+        \ ou maior). **Não escreva dado de hóspede.** Com `maintenance.workorders.manage`\
+        \ (no escopo dele) ou, sem ela, com `maintenance.workorders.request` na ordem\
+        \ que o próprio usuário abriu; a ordem alheia é 403 `PERMISSION_DENIED` ou\
+        \ `RESOURCE_OUT_OF_SCOPE`, e a inexistente 404 `WORK_ORDER_NOT_FOUND` (com\
+        \ `OWN`, 403). Ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`.\
+        \ Só se insere: a observação não se edita nem se apaga, e não muda a versã\
+        o nem o `ETag` da ordem. Responde a ordem com a lista de `notes`; o texto\
+        \ não vai à trilha de auditoria."
+      operationId: addWorkOrderNote
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderNoteRequest"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: Observação registrada; a resposta é a ordem.
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Registrar uma observação na ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/resume:
+    post:
+      description: "`ON_HOLD` volta a `IN_PROGRESS`; o motivo da espera sai. Exige\
+        \ `maintenance.workorders.manage` (403 `PERMISSION_DENIED` antes de qualquer\
+        \ recusa que dependa da ordem; com o escopo `OWN`, só nas ordens do usuário,\
+        \ e a de outro, ou inexistente, é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato\
+        \ do corpo e o 428 sem `If-Match` vêm antes do 403). Ordem inexistente: 404\
+        \ `WORK_ORDER_NOT_FOUND`. Com o `If-Match` da ordem (412 com outra versão;\
+        \ 428 sem ele). Ação fora do estado, ou numa ordem `DONE` ou `CANCELLED`:\
+        \ 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED` (com `workOrderStatus` e `action`),\
+        \ sem mudança. Responde a ordem com o `ETag` novo."
+      operationId: resumeWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Retomar uma ordem de serviço em espera
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/room-block:
+    post:
+      description: "Abre um período OOO ou OOS do `rooms` na UH da ordem (motivo \"\
+        OS <número>\", retorno Suja) e guarda o `outOfOrderId`. OOO exige `rooms.outoforder.manage`\
+        \ ou a aprovação de um superior (403 `APPROVAL_REQUIRED`, repetido com `X-Approval-Token`);\
+        \ OOS exige `rooms.outofservice.manage`. Recusas nesta ordem: 400 do corpo,\
+        \ 403 sem `manage`, 404, 412, ordem `DONE` ou `CANCELLED` (409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`),\
+        \ ordem de área (422 `WORK_ORDER_NOT_ROOM`), bloqueio vigente (409 `WORK_ORDER_ROOM_ALREADY_BLOCKED`),\
+        \ a aprovação e as regras do `rooms` (422 `OUT_OF_ORDER_ROOM_OCCUPIED`, 422\
+        \ `OUT_OF_ORDER_PERIOD_IN_PAST`, 409 `OUT_OF_ORDER_OVERLAP`). Com o bloqueio\
+        \ vigente, o local da ordem não muda (409 `WORK_ORDER_LOCATION_LOCKED` no\
+        \ `PUT`); concluir a ordem libera o período sem aprovação e a UH volta Suja;\
+        \ cancelar pede o que o `rooms` pede para liberar (OOO: aprovação; OOS: `rooms.outofservice.manage`).\
+        \ Prorrogar ou encurtar o período é no `rooms`. Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
+      operationId: blockWorkOrderRoom
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      - $ref: "#/components/parameters/ApprovalToken"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkOrderRoomBlockBody"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        "403":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Ação sensível (RF-ACS-08). `APPROVAL_REQUIRED`: sem a permissã\
+            o (ou acima do limite); o problema traz `action`, `permission`, `resourceRef`\
+            \ e, se houver, `limit`, para `POST /api/v1/auth/approvals`. Com `X-Approval-Token`:\
+            \ `APPROVAL_TOKEN_INVALID`, `APPROVAL_TOKEN_EXPIRED`, `APPROVAL_TOKEN_USED`,\
+            \ `APPROVAL_TOKEN_MISMATCH` ou `APPROVER_NOT_ALLOWED`. Também `PERMISSION_DENIED`\
+            \ e os códigos da operação."
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Bloquear a UH da ordem de serviço
+      tags:
+      - maintenance
+  /api/v1/work-orders/{id}/start:
+    post:
+      description: "`OPEN` vai a `IN_PROGRESS` e grava `startedAt`. Exige `maintenance.workorders.manage`\
+        \ (403 `PERMISSION_DENIED` antes de qualquer recusa que dependa da ordem;\
+        \ com o escopo `OWN`, só nas ordens do usuário, e a de outro, ou inexistente,\
+        \ é 403 `RESOURCE_OUT_OF_SCOPE`; o 400 de formato do corpo e o 428 sem `If-Match`\
+        \ vêm antes do 403). Ordem inexistente: 404 `WORK_ORDER_NOT_FOUND`. Com o\
+        \ `If-Match` da ordem (412 com outra versão; 428 sem ele). Ação fora do estado,\
+        \ ou numa ordem `DONE` ou `CANCELLED`: 409 `WORK_ORDER_TRANSITION_NOT_ALLOWED`\
+        \ (com `workOrderStatus` e `action`), sem mudança. Responde a ordem com o\
+        \ `ETag` novo."
+      operationId: startWorkOrder
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: If-Match
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkOrderResponse"
+          description: OK
+        default:
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: "Erro no formato RFC 9457, com `code` estável."
+      summary: Iniciar uma ordem de serviço
+      tags:
+      - maintenance
 components:
   headers:
     IdempotentReplayed:
@@ -15931,6 +16997,28 @@ components:
           nullable: true
       required:
       - fileId
+    AttendantReportResponse:
+      type: object
+      description: A produtividade de uma camareira no período.
+      properties:
+        credits:
+          type: integer
+          format: int64
+          description: "A soma dos créditos de todas as tarefas concluídas, de UH\
+            \ ou de área."
+        employeeId:
+          type: string
+          format: uuid
+          description: O colaborador (staff) da camareira.
+        rooms:
+          type: integer
+          format: int64
+          description: "As UHs limpas: tarefas de UH concluídas (`AWAITING_INSPECTION`\
+            \ e `DONE`)."
+      required:
+      - credits
+      - employeeId
+      - rooms
     AuditEntryResponse:
       type: object
       description: Uma entrada da trilha de auditoria.
@@ -17464,6 +18552,8 @@ components:
           minLength: 0
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           maxLength: 500
           minLength: 0
           nullable: true
@@ -17523,6 +18613,8 @@ components:
           - PHOTO
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           nullable: true
         number:
           type: number
@@ -18222,6 +19314,46 @@ components:
       required:
       - credits
       - roomTypeId
+    CleaningTypeReportResponse:
+      type: object
+      description: Um tipo de limpeza num tipo de UH.
+      properties:
+        averageMinutes:
+          type: number
+          description: "O tempo médio das limpezas concluídas em minutos, com 1 casa;\
+            \ nulo sem limpeza concluída."
+          nullable: true
+        cleaningTypeId:
+          type: string
+          format: uuid
+        inspections:
+          type: integer
+          format: int64
+          description: As inspeções concluídas das tarefas do período.
+        rejectionRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        rejections:
+          type: integer
+          format: int64
+          description: As inspeções reprovadas.
+        roomTypeId:
+          type: string
+          format: uuid
+        tasks:
+          type: integer
+          format: int64
+          description: As limpezas concluídas.
+      required:
+      - cleaningTypeId
+      - inspections
+      - rejections
+      - roomTypeId
+      - tasks
     CleaningTypeRequest:
       type: object
       description: "Os dados de um tipo de limpeza; na edição, os créditos são a lista\
@@ -18486,6 +19618,48 @@ components:
       - id
       - legalName
       - updatedAt
+    CompletedWorkOrdersResponse:
+      type: object
+      description: As ordens concluídas (`DONE`) abertas no período.
+      properties:
+        averageHours:
+          type: number
+          description: "O tempo médio da abertura à conclusão em horas, com 1 casa;\
+            \ nulo sem ordem concluída."
+          nullable: true
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        orders:
+          type: integer
+          format: int64
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        totalCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+      required:
+      - laborCost
+      - orders
+      - partsCost
+      - thirdPartyCost
+      - totalCost
     ConsentListResponse:
       type: object
       description: "Os consentimentos de um perfil, do mais recente ao mais antigo."
@@ -19553,6 +20727,20 @@ components:
           nullable: true
       required:
       - items
+    CursorPageWorkOrderResponse:
+      type: object
+      description: Página de resultados paginada por cursor.
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkOrderResponse"
+        nextCursor:
+          type: string
+          description: Cursor da próxima página; nulo quando esta é a última.
+          nullable: true
+      required:
+      - items
     DailyChildRateResponse:
       type: object
       description: O preço de uma faixa atual de criança numa data; nulo = sem preço
@@ -19899,6 +21087,104 @@ components:
           nullable: true
       required:
       - reason
+    DayPanelDayResponse:
+      type: object
+      description: O movimento e a ocupação de uma data.
+      properties:
+        arrivals:
+          type: integer
+          format: int64
+          description: "As reservas que chegam na data, o day use incluído."
+        date:
+          type: string
+          format: date
+        departures:
+          type: integer
+          format: int64
+          description: "As reservas que saem na data, o day use incluído."
+        hosted:
+          type: integer
+          format: int64
+          description: "Os hospedados: noites vendidas da data, sem o day use."
+        occupancy:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+      required:
+      - arrivals
+      - date
+      - departures
+      - hosted
+    DayPanelResponse:
+      type: object
+      description: "O painel do dia: uma linha por data e a situação das UHs de hoje."
+      properties:
+        businessDate:
+          type: string
+          format: date
+          description: A data operacional do hotel (a primeira data do painel).
+        days:
+          type: array
+          description: "Uma linha por data, da data operacional em diante, em ordem."
+          items:
+            $ref: "#/components/schemas/DayPanelDayResponse"
+        rooms:
+          $ref: "#/components/schemas/DayPanelRoomsResponse"
+      required:
+      - businessDate
+      - days
+      - rooms
+    DayPanelRoomsResponse:
+      type: object
+      description: As UHs de hoje.
+      properties:
+        active:
+          type: integer
+          format: int64
+          description: As UHs ativas.
+        clean:
+          type: integer
+          format: int64
+          description: Status de governança limpo (`CLEAN`).
+        dirty:
+          type: integer
+          format: int64
+          description: Status de governança sujo (`DIRTY`).
+        inspected:
+          type: integer
+          format: int64
+          description: Status de governança inspecionado (`INSPECTED`).
+        inspectionPending:
+          type: integer
+          format: int64
+          description: As limpas à espera de inspeção.
+        occupied:
+          type: integer
+          format: int64
+        outOfOrder:
+          type: integer
+          format: int64
+          description: As UHs com fora de ordem (OOO) em vigor hoje.
+        outOfService:
+          type: integer
+          format: int64
+          description: As UHs com fora de serviço (OOS) em vigor hoje.
+        vacant:
+          type: integer
+          format: int64
+      required:
+      - active
+      - clean
+      - dirty
+      - inspected
+      - inspectionPending
+      - occupied
+      - outOfOrder
+      - outOfService
+      - vacant
     DeliveredJobResponse:
       type: object
       description: "Um job entregue ao agente, sem o conteúdo (busque-o em `/content`)."
@@ -20394,6 +21680,30 @@ components:
       - message
       - resolved
       - runId
+    EndOfDayPendingResponse:
+      type: object
+      description: "As pendências do fechamento do dia, no estado corrente."
+      properties:
+        cashierShifts:
+          type: array
+          description: "Os turnos de caixa abertos, de qualquer data operacional."
+          items:
+            $ref: "#/components/schemas/PendingCashierShiftResponse"
+        fnrhSubmissions:
+          type: array
+          description: As submissões à FNRH ainda não enviadas com sucesso.
+          items:
+            $ref: "#/components/schemas/PendingFnrhSubmissionResponse"
+        folios:
+          type: array
+          description: As contas abertas de reservas encerradas com saldo diferente
+            de zero.
+          items:
+            $ref: "#/components/schemas/PendingFolioResponse"
+      required:
+      - cashierShifts
+      - fnrhSubmissions
+      - folios
     EndOfDayRunResponse:
       type: object
       description: "Uma execução do fechamento do dia (RN-21: uma por data operacional),\
@@ -22172,6 +23482,8 @@ components:
           minLength: 0
         note:
           type: string
+          description: "**Não escreva dado de hóspede** (nome, documento, contato):\
+            \ a manutenção vê a ordem."
           maxLength: 500
           minLength: 0
           nullable: true
@@ -22357,6 +23669,35 @@ components:
       - observedBy
       - occupancy
       - roomId
+    HousekeepingReportResponse:
+      type: object
+      description: O relatório de governança do período.
+      properties:
+        attendants:
+          type: array
+          description: "As camareiras com tarefa atribuída no período, das que mais\
+            \ fizeram às que menos."
+          items:
+            $ref: "#/components/schemas/AttendantReportResponse"
+        cleaningTypes:
+          type: array
+          description: Os tipos de limpeza por tipo de UH com tarefa de UH no período.
+          items:
+            $ref: "#/components/schemas/CleaningTypeReportResponse"
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        voluntaryInspections:
+          $ref: "#/components/schemas/VoluntaryInspectionsResponse"
+      required:
+      - attendants
+      - cleaningTypes
+      - from
+      - to
+      - voluntaryInspections
     HousekeepingRoomInspectionRequest:
       type: object
       description: A inspeção voluntária de uma UH.
@@ -23298,6 +24639,72 @@ components:
           nullable: true
       required:
       - storagePlace
+    MaintenanceCategoryCountResponse:
+      type: object
+      description: As ordens de serviço de uma categoria.
+      properties:
+        category:
+          type: string
+          x-extensible-enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        orders:
+          type: integer
+          format: int64
+      required:
+      - category
+      - orders
+    MaintenanceReportResponse:
+      type: object
+      description: O relatório de manutenção do período.
+      properties:
+        byCategory:
+          type: array
+          description: "As ordens abertas no período por categoria, só as categorias\
+            \ com ordem."
+          items:
+            $ref: "#/components/schemas/MaintenanceCategoryCountResponse"
+        byStatus:
+          type: array
+          description: "As ordens abertas no período por status, só os status com\
+            \ ordem."
+          items:
+            $ref: "#/components/schemas/MaintenanceStatusCountResponse"
+        completed:
+          $ref: "#/components/schemas/CompletedWorkOrdersResponse"
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+      required:
+      - byCategory
+      - byStatus
+      - completed
+      - from
+      - to
+    MaintenanceStatusCountResponse:
+      type: object
+      description: As ordens de serviço de um status.
+      properties:
+        orders:
+          type: integer
+          format: int64
+        status:
+          type: string
+          x-extensible-enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+      required:
+      - orders
+      - status
     MeResponse:
       type: object
       description: "O usuário corrente, as roles ativas e as permissões efetivas."
@@ -24218,6 +25625,105 @@ components:
       - receivedAt
       - receivedBy
       - type
+    PendingCashierShiftResponse:
+      type: object
+      description: Um turno de caixa aberto.
+      properties:
+        cashPointName:
+          type: string
+          description: O nome do ponto de caixa (configuração).
+        openedAt:
+          type: string
+          format: date-time
+        openedOn:
+          type: string
+          format: date
+          description: A data operacional da abertura.
+        operatorId:
+          type: string
+          format: uuid
+          description: O usuário que opera o turno.
+        shiftId:
+          type: string
+          format: uuid
+        shiftNumber:
+          type: string
+      required:
+      - cashPointName
+      - openedAt
+      - openedOn
+      - operatorId
+      - shiftId
+      - shiftNumber
+    PendingFnrhSubmissionResponse:
+      type: object
+      description: Uma submissão à FNRH pendente.
+      properties:
+        attempts:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        lastFailure:
+          type: string
+          description: "A causa da última falha, nula sem falha: `VALIDATION`, `UNAUTHORIZED`,\
+            \ `FORBIDDEN`, `NOT_FOUND`, `SERVER_ERROR`, `UNAVAILABLE`, `UNKNOWN_OUTCOME`,\
+            \ `INTERNAL_ERROR`, `REMOTE_CANCELLED`, `NO_REMOTE_OPERATION` ou `REMOTE_NO_SHOW`;\
+            \ a lista pode crescer, trate o valor desconhecido."
+          nullable: true
+        operation:
+          type: string
+          description: "A operação: `REGISTER_RESERVATION`, `UPDATE_RESERVATION`,\
+            \ `CANCEL_RESERVATION`, `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `NO_SHOW`;\
+            \ a lista pode crescer, trate o valor desconhecido."
+        reservationCode:
+          type: string
+          description: O código da reserva; nulo se a reserva não existe mais.
+          nullable: true
+        reservationId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          description: "`PENDING`, `FAILED` ou `INVALID`; a lista pode crescer."
+      required:
+      - attempts
+      - createdAt
+      - operation
+      - reservationId
+      - status
+    PendingFolioResponse:
+      type: object
+      description: Uma conta aberta de reserva encerrada com saldo.
+      properties:
+        balance:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        departure:
+          type: string
+          format: date
+          description: A data de saída da reserva.
+        folioId:
+          type: string
+          format: uuid
+        folioNumber:
+          type: string
+        reservationCode:
+          type: string
+        reservationId:
+          type: string
+          format: uuid
+      required:
+      - balance
+      - departure
+      - folioId
+      - folioNumber
+      - reservationCode
+      - reservationId
     PendingGuaranteeResponse:
       type: object
       description: "Uma reserva que ainda deve a garantia: o tipo do item (`PROVISIONAL`,\
@@ -26308,6 +27814,13 @@ components:
           type: string
           format: date
           nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel (`HH:mm` ou\
+            \ `HH:mm:ss`). Como os pedidos especiais, a alteração substitui: ausente\
+            \ ou nula apaga a hora."
+          nullable: true
         nightlyRates:
           type: array
           items:
@@ -26711,6 +28224,13 @@ components:
           type: string
           format: date
           nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel (`HH:mm` ou\
+            \ `HH:mm:ss`); opcional. Mais tarde, a recepção a ajusta pela alteraçã\
+            o."
+          nullable: true
         guests:
           type: array
           items:
@@ -26821,6 +28341,12 @@ components:
           format: date
           description: Até quando a política pede o depósito (N dias antes da chegada);
             nulo fora de `DEPOSIT`.
+          nullable: true
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel; nula sem\
+            \ ela."
           nullable: true
         folioId:
           type: string
@@ -26987,6 +28513,12 @@ components:
         departure:
           type: string
           format: date
+        expectedArrivalTime:
+          type: string
+          format: time-local
+          description: "A hora prevista de chegada, hora local do hotel; nula sem\
+            \ ela."
+          nullable: true
         guaranteeMethod:
           type: string
           description: "A garantia recebida na confirmação da pré-reserva; nula sem\
@@ -30705,6 +32237,27 @@ components:
       - active
       - id
       - name
+    VoluntaryInspectionsResponse:
+      type: object
+      description: "As inspeções voluntárias (sem tarefa) concluídas no período, à\
+        \ parte dos tipos de limpeza."
+      properties:
+        inspections:
+          type: integer
+          format: int64
+        rejectionRate:
+          type: string
+          format: decimal
+          description: "Percentual em pontos (12.5 = 12,5%), até 4 casas."
+          example: "12.5"
+          nullable: true
+          pattern: "^-?\\d{1,3}(\\.\\d{1,4})?$"
+        rejections:
+          type: integer
+          format: int64
+      required:
+      - inspections
+      - rejections
     WalkInRequest:
       type: object
       description: "O walk-in (RF-REC-02): a reserva criada na data operacional, a\
@@ -30852,6 +32405,442 @@ components:
       - restrictionAlerts
       - room
       - total
+    WorkOrderAttachRequest:
+      type: object
+      description: O vínculo de um anexo (já enviado ao `files`) com a ordem de serviço.
+      properties:
+        fileId:
+          type: string
+          format: uuid
+          description: "O id do anexo, de `maintenance.work-order-photo` ou `maintenance.work-order-document`."
+          nullable: true
+      required:
+      - fileId
+    WorkOrderAttachmentResponse:
+      type: object
+      description: O anexo vigente de uma ordem de serviço (foto ou PDF).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "O id do anexo no `files` (para `GET /api/v1/files/{id}/download-url`)."
+        purpose:
+          type: string
+          description: "A finalidade do anexo: `maintenance.work-order-photo` ou `maintenance.work-order-document`."
+      required:
+      - id
+      - purpose
+    WorkOrderCancelRequest:
+      type: object
+      description: O cancelamento de uma ordem de serviço.
+      properties:
+        reason:
+          type: string
+          description: "O motivo, até 500 caracteres. **Não escreva dado de hóspede**\
+            \ (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+      required:
+      - reason
+    WorkOrderCompleteRequest:
+      type: object
+      description: A conclusão de uma ordem de serviço.
+      properties:
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        notes:
+          type: string
+          description: "As notas da conclusão, até 2000 caracteres. **Não escreva\
+            \ dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          nullable: true
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          nullable: true
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+    WorkOrderHoldRequest:
+      type: object
+      description: A espera de uma ordem de serviço.
+      properties:
+        reason:
+          type: string
+          description: "O motivo (peça, terceiro…), até 500 caracteres. **Não escreva\
+            \ dado de hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 500
+          minLength: 1
+          nullable: true
+      required:
+      - reason
+    WorkOrderNoteRequest:
+      type: object
+      description: Uma observação na ordem de serviço.
+      properties:
+        text:
+          type: string
+          description: "A observação, de 1 a 1000 caracteres. **Não escreva dado de\
+            \ hóspede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 1000
+          minLength: 1
+          nullable: true
+      required:
+      - text
+    WorkOrderNoteResponse:
+      type: object
+      description: "Uma observação da ordem de serviço: texto livre do operador, de\
+        \ quem e quando."
+      properties:
+        authorId:
+          type: string
+          format: uuid
+          description: O usuário que registrou a observação.
+        createdAt:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        text:
+          type: string
+      required:
+      - authorId
+      - createdAt
+      - id
+      - text
+    WorkOrderOpenRequest:
+      type: object
+      description: "A abertura de uma ordem de serviço, numa UH ou numa área comum\
+        \ (exatamente um local)."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum da ordem; informe esta ou `roomId`, uma só."
+          nullable: true
+        category:
+          type: string
+          description: A categoria do problema.
+          enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        description:
+          type: string
+          description: "O problema, até 2000 caracteres. **Não escreva dado de hó\
+            spede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          minLength: 1
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo desejado; omita se não houver.
+          nullable: true
+        origin:
+          type: string
+          description: "Quem pede: `RECEPTION`, `HOUSEKEEPING` ou `MAINTENANCE` (`CHECKLIST`\
+            \ é recusada)."
+          enum:
+          - RECEPTION
+          - HOUSEKEEPING
+          - MAINTENANCE
+          - CHECKLIST
+        priority:
+          type: string
+          description: A prioridade da ordem.
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH da ordem; informe esta ou `areaId`, uma só."
+          nullable: true
+      required:
+      - category
+      - description
+      - origin
+      - priority
+    WorkOrderResponse:
+      type: object
+      description: Uma ordem de serviço corretiva. A descrição e os motivos são texto
+        livre do operador.
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: A área comum da ordem; nula numa ordem de UH.
+          nullable: true
+        assigneeEmployeeId:
+          type: string
+          format: uuid
+          description: O colaborador responsável; nulo sem responsável.
+          nullable: true
+        attachments:
+          type: array
+          description: "Os anexos vigentes, em ordem de vínculo. A versão e o `ETag`\
+            \ da ordem não cobrem esta lista (vincular e desvincular não os mudam)."
+          items:
+            $ref: "#/components/schemas/WorkOrderAttachmentResponse"
+        cancellationReason:
+          type: string
+          description: O motivo do cancelamento; nulo fora de `CANCELLED`.
+          nullable: true
+        category:
+          type: string
+          description: A categoria (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        closedAt:
+          type: string
+          format: date-time
+          description: Quando foi concluída ou cancelada; nulo antes.
+          nullable: true
+        completionNotes:
+          type: string
+          description: As notas da conclusão; nulo fora de `DONE` ou sem notas.
+          nullable: true
+        description:
+          type: string
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo; nulo sem prazo.
+          nullable: true
+        holdReason:
+          type: string
+          description: O motivo da espera; nulo fora de `ON_HOLD`.
+          nullable: true
+        id:
+          type: string
+          format: uuid
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        notes:
+          type: array
+          description: "As observações, em ordem de registro. A versão e o `ETag`\
+            \ da ordem não cobrem esta lista (registrar uma observação não os muda)."
+          items:
+            $ref: "#/components/schemas/WorkOrderNoteResponse"
+        number:
+          type: string
+          description: "O número legível, `OS-<ano>-NNNNNN`."
+          example: OS-2026-000001
+        openedAt:
+          type: string
+          format: date-time
+        openedBy:
+          type: string
+          format: uuid
+          description: O usuário que abriu a ordem (dono no escopo `OWN`).
+        origin:
+          type: string
+          description: A origem do pedido (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - RECEPTION
+          - HOUSEKEEPING
+          - MAINTENANCE
+          - CHECKLIST
+        outOfOrderId:
+          type: string
+          format: uuid
+          description: O período OOO/OOS aberto para a ordem; nulo sem bloqueio.
+          nullable: true
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        priority:
+          type: string
+          description: A prioridade (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: A UH da ordem; nula numa ordem de área.
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          description: Quando foi iniciada pela primeira vez; nulo antes.
+          nullable: true
+        status:
+          type: string
+          description: O estado da ordem (trate um valor desconhecido sem falhar).
+          x-extensible-enum:
+          - OPEN
+          - IN_PROGRESS
+          - ON_HOLD
+          - DONE
+          - CANCELLED
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyName:
+          type: string
+          description: O terceiro contratado; nulo sem terceiro.
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+      - attachments
+      - category
+      - description
+      - id
+      - laborCost
+      - notes
+      - number
+      - openedAt
+      - openedBy
+      - origin
+      - partsCost
+      - priority
+      - status
+      - thirdPartyCost
+      - updatedAt
+    WorkOrderRoomBlockBody:
+      type: object
+      description: "O bloqueio da UH da ordem de serviço: um período OOO ou OOS, de\
+        \ datas de negócio inclusive."
+      properties:
+        endsOn:
+          type: string
+          format: date
+          description: O último dia do período (até 365 dias).
+          nullable: true
+        kind:
+          type: string
+          description: "`OUT_OF_ORDER` (sensível: aprovação de superior) ou `OUT_OF_SERVICE`."
+          enum:
+          - OUT_OF_ORDER
+          - OUT_OF_SERVICE
+          nullable: true
+        startsOn:
+          type: string
+          format: date
+          description: O primeiro dia do período (não antes da data operacional).
+          nullable: true
+      required:
+      - endsOn
+      - kind
+      - startsOn
+    WorkOrderUpdateRequest:
+      type: object
+      description: "A edição de uma ordem de serviço: substitui todos os campos editá\
+        veis."
+      properties:
+        areaId:
+          type: string
+          format: uuid
+          description: "A área comum da ordem; informe esta ou `roomId`, uma só."
+          nullable: true
+        assigneeEmployeeId:
+          type: string
+          format: uuid
+          description: O colaborador responsável; nulo ou omitido retira.
+          nullable: true
+        category:
+          type: string
+          description: A categoria do problema.
+          enum:
+          - ELECTRICAL
+          - PLUMBING
+          - AIR_CONDITIONING
+          - FURNITURE
+          - OTHER
+        description:
+          type: string
+          description: "O problema, até 2000 caracteres. **Não escreva dado de hó\
+            spede** (nome, documento, contato): a manutenção vê a ordem."
+          maxLength: 2000
+          minLength: 1
+          nullable: true
+        dueAt:
+          type: string
+          format: date-time
+          description: O prazo; nulo ou omitido retira.
+          nullable: true
+        laborCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        partsCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        priority:
+          type: string
+          description: A prioridade da ordem.
+          enum:
+          - LOW
+          - NORMAL
+          - HIGH
+          - URGENT
+        roomId:
+          type: string
+          format: uuid
+          description: "A UH da ordem; informe esta ou `areaId`, uma só."
+          nullable: true
+        thirdPartyCost:
+          type: string
+          format: decimal
+          description: Valor em reais (BRL) como decimal com até 2 casas.
+          example: "123.45"
+          pattern: "^-?\\d+(\\.\\d{1,2})?$"
+        thirdPartyName:
+          type: string
+          description: "O terceiro contratado, até 200 caracteres; nulo ou omitido\
+            \ retira."
+          maxLength: 200
+          nullable: true
+      required:
+      - category
+      - description
+      - laborCost
+      - partsCost
+      - priority
+      - thirdPartyCost
   securitySchemes:
     bearerAuth:
       bearerFormat: JWT

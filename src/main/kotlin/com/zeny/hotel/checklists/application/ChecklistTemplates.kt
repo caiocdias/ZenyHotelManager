@@ -5,6 +5,7 @@ import com.zeny.hotel.checklists.ChecklistCompletion
 import com.zeny.hotel.checklists.ChecklistContext
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistPhotoPolicy
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
@@ -218,7 +219,8 @@ class ChecklistsApiService(
         executor: UserId,
         startedAt: Instant,
         id: ChecklistExecutionId,
-    ): ChecklistExecutionView = executions.start(versionId, subject, executor, startedAt, id)
+        location: ChecklistLocation?,
+    ): ChecklistExecutionView = executions.start(versionId, subject, executor, startedAt, id, location)
 
     override fun completeExecution(
         id: ChecklistExecutionId,

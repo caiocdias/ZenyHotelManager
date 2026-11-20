@@ -193,14 +193,14 @@ class ReservationFolioOwnerDescriberAttackTest(
     fun `hostile text in the holder name is literal in the PDF and adds no ESC-POS command`() {
         val baseline = reservation(guest("Ana Normal ${suffix()}", null), assignRoom = false)
         val baselineBytes = escPosBytes(printedJob(baseline.folio))
-        val hostile = "Ana <b>X</b> \${7*191} [[\${1+1}]] th:text \u001B@\u001DVB\u0007x"
+        val hostile = "Ana <b>X</b> \${7*191+100000} [[\${1+1}]] th:text \u001B@\u001DVB\u0007x"
         val made = reservation(guest(hostile, null), assignRoom = false)
 
         val text = pdfText(pdf(made.folio).contentAsByteArray)
         text shouldContain "<b>X</b>"
-        text shouldContain "\${7*191}"
+        text shouldContain "\${7*191+100000}"
         text shouldContain "[[\${1+1}]]"
-        text shouldNotContain "1337"
+        text shouldNotContain "101337"
         text shouldNotContain "\u001B"
 
         val bytes = escPosBytes(printedJob(made.folio))

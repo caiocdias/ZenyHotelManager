@@ -312,34 +312,41 @@ class ReservationsPersonalData(
                         "childAges" to reservation.childAges,
                         "segment" to reservation.segment.name,
                         "specialRequests" to reservation.specialRequests,
+                        "expectedArrivalTime" to reservation.expectedArrivalTime,
                         "nights" to reservation.nightlyRates.map { mapOf("date" to it.date, "amount" to it.amount) },
                         "total" to reservation.total,
                         "createdAt" to reservation.createdAt,
                         "checkIn" to reservation.checkIn?.businessDate,
                         "checkOut" to reservation.checkOut?.businessDate,
                         // Os dados de check-in do próprio titular (M5 E01): os códigos e a comprovação do menor.
-                        "stayData" to
-                            reservation.guests.filter { it.guestId in wanted && it.checkedInAt != null }.map { guest ->
-                                mapOf(
-                                    "guestId" to guest.guestId.toString(),
-                                    "travelReason" to guest.travelReason,
-                                    "transportMode" to guest.transportMode,
-                                    "checkedInAt" to guest.checkedInAt,
-                                    "checkedOutAt" to guest.checkedOutAt,
-                                    "minorAuthorization" to
-                                        guest.minorAuthorization?.let {
-                                            mapOf(
-                                                "proofType" to it.proofType.name,
-                                                "relationship" to it.relationship,
-                                                "validUntil" to it.validUntil,
-                                            )
-                                        },
-                                )
-                            },
+                        "stayData" to stayData(reservation, wanted),
                     )
                 },
         )
     }
+
+    /** Os dados de check-in do próprio titular (M5 E01): os códigos e a comprovação do menor. */
+    private fun stayData(
+        reservation: ReservationSummary,
+        wanted: Set<GuestId>,
+    ): List<Map<String, Any?>> =
+        reservation.guests.filter { it.guestId in wanted && it.checkedInAt != null }.map { guest ->
+            mapOf(
+                "guestId" to guest.guestId.toString(),
+                "travelReason" to guest.travelReason,
+                "transportMode" to guest.transportMode,
+                "checkedInAt" to guest.checkedInAt,
+                "checkedOutAt" to guest.checkedOutAt,
+                "minorAuthorization" to
+                    guest.minorAuthorization?.let {
+                        mapOf(
+                            "proofType" to it.proofType.name,
+                            "relationship" to it.relationship,
+                            "validUntil" to it.validUntil,
+                        )
+                    },
+            )
+        }
 
     /** Um bloqueio de que o titular é o hóspede (E11): o código, o nome do grupo, o plano, o corte e as unidades. */
     private fun blockData(block: RoomBlockSummary): Map<String, Any?> =

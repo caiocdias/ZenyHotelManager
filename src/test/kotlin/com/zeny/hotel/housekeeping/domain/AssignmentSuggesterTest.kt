@@ -11,6 +11,7 @@ import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.time.LocalTime
 import java.util.UUID
 import kotlin.random.Random
 
@@ -221,6 +222,73 @@ class AssignmentSuggesterTest {
         shouldThrow<IllegalArgumentException> { task(floor = "1", credits = -1) }
     }
 
+    @Test
+    fun `early comes before other arrivals, which come before other tasks`() {
+        val tasks = earlyScenario()
+
+        val suggestion = AssignmentSuggester.suggest(tasks, listOf(ana))
+
+        suggestion.byAttendant.getValue(ana.id) shouldContainExactly tasks.map { it.taskId }
+    }
+
+    @Test
+    fun `two early arrivals are ordered by time`() {
+        val eleven = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(11, 0), early = true)
+        val ten = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(10, 0), early = true)
+
+        val suggestion = AssignmentSuggester.suggest(listOf(eleven, ten), listOf(ana))
+
+        suggestion.byAttendant.getValue(ana.id) shouldContainExactly listOf(ten.taskId, eleven.taskId)
+    }
+
+    @Test
+    fun `an early check-in comes before a non-early arrival with an earlier time`() {
+        // A precedência é do early, não da hora: 08:00 sem early vem depois de 12:00 com early.
+        val earlier = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(8, 0))
+        val early = task(floor = "1", credits = 2, arrival = true, arrivalTime = LocalTime.of(12, 0), early = true)
+
+        AssignmentSuggester
+            .suggest(listOf(earlier, early), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(early.taskId, earlier.taskId)
+        AssignmentSuggester
+            .suggest(listOf(early, earlier), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(early.taskId, earlier.taskId)
+    }
+
+    @Test
+    fun `a time without an expected arrival does not reorder a task that is not an arrival`() {
+        // `arrivalTime` só pesa entre chegadas (KDoc): a saída com hora anômala não passa na frente da chegada.
+        val arrivalNoTime = task(floor = "1", credits = 2, arrival = true)
+        val checkout = task(floor = "1", credits = 2, arrival = false, arrivalTime = LocalTime.of(6, 0))
+
+        AssignmentSuggester
+            .suggest(listOf(checkout, arrivalNoTime), listOf(ana))
+            .byAttendant
+            .getValue(ana.id) shouldContainExactly listOf(arrivalNoTime.taskId, checkout.taskId)
+    }
+
+    @Test
+    fun `the order is the same for any permutation of the input`() {
+        val tasks = earlyScenario()
+        val expected = AssignmentSuggester.suggest(tasks, listOf(ana))
+
+        repeat(SHUFFLES_WITH_TIMES) { seed ->
+            AssignmentSuggester.suggest(tasks.shuffled(Random(seed)), listOf(ana)) shouldBe expected
+        }
+    }
+
+    @Test
+    fun `an early check-in without an expected arrival or without a time is refused`() {
+        shouldThrow<IllegalArgumentException> {
+            task(floor = "1", credits = 1, arrival = false, arrivalTime = LocalTime.of(9, 0), early = true)
+        }
+        shouldThrow<IllegalArgumentException> {
+            task(floor = "1", credits = 1, arrival = true, arrivalTime = null, early = true)
+        }
+    }
+
     // --- Apoio ------------------------------------------------------------------------------------------------------
 
     private fun assertBalanced(
@@ -236,6 +304,17 @@ class AssignmentSuggesterTest {
         val largest = tasks.maxOfOrNull { it.credits } ?: 0
         (loads.max() - loads.min()) shouldBeLessThanOrEqual largest
     }
+
+    /** Já na ordem esperada: early 09:00, chegadas 13:00 e 15:00, chegada sem hora, saída, permanência. */
+    private fun earlyScenario(): List<SuggestionTask> =
+        listOf(
+            task("1", 2, arrival = true, arrivalTime = LocalTime.of(9, 0), early = true),
+            task("1", 2, arrival = true, arrivalTime = LocalTime.of(13, 0)),
+            task("1", 2, arrival = true, arrivalTime = LocalTime.of(15, 0)),
+            task("1", 2, arrival = true),
+            task("1", 2, priority = 5, source = TaskSource.CHECKOUT),
+            task("1", 2, priority = 3, source = TaskSource.STAYOVER),
+        )
 
     private fun crew(size: Int) = listOf(ana, bia, cris, dani, eva).take(size)
 
@@ -260,6 +339,8 @@ class AssignmentSuggesterTest {
         credits: Int,
         priority: Int = 3,
         arrival: Boolean = false,
+        arrivalTime: LocalTime? = null,
+        early: Boolean = false,
         source: TaskSource = TaskSource.CHECKOUT,
         dnd: Boolean = false,
         room: String? = "R${nextTask + 1}",
@@ -272,6 +353,8 @@ class AssignmentSuggesterTest {
         credits = credits,
         priority = priority,
         arrivalExpected = arrival,
+        arrivalTime = arrivalTime,
+        earlyCheckIn = early,
         source = source,
         doNotDisturb = dnd,
     )
@@ -284,5 +367,6 @@ class AssignmentSuggesterTest {
     private companion object {
         const val RANDOM_CASES = 1000
         const val SHUFFLES = 20
+        const val SHUFFLES_WITH_TIMES = 50
     }
 }

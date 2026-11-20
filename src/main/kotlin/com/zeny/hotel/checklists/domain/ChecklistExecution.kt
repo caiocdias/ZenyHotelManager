@@ -8,6 +8,7 @@ import com.zeny.hotel.checklists.ChecklistExecutionStatus.COMPLETED
 import com.zeny.hotel.checklists.ChecklistExecutionStatus.IN_PROGRESS
 import com.zeny.hotel.checklists.ChecklistExecutionStatus.PENDING
 import com.zeny.hotel.checklists.ChecklistExecutionView
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistRoutineId
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
@@ -45,6 +46,7 @@ class ChecklistExecution private constructor(
     versionNumber: Int?,
     val context: ChecklistContext,
     val subject: ChecklistSubject?,
+    val location: ChecklistLocation?,
     val routineId: ChecklistRoutineId?,
     val businessDate: LocalDate?,
     val dueAt: Instant?,
@@ -152,6 +154,7 @@ class ChecklistExecution private constructor(
             version.number,
             context,
             subject,
+            location,
             routineId,
             businessDate,
             dueAt,
@@ -285,6 +288,7 @@ class ChecklistExecution private constructor(
             versionNumber,
             context,
             subject,
+            location,
             routineId,
             businessDate,
             dueAt,
@@ -307,6 +311,7 @@ class ChecklistExecution private constructor(
             id: ChecklistExecutionId,
             version: ChecklistVersionView,
             subject: ChecklistSubject?,
+            location: ChecklistLocation?,
             executor: UserId,
             startedAt: Instant,
             session: DeviceSessionId?,
@@ -319,6 +324,7 @@ class ChecklistExecution private constructor(
             version.number,
             version.context,
             subject,
+            location,
             null,
             null,
             null,
@@ -343,7 +349,7 @@ class ChecklistExecution private constructor(
             routineId: ChecklistRoutineId,
             templateId: ChecklistTemplateId,
             context: ChecklistContext,
-            location: ChecklistSubject?,
+            routineLocation: ChecklistSubject?,
             businessDate: LocalDate,
             dueAt: Instant,
             candidates: Set<UserId>,
@@ -354,7 +360,8 @@ class ChecklistExecution private constructor(
             null,
             null,
             context,
-            location,
+            routineLocation,
+            ChecklistLocation.ofRoutineSubject(routineLocation),
             routineId,
             businessDate,
             dueAt,
@@ -381,6 +388,7 @@ class ChecklistExecution private constructor(
             versionNumber: Int?,
             context: ChecklistContext,
             subject: ChecklistSubject?,
+            location: ChecklistLocation?,
             routineId: ChecklistRoutineId?,
             businessDate: LocalDate?,
             dueAt: Instant?,
@@ -404,6 +412,7 @@ class ChecklistExecution private constructor(
             versionNumber,
             context,
             subject,
+            location,
             routineId,
             businessDate,
             dueAt,

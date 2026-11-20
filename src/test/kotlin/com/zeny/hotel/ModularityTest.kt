@@ -7,10 +7,12 @@ import com.zeny.hotel.fnrh.FnrhModule
 import com.zeny.hotel.frontdesk.FrontdeskModule
 import com.zeny.hotel.guests.GuestsModule
 import com.zeny.hotel.housekeeping.HousekeepingModule
+import com.zeny.hotel.maintenance.MaintenanceModule
 import com.zeny.hotel.notifications.NotificationsModule
 import com.zeny.hotel.payments.PaymentsModule
 import com.zeny.hotel.printing.PrintingModule
 import com.zeny.hotel.rates.RatesModule
+import com.zeny.hotel.reporting.ReportingModule
 import com.zeny.hotel.reservations.ReservationsModule
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -222,6 +224,67 @@ class ModularityTest {
             .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.housekeeping.") }
             .filter { !it.startsWith("com.zeny.hotel.shared.") }
             .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `maintenance depends only on shared, hotel, rooms, staff, checklists, files, notifications`() {
+        val maintenance = modules.getModuleByName("maintenance").orElseThrow()
+        val allowed = setOf("shared", "hotel", "rooms", "staff", "checklists", "files", "notifications")
+        val dependencies =
+            maintenance
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1 (camada Operação), M6 E07 Tasks 1 e 2: shared, hotel (a data operacional do número legível,
+        // pela HotelApi), rooms (a UH e a área da ordem, pela RoomsApi), staff (o responsável e o dono no escopo OWN,
+        // pela StaffApi), files (os anexos, pela FilesApi) e notifications (o aviso da OS urgente, pela
+        // NotificationsApi) e, na M6 E08, checklists (o evento ChecklistCompleted e os ids da raiz), exatamente. Sem
+        // housekeeping nem inventory (M9).
+        dependencies.toSet() shouldBe allowed
+        MaintenanceModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Nenhum tipo interno de outro módulo (só a raiz de cada um; verify() também barra).
+        maintenance
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.") && !it.startsWith("com.zeny.hotel.maintenance.") }
+            .filter { !it.startsWith("com.zeny.hotel.shared.") }
+            .filter { it.substringBeforeLast('.').count { char -> char == '.' } > 3 }
+            .toList() shouldBe emptyList()
+    }
+
+    @Test
+    fun `reporting depends only on shared, hotel`() {
+        val reporting = modules.getModuleByName("reporting").orElseThrow()
+        val allowed = setOf("shared", "hotel")
+        val dependencies =
+            reporting
+                .getDirectDependencies(modules)
+                .uniqueModules()
+                .map { it.identifier.toString() }
+                .toList()
+
+        // ARCHITECTURE §3.1 (camada Gestão), M6 E09: só shared e hotel (a data operacional e o fuso, pela HotelApi). Os
+        // dados dos outros módulos chegam só pelas views report_* (SQL), nunca por classe; files e printing entram
+        // com a E23.
+        dependencies.toSet() shouldBe allowed
+        ReportingModule::class.java
+            .getAnnotation(ApplicationModule::class.java)
+            .allowedDependencies
+            .toSet() shouldBe allowed
+        // Só a raiz do hotel (a API pública); verify() também barra os pacotes internos.
+        reporting
+            .getDirectDependencies(modules)
+            .stream()
+            .map { it.targetType.name }
+            .filter { it.startsWith("com.zeny.hotel.hotel.") }
+            .filter { it.substringBeforeLast('.') != "com.zeny.hotel.hotel" }
             .toList() shouldBe emptyList()
     }
 

@@ -145,6 +145,7 @@ class DatabaseRolesTest(
         appendOnlyTables shouldContain "iam.approval_use"
         appendOnlyTables shouldContain "housekeeping.task_assignment"
         appendOnlyTables shouldContain "housekeeping.task_conflict"
+        appendOnlyTables shouldContain "maintenance.work_order_note"
 
         tables shouldContainAll NO_DELETE_TABLES
 
@@ -293,6 +294,8 @@ class DatabaseRolesTest(
                 "housekeeping.inspection",
                 "housekeeping.lost_and_found_item",
                 "housekeeping.damage_report",
+                "maintenance.work_order",
+                "maintenance.work_order_attachment",
             )
     }
 }

@@ -411,10 +411,10 @@ class ChecklistExecutionsApiTest(
             val user = support.executor()
             val id = ChecklistExecutionId.new()
             val subject = ChecklistSubject("housekeeping.task", UuidV7.generate())
-            checklistsApi.startExecution(ChecklistVersionId(versionId), subject, user.id, Instant.now(), id)
+            checklistsApi.startExecution(ChecklistVersionId(versionId), subject, user.id, Instant.now(), id, null)
 
             shouldThrow<ConflictException> {
-                checklistsApi.startExecution(ChecklistVersionId(versionId), null, user.id, Instant.now(), id)
+                checklistsApi.startExecution(ChecklistVersionId(versionId), null, user.id, Instant.now(), id, null)
             }.code.value shouldBe "CHECKLIST_EXECUTION_ALREADY_EXISTS"
             checklistsApi.execution(id)!!.subject shouldBe subject
             support.executionCount(id.value) shouldBe 1

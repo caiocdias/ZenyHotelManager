@@ -132,6 +132,7 @@ class StartChecklistExecutionHandler(
                 ChecklistExecutionId(command.commandId),
                 version,
                 subjectOf(payload),
+                null, // a avulsa iniciada pelo cliente fica sem local (D1 da E08)
                 current.userId,
                 command.occurredAt,
                 current.deviceSessionId,

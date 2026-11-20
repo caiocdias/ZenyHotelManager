@@ -4,6 +4,7 @@ import com.zeny.hotel.rooms.RoomId
 import com.zeny.hotel.rooms.RoomTypeId
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 
 /**
  * API pública do `reservations` para os outros módulos (sem checar permissão: quem chama já se autorizou).
@@ -252,6 +253,13 @@ interface ReservationsApi {
      * cancelamento) ou inexistente fica de fora. Sem conferir permissão e sem trava.
      */
     fun assignedRooms(ids: Collection<ReservationId>): Map<ReservationId, RoomId>
+
+    /**
+     * A hora prevista de chegada (hora local do hotel, sem data nem fuso) de cada reserva de [ids], numa consulta só
+     * (M6 E22, D6: o early check-in da governança). Só as reservas com hora: a sem hora e a inexistente ficam de fora.
+     * Sem conferir permissão e sem trava; devolve só o id da reserva e a hora, sem dado de hóspede (RN-13).
+     */
+    fun expectedArrivalTimes(ids: Collection<ReservationId>): Map<ReservationId, LocalTime>
 
     /**
      * As cobranças devidas da hospedada [id] até [through] (M6 E11; a regra única do fechamento do dia e do

@@ -23,6 +23,7 @@ import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 private const val UNKNOWN_VALUE = "A lista pode crescer (`x-extensible-enum`): trate um valor desconhecido sem falhar."
@@ -51,6 +52,12 @@ data class ReservationChangeRequest(
     @field:Schema(description = "Pedidos especiais (texto livre, até 1000 caracteres; nunca vai à trilha).")
     val specialRequests: String? = null,
     val nightlyRates: List<@Valid NightlyRateRequest>,
+    @field:Schema(
+        description =
+            "A hora prevista de chegada, hora local do hotel (`HH:mm` ou `HH:mm:ss`). Como os pedidos especiais, a " +
+                "alteração substitui: ausente ou nula apaga a hora.",
+    )
+    val expectedArrivalTime: LocalTime? = null,
 ) {
     fun toChange() =
         ReservationChange(
@@ -63,6 +70,7 @@ data class ReservationChangeRequest(
             segment = checkNotNull(segment),
             specialRequests = specialRequests,
             nightlyRates = nightlyRates.map { NightlyRateOverride(checkNotNull(it.date), checkNotNull(it.roomAmount)) },
+            expectedArrivalTime = expectedArrivalTime,
         )
 }
 
@@ -221,6 +229,8 @@ data class ReservationStateResponse(
                 "comprovação de um check-in desfeito fica no retrato de antes).",
     )
     val stayGuests: List<HistoryStayGuestResponse>,
+    @field:Schema(description = "A hora prevista de chegada, hora local do hotel; nula sem ela.")
+    val expectedArrivalTime: LocalTime? = null,
 ) {
     companion object {
         fun of(state: ReservationState) =
@@ -268,6 +278,7 @@ data class ReservationStateResponse(
                             it.minorAuthorization?.let(MinorAuthorizationResponse::of),
                         )
                     },
+                expectedArrivalTime = state.expectedArrivalTime,
             )
     }
 }

@@ -92,7 +92,7 @@ class ChecklistsApiHousekeepingOperationsTest(
         val version = checklistsApi.currentVersion(ChecklistTemplateId(id)).shouldNotBeNull()
         val executor = iam.createUser().id
         val subject = ChecklistSubject("housekeeping.task", UuidV7.generate())
-        val execution = checklistsApi.startExecution(version.id, subject, executor, Instant.now()).id
+        val execution = checklistsApi.startExecution(version.id, subject, executor, Instant.now(), location = null).id
 
         val missing =
             shouldThrow<BusinessRuleException> {
@@ -126,7 +126,7 @@ class ChecklistsApiHousekeepingOperationsTest(
         templates.publish(id)
         val version = checklistsApi.currentVersion(ChecklistTemplateId(id)).shouldNotBeNull()
         val executor = iam.createUser().id
-        val execution = checklistsApi.startExecution(version.id, null, executor, Instant.now()).id
+        val execution = checklistsApi.startExecution(version.id, null, executor, Instant.now(), location = null).id
         checklistsApi.completeExecution(
             execution,
             listOf(ChecklistAnswerInput("bed", check = CheckAnswer.OK)),
@@ -179,14 +179,14 @@ class ChecklistsApiHousekeepingOperationsTest(
         val unknown =
             listOf(ChecklistAnswerInput.of("photo", null, null, null, null, null, null, UuidV7.generate(), null))
 
-        val online = checklistsApi.startExecution(version.id, null, executor, Instant.now()).id
+        val online = checklistsApi.startExecution(version.id, null, executor, Instant.now(), location = null).id
         shouldThrow<BusinessRuleException> {
             checklistsApi.completeExecutionIfOpen(online, unknown, Instant.now(), ChecklistPhotoPolicy.REFUSE)
         }.code.value shouldBe "CHECKLIST_PHOTO_NOT_FOUND"
         checklistsApi.execution(online).shouldNotBeNull().status shouldBe ChecklistExecutionStatus.IN_PROGRESS
         completions(online) shouldBe 0
 
-        val offline = checklistsApi.startExecution(version.id, null, executor, Instant.now()).id
+        val offline = checklistsApi.startExecution(version.id, null, executor, Instant.now(), location = null).id
         val completion =
             checklistsApi
                 .completeExecutionIfOpen(offline, unknown, Instant.now(), ChecklistPhotoPolicy.TOLERATE)

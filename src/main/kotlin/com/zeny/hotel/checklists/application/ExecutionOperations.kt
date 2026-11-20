@@ -4,6 +4,7 @@ import com.zeny.hotel.checklists.ChecklistAnswerInput
 import com.zeny.hotel.checklists.ChecklistCompleted
 import com.zeny.hotel.checklists.ChecklistExecutionId
 import com.zeny.hotel.checklists.ChecklistExecutionStatus
+import com.zeny.hotel.checklists.ChecklistLocation
 import com.zeny.hotel.checklists.ChecklistSubject
 import com.zeny.hotel.checklists.ChecklistTemplateId
 import com.zeny.hotel.checklists.ChecklistVersionId
@@ -116,13 +117,14 @@ class ExecutionOperations(
         id: ChecklistExecutionId,
         version: ChecklistVersionView,
         subject: ChecklistSubject?,
+        location: ChecklistLocation?,
         executor: UserId,
         startedAt: Instant,
         session: DeviceSessionId?,
         commandId: UUID?,
     ): ChecklistExecution {
         val execution =
-            ChecklistExecution.start(id, version, subject, executor, startedAt, session, commandId, now())
+            ChecklistExecution.start(id, version, subject, location, executor, startedAt, session, commandId, now())
         audit.created(ChecklistsAudit.EXECUTION, id.value) { execution.auditState() }
         add(execution)
         return execution
@@ -289,6 +291,7 @@ class ExecutionOperations(
                 completedAt = checkNotNull(execution.completedAt),
                 actions = actions,
                 duplicateOf = execution.duplicateOf?.value,
+                location = execution.location,
             ),
         )
     }

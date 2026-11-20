@@ -173,7 +173,7 @@ class ChecklistExecutionDomainTest {
     fun `only the executor answers and completes, once, and hidden answers are dropped`() {
         val executor = UserId(UuidV7.generate())
         val execution =
-            ChecklistExecution.start(ChecklistExecutionId.new(), version(), null, executor, t0, null, null, t0)
+            ChecklistExecution.start(ChecklistExecutionId.new(), version(), null, null, executor, t0, null, null, t0)
         val answers =
             listOf(check("bed", CheckAnswer.OK), check("shower", CheckAnswer.OK), choice("leak", "yes"))
         shouldThrow<PermissionDeniedException> {
@@ -196,7 +196,7 @@ class ChecklistExecutionDomainTest {
     fun `completing without a visible required answer is refused and changes nothing`() {
         val executor = UserId(UuidV7.generate())
         val execution =
-            ChecklistExecution.start(ChecklistExecutionId.new(), version(), null, executor, t0, null, null, t0)
+            ChecklistExecution.start(ChecklistExecutionId.new(), version(), null, null, executor, t0, null, null, t0)
         execution.replaceAnswers(
             executor,
             listOf(check("bed", CheckAnswer.OK), check("shower", CheckAnswer.NOT_OK)),
