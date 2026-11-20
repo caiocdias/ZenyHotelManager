@@ -2587,14 +2587,82 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - Renderização de PDF lenta: a E13 mede a duração na métrica da E10.
 
+**Estado em 2026-11-20 (lote encerrado a pedido do usuário):** `#em-andamento`. Todo o código e os testes estão commitados na branch até `0a20877`, e a revisão final está aprovada com ressalvas. **Falta só o gate:** rodar `timeout 2400 ./gradlew build` no HEAD da branch. Se der verde: marcar `#concluida`, publicar a captura do brain da E23 e integrar na `main`. Se der vermelho: abrir a rodada 2 do fim da etapa, que é a última. O workspace e o ledger do superpowers estão em `.superpowers/sdd/2026-11-20-m6-operacao-fechamento-e23/`, no worktree.
+
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e23.md`, com 3 fatias. Revisão de arquitetura: aprovada na rodada 2 (`revisor-arquitetura`, opus).
+  - A rodada 0 bloqueou por 7 Importantes:
+    - finalidade sem upload que mexia no `files` além da `FilesApi`;
+    - fórmulas (`COURTESY`, `sold AND`, fonte única da receita);
+    - corrida e transação do arquivo;
+    - endpoint de estatísticas sem requisito;
+    - Task 3 grande;
+    - critérios sem comando;
+    - gravação sem ator.
+  - A rodada 1 bloqueou por 1 Importante: a guarda de data futura contra as datas de teste.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `1fafc7a` (início e plano) a `0a20877`.
+  - **Task 1** (snapshot): `7f10092`, `c0be713` (testador, `ReportingViewsOnlyTest`) e a rodada 1 em `bbdafcf` (regra única `Occupancy`, arredondamento só no `Money`, recontagem depois do no-show por SQL).
+  - **Task 2** (gravação pelo servidor no `files`): `8ab0e51`.
+  - **Task 3** (PDF, arquivo e consulta): `e12c582` (os Menores da Task 2: `store` recusa finalidade com reencode), `a8c6bae` e `c8e27f9` (testador, listas exatas com `reporting.archive.read`).
+  - **Fim da etapa:** `565470a`, rodada 1 da revisão final:
+    - datas exclusivas e asserções por diferença no teste do snapshot, que colidia com o `BookingsApiTest`;
+    - KDoc da autoespera;
+    - `fileId` como `UUID`;
+    - `loadWithoutAuthorization`.
+    
+
+  - **Testador da etapa:** `a65b11b`, `780acd1` e `0a20877` (`FilesServerStoreAttackTest`, `DailyStatisticsAttackTest`, `ReportingWebAuthorizationTest`, âncora no `DatabaseRolesTest`): verdes, sem defeito.
+- Entregue:
+  - **`ReportingApi`** (raiz do `reporting`, sem permissão; fachada `ReportingApiService` com `TransactionTemplate`, porque escrita de sistema não leva `@Audited`, precedente `PrintingApiService`):
+    - **`snapshotDailyStatistics(date)`:**
+      - roda na transação de quem chama, em READ COMMITTED;
+      - grava `reporting.daily_statistics` com `ON CONFLICT DO NOTHING` e releitura, uma linha por data, sem recálculo;
+      - contagens disjuntas `sold AND NOT day_use` por `NORMAL`/`COURTESY`/`HOUSE_USE`;
+      - disponíveis = `total − out_of_order`;
+      - chegadas e saídas como no painel; no-shows; cancelamentos por `cancelled_at` no fuso do hotel;
+      - receitas por `revenue_group` sem `pass_through` e sem `TAXES`;
+      - ocupação = (vendidas + cortesia) ÷ disponíveis (regra única `Occupancy` com o painel);
+      - ADR e RevPAR pela receita `ROOM` dos lançamentos (`HALF_EVEN`).
+    - **`archiveDayReports(date)`:**
+      - `REQUIRES_NEW` por tipo, com trava consultiva por (data, tipo) antes de conferir;
+      - o snapshot precisa estar confirmado antes (o KDoc explica a autoespera e o `55P03`);
+      - PDF `reporting.day-report` (resumo, painel e pendências do momento, sem nome de hóspede) renderizado pelo `printing`;
+      - gravado por `FilesApi.store` como anexo sensível com o id da linha como dono;
+      - índice `reporting.archived_report`.
+  - **`files`:**
+    - `FilesApi.store(purpose, ownerEntityId, name, content)`: cifra se sensível, SHA-256, apaga no rollback, trilha `files.file.store`, `createdBy` nulo sem ator, recusa reencode;
+    - `FilePurpose.serverOnly`: o `POST /api/v1/files` recusa com `400 UNKNOWN_FILE_PURPOSE` antes da autorização, inclusive para o Administrador;
+    - gravação comum extraída para `StoredFileWriter`.
+  - **Finalidade e permissão:** `reporting.day-report` (PDF, 5 MB, sensível, `serverOnly`, download `reporting.archive.read`); permissão nova `reporting.archive.read` (Gerente, Financeiro).
+  - **`GET /api/v1/reports/archive?date=`:** tipo, id do anexo e criado em; o download sai pela URL do `files`, com trilha.
+  - **Schema `reporting`** (primeira migração do módulo, default só `SELECT, INSERT`, tabelas só de inserção).
+  - **Arestas `reporting → printing` e `reporting → files`** (`ModularityTest` e ArchUnit, só pela raiz).
+- Revisão final: bloqueada por 2 Importantes, ambos corrigidos em `565470a`. Re-revisão escopada `c8e27f9..0a20877`: **aprovada com ressalvas, condicionada ao gate verde em `0a20877`**. Menores para o handoff: o `shouldNotContain "Ataque"` genérico no `DailyStatisticsAttackTest`, e os dados que esse teste deixa no banco compartilhado (conta aberta com saldo, lançamento ROOM na data corrente).
+- Gate de integração: em `c8e27f9` estourou o limite de 30 min em `:test` sem falha, com a máquina sob carga de outra sessão; a 2ª rodada foi interrompida pela correção. O gate final em `0a20877` foi interrompido antes do fim, com o usuário desligando a máquina.
+- Verificação mecânica: `check_test_integrity.py --base 7b57e03`, exit 1, com 1 apontamento `ASSERCAO_REMOVIDA` no `ModularityTest`, julgado justificado pelas revisões (comentário reescrito, asserção ampliada).
+- Scanner: `osv-scanner`, lockfiles sem mudança, 0 Critical e 0 High.
+- `check-api-breaking.sh`: sem `ERR`.
+- Critérios verificados:
+  - snapshot único e Q-15: `DailyStatisticsSnapshotTest` e `DailyStatisticsCalculatorTest`;
+  - PDF uma vez por data, sensível: `DayReportsArchiveTest`;
+  - lista e download com trilha e 403: idem;
+  - §3.1 com `printing` e `files`: já constava, e o `ModularityTest` confere;
+  - `reporting` sem tabela interna: `ReportingViewsOnlyTest` e ArchUnit;
+  - build: gate.
+- Decisões para o usuário (tomadas pela opção recomendada, sob a autorização de 2026-11-19, e revisáveis):
+  - **PDF sensível:** o PDF arquivado continua anexo sensível mesmo sem nome de hóspede (tem códigos de reserva, saldos e ids de operador). A premissa "com nome" da H23 c não se confirmou, porque as views não publicam nome.
+  - **Finalidade só do servidor** (`serverOnly`).
+  - **Lista sem URLs:** a lista do arquivo devolve ids, e o download sai pelo `files` (o roadmap dizia "devolve URLs assinadas").
+  - **ADR:** sai da receita `ROOM` dos lançamentos (inclui day use), um pouco acima da diária média.
+  - **Sem endpoint HTTP do snapshot:** os KPIs são do M10.
+  - **Sem trilha própria:** o snapshot e o índice não têm trilha própria (escrita de sistema; o anexo tem `files.file.store`).
+- Notas para a próxima etapa (E13):
+  - **Ordem das etapas:** chame `snapshotDailyStatistics` numa etapa e `archiveDayReports` noutra, com commit entre elas. Na mesma transação, o arquivo falha por `lock_timeout` em toda tentativa.
+  - **Fechamento automático:** o arquivo é `REQUIRES_NEW` por tipo e o `files.store` funciona sem ator.
+  - **Painel no PDF:** o painel das UHs no PDF é o da data operacional corrente; vale o da data que fecha enquanto a etapa rodar antes do avanço.
+  - **Duração:** medir a duração do render na métrica da E10.
+  - **Dependências:** o `ArchivedReport.fileId` é `UUID` (sem aresta `endofday → files`).
 
 ---
 
@@ -2708,3 +2776,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-18 — entrevista final do lote: H19 (D7 e D11 da E03, D6 da E02 e H17 confirmadas pelo usuário, com registros a cargo do `arquiteto`).
 - 2026-11-18 — revisão do `arquiteto` (skill `development-roadmap`, modo atualização; `main` em `f992696`), com o código conferido para as etapas tocadas ("Base técnica do próprio M6" em "Contexto confirmado"). **Divisão da E04** (H18 a, H21 a): a E04 manteve o ID com a máquina de estados, as ações online e a conclusão, e a etapa nova **E19** ficou com os comandos offline, o histórico de posse, o conflito RN-22 e o feed; os achados da revisão do plano tentado foram distribuídos entre as duas. E05 e E06 passaram a depender da E19 (H21 e). **Manutenção transversal** (H20 c e d, H21 b a d): etapas novas **E20** (entrada estrita no corpo, na query e no caminho, `LocalTime`, inteiro e UUID estritos e `required` nos requests, com a quebra única do `oasdiff` aceita pelo usuário) e **E21** (`409 CONCURRENT_UPDATE` para `40P01`/`55P03`, logs dos quatro jobs, filtro do ShedLock e `JOSEException` do FCM), no bloco "Manutenção transversal", para rodarem antes da E04. **Early check-in** (H17, H20 a e b): etapa nova **E22** (hora prevista de chegada na reserva e prioridade do early na sugestão), dependente de E03 e E20. Hipóteses novas H20 (decisões do usuário na entrevista desta revisão) e H21 (decisões do `arquiteto`); H17 a H19 anotadas com o encaminhamento. A definição global de pronto ganhou o early, o conflito RN-22 e o item da E20 e da E21; o gate passou a depender de E20, E21 e E22. Revisão humana: sim na E04, na E19 e na E20. Na mesma revisão, a SPEC (§8.2.6 hora prevista de chegada; §8.3 governança sem os eventos de reserva e de check-in, e `HousekeepingTaskCompleted` sem consumidor de status; §8.4 `ASSIGNED → PENDING`) e a ARCHITECTURE (§6.1 sem o "atualizar plano do dia"; §7 com a regra da H16 e a exceção D11, o `required` com a quebra única e o `409 CONCURRENT_UPDATE`) foram alinhadas, e o `docs/roadmaps/README.md` passou a contar 22 etapas no M6. Nenhuma etapa concluída mudou de tag ou conteúdo; nenhuma foi renumerada nem removida.
 - 2026-11-19 — entrevista de abertura do lote E22–E23 (`orquestrador`): H23 decidida pelo usuário (divisão da E09 na E09 e na etapa nova **E23**, snapshot diário e arquivo dos PDFs; fastexcel para o XLSX; PDFs arquivados como anexo sensível). A E13 passa a depender da E23 (e não mais direto da E09). O M6 passa a ter 23 etapas. Nenhuma tag mudou.
+- 2026-11-20 — fim do lote E22–E23 (`orquestrador`), encerrado a pedido do usuário: E22, E07, E08 e E09 `#concluida`; E23 `#em-andamento` (código, testes e revisão final concluídos, falta o gate do HEAD da branch). As decisões da H23 são do usuário; as demais, do orquestrador pela opção recomendada (autorização do usuário em 2026-11-19), estão nos handoffs.
