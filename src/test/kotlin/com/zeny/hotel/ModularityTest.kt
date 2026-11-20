@@ -165,9 +165,9 @@ class ModularityTest {
     }
 
     @Test
-    fun `endofday depends only on its six declared modules, and only on their public APIs`() {
+    fun `endofday depends only on its seven declared modules, and only on their public APIs`() {
         val endofday = modules.getModuleByName("endofday").orElseThrow()
-        val allowed = setOf("shared", "hotel", "notifications", "reservations", "billing", "rooms")
+        val allowed = setOf("shared", "hotel", "notifications", "reservations", "billing", "rooms", "reporting")
         val dependencies =
             endofday
                 .getDirectDependencies(modules)
@@ -175,8 +175,9 @@ class ModularityTest {
                 .map { it.identifier.toString() }
                 .toList()
 
-        // ARCHITECTURE §3.1: o módulo declara e usa exatamente shared, hotel, notifications, reservations, billing e
-        // rooms (reservations, billing e rooms pelas etapas reais da M6 E11).
+        // ARCHITECTURE §3.1: o módulo declara e usa exatamente shared, hotel, notifications, reservations, billing,
+        // rooms e reporting (reservations, billing e rooms pelas etapas reais da M6 E11; reporting pelo snapshot e pelo
+        // arquivo da E13).
         dependencies.toSet() shouldBe allowed
         EndOfDayModule::class.java
             .getAnnotation(ApplicationModule::class.java)

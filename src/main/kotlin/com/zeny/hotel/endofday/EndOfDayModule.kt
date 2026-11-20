@@ -11,13 +11,15 @@ import org.springframework.modulith.PackageInfo
  * `notifications` nunca escuta evento de negócio); e, com as etapas reais do fechamento (M6 E11), de `reservations`
  * (no-show, saídas pendentes, liberação de bloqueios e vencimento de provisórias), `billing` (diárias, pacotes e taxa
  * de turismo lançadas pela API de lançamento, e as pré-autorizações de cartão) e `rooms` (UHs ocupadas ficam sujas).
- * Nunca de `files`, `rates` nem `frontdesk`, e só usa a API pública da raiz de cada módulo.
+ * E, com as etapas do snapshot e do arquivo (M6 E13), de `reporting`: só a raiz dele (`ReportingApi`) e só o snapshot
+ * diário e o arquivo dos PDFs do fechamento. Nunca de `files`, `rates` nem `frontdesk`, e só usa a API pública da raiz
+ * de cada módulo.
  * Só a etapa de avanço da E11 chama `HotelApi.advanceBusinessDate`; "data fechada" deriva da execução `COMPLETED` da
  * data.
  */
 @PackageInfo
 @ApplicationModule(
     displayName = "End of day",
-    allowedDependencies = ["shared", "hotel", "notifications", "reservations", "billing", "rooms"],
+    allowedDependencies = ["shared", "hotel", "notifications", "reservations", "billing", "rooms", "reporting"],
 )
 class EndOfDayModule

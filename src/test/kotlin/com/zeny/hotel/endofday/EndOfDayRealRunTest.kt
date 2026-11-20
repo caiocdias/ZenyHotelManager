@@ -531,6 +531,8 @@ class EndOfDayRealRunTest(
                 "provisional-expiry" to 500,
                 "card-pre-authorizations" to 600,
                 "occupied-rooms-dirty" to 700,
+                "daily-statistics" to 800,
+                "end-of-day-reports" to 900,
                 "advance-business-date" to 1000,
             )
         const val ROOM_CHARGES_POSITION = 300
