@@ -192,7 +192,7 @@ class DailyStatisticsAttackTest(
         cancelAt(day.atStartOfDay(zone).toOffsetDateTime().minusNanos(NANOS_PER_MICRO))
         InventoryListenersQuiescence.await(jdbc)
 
-        // Cada data conta exatamente a sua: a do 00:00 exato, a do 00:00 do dia seguinte e a da véspera 23:59:59.999999.
+        // Cada data conta só a sua: o 00:00 exato, o 00:00 do dia seguinte e a véspera às 23:59:59.999999.
         reporting.snapshotDailyStatistics(day.minusDays(1)).cancellations shouldBe before[0] + 1
         reporting.snapshotDailyStatistics(day).cancellations shouldBe before[1] + 1
         reporting.snapshotDailyStatistics(day.plusDays(1)).cancellations shouldBe before[2] + 1
