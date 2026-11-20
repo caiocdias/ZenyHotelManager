@@ -10,8 +10,8 @@ import org.springframework.modulith.PackageInfo
  * `application`. Depende só de `shared` (o kernel e a porta de autorização) e de `hotel` (a data operacional e o fuso,
  * só pela `HotelApi`).
  *
- * A raiz do pacote é a API pública: as permissões ([ReportingPermissions]) e os códigos de erro
- * ([ReportingErrorCodes]).
+ * A raiz do pacote é a API pública: as permissões ([ReportingPermissions]), os códigos de erro
+ * ([ReportingErrorCodes]) e a [ReportingApi] (o snapshot diário das estatísticas, M6 E23).
  */
 @PackageInfo
 @ApplicationModule(displayName = "Reporting", allowedDependencies = ["shared", "hotel"])
