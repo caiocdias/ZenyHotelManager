@@ -53,6 +53,30 @@ data class ArchivedReport(
     val createdAt: Instant,
 )
 
+/** O tipo de uma pendência da RF-FEC-04 que o fechamento do dia registra. */
+enum class EndOfDayPendingKind {
+    /** Conta aberta de reserva encerrada com saldo; a referência é o id da conta. */
+    FOLIO_OPEN_BALANCE,
+
+    /** Turno de caixa aberto; a referência é o id do turno. */
+    CASHIER_SHIFT_OPEN,
+
+    /** Submissão à FNRH ainda não enviada com sucesso; a referência é o id da reserva. */
+    FNRH_SUBMISSION_PENDING,
+}
+
+/**
+ * Uma pendência da RF-FEC-04 para o fechamento registrar (M6 E13, D3): o [kind], a [reference] opaca (um id) e o
+ * [detail], só com número, código e status (`"conta <número> da reserva <código>"`, `"caixa <número> aberto em
+ * <data>"`, `"FNRH <operação> <status>"`). Sem saldo, sem nome de hóspede, sem nome do ponto de caixa e sem a mensagem
+ * da última falha da FNRH (RN-13).
+ */
+data class EndOfDayPendingItem(
+    val kind: EndOfDayPendingKind,
+    val reference: UUID,
+    val detail: String,
+)
+
 /**
  * A API pública do `reporting` (M6 E23). As operações não conferem permissão: quem chama (o fechamento do dia) já se
  * autorizou, como nas demais APIs entre módulos.
@@ -85,4 +109,12 @@ interface ReportingApi {
      * um render longo; o motor do fechamento (E13) serializa as chamadas.
      */
     fun archiveDayReports(date: LocalDate): List<ArchivedReport>
+
+    /**
+     * As pendências da RF-FEC-04 **no estado corrente** (contas abertas de reservas encerradas com saldo, turnos de
+     * caixa abertos e submissões à FNRH `PENDING`, `FAILED` e `INVALID`), um item por ocorrência, para o fechamento do
+     * dia registrá-las como pendência (M6 E13, D3). Lê o mesmo que `GET /api/v1/reports/end-of-day-pending`, sem
+     * conferir permissão; roda na transação de quem chama.
+     */
+    fun endOfDayPendingItems(): List<EndOfDayPendingItem>
 }

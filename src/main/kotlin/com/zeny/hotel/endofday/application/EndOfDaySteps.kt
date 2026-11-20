@@ -34,6 +34,9 @@ import java.time.LocalDate
  *   da data é **proibido** (a execução concluiria sem avançar a data).
  * - **Posição:** [position] é positiva e única. As etapas de produção ficam espaçadas de 100 em 100, na ordem da
  *   RF-FEC-02, para caber etapa nova entre duas.
+ *   A exceção é `end-of-day-pending` (950, M6 E13): registra as pendências da RF-FEC-04 (contas com saldo, caixas
+ *   abertos e FNRH pendente), que não é passo da numeração da RF-FEC-02, e fica entre o arquivo dos PDFs (900) e o
+ *   avanço da data (1000).
  * - **Dados pessoais:** o resultado, o `kind`, a referência e a mensagem de uma pendência nunca levam dado pessoal de
  *   hóspede (RN-13); a referência é opaca (um id).
  */

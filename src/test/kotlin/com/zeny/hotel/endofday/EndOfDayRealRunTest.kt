@@ -533,6 +533,7 @@ class EndOfDayRealRunTest(
                 "occupied-rooms-dirty" to 700,
                 "daily-statistics" to 800,
                 "end-of-day-reports" to 900,
+                "end-of-day-pending" to 950,
                 "advance-business-date" to 1000,
             )
         const val ROOM_CHARGES_POSITION = 300
