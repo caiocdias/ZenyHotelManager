@@ -283,6 +283,7 @@ class AuthorizationTest(
                 "reporting.housekeeping.read:ALL",
                 "reporting.maintenance.read:ALL",
                 "reporting.pending.read:ALL",
+                "reporting.archive.read:ALL",
             )
         grantsOf(RoleTemplate.ROOM_ATTENDANT) shouldContainExactlyInAnyOrder
             listOf(

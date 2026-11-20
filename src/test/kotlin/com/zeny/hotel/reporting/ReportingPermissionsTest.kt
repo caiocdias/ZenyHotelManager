@@ -26,10 +26,11 @@ class ReportingPermissionsTest(
             "reporting.maintenance.read" to listOf(RoleTemplate.MANAGER, RoleTemplate.MAINTENANCE),
             "reporting.pending.read" to
                 listOf(RoleTemplate.MANAGER, RoleTemplate.FINANCE, RoleTemplate.RECEPTIONIST),
+            "reporting.archive.read" to listOf(RoleTemplate.MANAGER, RoleTemplate.FINANCE),
         )
 
     @Test
-    fun `the module declares exactly the four read permissions, ALL only and not sensitive`() {
+    fun `the module declares exactly the five read permissions, ALL only and not sensitive`() {
         ReportingPermissions.permissions.map { it.code.value } shouldContainExactlyInAnyOrder expected.keys.toList()
         ReportingPermissions.permissions.forEach {
             withClue(it.code.value) {
