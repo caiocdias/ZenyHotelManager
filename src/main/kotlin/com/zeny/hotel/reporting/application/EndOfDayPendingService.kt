@@ -64,8 +64,9 @@ class EndOfDayPendingService(
     }
 
     /**
-     * As mesmas pendências **sem conferir permissão**, para o arquivo por data (M6 E23), que quem chama (o fechamento)
-     * já se autorizou: só o arquivo do fechamento as chama. Roda na transação de quem chama.
+     * As mesmas pendências **sem conferir permissão**, para o arquivo por data (M6 E23) e para as pendências do
+     * fechamento (`ReportingApi.endOfDayPendingItems()`, M6 E13), cujo chamador (o fechamento) já se autorizou: só
+     * essas duas as chamam. Roda na transação de quem chama.
      */
     @Transactional(readOnly = true)
     fun loadWithoutAuthorization(): EndOfDayPending =

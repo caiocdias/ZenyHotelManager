@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import net.javacrumbs.shedlock.core.ClockProvider
 import net.javacrumbs.shedlock.core.ExtensibleLockProvider
 import net.javacrumbs.shedlock.core.LockConfiguration
 import net.javacrumbs.shedlock.core.LockingTaskExecutor
@@ -27,7 +28,10 @@ import java.util.concurrent.TimeUnit
 class EndOfDayKeepAliveTest {
     /** O `LockProvider` falso: relógio próprio, a trava vence em `lockAtMostFor` e registra as extensões. */
     private class FakeLockProvider : ExtensibleLockProvider {
-        var now: Instant = Instant.parse("2026-11-20T21:00:00Z")
+        // Parte da hora real do ShedLock: o KeepAliveLockProvider compara o fim da trava com o `ClockProvider` real,
+        // então uma data fixa no passado faria o keep-alive desistir da trava (o teste dependia da hora em que rodava).
+        @Volatile
+        var now: Instant = ClockProvider.now()
         val extensions = mutableListOf<Duration>()
         private val lockedUntil = mutableMapOf<String, Instant>()
 

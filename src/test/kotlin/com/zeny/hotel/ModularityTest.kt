@@ -176,8 +176,8 @@ class ModularityTest {
                 .toList()
 
         // ARCHITECTURE §3.1: o módulo declara e usa exatamente shared, hotel, notifications, reservations, billing,
-        // rooms e reporting (reservations, billing e rooms pelas etapas reais da M6 E11; reporting pelo snapshot e pelo
-        // arquivo da E13).
+        // rooms e reporting (reservations, billing e rooms pelas etapas reais da M6 E11; reporting pelo snapshot, pelo
+        // arquivo e pelas pendências da E13).
         dependencies.toSet() shouldBe allowed
         EndOfDayModule::class.java
             .getAnnotation(ApplicationModule::class.java)
