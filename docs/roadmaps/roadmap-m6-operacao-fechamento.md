@@ -247,7 +247,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E09 | Relatórios operacionais e painel do dia | #concluida | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
 | E23 | Snapshot diário e arquivo dos PDFs | #concluida | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
-| E13 | Snapshot e arquivo do fechamento | #em-andamento | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
+| E13 | Snapshot e arquivo do fechamento | #concluida | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
 
@@ -2667,7 +2667,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E13 — Snapshot e arquivo do fechamento — #em-andamento
+## E13 — Snapshot e arquivo do fechamento — #concluida
 
 **Objetivo:** acrescentar ao fechamento, antes do avanço da data, as etapas de snapshot de `DailyStatistics` e de arquivo dos PDFs da data (RF-FEC-02), pela API pública de `reporting`.
 
@@ -2681,10 +2681,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Depois de um fechamento, o snapshot da data e os PDFs ficam em `reporting`, uma única vez, mesmo com a etapa repetida ou retomada.
-- [ ] Falha na geração do PDF deixa a execução retomável e a data sem avançar (teste).
-- [ ] Um fechamento executado antes desta etapa existir continua válido: datas sem snapshot não quebram o painel nem os relatórios (teste).
-- [ ] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
+- [x] Depois de um fechamento, o snapshot da data e os PDFs ficam em `reporting`, uma única vez, mesmo com a etapa repetida ou retomada.
+- [x] Falha na geração do PDF deixa a execução retomável e a data sem avançar (teste).
+- [x] Um fechamento executado antes desta etapa existir continua válido: datas sem snapshot não quebram o painel nem os relatórios (teste).
+- [x] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
 
 **Validação obrigatória:**
 
@@ -2703,12 +2703,39 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e13.md`, com 2 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). A rodada 0 bloqueou por 3 Importantes: a E23 ainda `#em-andamento` (virou pré-condição de execução), `Riscos:` sem autenticação/autorização e a verificação das fatias sem os testes do fechamento que mudam. Dos Menores, a decisão de pôr as pendências numa etapa própria (950).
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `aa1bd81` (plano) e `3f0ffaa` (início) a `591a4bf`.
+  - **Task 1** (etapas 800 e 900): `30cd5b3`.
+  - **Task 2** (pendências e etapa 950): `bede8c6` (desenvolvedor) e `7cb12be` (testador: 15 testes existentes que afirmavam a lista exata de pendências da execução no banco isolado passam a excluir as da etapa 950, ou a olhar só a etapa que testam; ruling registrada).
+  - **Testador da etapa:** `ac6528e` e `c8baa81` (`EndOfDayReportingIdentityTest`, `EndOfDayPendingFormatTest`, `EndOfDayPreE13VariantsTest`): identidade do snapshot pela linha inteira, formato exato do aviso, saldo ausente em todos os formatos, guarda de `step_name` nulo e execuções paradas antes da etapa.
+  - **Rodada 1 do fim da etapa:** `591a4bf`. O `EndOfDayKeepAliveTest` dependia da hora (o falso da trava partia de 21:00Z e o `KeepAliveLockProvider` compara com o `ClockProvider` real); passou a partir de `ClockProvider.now()`, com o oráculo provado (sem *keep-alive* fica vermelho). KDoc de `loadWithoutAuthorization` e comentário do `ModularityTest`.
+- Entregue:
+  - **Etapas do fechamento** em `endofday/application/steps/`: `daily-statistics` (800, `ReportingApi.snapshotDailyStatistics` na transação da etapa), `end-of-day-reports` (900, `archiveDayReports`, `REQUIRES_NEW` por tipo, que só vê o snapshot já confirmado pela 800) e `end-of-day-pending` (950, uma `EndOfDayIssue` por item de `ReportingApi.endOfDayPendingItems()`: `FOLIO_OPEN_BALANCE`, `CASHIER_SHIFT_OPEN`, `FNRH_SUBMISSION_PENDING`; referência = id; mensagem `"<kind>: <detail>"` só com número, código e status; `NOT_APPLICABLE` sem itens). Nenhuma captura exceção: falha deixa a execução `FAILED` e retomável, com a data parada.
+  - **`ReportingApi.endOfDayPendingItems()`** e os tipos `EndOfDayPendingKind` e `EndOfDayPendingItem`, sem conferir permissão, pela mesma leitura do relatório da E09.
+  - **Dependência:** `endofday → reporting` (só a raiz e as três operações); `ModularityTest` exato; anotação do alcance na linha `endofday` da ARCHITECTURE §3.1; §13 com as 11 etapas; KDoc do contrato de etapa com a exceção 950.
+  - **Sem** endpoint, migração ou mudança no contrato.
+- Revisão final: `revisor-seguranca` (opus) sobre `3f0ffaa..c1e41f3`: **aprovado com ressalvas**, sem Crítico nem Importante. Re-revisão escopada `c1e41f3..591a4bf` (testes do testador e rodada 1): corrigido, aprovado com ressalvas, condicionado ao gate. Menores para o handoff abaixo.
+- Gate de integração: em `c1e41f3` (fim da construção), `BUILD SUCCESSFUL in 22m 13s`, 4878 testes. Em `591a4bf`, o 1º deu 1 falha de ambiente (`SerproFnrhGatewayAttackTest`, `readTimeout` de 100 ms ao WireMock local sob carga de outra sessão), e o 2º **`BUILD SUCCESSFUL in 23m 20s`, 4884 testes, 0 falhas** (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), com o resolvedor DNS ajustado só no processo (ver E23).
+- Verificação mecânica: `check_test_integrity.py --base 3f0ffaa`, exit 0, sem apontamentos (também por fatia).
+- Scanner: `osv-scanner` 2.7.1 nos 3 lockfiles (431 + 74 + 0 pacotes): 0 Critical, 0 High; os 2 Medium e 3 Low são anteriores. Lockfiles, catálogo e `api/openapi.yaml` sem mudança.
+- Critérios verificados:
+  - snapshot e PDF uma vez, com etapa repetida ou retomada: `EndOfDayReportingStepsTest`, `EndOfDayReportingIdentityTest`;
+  - falha do PDF retomável e data parada: `EndOfDayReportsFailureTest` (sonda `PrintingRenderProbe`, retomada por HTTP com aprovação);
+  - fechamento anterior à etapa e datas sem snapshot: `EndOfDayPreE13RunTest`, `EndOfDayPreE13VariantsTest`;
+  - pendências sem dado pessoal: `EndOfDayPendingItemsTest`, `EndOfDayPendingIssuesTest`, `EndOfDayPendingFormatTest`;
+  - *keep-alive* sob etapa longa: `EndOfDayKeepAliveTest` (obrigação herdada da E10);
+  - `ModularityTest` e build: gate acima.
+- Duração (D4): o `run_step` dá 0 ms nos testes, porque o relógio dos testes fica parado; por relógio de parede, numa data sem movimento, `daily-statistics` ~7 ms e `end-of-day-reports` ~40 ms (render ~20–30 ms). A duração com movimento real entra no `zeny.endofday.run.duration` da E10.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis):
+  - **Terceira operação na aresta `endofday → reporting`** (`endOfDayPendingItems`), contra a letra da nota da E13 ("não amplie além da API de snapshot e arquivo") e a favor do escopo ("pendências da E09 registradas como `EndOfDayIssue`"). O `revisor-arquitetura` julgou que não cabe ao usuário pela §3.1; alternativas descartadas no plano (D3). O `arquiteto` ajusta o texto da nota.
+  - **Pendências também com `endofday.runs.read`:** o subconjunto (sem saldo, sem nome de ponto de caixa, sem `lastFailure`) do relatório de `reporting.pending.read` sai também em `GET …/runs/{id}/issues`; os modelos de role das duas coincidem.
+  - **Etapa própria `end-of-day-pending` (950)**, fora do 100 em 100, registrada no KDoc do contrato.
+  - **FNRH sem integração configurada (Q-12):** as submissões ficam `PENDING` para sempre (`NOT_CONFIGURED`), e cada fechamento levanta uma pendência por submissão acumulada, sem limite. É o comportamento pedido (uma pendência que persiste aparece em cada fechamento), mas vira ruído num hotel sem a FNRH. Recomendado: tratar no M8 (agrupar por tipo com a FNRH desligada) ou na homologação.
+  - **Datas fechadas antes do deploy** ficam sem snapshot e sem PDF, sem recomposição (D5), para os KPIs do M10.
+- Notas para a próxima etapa (E12, gate):
+  - O fechamento real tem 11 etapas (100 a 1000, com 800, 900 e 950); o cenário da Fase 1 deve conferir o snapshot, o `DAY_REPORT` e as pendências da data.
+  - Menores para quem tocar nos testes: o `EndOfDayAdvanceStepTest` passou a olhar só as pendências da etapa de avanço; o `EndOfDayReportingIdentityTest` não afirma a falha antes do `settle`; o `EndOfDayPreE13VariantsTest` não afirma `attempts = 1` das etapas 100–300; os filtros `step_name <> …` descartam nulos (protegidos por guarda); WARN de fonte do PDFBox nos testes; o `SerproFnrhGatewayAttackTest` com `readTimeout` de 100 ms é frágil sob carga.
+  - Os gates desta máquina levam de 21 a 30 min ociosa e até 54 min com outra sessão; use `timeout 3600` e o resolvedor ajustado (E23).
 
 ---
 
