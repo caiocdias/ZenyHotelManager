@@ -11,6 +11,9 @@ internal object FilesAudit {
     const val FILE = "files.file"
 
     const val UPLOAD = "files.file.upload"
+
+    /** Gravação de um anexo pelo servidor, já vinculado ao dono (`FilesApi.store`). */
+    const val STORE = "files.file.store"
     const val ATTACH = "files.file.attach"
     const val DETACH = "files.file.detach"
     const val DELETE = "files.file.delete"

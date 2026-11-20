@@ -11,7 +11,10 @@ import com.zeny.hotel.shared.AuditContext
 import com.zeny.hotel.shared.Audited
 import com.zeny.hotel.shared.BusinessRuleException
 import com.zeny.hotel.shared.ConflictException
+import com.zeny.hotel.shared.CurrentActor
+import com.zeny.hotel.shared.InvalidInputException
 import com.zeny.hotel.shared.NotFoundException
+import com.zeny.hotel.shared.UuidV7
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
@@ -20,12 +23,16 @@ private typealias PublicFileContent = com.zeny.hotel.files.FileContent
 
 /** A API pública do `files` ([FilesApi]): sem checar permissão, na transação de quem chama. */
 @Service
+@Suppress("LongParameterList") // portas de persistência e armazenamento, catálogo, gravação e as do shared
 class FilesApiService(
     private val files: StoredFiles,
     private val objectRemovals: StoredObjectRemovals,
     private val storage: FileStorage,
     private val audit: AuditContext,
     private val clock: Clock,
+    private val catalog: FilePurposeCatalog,
+    private val writer: StoredFileWriter,
+    private val currentActor: CurrentActor,
 ) : FilesApi {
     @Transactional(readOnly = true)
     override fun find(id: FileId): FileSummary? = files.find(id)?.summary()
@@ -84,6 +91,37 @@ class FilesApiService(
             "Conteúdo do anexo $id não confere com o SHA-256 gravado"
         }
         return PublicFileContent(file.summary(), content)
+    }
+
+    @Audited(FilesAudit.STORE)
+    @Transactional
+    override fun store(
+        purpose: FilePurposeCode,
+        ownerEntityId: String,
+        name: String,
+        content: ByteArray,
+    ): FileSummary {
+        val definition = requireNotNull(catalog.find(purpose)) { "Finalidade de anexo desconhecida: $purpose" }
+        require(ownerEntityId.isNotBlank()) { "Dono do anexo vazio" }
+        val upload =
+            try {
+                FileContentRules.validate(definition, content, name)
+            } catch (violation: InvalidInputException) {
+                throw IllegalArgumentException(
+                    "Conteúdo recusado pela finalidade $purpose: ${violation.code}",
+                    violation,
+                )
+            }
+        val id = FileId(UuidV7.generate())
+        return writer
+            .write(
+                id,
+                definition,
+                upload,
+                content,
+                currentActor.currentOrNull()?.userId,
+                ownerEntityId,
+            ).summary()
     }
 
     /** O anexo existente, da finalidade e do dono informados; senão 404, 422 ou 409. */
