@@ -40,7 +40,8 @@ data class DailyStatisticsSnapshot(
 interface ReportingApi {
     /**
      * O snapshot de [date]: grava `reporting.daily_statistics` na primeira chamada e devolve sempre o gravado, sem
-     * recalcular. Roda na transação de quem chama (`REQUIRED`); chamadas simultâneas da mesma data gravam uma linha só
+     * recalcular. Roda na transação de quem chama (`REQUIRED`), em `READ COMMITTED`, de que a releitura depende;
+     * chamadas simultâneas da mesma data gravam uma linha só
      * (`ON CONFLICT DO NOTHING` e releitura). Sem guarda de data no código: **só para a data que fecha ou anteriores**,
      * porque o snapshot de uma data cujo movimento ainda não terminou ficaria gravado incompleto; quem garante isso é
      * o fechamento do dia, que chama com a data que fecha.

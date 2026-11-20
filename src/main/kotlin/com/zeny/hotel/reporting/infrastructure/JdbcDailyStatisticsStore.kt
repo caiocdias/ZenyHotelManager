@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component
 import java.sql.ResultSet
 import java.time.Clock
 import java.time.LocalDate
-import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
 /** `reporting.daily_statistics` pelo `JdbcClient`: uma linha por data, só de inserção. */

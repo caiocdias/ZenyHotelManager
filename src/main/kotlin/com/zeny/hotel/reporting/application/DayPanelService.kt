@@ -2,23 +2,16 @@ package com.zeny.hotel.reporting.application
 
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.reporting.ReportingPermissions
+import com.zeny.hotel.reporting.domain.Occupancy
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.Percent
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.LocalDate
 
 /** O padrão e o limite de dias do painel. */
 const val DEFAULT_PANEL_DAYS = 7
 const val MAX_PANEL_DAYS = 30
-
-private const val PERCENT = 100L
-private const val OCCUPANCY_SCALE = 2
-
-/** O maior percentual que o `Percent` guarda (`numeric(7,4)`). */
-private val MAX_OCCUPANCY = BigDecimal("999.9999")
 
 /** Uma data do painel: o movimento e a ocupação (`null` se a data não tem inventário ou capacidade). */
 data class DayPanelDay(
@@ -81,7 +74,7 @@ class DayPanelService(
                         arrivals = row?.arrivals ?: 0,
                         departures = row?.departures ?: 0,
                         hosted = row?.hosted ?: 0,
-                        occupancy = occupancy(row?.occupiedNights ?: 0, capacity[date] ?: 0),
+                        occupancy = Occupancy.of(row?.occupiedNights ?: 0, capacity[date] ?: 0),
                     )
                 },
             rooms =
@@ -98,18 +91,4 @@ class DayPanelService(
                 ),
         )
     }
-
-    /**
-     * As noites que contam na ocupação sobre a capacidade, em percentual com 2 casas; `null` sem capacidade e acima
-     * de 999,9999% (capacidade quase toda fora de ordem com noites ainda vendidas), em vez de falhar o painel.
-     */
-    private fun occupancy(
-        occupied: Long,
-        capacity: Long,
-    ): Percent? =
-        capacity
-            .takeIf { it > 0 }
-            ?.let { BigDecimal(occupied * PERCENT).divide(BigDecimal(it), OCCUPANCY_SCALE, RoundingMode.HALF_UP) }
-            ?.takeIf { it <= MAX_OCCUPANCY }
-            ?.let(Percent::of)
 }

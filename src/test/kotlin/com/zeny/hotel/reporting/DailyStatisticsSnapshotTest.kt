@@ -4,6 +4,7 @@ import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.iam.IamTestConfiguration
 import com.zeny.hotel.iam.IamTestSupport
 import com.zeny.hotel.reservations.InventoryTestConfiguration
+import com.zeny.hotel.reservations.ReservationsApi
 import com.zeny.hotel.reservations.ReservationsTestSupport
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.Percent
@@ -36,11 +37,13 @@ import java.util.concurrent.TimeUnit
  */
 @IntegrationTest
 @Import(IamTestConfiguration::class, InventoryTestConfiguration::class)
+@Suppress("LongParameterList") // as portas e o apoio do cenário
 class DailyStatisticsSnapshotTest(
     @Autowired iam: IamTestSupport,
     @Autowired private val jdbc: JdbcClient,
     @Autowired private val hotel: HotelApi,
     @Autowired private val reporting: ReportingApi,
+    @Autowired private val reservationsApi: ReservationsApi,
     @Autowired mockMvc: MockMvc,
     @Autowired jsonMapper: JsonMapper,
 ) {
@@ -121,6 +124,8 @@ class DailyStatisticsSnapshotTest(
             .sql("UPDATE reservations.reservation SET status = 'NO_SHOW' WHERE id = :id")
             .param("id", noShow)
             .update() shouldBe 1
+        // O inventário do banco compartilhado volta a casar com as reservas (o no-show libera a unidade).
+        reservationsApi.recountInventory(day, day.plusDays(1))
         InventoryListenersQuiescence.await(jdbc)
 
         // Lançamentos da data: hospedagem (200,01), A&B (42,50), outras receitas (15,25); fora: imposto, taxa de
