@@ -246,7 +246,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E09 | Relatórios operacionais e painel do dia | #concluida | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
-| E23 | Snapshot diário e arquivo dos PDFs | #em-andamento | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
+| E23 | Snapshot diário e arquivo dos PDFs | #concluida | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
 | E13 | Snapshot e arquivo do fechamento | #pendente | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
@@ -2545,7 +2545,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E23 — Snapshot diário e arquivo dos PDFs — #em-andamento
+## E23 — Snapshot diário e arquivo dos PDFs — #concluida
 
 **Objetivo:** dar ao `reporting` a API pública que o fechamento (E13) chama: o snapshot `DailyStatistics` da data (SPEC §8.2.9) e o arquivo dos PDFs da data em `files`, com a listagem e o download por URL assinada (H6). Saiu da E09 na divisão da H23 (a).
 
@@ -2587,8 +2587,6 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 - Renderização de PDF lenta: a E13 mede a duração na métrica da E10.
 
-**Estado em 2026-11-20 (lote encerrado a pedido do usuário):** `#em-andamento`. Todo o código e os testes estão commitados na branch até `0a20877`, e a revisão final está aprovada com ressalvas. **Falta só o gate:** rodar `timeout 2400 ./gradlew build` no HEAD da branch. Se der verde: marcar `#concluida`, publicar a captura do brain da E23 e integrar na `main`. Se der vermelho: abrir a rodada 2 do fim da etapa, que é a última. O workspace e o ledger do superpowers estão em `.superpowers/sdd/2026-11-20-m6-operacao-fechamento-e23/`, no worktree.
-
 **Evidências e handoff:**
 
 - Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e23.md`, com 3 fatias. Revisão de arquitetura: aprovada na rodada 2 (`revisor-arquitetura`, opus).
@@ -2601,7 +2599,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     - critérios sem comando;
     - gravação sem ator.
   - A rodada 1 bloqueou por 1 Importante: a guarda de data futura contra as datas de teste.
-- Commits: branch `roadmap/m6-operacao-fechamento`, de `1fafc7a` (início e plano) a `0a20877`.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `1fafc7a` (início e plano) a `d94718a`.
   - **Task 1** (snapshot): `7f10092`, `c0be713` (testador, `ReportingViewsOnlyTest`) e a rodada 1 em `bbdafcf` (regra única `Occupancy`, arredondamento só no `Money`, recontagem depois do no-show por SQL).
   - **Task 2** (gravação pelo servidor no `files`): `8ab0e51`.
   - **Task 3** (PDF, arquivo e consulta): `e12c582` (os Menores da Task 2: `store` recusa finalidade com reencode), `a8c6bae` e `c8e27f9` (testador, listas exatas com `reporting.archive.read`).
@@ -2613,6 +2611,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
     
 
   - **Testador da etapa:** `a65b11b`, `780acd1` e `0a20877` (`FilesServerStoreAttackTest`, `DailyStatisticsAttackTest`, `ReportingWebAuthorizationTest`, âncora no `DatabaseRolesTest`): verdes, sem defeito.
+  - **Rodada 2 do fim da etapa:** `d94718a` (desenvolvedor): o gate falhou no `OutboxMetricsTest` (idade 359,971 fora de [360, 420]) por uma corrida no `OutboxMetrics.refresh()` do M2, `@Scheduled` e não serializado (um refresh mais antigo que terminava depois sobrescrevia o snapshot do mais novo). O refresh passou a rodar sob um `ReentrantLock`, com o `now` capturado dentro dele, e o `OutboxMetricsOrderingTest` prova a ordem (vermelho antes, verde depois); o `OutboxMetricsTest` não mudou. Antes, `aa1bd81` (orquestrador) só acrescentou o plano da E13.
 - Entregue:
   - **`ReportingApi`** (raiz do `reporting`, sem permissão; fachada `ReportingApiService` com `TransactionTemplate`, porque escrita de sistema não leva `@Audited`, precedente `PrintingApiService`):
     - **`snapshotDailyStatistics(date)`:**
@@ -2638,9 +2637,9 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - **`GET /api/v1/reports/archive?date=`:** tipo, id do anexo e criado em; o download sai pela URL do `files`, com trilha.
   - **Schema `reporting`** (primeira migração do módulo, default só `SELECT, INSERT`, tabelas só de inserção).
   - **Arestas `reporting → printing` e `reporting → files`** (`ModularityTest` e ArchUnit, só pela raiz).
-- Revisão final: bloqueada por 2 Importantes, ambos corrigidos em `565470a`. Re-revisão escopada `c8e27f9..0a20877`: **aprovada com ressalvas, condicionada ao gate verde em `0a20877`**. Menores para o handoff: o `shouldNotContain "Ataque"` genérico no `DailyStatisticsAttackTest`, e os dados que esse teste deixa no banco compartilhado (conta aberta com saldo, lançamento ROOM na data corrente).
-- Gate de integração: em `c8e27f9` estourou o limite de 30 min em `:test` sem falha, com a máquina sob carga de outra sessão; a 2ª rodada foi interrompida pela correção. O gate final em `0a20877` foi interrompido antes do fim, com o usuário desligando a máquina.
-- Verificação mecânica: `check_test_integrity.py --base 7b57e03`, exit 1, com 1 apontamento `ASSERCAO_REMOVIDA` no `ModularityTest`, julgado justificado pelas revisões (comentário reescrito, asserção ampliada).
+- Revisão final: bloqueada por 2 Importantes, ambos corrigidos em `565470a`. Re-revisão escopada `c8e27f9..0a20877`: aprovada com ressalvas, condicionada ao gate. Re-revisão escopada da rodada 2 `aa1bd81..d94718a` (`revisor-seguranca`, opus): **corrigido, aprovado com ressalvas**, sem Crítico nem Importante; Menores no `OutboxMetricsOrderingTest` (afirmar a serialização antes de soltar a 1ª consulta; `isAlive` depois do `join`; mock redefinido dentro do `answers`) e o `withLock` sem prazo (hoje só o `@Scheduled` chama em produção; trocar por `tryLock` se surgir outro chamador); fora do escopo, a consulta do `read()` sem `statement_timeout`. Menores para o handoff: o `shouldNotContain "Ataque"` genérico no `DailyStatisticsAttackTest`, e os dados que esse teste deixa no banco compartilhado (conta aberta com saldo, lançamento ROOM na data corrente).
+- Gate de integração: em `c8e27f9` estourou o limite de 30 min em `:test` sem falha, com a máquina sob carga de outra sessão; a 2ª rodada foi interrompida pela correção, e o gate em `0a20877` pelo usuário desligando a máquina. Na retomada (2026-11-20), em `a135887` (o mesmo código mais o roadmap): (1) 4869 testes, 1 falha de ambiente (`SerproFnrhGatewayAttackTest`: o DNS do WSL, com `search Home 8.8.8.8` no `resolv.conf`, leva 40 s para recusar um host `.invalid`, acima dos 10 s do teste); (2) com o resolvedor ajustado só no processo do Gradle (`LOCALDOMAIN=" "` e `RES_OPTIONS="timeout:1 attempts:1"`, `--no-daemon`), estouro de 40 min sob carga de outra sessão (DesktopFront); (3) com limite de 60 min, 4869 testes e 1 falha, o `OutboxMetricsTest` (rodada 2 acima). **Gate final em `d94718a`: `BUILD SUCCESSFUL in 29m 49s`, 4870 testes, 0 falhas** (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), com o mesmo resolvedor ajustado.
+- Verificação mecânica: `check_test_integrity.py --base 7b57e03`, exit 1, com 1 apontamento `ASSERCAO_REMOVIDA` no `ModularityTest`, julgado justificado pelas revisões (comentário reescrito, asserção ampliada). Na rodada 2: `--base aa1bd81` exit 0; `--base 7b57e03` exit 1, com o mesmo `ASSERCAO_REMOVIDA` e o aviso `MERGE_IGNORADO` (2 merges da `main` na branch), ambos julgados justificados.
 - Scanner: `osv-scanner`, lockfiles sem mudança, 0 Critical e 0 High.
 - `check-api-breaking.sh`: sem `ERR`.
 - Critérios verificados:
@@ -2657,6 +2656,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - **ADR:** sai da receita `ROOM` dos lançamentos (inclui day use), um pouco acima da diária média.
   - **Sem endpoint HTTP do snapshot:** os KPIs são do M10.
   - **Sem trilha própria:** o snapshot e o índice não têm trilha própria (escrita de sistema; o anexo tem `files.file.store`).
+  - **DNS do WSL nos gates (2026-11-20, do orquestrador):** o `resolv.conf` desta máquina (`nameserver 10.255.255.254`, `search Home 8.8.8.8`) leva 40 s para recusar nome inexistente, e o `SerproFnrhGatewayAttackTest` falha. Os gates desta retomada rodam com `LOCALDOMAIN=" " RES_OPTIONS="timeout:1 attempts:1"` só no processo. Recomendado: corrigir o resolvedor da distro (por exemplo, tirar o `8.8.8.8` da linha `search`), que é configuração da máquina e fica com você.
 - Notas para a próxima etapa (E13):
   - **Ordem das etapas:** chame `snapshotDailyStatistics` numa etapa e `archiveDayReports` noutra, com commit entre elas. Na mesma transação, o arquivo falha por `lock_timeout` em toda tentativa.
   - **Fechamento automático:** o arquivo é `REQUIRES_NEW` por tipo e o `files.store` funciona sem ator.
