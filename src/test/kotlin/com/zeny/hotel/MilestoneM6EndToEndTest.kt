@@ -121,180 +121,209 @@ class MilestoneM6EndToEndTest(
         val originalFnrh = fnrhSettings()
         FnrhTestServer.reset()
         var routine: UUID? = null
-        try {
-            // --- Preparo: a FNRH ligada, os cadastros, a camareira escalada e os modelos de checklist ------------
-            iam.enableFnrh()
-            val d0 = hotelApi.currentBusinessDate()
-            val d1 = d0.plusDays(1)
-            val d2 = d0.plusDays(2)
-            val stay = newStay(d0)
-            stubFnrhFor(stay)
-            val employee = scheduledAttendant(d1, d2)
-            val taskTemplate = housekeepingTemplate(stay.type)
-            inspectionTemplate(stay.type)
-            routine = dailyRoutine(taskTemplate, stay.room)
+        val outcome =
+            runCatching {
+                // --- Preparo: a FNRH ligada, os cadastros, a camareira escalada e os modelos de checklist ------------
+                iam.enableFnrh()
+                val d0 = hotelApi.currentBusinessDate()
+                val d1 = d0.plusDays(1)
+                val d2 = d0.plusDays(2)
+                val stay = newStay(d0)
+                stubFnrhFor(stay)
+                val employee = scheduledAttendant(d1, d2)
+                val taskTemplate = housekeepingTemplate(stay.type)
+                inspectionTemplate(stay.type)
+                routine = dailyRoutine(taskTemplate, stay.room)
 
-            // --- A Recepcionista reserva D0 a D2 com a hora prevista de chegada --------------------------------
-            val booked = book(stay, d0, d2)
-            support.reservation(booked.id)["reservation"]["expectedArrivalTime"].asString() shouldBe
-                EXPECTED_ARRIVAL_TIME
-            val nights = nightlyAmounts(booked.id)
-            nights.map { it.first } shouldContainExactly listOf(d0, d1)
+                // --- A Recepcionista reserva D0 a D2 com a hora prevista de chegada --------------------------------
+                val booked = book(stay, d0, d2)
+                support.reservation(booked.id)["reservation"]["expectedArrivalTime"].asString() shouldBe
+                    EXPECTED_ARRIVAL_TIME
+                val nights = nightlyAmounts(booked.id)
+                nights.map { it.first } shouldContainExactly listOf(d0, d1)
 
-            // --- Check-in em D0 e a submissão FNRH do check-in entregue ----------------------------------------
-            api(POST, "/api/v1/reservations/${booked.id}/assign-room", receptionist, mapOf("roomId" to stay.room)).ok()
-            val checkIn =
+                // --- Check-in em D0 e a submissão FNRH do check-in entregue ----------------------------------------
                 api(
                     POST,
-                    "/api/v1/reservations/${booked.id}/check-in",
+                    "/api/v1/reservations/${booked.id}/assign-room",
                     receptionist,
-                    mapOf("guests" to listOf(stayGuest(stay.holder))),
-                ).expect(200)
-            checkIn["reservation"]["status"].asString() shouldBe "IN_HOUSE"
-            checkIn["room"]["occupancy"].asString() shouldBe "OCCUPIED"
-            sendOwnFnrhSubmissions(booked.id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
-            fnrhStatuses(booked.id) shouldContainExactly
-                listOf(
-                    FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
-                    FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
-                )
-            fnrhCallsOf(stay, booked.code) shouldContainExactly
-                listOf(
-                    "POST /reservas",
-                    "GET /pessoas/documento/CPF/${stay.cpf}",
-                    "POST /pessoas",
-                    "POST /reservas/${stay.remote}/hospedes",
-                )
+                    mapOf("roomId" to stay.room),
+                ).ok()
+                val checkIn =
+                    api(
+                        POST,
+                        "/api/v1/reservations/${booked.id}/check-in",
+                        receptionist,
+                        mapOf("guests" to listOf(stayGuest(stay.holder))),
+                    ).expect(200)
+                checkIn["reservation"]["status"].asString() shouldBe "IN_HOUSE"
+                checkIn["room"]["occupancy"].asString() shouldBe "OCCUPIED"
+                sendOwnFnrhSubmissions(booked.id, FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
+                fnrhStatuses(booked.id) shouldContainExactly
+                    listOf(
+                        FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
+                        FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
+                    )
+                fnrhCallsOf(stay, booked.code) shouldContainExactly
+                    listOf(
+                        "POST /reservas",
+                        "GET /pessoas/documento/CPF/${stay.cpf}",
+                        "POST /pessoas",
+                        "POST /reservas/${stay.remote}/hospedes",
+                    )
 
-            // --- Fechamento de D0 pela Recepcionista, com a aprovação do Gerente --------------------------------
-            val required =
-                closeRequest(receptionist, d0).problem(403, "APPROVAL_REQUIRED").also {
-                    it["action"].asString() shouldBe "endofday.run.start"
-                    it["permission"].asString() shouldBe "endofday.runs.execute"
-                    it["resourceRef"].asString() shouldBe "endofday.business-date:$d0"
-                }
-            withClue("a recusa por falta de aprovação não cria execução") { runsOn(d0) shouldBe 0 }
-            val approval = approvedByManager(required)
-            val firstRun = completedRun(closeRequest(receptionist, d0, approval["approvalToken"].asString()))
-            firstRun["trigger"].asString() shouldBe "MANUAL"
-            firstRun["triggeredBy"].asString() shouldBe
-                receptionist.user.id.value
-                    .toString()
-            val firstRunId = UUID.fromString(firstRun["id"].asString())
+                // --- Fechamento de D0 pela Recepcionista, com a aprovação do Gerente --------------------------------
+                val required =
+                    closeRequest(receptionist, d0).problem(403, "APPROVAL_REQUIRED").also {
+                        it["action"].asString() shouldBe "endofday.run.start"
+                        it["permission"].asString() shouldBe "endofday.runs.execute"
+                        it["resourceRef"].asString() shouldBe "endofday.business-date:$d0"
+                    }
+                withClue("a recusa por falta de aprovação não cria execução") { runsOn(d0) shouldBe 0 }
+                val approval = approvedByManager(required)
+                val firstRun = completedRun(closeRequest(receptionist, d0, approval["approvalToken"].asString()))
+                firstRun["trigger"].asString() shouldBe "MANUAL"
+                firstRun["triggeredBy"].asString() shouldBe
+                    receptionist.user.id.value
+                        .toString()
+                val firstRunId = UUID.fromString(firstRun["id"].asString())
 
-            // A diária da noite D0, uma vez; a UH Suja; a data em D1; o snapshot, o arquivo e as rotinas de D1.
-            roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second)
-            roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
-            hotelApi.currentBusinessDate() shouldBe d1
-            countOf("SELECT count(*) FROM reporting.daily_statistics WHERE business_date = :date", d0) shouldBe 1
-            countOf(
-                "SELECT count(*) FROM reporting.archived_report WHERE business_date = :date AND kind = 'DAY_REPORT'",
-                d0,
-            ) shouldBe 1
-            await().atMost(Duration.ofSeconds(TIMEOUT_SECONDS)).until { routineExecutions(routine, d1) == 1 }
-            issuesAbout(firstRunId, booked).shouldBeEmpty()
+                // A diária da noite D0, uma vez; a UH Suja; a data em D1; o snapshot, o arquivo e as rotinas de D1.
+                roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second)
+                roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
+                hotelApi.currentBusinessDate() shouldBe d1
+                countOf("SELECT count(*) FROM reporting.daily_statistics WHERE business_date = :date", d0) shouldBe 1
+                countOf(
+                    "SELECT count(*) FROM reporting.archived_report " +
+                        "WHERE business_date = :date AND kind = 'DAY_REPORT'",
+                    d0,
+                ) shouldBe 1
+                await().atMost(Duration.ofSeconds(TIMEOUT_SECONDS)).until { routineExecutions(routine, d1) == 1 }
+                issuesAbout(firstRunId, booked, stay.room).shouldBeEmpty()
 
-            // --- A permanência de D1: gerada pelo avanço, distribuída e publicada ------------------------------
-            awaitHousekeepingListener(BusinessDateAdvanced::class.java, "\"current\":\"$d1\"")
-            tasksOf(stay.room).map { it.date to it.source } shouldContainExactly listOf(d1 to "STAYOVER")
-            val stayover = tasksOf(stay.room).single().id
-            publishPlan(d1, employee, stayover)
-            task(stayover).let {
-                it["status"].asString() shouldBe "ASSIGNED"
-                it["assignedEmployeeId"].asString() shouldBe employee.toString()
-            }
-            panel(attendant.user).map { it["type"].asString() } shouldContainExactly
-                listOf("notifications.task-assigned")
-
-            // --- A Camareira executa pelo comando offline (início e conclusão com o checklist) -----------------
-            executedOffline(stayover)
-            task(stayover)["status"].asString() shouldBe "DONE"
-            checklistOf(stayover) shouldBe (taskTemplate to "COMPLETED")
-            roomsApi.status(RoomId(stay.room))!!.let {
-                it.housekeepingStatus shouldBe HousekeepingStatus.CLEAN
-                it.occupancy.name shouldBe "OCCUPIED"
-            }
-
-            // --- A Governanta inspeciona e aprova a UH: Inspecionada -------------------------------------------
-            // A permanência da carga não pede inspeção (STAYOVER, D5 da E01): a UH sai dela Limpa e sem
-            // pendência, e a aprovação é a inspeção voluntária da E05.
-            api(POST, "/api/v1/room-inspections", housekeeper, mapOf("roomId" to stay.room)).ok()["inspection"].let {
-                it["status"].asString() shouldBe "COMPLETED"
-                it["result"].asString() shouldBe "APPROVED"
-            }
-            roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
-
-            // --- Fechamento de D1 pelo Gerente (com a permissão): a diária de D1, uma vez, e a data em D2 -------
-            val secondRun = completedRun(closeRequest(manager, d1))
-            val secondRunId = UUID.fromString(secondRun["id"].asString())
-            roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second, d1 to nights[1].second)
-            hotelApi.currentBusinessDate() shouldBe d2
-            issuesAbout(secondRunId, booked).shouldBeEmpty()
-            awaitHousekeepingListener(BusinessDateAdvanced::class.java, "\"current\":\"$d2\"")
-            withClue("quem sai em D2 não tem permanência em D2") {
+                // --- A permanência de D1: gerada pelo avanço, distribuída e publicada ------------------------------
+                awaitHousekeepingListener(BusinessDateAdvanced::class.java, "\"current\":\"$d1\"")
                 tasksOf(stay.room).map { it.date to it.source } shouldContainExactly listOf(d1 to "STAYOVER")
-            }
+                val stayover = tasksOf(stay.room).single().id
+                publishPlan(d1, employee, stayover)
+                task(stayover).let {
+                    it["status"].asString() shouldBe "ASSIGNED"
+                    it["assignedEmployeeId"].asString() shouldBe employee.toString()
+                }
+                panel(attendant.user).map { it["type"].asString() } shouldContainExactly
+                    listOf("notifications.task-assigned")
 
-            // --- Em D2: o saldo pago e o check-out com saldo zero, sem diária a mais -----------------------------
-            openShift(receptionist)
-            val due = billing.balance(booked.folio)
-            due shouldBe nights.fold(BigDecimal.ZERO) { sum, night -> sum + BigDecimal(night.second) }.toPlainString()
-            api(
-                POST,
-                "/api/v1/folios/${booked.folio}/payments",
-                receptionist,
-                mapOf("method" to "CASH", "amount" to due),
-            ).expect(201)
-            val checkOut = api(POST, "/api/v1/reservations/${booked.id}/check-out", receptionist).expect(200)
-            checkOut["reservation"]["status"].asString() shouldBe "CHECKED_OUT"
-            checkOut["stayCharges"].size() shouldBe 0
-            checkOut["closedFolios"].values().map { it["folioId"].asString() to it["status"].asString() } shouldBe
-                listOf(booked.folio.toString() to "CLOSED")
-            checkOut["room"]["occupancy"].asString() shouldBe "VACANT"
-            checkOut["room"]["housekeepingStatus"].asString() shouldBe "DIRTY"
-            support.status(booked.id) shouldBe "CHECKED_OUT"
-            billing.folio(booked.folio)["status"].asString() shouldBe "CLOSED"
-            billing.balance(booked.folio) shouldBe "0.00"
-            roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second, d1 to nights[1].second)
+                // --- A Camareira executa pelo comando offline (início e conclusão com o checklist) -----------------
+                executedOffline(stayover)
+                task(stayover)["status"].asString() shouldBe "DONE"
+                checklistOf(stayover) shouldBe (taskTemplate to "COMPLETED")
+                roomsApi.status(RoomId(stay.room))!!.let {
+                    it.housekeepingStatus shouldBe HousekeepingStatus.CLEAN
+                    it.occupancy.name shouldBe "OCCUPIED"
+                }
 
-            // --- A tarefa de saída de D2: gerada pelo check-out e concluída (execução e inspeção) ---------------
-            awaitHousekeepingListener(GuestCheckedOut::class.java, "\"reservationId\":\"${booked.id}\"")
-            tasksOf(stay.room).map { it.date to it.source } shouldContainExactly
-                listOf(d1 to "STAYOVER", d2 to "CHECKOUT")
-            val departure = tasksOf(stay.room).single { it.source == "CHECKOUT" }.id
-            publishPlan(d2, employee, departure)
-            executedOffline(departure)
-            task(departure)["status"].asString() shouldBe "AWAITING_INSPECTION"
-            roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.CLEAN
-            inspectedAndApproved(departure)
-            task(departure)["status"].asString() shouldBe "DONE"
-            checklistOf(departure) shouldBe (taskTemplate to "COMPLETED")
-            roomsApi.status(RoomId(stay.room))!!.let {
-                it.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
-                it.occupancy.name shouldBe "VACANT"
-            }
+                // --- A Governanta inspeciona e aprova a UH: Inspecionada -------------------------------------------
+                // A permanência da carga não pede inspeção (STAYOVER, D5 da E01): a UH sai dela Limpa e sem
+                // pendência, e a aprovação é a inspeção voluntária da E05.
+                api(
+                    POST,
+                    "/api/v1/room-inspections",
+                    housekeeper,
+                    mapOf("roomId" to stay.room),
+                ).ok()["inspection"].let {
+                    it["status"].asString() shouldBe "COMPLETED"
+                    it["result"].asString() shouldBe "APPROVED"
+                }
+                roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
 
-            // --- A submissão FNRH do check-out entregue, como a última chamada da reserva -----------------------
-            sendOwnFnrhSubmissions(booked.id, FnrhOperation.CHECK_OUT)
-            fnrhStatuses(booked.id) shouldContainExactly
-                listOf(
-                    FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
-                    FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
-                    FnrhOperation.CHECK_OUT to FnrhSubmissionStatus.SENT,
-                )
-            fnrhCallsOf(stay, booked.code).last() shouldBe "PATCH /hospedes/${stay.guestRemote}/checkout"
-        } finally {
-            try {
-                EndOfDayTestRuns.settle(context)
-            } finally {
-                // A configuração global primeiro; a rotina (que só gera execuções da própria UH) por último.
-                restoreFnrh(originalFnrh)
-                FnrhTestServer.reset()
-                clock.advance(Duration.between(clock.instant(), clockStart))
-                routine?.let { api(POST, "/api/v1/checklist-routines/$it/deactivate", housekeeper).ok() }
+                // --- Fechamento de D1 pelo Gerente (com a permissão): a diária de D1, uma vez, e a data em D2 -------
+                val secondRun = completedRun(closeRequest(manager, d1))
+                val secondRunId = UUID.fromString(secondRun["id"].asString())
+                roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second, d1 to nights[1].second)
+                withClue("o fechamento de D1 suja de novo a UH ocupada, inspecionada na permanência") {
+                    roomsApi.status(RoomId(stay.room))!!.let {
+                        it.housekeepingStatus shouldBe HousekeepingStatus.DIRTY
+                        it.occupancy.name shouldBe "OCCUPIED"
+                    }
+                }
+                hotelApi.currentBusinessDate() shouldBe d2
+                issuesAbout(secondRunId, booked, stay.room).shouldBeEmpty()
+                awaitHousekeepingListener(BusinessDateAdvanced::class.java, "\"current\":\"$d2\"")
+                withClue("quem sai em D2 não tem permanência em D2") {
+                    tasksOf(stay.room).map { it.date to it.source } shouldContainExactly listOf(d1 to "STAYOVER")
+                }
+
+                // --- Em D2: o saldo pago e o check-out com saldo zero, sem diária a mais -----------------------------
+                val shift = openShift(receptionist)
+                val due = billing.balance(booked.folio)
+                due shouldBe
+                    nights.fold(BigDecimal.ZERO) { sum, night -> sum + BigDecimal(night.second) }.toPlainString()
+                api(
+                    POST,
+                    "/api/v1/folios/${booked.folio}/payments",
+                    receptionist,
+                    mapOf("method" to "CASH", "amount" to due),
+                ).expect(201)
+                val checkOut = api(POST, "/api/v1/reservations/${booked.id}/check-out", receptionist).expect(200)
+                checkOut["reservation"]["status"].asString() shouldBe "CHECKED_OUT"
+                checkOut["stayCharges"].size() shouldBe 0
+                checkOut["closedFolios"].values().map { it["folioId"].asString() to it["status"].asString() } shouldBe
+                    listOf(booked.folio.toString() to "CLOSED")
+                checkOut["room"]["occupancy"].asString() shouldBe "VACANT"
+                checkOut["room"]["housekeepingStatus"].asString() shouldBe "DIRTY"
+                support.status(booked.id) shouldBe "CHECKED_OUT"
+                billing.folio(booked.folio)["status"].asString() shouldBe "CLOSED"
+                billing.balance(booked.folio) shouldBe "0.00"
+                closeShift(shift, due)
+                roomCharges(booked.folio) shouldContainExactly listOf(d0 to nights[0].second, d1 to nights[1].second)
+
+                // --- A tarefa de saída de D2: gerada pelo check-out e concluída (execução e inspeção) ---------------
+                awaitHousekeepingListener(GuestCheckedOut::class.java, "\"reservationId\":\"${booked.id}\"")
+                tasksOf(stay.room).map { it.date to it.source } shouldContainExactly
+                    listOf(d1 to "STAYOVER", d2 to "CHECKOUT")
+                val departure = tasksOf(stay.room).single { it.source == "CHECKOUT" }.id
+                publishPlan(d2, employee, departure)
+                executedOffline(departure)
+                task(departure)["status"].asString() shouldBe "AWAITING_INSPECTION"
+                roomsApi.status(RoomId(stay.room))!!.housekeepingStatus shouldBe HousekeepingStatus.CLEAN
+                inspectedAndApproved(departure)
+                task(departure)["status"].asString() shouldBe "DONE"
+                checklistOf(departure) shouldBe (taskTemplate to "COMPLETED")
+                roomsApi.status(RoomId(stay.room))!!.let {
+                    it.housekeepingStatus shouldBe HousekeepingStatus.INSPECTED
+                    it.occupancy.name shouldBe "VACANT"
+                }
+
+                // --- A submissão FNRH do check-out entregue, como a última chamada da reserva -----------------------
+                sendOwnFnrhSubmissions(booked.id, FnrhOperation.CHECK_OUT)
+                fnrhStatuses(booked.id) shouldContainExactly
+                    listOf(
+                        FnrhOperation.REGISTER_RESERVATION to FnrhSubmissionStatus.SENT,
+                        FnrhOperation.CHECK_IN to FnrhSubmissionStatus.SENT,
+                        FnrhOperation.CHECK_OUT to FnrhSubmissionStatus.SENT,
+                    )
+                fnrhCallsOf(stay, booked.code).last() shouldBe "PATCH /hospedes/${stay.guestRemote}/checkout"
             }
+        // Cada passo da limpeza roda mesmo se um anterior falhar; a falha do cenário prevalece, com as da limpeza
+        // como suprimidas.
+        val cleanupFailures =
+            cleanUp(
+                { clock.advance(Duration.between(clock.instant(), clockStart)) },
+                { EndOfDayTestRuns.settle(context) },
+                { restoreFnrh(originalFnrh) },
+                { FnrhTestServer.reset() },
+                { routine?.let { api(POST, "/api/v1/checklist-routines/$it/deactivate", housekeeper).ok() } },
+            )
+        outcome.onFailure { failure -> cleanupFailures.forEach(failure::addSuppressed) }.getOrThrow()
+        cleanupFailures.firstOrNull()?.let { first ->
+            cleanupFailures.drop(1).forEach(first::addSuppressed)
+            throw first
         }
     }
+
+    /** Roda os passos da limpeza em ordem, cada um mesmo depois da falha de outro, e devolve as falhas. */
+    private fun cleanUp(vararg steps: () -> Unit): List<Throwable> =
+        steps.mapNotNull { runCatching(it).exceptionOrNull() }
 
     // --- Apoio: cadastros ---------------------------------------------------------------------------------------
 
@@ -577,15 +606,16 @@ class MilestoneM6EndToEndTest(
     private fun runsOn(date: LocalDate): Int =
         countOf("SELECT count(*) FROM endofday.run WHERE business_date = :date", date)
 
-    /** As pendências da execução que citam a reserva, a conta ou o código dela. */
+    /** As pendências da execução que citam a reserva, a conta, o código dela ou a UH dela. */
     private fun issuesAbout(
         run: UUID,
         booked: Booked,
+        room: UUID,
     ): List<String> =
         jdbc
             .sql("SELECT kind FROM endofday.run_issue WHERE run_id = :run AND reference IN (:refs)")
             .param("run", run)
-            .param("refs", listOf(booked.id.toString(), booked.folio.toString(), booked.code))
+            .param("refs", listOf(booked.id.toString(), booked.folio.toString(), booked.code, room.toString()))
             .query(String::class.java)
             .list()
             .filterNotNull()
@@ -766,8 +796,8 @@ class MilestoneM6EndToEndTest(
 
     // --- Apoio: o caixa -----------------------------------------------------------------------------------------
 
-    /** Abre, como [operator], um turno de caixa num ponto de caixa novo cadastrado pelo Gerente. */
-    private fun openShift(operator: Operator) {
+    /** Abre, como [operator], um turno de caixa num ponto de caixa novo cadastrado pelo Gerente; devolve o turno. */
+    private fun openShift(operator: Operator): UUID {
         val cashPoint =
             api(
                 POST,
@@ -775,8 +805,30 @@ class MilestoneM6EndToEndTest(
                 manager,
                 mapOf("name" to "Caixa ${support.guests.suffix()}"),
             ).expect(201).id()
-        api(POST, "/api/v1/cashier-shifts", operator, mapOf("cashPointId" to cashPoint, "openingFloat" to "0.00"))
-            .expect(201)
+        return api(
+            POST,
+            "/api/v1/cashier-shifts",
+            operator,
+            mapOf("cashPointId" to cashPoint, "openingFloat" to "0.00"),
+        ).expect(201).id()
+    }
+
+    /**
+     * A Recepcionista fecha o turno com o dinheiro contado igual ao recebido ([cash], sem fundo de troco): sem
+     * diferença. Fechado, o turno não vira `CASHIER_SHIFT_OPEN` nos fechamentos seguintes do banco isolado.
+     */
+    private fun closeShift(
+        shift: UUID,
+        cash: String,
+    ) {
+        val closed =
+            api(
+                POST,
+                "/api/v1/cashier-shifts/$shift/close",
+                receptionist,
+                mapOf("counts" to listOf(mapOf("method" to "CASH", "amount" to cash))),
+            ).expect(200)
+        closed["shift"]["hasDifference"].asBoolean() shouldBe false
     }
 
     // --- Apoio: a FNRH ------------------------------------------------------------------------------------------
