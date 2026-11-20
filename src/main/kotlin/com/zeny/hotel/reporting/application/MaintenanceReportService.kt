@@ -5,11 +5,14 @@ import com.zeny.hotel.reporting.ReportingPermissions
 import com.zeny.hotel.shared.Authorization
 import com.zeny.hotel.shared.Money
 import com.zeny.hotel.shared.StorableRange
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
+
+private val log = LoggerFactory.getLogger(MaintenanceReportService::class.java)
 
 private const val SECONDS_PER_HOUR = 3600L
 private const val HOURS_SCALE = 1
@@ -54,7 +57,9 @@ data class MaintenanceReport(
 /**
  * O relatório de manutenção (RF-REL, M6 E09, D5), pela abertura da ordem (`opened_at`, data local no fuso do hotel): as
  * ordens por status e por categoria, o tempo médio de atendimento (da abertura à conclusão, em horas com 1 casa) e a
- * soma dos custos das concluídas (`DONE`; as canceladas não entram). Sem texto livre (RN-13). Período sem ordem vem
+ * soma dos custos das concluídas (`DONE`; as canceladas não entram). Sem texto livre (RN-13). Um valor que a view
+ * publica e este módulo ainda não conhece não derruba o relatório: a categoria desconhecida conta em `OTHER` e o
+ * status desconhecido fica de fora (os dois com um aviso no log, só com o valor). Período sem ordem vem
  * com listas vazias, custos zero e tempo médio `null`. Exige `reporting.maintenance.read`.
  */
 @Service
@@ -80,16 +85,8 @@ class MaintenanceReportService(
         return MaintenanceReport(
             from = from,
             to = to,
-            byStatus =
-                queries
-                    .workOrdersByStatus(
-                        start,
-                        end,
-                    ).map { StatusCountRow(MaintenanceStatus.valueOf(it.key), it.orders) },
-            byCategory =
-                queries
-                    .workOrdersByCategory(start, end)
-                    .map { CategoryCountRow(MaintenanceCategory.valueOf(it.key), it.orders) },
+            byStatus = statuses(queries.workOrdersByStatus(start, end)),
+            byCategory = categories(queries.workOrdersByCategory(start, end)),
             completed =
                 CompletedOrdersReport(
                     orders = completed.orders,
@@ -108,4 +105,20 @@ class MaintenanceReportService(
                 ),
         )
     }
+
+    private fun statuses(rows: List<WorkOrderCountRow>): List<StatusCountRow> =
+        rows.mapNotNull { row ->
+            val status = MaintenanceStatus.entries.firstOrNull { it.name == row.key }
+            if (status == null) log.warn("Status de ordem de serviço desconhecido no relatório: {}", row.key)
+            status?.let { StatusCountRow(it, row.orders) }
+        }
+
+    private fun categories(rows: List<WorkOrderCountRow>): List<CategoryCountRow> =
+        rows
+            .map { row ->
+                val category = MaintenanceCategory.entries.firstOrNull { it.name == row.key }
+                if (category == null) log.warn("Categoria de ordem de serviço desconhecida no relatório: {}", row.key)
+                (category ?: MaintenanceCategory.OTHER) to row.orders
+            }.groupBy({ it.first }, { it.second })
+            .map { (category, orders) -> CategoryCountRow(category, orders.sum()) }
 }

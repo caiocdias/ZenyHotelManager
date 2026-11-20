@@ -21,7 +21,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * `GET /api/v1/reports/maintenance` (M6 E09, D5): ordens por status e por categoria, tempo médio de atendimento e
@@ -38,7 +38,7 @@ class MaintenanceReportApiTest(
     private val admin = iam.asAdmin()
 
     // Um dia por teste, num ano que nenhum outro usa: o relatório soma o período todo.
-    private val day = LocalDate.of(2036, 1, 1).plusDays(Random.nextLong(DAY_SPREAD))
+    private val day = LocalDate.of(2036, 1, 1).plusDays(DAY_STEP * sequence.getAndIncrement())
 
     private fun report(
         from: LocalDate,
@@ -200,7 +200,9 @@ class MaintenanceReportApiTest(
     }
 
     private companion object {
-        const val DAY_SPREAD = 3000L
+        // Um dia por instância (uma por teste), 30 dias à parte: sem colisão entre métodos nem entre classes.
+        const val DAY_STEP = 30L
+        val sequence = AtomicInteger()
         const val HOUR_OPEN = 12
     }
 }

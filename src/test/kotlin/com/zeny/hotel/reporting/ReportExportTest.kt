@@ -27,7 +27,7 @@ import java.io.ByteArrayInputStream
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneOffset
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A exportação CSV e XLSX dos quatro relatórios (M6 E09, D6): o arquivo, relido aqui, tem as mesmas linhas da resposta
@@ -44,7 +44,7 @@ class ReportExportTest(
 ) {
     private val admin = iam.asAdmin()
     private val seed = HousekeepingReportSeed(jdbc)
-    private val day = LocalDate.of(2037, 1, 1).plusDays(Random.nextLong(DAY_SPREAD))
+    private val day = LocalDate.of(2039, 1, 1).plusDays(DAY_STEP * sequence.getAndIncrement())
 
     /** Uma aba esperada: o nome, as linhas do JSON e os campos (nome e se é decimal) na ordem das colunas. */
     private class Sheet(
@@ -436,7 +436,9 @@ class ReportExportTest(
     }
 
     private companion object {
-        const val DAY_SPREAD = 3000L
+        // Um dia por instância (uma por teste), 30 dias à parte: sem colisão entre métodos nem entre classes.
+        const val DAY_STEP = 30L
+        val sequence = AtomicInteger()
         const val HOUR = 12
     }
 }

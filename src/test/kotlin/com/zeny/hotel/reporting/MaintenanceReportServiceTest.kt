@@ -119,4 +119,24 @@ class MaintenanceReportServiceTest {
             .code.value shouldBe "REPORT_PERIOD_INVALID"
         service.report(day, day.plusDays(365))
     }
+
+    @Test
+    fun `an unknown category counts as OTHER and an unknown status is left out, without failing the report`() {
+        val queries =
+            Queries(
+                statuses = listOf(WorkOrderCountRow("OPEN", 2), WorkOrderCountRow("ARCHIVED", 7)),
+                categories =
+                    listOf(
+                        WorkOrderCountRow("OTHER", 1),
+                        WorkOrderCountRow("PLUMBING", 4),
+                        WorkOrderCountRow("ELEVATOR", 3),
+                    ),
+            )
+
+        val report = service(queries).report(day, day)
+
+        report.byStatus.map { it.status to it.orders } shouldBe listOf(MaintenanceStatus.OPEN to 2L)
+        report.byCategory.map { it.category to it.orders } shouldBe
+            listOf(MaintenanceCategory.OTHER to 4L, MaintenanceCategory.PLUMBING to 4L)
+    }
 }

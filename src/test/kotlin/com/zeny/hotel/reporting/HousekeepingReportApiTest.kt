@@ -19,7 +19,7 @@ import tools.jackson.databind.JsonNode
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.UUID
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * `GET /api/v1/reports/housekeeping` (M6 E09, D5): UHs e créditos por camareira, tempo médio por `worked_seconds`
@@ -36,8 +36,8 @@ class HousekeepingReportApiTest(
     private val rooms = RoomsTestSupport(iam)
     private val seed = HousekeepingReportSeed(jdbc)
 
-    // Um dia por teste, num ano que nenhum outro usa: o banco é compartilhado e o relatório soma o período todo.
-    private val day = LocalDate.of(2033, 1, 1).plusDays(Random.nextLong(DAY_SPREAD))
+    // Um dia por teste, 30 dias à parte, num ano só desta classe: o banco é compartilhado e o relatório soma o período.
+    private val day = LocalDate.of(2033, 1, 1).plusDays(DAY_STEP * sequence.getAndIncrement())
 
     private val admin = iam.asAdmin()
 
@@ -251,6 +251,8 @@ class HousekeepingReportApiTest(
     }
 
     private companion object {
-        const val DAY_SPREAD = 3000L
+        // Um dia por instância (uma por teste), 30 dias à parte: sem colisão entre métodos nem entre classes.
+        const val DAY_STEP = 30L
+        val sequence = AtomicInteger()
     }
 }
