@@ -2663,6 +2663,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
   - **Painel no PDF:** o painel das UHs no PDF é o da data operacional corrente; vale o da data que fecha enquanto a etapa rodar antes do avanço.
   - **Duração:** medir a duração do render na métrica da E10.
   - **Dependências:** o `ArchivedReport.fileId` é `UUID` (sem aresta `endofday → files`).
+- Captura do brain: `00 Inbox/2026-11-20 - ZenyHotelManager - atualização m6-operacao-fechamento E23 - c0ccfce5.md`.
 
 ---
 
