@@ -257,7 +257,7 @@ class ReportExportTest(
                 "INSERT INTO fnrh.submission (id, reservation_id, reservation_code, operation, operation_rank, " +
                     "event_key, causal_version, status, attempts, next_attempt_at, last_failure, in_flight, " +
                     "occurred_at, created_at, version) VALUES (:id, :reservation, 'R-EXPORT', 'CHECK_IN', 0, " +
-                    ":key, 1, 'FAILED', 2, now(), 'UNAVAILABLE', false, now(), now(), 0)",
+                    ":key, 1, 'FAILED', 2, now() + interval '30 days', 'UNAVAILABLE', false, now(), now(), 0)",
             ).param("id", UuidV7.generate())
             .param("reservation", UuidV7.generate())
             .param("key", "export-" + UuidV7.generate())

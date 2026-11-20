@@ -95,7 +95,8 @@ class EndOfDayPendingApiTest(
             INSERT INTO fnrh.submission (id, reservation_id, reservation_code, operation, operation_rank, event_key,
                 causal_version, status, attempts, next_attempt_at, last_failure, in_flight, occurred_at, created_at,
                 sent_at, version)
-            VALUES (:id, :reservation, 'R-PENDING', :operation, 0, :key, 1, :status, :attempts, now(), :failure,
+            VALUES (:id, :reservation, 'R-PENDING', :operation, 0, :key, 1, :status, :attempts, now() + interval '30 days',
+                :failure,
                 false, now(), now(), CASE WHEN :status = 'SENT' THEN now() END, 0)
             """.trimIndent(),
         ).param("id", UuidV7.generate())

@@ -230,9 +230,20 @@ class DayPanelApiTest(
                     .single()
             }
 
+        val pendingOfCreated =
+            created
+                .count { room ->
+                    jdbc
+                        .sql("SELECT inspection_pending FROM rooms.report_room_status WHERE room_id = :id")
+                        .param("id", room)
+                        .query(Boolean::class.java)
+                        .single()
+                }.toLong()
+
         val after = read()["rooms"]
 
         fun delta(field: String) = after[field].asLong() - before[field].asLong()
+        delta("inspectionPending") shouldBe pendingOfCreated
         delta("active") shouldBe ROOMS.toLong()
         delta("vacant") shouldBe ROOMS.toLong()
         delta("occupied") shouldBe 0

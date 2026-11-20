@@ -79,8 +79,11 @@ class ReportingViewsOnlyTest(
                 connection.createStatement().use { it.execute("SET ROLE $role") }
                 val client = JdbcClient.create(SingleConnectionDataSource(connection, true))
                 client.sql("SELECT current_user").query(String::class.java).single() shouldStartWith "report_probe_"
-                block(client, JdbcReportingQueries(client))
-                connection.createStatement().use { it.execute("RESET ROLE") }
+                try {
+                    block(client, JdbcReportingQueries(client))
+                } finally {
+                    connection.createStatement().use { it.execute("RESET ROLE") }
+                }
             }
         } finally {
             owner.sql("DROP OWNED BY $role").update()
