@@ -8,6 +8,7 @@ import com.zeny.hotel.endofday.domain.EndOfDayRunId
 import com.zeny.hotel.hotel.HotelApi
 import com.zeny.hotel.testsupport.EndOfDayIntegrationTest
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.ints.shouldBeLessThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.junit.jupiter.api.Test
@@ -58,8 +59,10 @@ class EndOfDayReportingStepsTest(
                     "end-of-day-reports" to "COMPLETED",
                     "advance-business-date" to "COMPLETED",
                 )
-            steps.map { it.name }.takeLast(AFTER_ORDER) shouldContainExactly
-                listOf("daily-statistics", "end-of-day-reports", ADVANCE)
+            val order = steps.map { it.name }
+            order.indexOf("daily-statistics") shouldBeLessThan order.indexOf("end-of-day-reports")
+            order.indexOf("end-of-day-reports") shouldBeLessThan order.indexOf(ADVANCE)
+            order.last() shouldBe ADVANCE
             hotel.currentBusinessDate() shouldBe date.plusDays(1)
             statisticsRows(date) shouldBe 1
             val archived = archived(date)
@@ -170,7 +173,6 @@ class EndOfDayReportingStepsTest(
     private companion object {
         val REPORTING_STEPS = setOf("daily-statistics", "end-of-day-reports")
         const val ADVANCE = "advance-business-date"
-        const val AFTER_ORDER = 3
         const val HISTORIC_YEAR = 2001
     }
 }

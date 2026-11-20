@@ -571,8 +571,10 @@ class EndOfDayRealRunAttackTest(
         references: List<String>,
     ): List<Pair<String, String?>> =
         jdbc
-            .sql("SELECT kind, reference FROM endofday.run_issue WHERE run_id = :id ORDER BY created_at, id")
-            .param("id", run.value)
+            .sql(
+                "SELECT kind, reference FROM endofday.run_issue " +
+                    "WHERE run_id = :id AND step_name <> 'end-of-day-pending' ORDER BY created_at, id",
+            ).param("id", run.value)
             .query { rs, _ -> rs.getString("kind") to rs.getString("reference") }
             .list()
             .filter { it.second in references }

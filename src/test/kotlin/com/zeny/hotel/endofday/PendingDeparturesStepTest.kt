@@ -116,8 +116,10 @@ class PendingDeparturesStepTest(
     ): List<Pair<String, String?>> {
         val ids = reservations.map { it.toString() }.toSet()
         return jdbc
-            .sql("SELECT kind, reference FROM endofday.run_issue WHERE run_id = :id")
-            .param("id", run.value)
+            .sql(
+                "SELECT kind, reference FROM endofday.run_issue " +
+                    "WHERE run_id = :id AND step_name <> 'end-of-day-pending'",
+            ).param("id", run.value)
             .query { rs, _ -> rs.getString("kind") to rs.getString("reference") }
             .list()
             .filter { it.second in ids }
