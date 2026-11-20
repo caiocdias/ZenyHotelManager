@@ -17,6 +17,9 @@ const val MAX_PANEL_DAYS = 30
 private const val PERCENT = 100L
 private const val OCCUPANCY_SCALE = 2
 
+/** O maior percentual que o `Percent` guarda (`numeric(7,4)`). */
+private val MAX_OCCUPANCY = BigDecimal("999.9999")
+
 /** Uma data do painel: o movimento e a ocupação (`null` se a data não tem inventário ou capacidade). */
 data class DayPanelDay(
     val date: LocalDate,
@@ -96,12 +99,17 @@ class DayPanelService(
         )
     }
 
-    /** As noites que contam na ocupação sobre a capacidade, em percentual com 2 casas; `null` sem capacidade. */
+    /**
+     * As noites que contam na ocupação sobre a capacidade, em percentual com 2 casas; `null` sem capacidade e acima
+     * de 999,9999% (capacidade quase toda fora de ordem com noites ainda vendidas), em vez de falhar o painel.
+     */
     private fun occupancy(
         occupied: Long,
         capacity: Long,
     ): Percent? =
-        capacity.takeIf { it > 0 }?.let {
-            Percent.of(BigDecimal(occupied * PERCENT).divide(BigDecimal(it), OCCUPANCY_SCALE, RoundingMode.HALF_UP))
-        }
+        capacity
+            .takeIf { it > 0 }
+            ?.let { BigDecimal(occupied * PERCENT).divide(BigDecimal(it), OCCUPANCY_SCALE, RoundingMode.HALF_UP) }
+            ?.takeIf { it <= MAX_OCCUPANCY }
+            ?.let(Percent::of)
 }

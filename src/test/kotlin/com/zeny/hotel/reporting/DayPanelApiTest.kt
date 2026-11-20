@@ -244,6 +244,43 @@ class DayPanelApiTest(
     }
 
     @Test
+    fun `a block on an inactive room does not count as out of order, like the rest of the room counts`() {
+        val base = read()["businessDate"].asString().let(LocalDate::parse)
+        val before = read()["rooms"]
+        val (_, created) = inventory.roomTypeWithRooms(ROOMS, base)
+        fun open(
+            room: UUID,
+            kind: String,
+        ) = with(iam) {
+            call(
+                POST,
+                "/api/v1/rooms/$room/out-of-order",
+                admin,
+                mapOf(
+                    "kind" to kind,
+                    "startsOn" to "$base",
+                    "endsOn" to "${base.plusDays(2)}",
+                    "reason" to "Teste do painel",
+                    "responsible" to "Equipe",
+                    "returnStatus" to "DIRTY",
+                ),
+            ).expectStatus(201)
+        }
+        open(created[0], "OUT_OF_ORDER")
+        open(created[1], "OUT_OF_SERVICE")
+        open(created[2], "OUT_OF_ORDER")
+        InventoryListenersQuiescence.await(jdbc)
+        // A UH inativa some das contagens de hoje, inclusive a do bloqueio dela.
+        jdbc.sql("UPDATE rooms.room SET active = false WHERE id = :id").param("id", created[2]).update()
+
+        val after = read()["rooms"]
+
+        fun delta(field: String) = after[field].asLong() - before[field].asLong()
+        delta("outOfOrder") shouldBe 1
+        delta("outOfService") shouldBe 1
+    }
+
+    @Test
     fun `days outside 1 to 30 are refused with 400, and the default is 7 days starting today`() {
         with(iam) {
             panel(0).problem(400, "VALIDATION_FAILED")

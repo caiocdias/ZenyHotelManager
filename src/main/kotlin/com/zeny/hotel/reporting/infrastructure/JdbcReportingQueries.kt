@@ -190,10 +190,11 @@ class JdbcReportingQueries(
         jdbc
             .sql(
                 """
-                SELECT count(DISTINCT room_id) FILTER (WHERE kind = 'OUT_OF_ORDER') AS out_of_order,
-                       count(DISTINCT room_id) FILTER (WHERE kind = 'OUT_OF_SERVICE') AS out_of_service
-                FROM rooms.report_out_of_order
-                WHERE starts_on <= :on AND ends_on >= :on AND (released_on IS NULL OR released_on > :on)
+                SELECT count(DISTINCT b.room_id) FILTER (WHERE b.kind = 'OUT_OF_ORDER') AS out_of_order,
+                       count(DISTINCT b.room_id) FILTER (WHERE b.kind = 'OUT_OF_SERVICE') AS out_of_service
+                FROM rooms.report_out_of_order b
+                         JOIN rooms.report_room_status s ON s.room_id = b.room_id AND s.active
+                WHERE b.starts_on <= :on AND b.ends_on >= :on AND (b.released_on IS NULL OR b.released_on > :on)
                 """.trimIndent(),
             ).param("on", on)
             .query { rs, _ -> OutOfOrderCountsRow(rs.getLong("out_of_order"), rs.getLong("out_of_service")) }

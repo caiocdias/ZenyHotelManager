@@ -111,4 +111,26 @@ class DayPanelServiceTest {
         shouldThrow<IllegalArgumentException> { service(FakeReportingQueries()).panel(31) }
         service(FakeReportingQueries()).panel(30).days.size shouldBe 30
     }
+
+    @Test
+    fun `an occupancy above the percent limit is null, not a 500`() {
+        val queries =
+            object : FakeReportingQueries() {
+                override fun dayMovements(
+                    from: LocalDate,
+                    to: LocalDate,
+                ) = listOf(DayMovementsRow(today, 0, 0, 0, 10_000), DayMovementsRow(today.plusDays(1), 0, 0, 0, 3))
+
+                // Quase toda a capacidade fora de ordem: 1 UH sobra com noites vendidas de mais.
+                override fun dayCapacity(
+                    from: LocalDate,
+                    to: LocalDate,
+                ) = listOf(DayCapacityRow(today, 1), DayCapacityRow(today.plusDays(1), 2))
+            }
+
+        val days = service(queries).panel(2).days
+
+        days[0].occupancy shouldBe null
+        days[1].occupancy.toString() shouldBe "150.0000"
+    }
 }

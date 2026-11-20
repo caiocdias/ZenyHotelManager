@@ -334,15 +334,22 @@ data class PendingCashierShiftResponse(
 
 @Schema(description = "Uma submissão à FNRH pendente.")
 data class PendingFnrhSubmissionResponse(
-    @field:Schema(description = "A operação (`REGISTER_RESERVATION`, `CHECK_IN`…); a lista pode crescer.")
+    @field:Schema(description = "A operação: `REGISTER_RESERVATION`, `UPDATE_RESERVATION`, `CANCEL_RESERVATION`, `CHECK_IN`, " +
+                "`UNDO_CHECK_IN`, `CHECK_OUT` ou `NO_SHOW`; a lista pode crescer, trate o valor desconhecido.")
     val operation: String,
-    @field:Schema(description = "`PENDING`, `FAILED` ou `INVALID`.")
+    @field:Schema(description = "`PENDING`, `FAILED` ou `INVALID`; a lista pode crescer.")
     val status: String,
     val reservationId: UUID,
     @field:Schema(description = "O código da reserva; nulo se a reserva não existe mais.", nullable = true)
     val reservationCode: String?,
     val attempts: Int,
-    @field:Schema(description = "A causa da última falha; nula sem falha. A lista pode crescer.", nullable = true)
+    @field:Schema(
+        description =
+            "A causa da última falha, nula sem falha: `VALIDATION`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, " +
+                "`SERVER_ERROR`, `UNAVAILABLE`, `UNKNOWN_OUTCOME`, `INTERNAL_ERROR`, `REMOTE_CANCELLED`, " +
+                "`NO_REMOTE_OPERATION` ou `REMOTE_NO_SHOW`; a lista pode crescer, trate o valor desconhecido.",
+        nullable = true,
+    )
     val lastFailure: String?,
     val createdAt: Instant,
 ) {

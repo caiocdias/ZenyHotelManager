@@ -25235,12 +25235,16 @@ components:
           format: date-time
         lastFailure:
           type: string
-          description: A causa da última falha; nula sem falha. A lista pode crescer.
+          description: "A causa da última falha, nula sem falha: `VALIDATION`, `UNAUTHORIZED`,\
+            \ `FORBIDDEN`, `NOT_FOUND`, `SERVER_ERROR`, `UNAVAILABLE`, `UNKNOWN_OUTCOME`,\
+            \ `INTERNAL_ERROR`, `REMOTE_CANCELLED`, `NO_REMOTE_OPERATION` ou `REMOTE_NO_SHOW`;\
+            \ a lista pode crescer, trate o valor desconhecido."
           nullable: true
         operation:
           type: string
-          description: "A operação (`REGISTER_RESERVATION`, `CHECK_IN`…); a lista\
-            \ pode crescer."
+          description: "A operação: `REGISTER_RESERVATION`, `UPDATE_RESERVATION`,\
+            \ `CANCEL_RESERVATION`, `CHECK_IN`, `UNDO_CHECK_IN`, `CHECK_OUT` ou `NO_SHOW`;\
+            \ a lista pode crescer, trate o valor desconhecido."
         reservationCode:
           type: string
           description: O código da reserva; nulo se a reserva não existe mais.
@@ -25250,7 +25254,7 @@ components:
           format: uuid
         status:
           type: string
-          description: "`PENDING`, `FAILED` ou `INVALID`."
+          description: "`PENDING`, `FAILED` ou `INVALID`; a lista pode crescer."
       required:
       - attempts
       - createdAt
