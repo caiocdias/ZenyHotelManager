@@ -41,6 +41,7 @@ import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.awaitility.Awaitility.await
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -258,6 +259,27 @@ class MilestoneM6EndToEndTest(
                 val due = billing.balance(booked.folio)
                 due shouldBe
                     nights.fold(BigDecimal.ZERO) { sum, night -> sum + BigDecimal(night.second) }.toPlainString()
+                // Atacado: o check-out antes do pagamento é recusado com o saldo e não grava nada. A diária é também
+                // conferida contra o literal do preço cadastrado (300.00 por noite, um adulto), não só a reserva.
+                nights.map { it.second } shouldContainExactly listOf("300.00", "300.00")
+                due shouldBe "600.00"
+                api(POST, "/api/v1/reservations/${booked.id}/check-out", receptionist)
+                    .problem(409, "FOLIO_BALANCE_NOT_ZERO")
+                    .let { refusal ->
+                        refusal["total"].asString() shouldBe "600.00"
+                        refusal["folios"].values().map { it["folioId"].asString() to it["balance"].asString() } shouldBe
+                            listOf(booked.folio.toString() to "600.00")
+                    }
+                withClue("o check-out recusado não grava nada") {
+                    support.status(booked.id) shouldBe "IN_HOUSE"
+                    billing.folio(booked.folio)["status"].asString() shouldNotBe "CLOSED"
+                    billing.balance(booked.folio) shouldBe "600.00"
+                    roomsApi.status(RoomId(stay.room))!!.occupancy.name shouldBe "OCCUPIED"
+                    roomCharges(booked.folio).map { it.second } shouldContainExactly listOf("300.00", "300.00")
+                    tasksOf(stay.room).map { it.date to it.source } shouldContainExactly listOf(d1 to "STAYOVER")
+                    fnrhStatuses(booked.id).map { it.first } shouldContainExactly
+                        listOf(FnrhOperation.REGISTER_RESERVATION, FnrhOperation.CHECK_IN)
+                }
                 api(
                     POST,
                     "/api/v1/folios/${booked.folio}/payments",
@@ -303,6 +325,16 @@ class MilestoneM6EndToEndTest(
                         FnrhOperation.CHECK_OUT to FnrhSubmissionStatus.SENT,
                     )
                 fnrhCallsOf(stay, booked.code).last() shouldBe "PATCH /hospedes/${stay.guestRemote}/checkout"
+                withClue("nenhum reenvio: cada chamada ao Serpro da estadia aparece uma vez, em ordem") {
+                    fnrhCallsOf(stay, booked.code) shouldContainExactly
+                        listOf(
+                            "POST /reservas",
+                            "GET /pessoas/documento/CPF/${stay.cpf}",
+                            "POST /pessoas",
+                            "POST /reservas/${stay.remote}/hospedes",
+                            "PATCH /hospedes/${stay.guestRemote}/checkout",
+                        )
+                }
             }
         // Cada passo da limpeza roda mesmo se um anterior falhar; a falha do cenário prevalece, com as da limpeza
         // como suprimidas.
