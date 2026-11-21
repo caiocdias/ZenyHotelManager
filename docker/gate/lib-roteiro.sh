@@ -478,14 +478,39 @@ leaked_kinds() {
 # varredura da própria saída o acharia nos rótulos.
 JWT_PREFIX=eyJ
 
-# leak_sweep <seção> <mínimo de valores>: a varredura, sempre a última seção. Os logs da api, do db, do proxy, do
-# storage e do storage-init (o fnrh-mock fica de fora: faz o papel do Serpro) e a própria saída do roteiro não contêm
-# nenhum valor registrado com secret nem o prefixo de um JWT; na falha, só o tipo do valor achado.
+# log_warnings <arquivo do log da api>: as mensagens WARN e ERROR distintas do log JSON (ECS) da api, com a contagem,
+# o nível, o logger e a mensagem. Cada linha é redigida (os valores registrados com secret viram ***) antes de qualquer
+# normalização, e só depois os UUIDs viram {uuid} e os números, {n} (para agrupar), com a linha cortada em 220
+# caracteres. A pilha de exceção (error.stack_trace) fica de fora. O docker/gate/README.md explica cada grupo
+# esperado; um WARN ou ERROR fora da lista é achado.
+log_warnings() {
+    local line
+    jq -Rr 'fromjson? // empty
+        | {l: (.log.level? // ."log.level"? // ""), g: (.log.logger? // ."log.logger"? // "?"), m: (.message // "")}
+        | select(.l == "WARN" or .l == "ERROR") | "\(.l) \(.g): \(.m | gsub("[\r\n]+"; " "))"' "$1" 2>/dev/null |
+        while IFS= read -r line; do
+            line=$(redact "$line")
+            printf '%s\n' "${line:0:400}"
+        done |
+        sed -E 's/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/{uuid}/g; s/[0-9]+/{n}/g' |
+        cut -c1-220 | sort | uniq -c | sort -rn
+}
+
+# leak_sweep <seção> <mínimo de valores>: a varredura, sempre a última seção. Antes dela, a lista dos WARN e ERROR
+# distintos do log da api (log_warnings). Os logs da api, do db, do proxy, do storage e do storage-init (o fnrh-mock
+# fica de fora: faz o papel do Serpro) e a própria saída do roteiro (com a lista) não contêm nenhum valor registrado
+# com secret nem o prefixo de um JWT; na falha, só o tipo do valor achado. O mínimo conta valores distintos.
 leak_sweep() {
-    local n=$1 min=$2
+    local n=$1 min=$2 distinct
     section "$n. Varredura: logs do compose (sem o fnrh-mock) e a própria saída, sem segredo nem dado de hóspede"
+    "${DC[@]}" logs --no-color --no-log-prefix api >"$T/log-api-json" 2>/dev/null
+    printf 'WARN e ERROR distintos no log da api (contagem, nível, logger: mensagem; redigidos e normalizados):\n'
+    log_warnings "$T/log-api-json" | sed 's/^/    /'
+    rm -f -- "$T/log-api-json"
     check "[$n] fnrh-mock: nenhum pedido não casado até o fim" 0 "$(mock_unmatched)"
-    check "[$n] valores procurados (≥ $min)" true "$(bool [ "${#SECRETS[@]}" -ge "$min" ])"
+    distinct=$(printf '%s\n' "${SECRETS[@]}" | sort -u | wc -l)
+    printf 'valores procurados distintos: %d\n' "$distinct"
+    check "[$n] valores procurados distintos (≥ $min)" true "$(bool [ "$distinct" -ge "$min" ])"
     local svc rc
     for svc in api db proxy storage storage-init; do
         "${DC[@]}" logs --no-color "$svc" >"$T/log-$svc" 2>"$T/compose.out"

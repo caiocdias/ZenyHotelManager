@@ -450,14 +450,16 @@ s4_check_in() {
         secret "$name" hóspede
         secret "$email" hóspede
         guest_fixed_secrets "$birth"
-        jq -n --arg name "$name" --arg birth "$birth" --arg email "$email" --arg cpf "$cpf" \
-            '{profile: {fullName: $name, socialName: null, nationality: "BR", birthDate: $birth, gender: "FEMALE",
-                email: $email, phone: "+55 11 98765-4321", residenceCountry: "BR",
-                address: {street: "Rua das Acácias", number: "742", complement: "Apto 12", district: "Jardim Paulista",
-                          city: "São Paulo", state: "SP", postalCode: "01407-000", ibgeCityCode: "3550308"},
+        # Os dados de hóspede entram no jq pelo ambiente, nunca por argumento de processo (como no new_guest).
+        G_NAME=$name G_BIRTH=$birth G_EMAIL=$email G_CPF=$cpf G_PHONE=$GUEST_PHONE G_STREET=$GUEST_STREET \
+            G_POSTAL=$GUEST_POSTAL_CODE jq -n \
+            '{profile: {fullName: env.G_NAME, socialName: null, nationality: "BR", birthDate: env.G_BIRTH,
+                gender: "FEMALE", email: env.G_EMAIL, phone: env.G_PHONE, residenceCountry: "BR",
+                address: {street: env.G_STREET, number: "742", complement: "Apto 12", district: "Jardim Paulista",
+                          city: "São Paulo", state: "SP", postalCode: env.G_POSTAL, ibgeCityCode: "3550308"},
                 preferences: {floor: "Alto", bed: "Casal", pillow: "Baixo"}, vip: false,
                 notes: "Prefere quarto silencioso", companyId: null},
-              documents: [{type: "CPF", issuingCountry: null, number: $cpf}],
+              documents: [{type: "CPF", issuingCountry: null, number: env.G_CPF}],
               sensitiveData: {raceColor: "BROWN"}}' >"$T/req.json"
         req POST /guests recepcao "$T/req.json"
         check_http "[4] hóspede ($who) pela Recepcionista" 201
