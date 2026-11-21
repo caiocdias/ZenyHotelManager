@@ -8,7 +8,7 @@
 #   <env-file>  o gate.env gerado pelo gate-env.sh (a senha do admin é lida dele, sem eco)
 #
 # Pré-requisito: o ambiente recém-subido (up -d --build depois de um down -v) e com o readiness UP; o roteiro faz a
-# troca obrigatória da senha do admin inicial e fecha dois dias de verdade (a data operacional avança no banco do
+# troca obrigatória da senha do admin inicial e fecha três dias de verdade (a data operacional avança no banco do
 # gate), então não roda duas vezes no mesmo banco. Ele não sobe nem derruba nada: o up e o down -v (sempre, também em
 # falha) ficam com quem o chama (docker/gate/run-gate.sh, com o roteiro m6; docker/gate/README.md).
 #
@@ -26,8 +26,8 @@ ROTEIRO=m6
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=docker/gate/lib-roteiro.sh
 . "$script_dir/lib-roteiro.sh" "$@"
-# Os cinco operadores do roteiro, renovados pelo ensure_tokens.
-OPERATORS=(admin recepcao gerente governanta camareira)
+# Os seis operadores do roteiro, renovados pelo ensure_tokens.
+OPERATORS=(admin recepcao gerente governanta camareira manutencao)
 
 # --- Dados de teste -----------------------------------------------------------------------------------------------
 
@@ -277,9 +277,38 @@ set_credits() {
     req PUT "/cleaning-types/$1" governanta "$T/req.json" "If-Match: $tag"
 }
 
+# download <URL assinada>: GET sem token de acesso, como o req (ST, $T/body e $T/headers), mas com a URL num arquivo
+# de configuração do curl (-K, modo 600): o token da URL nunca vai para um argumento de processo.
+download() {
+    URL=$1 jq -rn '"url = \(env.URL | @json)"' >"$T/url.cfg"
+    ST=$(curl -s --max-time 60 -o "$T/body" -D "$T/headers" -w '%{http_code}' -K "$T/url.cfg") || true
+    rm -f -- "$T/url.cfg"
+    [ -n "$ST" ] || ST=000
+}
+
+# manager_approval <seção> <quem> <motivo>: o Gerente aprova, com login e PIN, na sessão de <quem>, a ação recusada
+# com 403 APPROVAL_REQUIRED cujo problema ficou em $T/approval-problem.json (ação, permissão e recurso). O token de
+# aprovação vai só para $T/approval.hdr (X-Approval-Token, arquivo de cabeçalho) e para a lista de segredos; o
+# problema é apagado. O token vale só na sessão de <quem>, uma vez e por 2 min: nada de ensure_tokens até o uso.
+manager_approval() {
+    PIN=$MANAGER_PIN REASON=$3 jq '{action, permission, resourceRef, approverLogin: "gerente", approverPin: env.PIN,
+        reason: env.REASON}' "$T/approval-problem.json" >"$T/approval.json"
+    rm -f -- "$T/approval-problem.json"
+    NO_IDEM=1 req POST /auth/approvals "$2" "$T/approval.json"
+    rm -f -- "$T/approval.json"
+    check_http "[$1] aprovação do Gerente com login e PIN" 201
+    local approval_token
+    approval_token=$(jb .approvalToken)
+    secret "$approval_token" "token de aprovação"
+    check "[$1] aprovador é o Gerente" "$MANAGER_ID" "$(jb .approverId)"
+    printf 'X-Approval-Token: %s\n' "$approval_token" >"$T/approval.hdr"
+    : >"$T/body"
+}
+
 # ==================================================================================================================
-# Seções. Cada uma é uma função; o estado que passa de uma a outra fica em variáveis globais (as datas D0 a D2, os ids
-# da reserva, da conta, da UH, da Camareira, da rotina, dos modelos e das execuções do fechamento). Para acrescentar uma
+# Seções. Cada uma é uma função; o estado que passa de uma a outra fica em variáveis globais (as datas D0 a D3, os ids
+# das reservas, das contas, das UHs, da Camareira, da rotina, dos modelos, das execuções do fechamento, da OS e do
+# dano). Para acrescentar uma
 # seção, escreva a função e a ponha em SECTIONS (no fim do arquivo), antes da varredura, que fica por último.
 # ==================================================================================================================
 
@@ -297,7 +326,7 @@ s1_public() {
 }
 
 s2_users() {
-    section "2. Administrador inicial e operadores dos modelos de role (Recepcionista, Gerente, Governanta, Camareira)"
+    section "2. Administrador inicial e operadores dos modelos de role (Recepcionista, Gerente, Governanta, Camareira, Manutenção)"
     local admin_initial admin_login
     admin_login=$(env_value ZENY_ADMIN_LOGIN)
     admin_login=${admin_login:-admin}
@@ -322,9 +351,9 @@ s2_users() {
     req GET "/roles?limit=100" admin
     check_http "[2] GET /roles" 200
     declare -A role_of template_of=([recepcao]=RECEPTIONIST [gerente]=MANAGER [governanta]=HOUSEKEEPER
-        [camareira]=ROOM_ATTENDANT)
+        [camareira]=ROOM_ATTENDANT [manutencao]=MAINTENANCE)
     local who
-    for who in recepcao gerente governanta camareira; do
+    for who in recepcao gerente governanta camareira manutencao; do
         role_of[$who]=$(jq -r --arg t "${template_of[$who]}" '[.items[] | select(.template == $t)][0].id' "$T/body")
         check "[2] modelo ${template_of[$who]} no boot" true "$(bool is_uuid "${role_of[$who]}")"
     done
@@ -332,7 +361,7 @@ s2_users() {
     MANAGER_PIN=$(printf '%06d' $((16#$(openssl rand -hex 3) % 1000000)))
     secret "$MANAGER_PIN" PIN
     local provisional
-    for who in recepcao gerente governanta camareira; do
+    for who in recepcao gerente governanta camareira manutencao; do
         provisional=$(openssl rand -hex 16)
         secret "$provisional" "senha de usuário"
         LOGIN_OF[$who]=$who
@@ -358,6 +387,7 @@ s2_users() {
                 ;;
             governanta) HOUSEKEEPER_ID=$(jb .id) ;;
             camareira) ATTENDANT_ID=$(jb .id) ;;
+            manutencao) MAINTENANCE_ID=$(jb .id) ;;
         esac
         login "$who" "$who" "$provisional"
         check_http "[2] login de $who com a senha provisória" 200
@@ -367,8 +397,8 @@ s2_users() {
         check_http "[2] login de $who com a senha nova" 200
         check "[2] $who sem troca pendente" false "$(jb .passwordChangeRequired)"
     done
-    check "[2] ids dos quatro operadores" "true true true true" \
-        "$(bool is_uuid "$RECEPTIONIST_ID") $(bool is_uuid "$MANAGER_ID") $(bool is_uuid "$HOUSEKEEPER_ID") $(bool is_uuid "$ATTENDANT_ID")"
+    check "[2] ids dos cinco operadores" "true true true true true" \
+        "$(bool is_uuid "$RECEPTIONIST_ID") $(bool is_uuid "$MANAGER_ID") $(bool is_uuid "$HOUSEKEEPER_ID") $(bool is_uuid "$ATTENDANT_ID") $(bool is_uuid "$MAINTENANCE_ID")"
     LOGIN_AT=$SECONDS
 }
 
@@ -575,20 +605,11 @@ s5_close_d0() {
     check "[5] ação, permissão e recurso da aprovação" \
         "endofday.run.start endofday.runs.execute endofday.business-date:$D0" \
         "$(jb '"\(.action) \(.permission) \(.resourceRef)"')"
-    PIN=$MANAGER_PIN jq '{action, permission, resourceRef, approverLogin: "gerente", approverPin: env.PIN,
-        reason: "Fechamento do dia pela recepção"}' "$T/body" >"$T/approval.json"
+    cp -- "$T/body" "$T/approval-problem.json"
     check "[5] a recusa não cria execução" 0 "$(runs_on "$D0")"
 
     # A aprovação na sessão da Recepcionista (o token vale só nela, uma vez, 2 min): nada de ensure_tokens até o uso.
-    NO_IDEM=1 req POST /auth/approvals recepcao "$T/approval.json"
-    rm -f -- "$T/approval.json"
-    check_http "[5] aprovação do Gerente com login e PIN" 201
-    local approval_token
-    approval_token=$(jb .approvalToken)
-    secret "$approval_token" "token de aprovação"
-    check "[5] aprovador é o Gerente" "$MANAGER_ID" "$(jb .approverId)"
-    printf 'X-Approval-Token: %s\n' "$approval_token" >"$T/approval.hdr"
-    : >"$T/body"
+    manager_approval 5 recepcao "Fechamento do dia pela recepção"
     close_day recepcao "$D0" "$T/approval.hdr"
     rm -f -- "$T/approval.hdr"
     check_http "[5] fechamento de D0 com a aprovação" 201
@@ -734,13 +755,318 @@ s10_fnrh() {
     check "[10] fnrh-mock: todos os pedidos com Basic" true "$(mock_all_basic)"
 }
 
-s11_leak_sweep() {
-    leak_sweep 11 25
+s11_archive_and_issues() {
+    section "11. Arquivo do fechamento (snapshot e DAY_REPORT de D0, PDF pelo files) e pendências sem dado de hóspede"
+    ensure_tokens
+    # O snapshot não tem endpoint (os KPIs são do M10): a linha de D0 pelo psql, uma por data.
+    local snapshots d0_snapshot
+    if is_date "$D0" && is_date "$D1"; then
+        snapshots=$(sql <<SQL
+SELECT string_agg(business_date::text || ':' || n, ',' ORDER BY business_date) FROM (
+    SELECT business_date, count(*) AS n FROM reporting.daily_statistics
+    WHERE business_date IN ('$D0', '$D1') GROUP BY business_date) t;
+SQL
+        )
+        d0_snapshot=$(sql <<SQL
+SELECT rooms_sold || '|' || rooms_available || '|' || arrivals || '|' || departures || '|' || room_revenue
+FROM reporting.daily_statistics WHERE business_date = '$D0';
+SQL
+        )
+    fi
+    check "[11] psql: um snapshot por data (D0 e D1)" "$D0:1,$D1:1" "${snapshots:-}"
+    check "[11] psql: snapshot de D0 (vendidas, disponíveis, chegadas, saídas, receita de diárias)" \
+        "1|1|1|0|$ONE_ADULT" "${d0_snapshot:-}"
+
+    req GET "/reports/archive?date=$D0" gerente
+    check_http "[11] arquivo de D0 pelo Gerente" 200
+    check "[11] arquivo de D0: um DAY_REPORT" "$D0 DAY_REPORT" "$(jb '"\(.date) \([.reports[].kind] | join(","))"')"
+    local file_id url token
+    file_id=$(jb '.reports[0].fileId')
+    check "[11] DAY_REPORT com o id do anexo" true "$(bool is_uuid "$file_id")"
+    req GET "/reports/archive?date=$D1" gerente
+    check_http "[11] arquivo de D1 pelo Gerente" 200
+    check "[11] arquivo de D1: um DAY_REPORT" "$D1 DAY_REPORT" "$(jb '"\(.date) \([.reports[].kind] | join(","))"')"
+    req GET "/reports/archive?date=$D0" camareira
+    check_http "[11] a Camareira não lê o arquivo" 403
+    req GET "/files/$file_id/download-url" camareira
+    check_http "[11] a Camareira não baixa o DAY_REPORT" 403
+
+    req GET "/files/$file_id" gerente
+    check_http "[11] anexo do DAY_REPORT" 200
+    check "[11] anexo PDF e sensível" "application/pdf true" "$(jb '"\(.contentType) \(.sensitive)"')"
+    req GET "/files/$file_id/download-url" gerente
+    check_http "[11] URL de download do DAY_REPORT pelo Gerente" 200
+    url=$(jb .url)
+    token=${url#*token=}
+    token=${token%%&*}
+    secret "$token" "token de download"
+    secret "$url" "token de download"
+    local own_url=false
+    [ -n "$token" ] && [ "$token" != "$url" ] && [[ $url == */api/v1/files/$file_id/content\?* ]] && own_url=true
+    check "[11] URL do próprio servidor (anexo sensível), com token" true "$own_url"
+    [[ $url == http* ]] || url=$BASE$url
+    download "$url"
+    check_http "[11] download do DAY_REPORT pela URL, sem token de acesso" 200
+    check "[11] download em application/pdf" application/pdf "$(hdr content-type | cut -d';' -f1)"
+    check "[11] o conteúdo é um PDF" true "$(bool starts_with_pdf)"
+
+    local run
+    for run in "$RUN_D0" "$RUN_D1"; do
+        req GET "/end-of-day/runs/$run/issues?limit=100" gerente
+        check_http "[11] pendências da execução" 200
+        check "[11] pendências só da execução" true "$(jq --arg r "$run" '[.items[] | .runId == $r] | all' "$T/body")"
+        printf 'pendências da execução: %s\n' "$(jb '[.items[].kind] | group_by(.) | map("\(.[0]) \(length)") | join(", ")')"
+        check "[11] pendências sem segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/body")"
+    done
+}
+
+s12_reports() {
+    section "12. Painel do dia e relatório de governança (JSON, CSV e XLSX)"
+    ensure_tokens
+    req GET "/reports/day-panel?days=3" gerente
+    check_http "[12] painel do dia pelo Gerente" 200
+    check "[12] painel na data operacional (D2)" "$D2" "$(jb .businessDate)"
+    check "[12] UHs de hoje: ativa, vaga, ocupada, inspecionada, OOO" "1 1 0 1 0" \
+        "$(jb '"\(.rooms.active) \(.rooms.vacant) \(.rooms.occupied) \(.rooms.inspected) \(.rooms.outOfOrder)"')"
+    check "[12] D2: chegadas, saídas e hospedados" "$D2 0 1 0" \
+        "$(jb '.days[0] | "\(.date) \(.arrivals) \(.departures) \(.hosted)"')"
+    check "[12] painel sem segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/body")"
+    req GET "/reports/day-panel?days=3" camareira
+    check_http "[12] a Camareira não lê o painel" 403
+
+    local period="from=$D0&to=$D2"
+    req GET "/reports/housekeeping?$period" governanta
+    check_http "[12] relatório de governança pela Governanta" 200
+    check "[12] a Camareira: UHs e créditos (permanência e saída)" "$EMPLOYEE_ID:2:$((STAYOVER_CREDITS + CHECKOUT_CREDITS))" \
+        "$(jb '[.attendants[] | "\(.employeeId):\(.rooms):\(.credits)"] | join(",")')"
+    check "[12] inspeção voluntária de D1, sem reprovação" "1 0" \
+        "$(jb '"\(.voluntaryInspections.inspections) \(.voluntaryInspections.rejections)"')"
+    req GET "/reports/housekeeping/csv?$period" governanta
+    check_http "[12] relatório de governança em CSV" 200
+    check "[12] CSV em text/csv" text/csv "$(hdr content-type | cut -d';' -f1)"
+    check "[12] CSV em UTF-8 com BOM" efbbbf "$(head -c 3 "$T/body" | od -An -tx1 | tr -d ' \n')"
+    check "[12] CSV sem segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/body")"
+    req GET "/reports/housekeeping/xlsx?$period" governanta
+    check_http "[12] relatório de governança em XLSX" 200
+    check "[12] XLSX no tipo do Office" application/vnd.openxmlformats-officedocument.spreadsheetml.sheet \
+        "$(hdr content-type | cut -d';' -f1)"
+    check "[12] XLSX é um zip (PK)" PK "$(head -c 2 "$T/body")"
+    check "[12] exportação sem cache" no-store "$(hdr cache-control)"
+}
+
+# wo_action <quem> <ação> [arquivo do corpo] [cabeçalho extra]: POST /work-orders/<id>/<ação> com o If-Match da OS.
+wo_action() {
+    req GET "/work-orders/$WORK_ORDER" "$1"
+    local tag
+    tag=$(hdr etag)
+    if [ -n "${4:-}" ]; then
+        req POST "/work-orders/$WORK_ORDER/$2" "$1" "${3:-}" "If-Match: $tag" "$4"
+    else
+        req POST "/work-orders/$WORK_ORDER/$2" "$1" "${3:-}" "If-Match: $tag"
+    fi
+}
+
+s13_work_order() {
+    section "13. OS corretiva da UH 1301 com OOO aprovado pelo Gerente (PIN) e concluída: a UH volta Suja"
+    ensure_tokens
+    D3=$(date -d "$D2 +1 day" +%F)
+    jq -n --arg r "$ROOM_ID" '{roomId: $r, category: "AIR_CONDITIONING", priority: "HIGH", origin: "HOUSEKEEPING",
+        description: "Ar-condicionado não gela"}' >"$T/req.json"
+    req POST /work-orders governanta "$T/req.json"
+    check_http "[13] OS aberta pela Governanta" 201
+    WORK_ORDER=$(jb .id)
+    check "[13] OS aberta, com número OS-AAAA-NNNNNN" "OPEN true" \
+        "$(jb '"\(.status) \(.number | test("^OS-[0-9]{4}-[0-9]{6}$"))"')"
+
+    jq -n --arg s "$D2" --arg e "$D3" '{kind: "OUT_OF_ORDER", startsOn: $s, endsOn: $e}' >"$T/block.json"
+    wo_action manutencao room-block "$T/block.json"
+    check_http "[13] OOO pela Manutenção sem aprovação" 403
+    check "[13] code APPROVAL_REQUIRED" APPROVAL_REQUIRED "$(problem_code)"
+    check "[13] ação, permissão e recurso da aprovação (com a UH)" \
+        "maintenance.work-order.block-room rooms.outoforder.manage maintenance.work-order:$WORK_ORDER/rooms.room:$ROOM_ID" \
+        "$(jb '"\(.action) \(.permission) \(.resourceRef)"')"
+    cp -- "$T/body" "$T/approval-problem.json"
+    check "[13] a recusa não bloqueia a UH" null "$(room_status_ooo)"
+    manager_approval 13 manutencao "OOO da OS de ar-condicionado"
+    wo_action manutencao room-block "$T/block.json" "@$T/approval.hdr"
+    rm -f -- "$T/approval.hdr" "$T/block.json"
+    check_http "[13] OOO pela Manutenção com a aprovação" 200
+    OOO_ID=$(jb .outOfOrderId)
+    check "[13] OS com o período OOO" true "$(bool is_uuid "$OOO_ID")"
+    check "[13] UH em OOO de D2 a D3" "$OOO_ID OUT_OF_ORDER $D2 $D3" "$(room_status_ooo)"
+    req GET "/rooms/$ROOM_ID/out-of-order/$OOO_ID" gerente
+    check "[13] OOO com retorno Suja" DIRTY "$(jb .returnStatus)"
+    req GET "/reports/day-panel?days=1" gerente
+    check "[13] painel: uma UH em OOO" 1 "$(jb .rooms.outOfOrder)"
+
+    wo_action manutencao start
+    check_http "[13] OS iniciada pela Manutenção" 200
+    check "[13] OS em andamento" IN_PROGRESS "$(jb .status)"
+    jq -n '{laborCost: "80.00", partsCost: "35.50", notes: "Gás recarregado"}' >"$T/req.json"
+    wo_action manutencao complete "$T/req.json"
+    check_http "[13] OS concluída pela Manutenção (sem aprovação)" 200
+    check "[13] OS concluída, com custos" "DONE 80.00 35.50 true" \
+        "$(jb '"\(.status) \(.laborCost) \(.partsCost) \(.closedAt != null)"')"
+    req GET "/rooms/$ROOM_ID/out-of-order/$OOO_ID" gerente
+    check "[13] OOO liberado em D2" "$D2" "$(jb .releasedOn)"
+    check "[13] UH sem OOO" null "$(room_status_ooo)"
+    check "[13] UH vaga e Suja de volta" "VACANT DIRTY" "$(room_status "$ROOM_ID")"
+}
+
+# O período OOO/OOS em vigor na UH do roteiro: "<id> <tipo> <início> <fim>", ou null.
+room_status_ooo() {
+    req GET "/rooms/$ROOM_ID/status" admin
+    jb 'if .outOfOrder == null then "null" else "\(.outOfOrder.id) \(.outOfOrder.kind) \(.outOfOrder.startsOn) \(.outOfOrder.endsOn)" end'
+}
+
+s14_lost_and_found_and_damage() {
+    section "14. Segunda reserva na 1302: achado e perdido e dano revisado e lançado na conta"
+    ensure_tokens
+    jq -n --arg t "$TYPE_ID" '{number: "1302", floor: "13º andar", roomTypeId: $t, featureIds: [], notes: "Gate do M6"}' \
+        >"$T/req.json"
+    req POST /rooms gerente "$T/req.json"
+    check_http "[14] UH 1302 pelo Gerente" 201
+    ROOM2_ID=$(jb .id)
+    local total deadline=$((SECONDS + 60))
+    while :; do
+        req GET "/room-type-inventory?roomTypeId=$TYPE_ID&from=$D2&to=$D2" gerente
+        total=$(jb '.items[0].total')
+        [ "$total" = 2 ] || [ "$SECONDS" -ge "$deadline" ] && break
+        sleep 2
+    done
+    check "[14] inventário do tipo com as duas UHs" 2 "$total"
+    housekeeping "$ROOM2_ID" MARK_CLEAN
+    check_http "[14] UH 1302 limpa pelo Gerente" 200
+    housekeeping "$ROOM2_ID" MARK_INSPECTED
+    check_http "[14] UH 1302 inspecionada pelo Gerente" 200
+
+    new_guest Segundo
+    check_http "[14] segundo hóspede pela Recepcionista" 201
+    jq -n --arg h "$GUEST_ID" --arg t "$TYPE_ID" --arg p "$PLAN_ID" --arg a "$D2" --arg d "$D3" \
+        '{holderGuestId: $h, origin: "PHONE", externalId: null,
+          reservations: [{roomTypeId: $t, ratePlanId: $p, arrival: $a, departure: $d, adults: 1, childAges: [],
+            segment: "LEISURE", specialRequests: null, guests: [{guestId: $h, primary: true}], nightlyRates: []}]}' \
+        >"$T/req.json"
+    req POST /bookings recepcao "$T/req.json"
+    check_http "[14] segunda reserva (D2 a D3)" 201
+    RES2_ID=$(jb '.reservations[0].id')
+    FOLIO2_ID=$(jb '.reservations[0].folioId')
+    check "[14] segunda reserva e conta com id" "true true" "$(bool is_uuid "$RES2_ID") $(bool is_uuid "$FOLIO2_ID")"
+    jq -n --arg r "$ROOM2_ID" '{roomId: $r}' >"$T/req.json"
+    req POST "/reservations/$RES2_ID/assign-room" recepcao "$T/req.json"
+    check_http "[14] alocação da UH 1302" 200
+    jq -n --arg h "$GUEST_ID" \
+        '{guests: [{guestId: $h, primary: true, travelReason: "LAZER_FERIAS", transportMode: "AUTOMOVEL",
+                    minorAuthorization: null}]}' >"$T/req.json"
+    req POST "/reservations/$RES2_ID/check-in" recepcao "$T/req.json"
+    check_http "[14] check-in da segunda reserva na 1302" 200
+    check "[14] segunda reserva em casa na 1302" "IN_HOUSE $ROOM2_ID" \
+        "$(jb '"\(.reservation.status) \(.reservation.roomId)"')"
+
+    # Achado e perdido: registrado pela Camareira, visto pela Governanta.
+    jq -n --arg r "$ROOM2_ID" '{roomId: $r, description: "Carregador de celular", storagePlace: "Recepção, gaveta 2"}' \
+        >"$T/req.json"
+    req POST /lost-and-found-items camareira "$T/req.json"
+    check_http "[14] achado e perdido pela Camareira" 201
+    local item
+    item=$(jb .id)
+    check "[14] achado na 1302, pela Camareira, guardado e no prazo" "$ROOM2_ID $ATTENDANT_ID Recepção, gaveta 2 false" \
+        "$(jb '"\(.roomId) \(.reportedBy) \(.storagePlace) \(.expired)"')"
+    req GET "/lost-and-found-items?limit=100" governanta
+    check_http "[14] achados e perdidos pela Governanta" 200
+    check "[14] a Governanta vê o achado" 1 "$(jq --arg i "$item" '[.items[] | select(.id == $i)] | length' "$T/body")"
+
+    # Dano: registrado pela Camareira na UH ocupada (vínculo sugerido, visível só a quem gere danos), revisado e
+    # lançado pelo Gerente na conta da segunda reserva.
+    jq -n --arg r "$ROOM2_ID" '{roomId: $r, description: "Espelho do banheiro trincado", estimatedCost: "150.00"}' \
+        >"$T/req.json"
+    req POST /damage-reports camareira "$T/req.json"
+    check_http "[14] dano pela Camareira" 201
+    DAMAGE_ID=$(jb .id)
+    check "[14] dano REPORTED, sem o vínculo para a Camareira" "REPORTED null" "$(jb '"\(.status) \(.reservationId)"')"
+    req GET "/damage-reports/$DAMAGE_ID" gerente
+    check_http "[14] dano lido pelo Gerente" 200
+    check "[14] vínculo sugerido: a segunda reserva" "$RES2_ID" "$(jb .reservationId)"
+
+    req GET "/transaction-codes?limit=100" admin
+    local code
+    code=$(jb '[.items[] | select(.key == "MISCELLANEOUS" and .active)][0] | "\(.id) \(.kind)"')
+    check "[14] código de diversos, do tipo CHARGE" "true CHARGE" "$(bool is_uuid "${code% *}") ${code#* }"
+    code=${code% *}
+
+    jq -n --arg c "$code" --arg r "$RES2_ID" '{finalAmount: "120.00", transactionCodeId: $c, reservationId: $r}' \
+        >"$T/review.json"
+    damage_action camareira review "$T/review.json"
+    check_http "[14] a Camareira não revisa o dano" 403
+    damage_action gerente review "$T/review.json"
+    rm -f -- "$T/review.json"
+    check_http "[14] dano revisado pelo Gerente" 200
+    check "[14] dano REVIEWED, 120.00, com o vínculo" "REVIEWED 120.00 $RES2_ID" \
+        "$(jb '"\(.status) \(.finalAmount) \(.reservationId)"')"
+    jq -n --arg f "$FOLIO2_ID" '{folioId: $f}' >"$T/req.json"
+    damage_action gerente charge "$T/req.json"
+    check_http "[14] dano lançado na conta pelo Gerente" 200
+    check "[14] dano CHARGED na conta da segunda reserva" "CHARGED $FOLIO2_ID true" \
+        "$(jb '"\(.status) \(.folioId) \(.postingId != null)"')"
+    req GET "/folios/$FOLIO2_ID/postings?limit=200" recepcao
+    check_http "[14] lançamentos da segunda conta" 200
+    check "[14] um lançamento do dano, sem taxa de serviço, na data D2" "1 120.00 $code null $D2" \
+        "$(jb '[.items[] | select(.description == "Dano na UH 1302")]
+            | "\(length) \(.[0].amount) \(.[0].transactionCodeId) \(.[0].serviceChargePostingId) \(.[0].businessDate)"')"
+}
+
+# damage_action <quem> <ação> <arquivo do corpo>: POST /damage-reports/<id>/<ação> com o If-Match do dano.
+damage_action() {
+    req GET "/damage-reports/$DAMAGE_ID" gerente
+    local tag
+    tag=$(hdr etag)
+    req POST "/damage-reports/$DAMAGE_ID/$2" "$1" "$3" "If-Match: $tag"
+}
+
+s15_close_d2() {
+    section "15. Fechamento de D2 com um caixa aberto: a pendência sem dado de hóspede"
+    ensure_tokens
+    jq -n '{name: "Caixa do gate M6 (D2)", blindClose: false}' >"$T/req.json"
+    req POST /cash-points gerente "$T/req.json"
+    check_http "[15] segundo ponto de caixa pelo Gerente" 201
+    jq -n --arg c "$(jb .id)" '{cashPointId: $c, openingFloat: "50.00"}' >"$T/req.json"
+    req POST /cashier-shifts recepcao "$T/req.json"
+    check_http "[15] turno de caixa deixado aberto pela Recepcionista" 201
+    local shift first_res=$RES_ID
+    shift=$(jb .id)
+    # O envio da segunda reserva à FNRH (job de 1 min) antes do fechamento: senão, as submissões dela ainda PENDING
+    # viram pendências FNRH_SUBMISSION_PENDING (referência = a reserva) e a lista depende do relógio do job.
+    RES_ID=$RES2_ID
+    poll "REGISTER_RESERVATION:SENT,CHECK_IN:SENT" 180 5 fnrh_submissions
+    RES_ID=$first_res
+    check "[15] FNRH da segunda reserva enviada antes do fechamento (≤ 3 min)" \
+        "REGISTER_RESERVATION:SENT,CHECK_IN:SENT" "$GOT"
+    close_day gerente "$D2"
+    check_http "[15] fechamento de D2 pelo Gerente" 201
+    RUN_D2=$(jb .id)
+    await_run 15 "$RUN_D2"
+    business_date recepcao
+    check "[15] data operacional em D3" "$D3" "$BD"
+    req GET "/end-of-day/runs/$RUN_D2/issues?limit=100" gerente
+    check_http "[15] pendências da execução de D2" 200
+    check "[15] pendência do caixa aberto, pelo id do turno" "CASHIER_SHIFT_OPEN end-of-day-pending" \
+        "$(jq -r --arg s "$shift" '[.items[] | select(.reference == $s)][0] | "\(.kind) \(.stepName)"' "$T/body")"
+    printf 'pendências da execução de D2: %s\n' "$(jb '[.items[].kind] | group_by(.) | map("\(.[0]) \(length)") | join(", ")')"
+    check "[15] pendências de D2 sem segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/body")"
+    check "[15] nenhuma pendência cita a segunda reserva nem a conta dela" 0 \
+        "$(jq --arg r "$RES2_ID" --arg f "$FOLIO2_ID" '[.items[] | select(.reference == $r or .reference == $f)] | length' "$T/body")"
+    req GET "/reports/archive?date=$D2" gerente
+    check "[15] arquivo de D2: um DAY_REPORT" "$D2 DAY_REPORT" "$(jb '"\(.date) \([.reports[].kind] | join(","))"')"
+}
+
+s16_leak_sweep() {
+    leak_sweep 16 50
 }
 
 # ==================================================================================================================
 
 SECTIONS=(s1_public s2_users s3_setup s4_check_in s5_close_d0 s6_stayover s7_close_d1 s8_check_out
-    s9_departure_task s10_fnrh s11_leak_sweep)
+    s9_departure_task s10_fnrh s11_archive_and_issues s12_reports s13_work_order s14_lost_and_found_and_damage
+    s15_close_d2 s16_leak_sweep)
 
 run_sections
