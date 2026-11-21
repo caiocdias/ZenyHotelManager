@@ -1,6 +1,6 @@
 # Roadmap — M6 Operação diária e fechamento
 
-> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-18
+> Arquivo: `docs/roadmaps/roadmap-m6-operacao-fechamento.md` · branch de execução: `roadmap/m6-operacao-fechamento` · criado em 2026-10-13 · última revisão 2026-11-21
 >
 > Marco 6 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · marco anterior: [M5 — Recepção, FNRH e impressão](roadmap-m5-recepcao-fnrh.md) · próximo marco: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md)
 >
@@ -2694,7 +2694,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** o `endofday` depende de `reporting` por exceção registrada na tabela da ARCHITECTURE §3.1, na mesma camada; não amplie essa aresta além da API de snapshot e arquivo. Leia os handoffs de E09, E23 e E11.
+**Notas para o plano:** o `endofday` depende de `reporting` por exceção registrada na tabela da ARCHITECTURE §3.1, na mesma camada; a aresta fica com as três operações da `ReportingApi`: `snapshotDailyStatistics`, `archiveDayReports` e `endOfDayPendingItems` (H24 a, decisão do usuário em 2026-11-20; texto ajustado pelo `arquiteto` em 2026-11-21), e não se amplia além delas. Leia os handoffs de E09, E23 e E11.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -2842,3 +2842,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-20 — fim do lote E22–E23 (`orquestrador`), encerrado a pedido do usuário: E22, E07, E08 e E09 `#concluida`; E23 `#em-andamento` (código, testes e revisão final concluídos, falta o gate do HEAD da branch). As decisões da H23 são do usuário; as demais, do orquestrador pela opção recomendada (autorização do usuário em 2026-11-19), estão nos handoffs.
 - 2026-11-20 — fim do lote E23–E12 (`orquestrador`): E23, E13 e E12 `#concluida`; o M6 e a Fase 1 concluídos, salvo a revisão humana da E12. Decisões do orquestrador pela opção recomendada nos handoffs; nenhuma outra etapa mudou de tag.
 - 2026-11-20 — entrevista do fim do lote E23–E12: H24 decidida pelo usuário (aresta `endofday → reporting` com três operações, lista do arquivo sem URLs, ruído da FNRH desligada no M8 e gate E12 aprovado).
+- 2026-11-21 — registros da H24 pelo `arquiteto` (sincronização do M7): (a) a nota da E13 passou a citar as três operações da `ReportingApi` na aresta `endofday → reporting` (a ARCHITECTURE §3.1 já as citava); (c) o agrupamento das pendências `FNRH_SUBMISSION_PENDING` com a FNRH sem integração entrou no M8 como a etapa nova E19. Destino das pendências técnicas deste marco, decidido pelo usuário na mesma data (H8 do M7): o `WARN` do `EndOfDayMetrics` e os Menores dos roteiros do gate vão para a M7 E13, e os advisories do `osv-scanner` para a M8 E17. Nenhuma tag, evidência ou handoff mudou.

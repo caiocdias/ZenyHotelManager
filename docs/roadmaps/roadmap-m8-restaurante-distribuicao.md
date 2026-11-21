@@ -1,10 +1,10 @@
 # Roadmap — M8 Restaurante, distribuição e inauguração
 
-> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · branch de execução: `roadmap/m8-restaurante-distribuicao` · criado em 2026-10-13 · última revisão 2026-11-06
+> Arquivo: `docs/roadmaps/roadmap-m8-restaurante-distribuicao.md` · branch de execução: `roadmap/m8-restaurante-distribuicao` · criado em 2026-10-13 · última revisão 2026-11-21
 >
 > Marco 8 de 11 · mapa dos marcos em [`docs/roadmaps/README.md`](README.md) · anterior: [M7 — Pagamentos integrados e fiscal](roadmap-m7-pagamentos-fiscal.md) · próximo: [M9 — Suprimentos](roadmap-m9-suprimentos.md)
 >
-> **Pré-requisito:** o gate do marco M7 (E12 de `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md`) está `#concluida`. Exceção controlada: se o gate de M7 ainda estiver pendente **apenas** porque os adaptadores reais de fornecedores (M7 E09, E10, E11) esperam a SPEC Q-05, as etapas E01–E08, E10, E12 e E14–E18 deste marco podem começar com M7 E01–E08 `#concluida`, usando os adaptadores falsos. O gate E13 deste marco exige o gate de M7 concluído e a homologação da FNRH (M5 E09).
+> **Pré-requisito:** o gate do marco M7 (E12 de `docs/roadmaps/roadmap-m7-pagamentos-fiscal.md`) está `#concluida`. Exceção controlada: se o gate de M7 ainda estiver pendente **apenas** porque os adaptadores reais de fornecedores (M7 E09, E10, E11) esperam a SPEC Q-05, as etapas E01–E08, E10, E12 e E14–E19 deste marco podem começar com M7 E01–E08 `#concluida`, usando os adaptadores falsos. O gate E13 deste marco exige o gate de M7 concluído e a homologação da FNRH (M5 E09).
 
 ## Como usar
 
@@ -33,7 +33,7 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 
 ## Escopo
 
-**Incluído:** pontos de venda, mesas, setores de produção e cardápio; comandas; produção com impressão e tela via SSE; fechamento com pagamento, divisão, taxa de serviço, desconto e NFC-e; consumo interno e cortesia; lançamento no quarto; café da manhã; relatórios do PDV e da taxa de serviço; distribuição com porta neutra, ARI incremental, ressincronização, recebimento de reservas e painel de saúde; adaptador real do channel manager (bloqueado até Q-05); backup e restauração; migrações fora da `api`; re-cifragem de todos os valores cifrados; expurgo dos dados sensíveis da FNRH; cadeia de dependências pronta para produção; configuração de implantação nuvem ou local (bloqueada até Q-06); teste de desempenho; gate de inauguração.
+**Incluído:** pontos de venda, mesas, setores de produção e cardápio; comandas; produção com impressão e tela via SSE; fechamento com pagamento, divisão, taxa de serviço, desconto e NFC-e; consumo interno e cortesia; lançamento no quarto; café da manhã; relatórios do PDV e da taxa de serviço; distribuição com porta neutra, ARI incremental, ressincronização, recebimento de reservas e painel de saúde; adaptador real do channel manager (bloqueado até Q-05); backup e restauração; migrações fora da `api`; re-cifragem de todos os valores cifrados; expurgo dos dados sensíveis da FNRH; cadeia de dependências pronta para produção; pendências da FNRH agrupadas no fechamento enquanto a integração estiver desligada; configuração de implantação nuvem ou local (bloqueada até Q-06); teste de desempenho; gate de inauguração.
 
 **Fora de escopo:**
 
@@ -87,8 +87,9 @@ Deixar o hotel **pronto para inaugurar** (fim da Fase 2 da SPEC §9): restaurant
 - [ ] Ambiente de produção no modelo decidido (Q-06), com TLS, e desempenho dentro de RNF-04 e RNF-06.
 - [ ] Gate de M7 concluído e cenário ponta a ponta das Fases 0–2 executado com sucesso.
 - [ ] Homologação real da FNRH (M5 E09) concluída.
-- [ ] Dados sensíveis da FNRH expurgados no prazo; a `api` sem as credenciais do dono dos schemas; toda chave retirável do anel depois da re-cifragem; `opentelemetry-api` fora da versão vulnerável; alertas de backup e de fechamento entregues a uma pessoa.
+- [ ] Dados sensíveis da FNRH expurgados no prazo; a `api` sem as credenciais do dono dos schemas; toda chave retirável do anel depois da re-cifragem; `opentelemetry-api`, `commons-lang3` do buildscript e `logback-core` do `ktlint` fora das versões vulneráveis (ou com risco aceito); alertas de backup e de fechamento entregues a uma pessoa.
 - [ ] O relatório de pendências do fechamento (RF-FEC-04) inclui notas rejeitadas e ARI não sincronizado.
+- [ ] Com a FNRH sem integração configurada, o fechamento registra as submissões acumuladas agrupadas, e não uma pendência por submissão (E19).
 - [ ] Toda venda do PDV entra no turno de caixa e no snapshot diário de A&B.
 - [ ] Build, testes, verificação de módulos e do contrato passam; `api/openapi.yaml` sem *breaking change*.
 
@@ -193,6 +194,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | E16 | Expurgo dos dados sensíveis da FNRH | #pendente | — | Job de expurgo no prazo da Q-07, com simulação, auditoria e guarda de submissão pendente |
 | E17 | Cadeia de dependências pronta para produção | #pendente | — | `opentelemetry-api` corrigido, decisões de checksums e de scanner no CI aplicadas |
 | E18 | Coleta e entrega de alertas | #pendente | E10 | Prometheus e Alertmanager no compose, com alerta entregue a uma pessoa |
+| E19 | Pendências da FNRH agrupadas com a integração desligada | #pendente | — | Uma pendência por tipo no fechamento, em vez de uma por submissão, enquanto a FNRH não estiver configurada |
 
 **Implantação e inauguração**
 
@@ -200,7 +202,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 |---|---|---|---|---|
 | E11 | Ambiente de produção: nuvem ou hotel | #bloqueada | E10, E14, E15, E18 | Configuração e procedimento de implantação no modelo decidido, com TLS e modo das integrações |
 | E12 | Teste de desempenho e tempo real | #pendente | E06, E08 | Medição de p95 < 300 ms com ~30 usuários e eventos em até 2 s |
-| E13 | Gate de inauguração (Fases 0–2) | #pendente | E09, E11, E12, E16, E17 | Definição global de pronto, homologação da FNRH e cenário ponta a ponta das Fases 0–2 |
+| E13 | Gate de inauguração (Fases 0–2) | #pendente | E09, E11, E12, E16, E17, E19 | Definição global de pronto, homologação da FNRH e cenário ponta a ponta das Fases 0–2 |
 
 ---
 
@@ -958,17 +960,18 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Objetivo:** fechar antes da operação real os riscos de dependência que os lotes do M5 deixaram com prazo.
 
-**Por que agora:** a decisão M5 E14 (a) aceitou o `opentelemetry-api` 1.62.0 (GHSA-ccrj-gw8r-854m, alcançável sem autenticação) só até a operação real, e as decisões M5 E13 (c) e (d) indicaram o M8 para reavaliar scanner no CI e checksums. Nenhuma tinha etapa dona.
+**Por que agora:** a decisão M5 E14 (a) aceitou o `opentelemetry-api` 1.62.0 (GHSA-ccrj-gw8r-854m, alcançável sem autenticação) só até a operação real, e as decisões M5 E13 (c) e (d) indicaram o M8 para reavaliar scanner no CI e checksums. Nenhuma tinha etapa dona. Desde 2026-11-21 (H8 b do M7, decisão do usuário), a etapa também é dona dos demais advisories anteriores ao M7, conferidos com `osv-scanner` nos lockfiles nessa data (0 Critical, 0 High): `commons-lang3` 3.16.0 só no `buildscript-gradle.lockfile` (GHSA-j288-q9x7-2f5v, Medium, corrigido na 3.18.0) e `logback-core` 1.3.16 só na configuração `ktlint` do `gradle.lockfile` (GHSA-jhq6-gfmj-v8fx, GHSA-p47f-322f-whfh e GHSA-qqpg-mvqg-649v, Low, corrigidos na 1.5.34).
 
 **Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho.
 
-**Escopo:** versões no catálogo e lockfiles; `gradle/verification-metadata.xml` e o passo de CI, conforme a decisão registrada na etapa.
+**Escopo:** versões no catálogo e lockfiles (inclusive o classpath do buildscript e a configuração do `ktlint`); `gradle/verification-metadata.xml` e o passo de CI, conforme a decisão registrada na etapa.
 
 **Fora de escopo:** subir versões sem relação com um risco apontado.
 
 **Critérios de aceite:**
 
 - [ ] `opentelemetry-api` ≥ 1.67.0 no `productionRuntimeClasspath`, pelo Boot ou por restrição, com a ponte do Micrometer testada; o scanner não aponta mais a GHSA.
+- [ ] `commons-lang3` ≥ 3.18.0 no classpath do buildscript e `logback-core` ≥ 1.5.34 na configuração do `ktlint`, ou a versão vinda do plugin registrada como risco aceito pelo usuário, com prazo; o scanner não aponta mais essas GHSAs.
 - [ ] 0 Critical e 0 High no scanner na data da etapa, salvo risco aceito pelo usuário e registrado com prazo.
 - [ ] A verificação de checksums (`gradle/verification-metadata.xml`) e o `osv-scanner` no CI estão ligados, ou o handoff registra a decisão de não ligar, com prós e contras.
 - [ ] `./gradlew build` e `docker build -f docker/Dockerfile .` passam.
@@ -980,7 +983,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Revisão humana:** não
 
-**Notas para o plano:** decisões E13 (c) e (d) e E14 (a) no M5 e a nota `ZenyHotelManager - Ambiente, banco, chaves e build` (lockfiles, antes de mexer em dependências). Se o Boot já trouxer a versão corrigida, a primeira frente é só conferir. Sem `osv-scanner` na máquina, a instalação é do usuário.
+**Notas para o plano:** decisões E13 (c) e (d) e E14 (a) no M5, H8 b do M7 e a nota `ZenyHotelManager - Ambiente, banco, chaves e build` (lockfiles, antes de mexer em dependências). Se o Boot já trouxer a versão corrigida, a primeira frente é só conferir. O `commons-lang3` 3.16.0 e o `logback-core` 1.3.16 chegam por plugins de build e pela ferramenta do `ktlint`, não pelo runtime de produção (onde já estão `commons-lang3` 3.20.0 e `logback-core` 1.5.38): a correção pode ser uma restrição no buildscript ou na configuração, ou a versão nova do plugin. Sem `osv-scanner` na máquina, a instalação é do usuário.
 
 **Bloqueios:** Nenhum bloqueio conhecido.
 
@@ -1032,6 +1035,58 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 **Riscos e mitigação:**
 
 - O servidor inteiro cair leva junto o alerta: o checklist de inauguração pede um monitor externo simples, a cargo do usuário.
+
+**Evidências e handoff:**
+
+- Plano: —
+- Commits: —
+- Revisão final: —
+- Critérios verificados: —
+- Decisões para o usuário: —
+- Notas para a próxima etapa: —
+
+---
+
+## E19 — Pendências da FNRH agrupadas com a integração desligada — #pendente
+
+**Objetivo:** enquanto a FNRH estiver sem integração configurada (Q-12), o fechamento do dia registra as submissões acumuladas como pendências agrupadas por tipo, com a contagem, em vez de uma pendência por submissão; com a integração configurada, volta a uma pendência por submissão.
+
+**Por que agora:** decisão do usuário H24 c do M6 (2026-11-20). Desde a M6 E13, a etapa `end-of-day-pending` (950) levanta uma `EndOfDayIssue` por item de `ReportingApi.endOfDayPendingItems()`, e as submissões paradas por `NOT_CONFIGURED` ficam `PENDING` para sempre: cada fechamento repete todas, sem limite, e o ruído esconde as outras pendências até a homologação da FNRH (M5 E09).
+
+**Dependências:** nenhuma dentro deste roadmap; exige o pré-requisito do cabeçalho (a M7 E08 acrescenta as notas rejeitadas ao mesmo caminho).
+
+**Escopo:** a leitura das pendências da FNRH no `reporting` (`endOfDayPendingItems()`), a partir do que o `fnrh` publica em view; o `endofday` só se o agrupamento não couber no item que a etapa 950 já transforma em pendência. O relatório `GET /api/v1/reports/end-of-day-pending` continua mostrando cada submissão: o agrupamento vale para as pendências do fechamento.
+
+**Fora de escopo:** a homologação da FNRH (M5 E09); o expurgo dos sensíveis (E16); mudar o envio ou o estado das submissões.
+
+**Critérios de aceite:**
+
+- [ ] Com a FNRH sem integração configurada e N submissões pendentes de um mesmo tipo, um fechamento registra uma única pendência desse tipo, com a contagem no `detail`, só com número, código e status (teste com o fechamento real em `@EndOfDayIntegrationTest`).
+- [ ] O fechamento seguinte, com a situação igual, repete a mesma pendência agrupada (mesma referência estável), sem multiplicá-la (teste).
+- [ ] Com a integração configurada, cada submissão pendente volta a ser uma pendência própria (teste).
+- [ ] `GET /api/v1/reports/end-of-day-pending` lista cada submissão nos dois casos (teste).
+- [ ] As arestas não mudam: `endofday → reporting` só com as três operações da `ReportingApi` (H24 a do M6), e o `reporting` lendo só views (`ModularityTest`, `ReportingViewsOnlyTest`).
+- [ ] Build, testes e verificação do contrato passam.
+
+**Validação obrigatória:**
+
+- `./gradlew build` → sucesso.
+- `.github/scripts/check-api-breaking.sh` → nenhuma mudança `ERR` em `/api/v1`.
+
+**Revisão humana:** não
+
+**Notas para o plano:**
+
+- Handoff da M6 E13 ("Decisões para o usuário", item da FNRH sem integração) e H24 do M6; nota `ZenyHotelManager - Módulo fnrh` e as capturas do M6 sobre o `endofday` e o `reporting`.
+- A view `fnrh.report_submissions` publica `operation`, `status` e `last_failure` e não muda de sentido (uma mudança incompatível cria a `report_submissions_v2`). Confira se a submissão parada por `NOT_CONFIGURED` deixa esse sinal na view; se não deixar, o `fnrh` publica o sinal da integração desligada numa view, sem texto livre, e o `reporting` não ganha dependência de módulo.
+- "Por tipo" pode ser só o tipo da pendência ou o tipo e a operação da FNRH: decida no plano, com registro, e mantenha a referência estável entre fechamentos.
+- Os testes do fechamento que afirmam pendências filtram pelas próprias referências ou pelo `step_name` (handoff da M6 E13).
+
+**Bloqueios:** Nenhum bloqueio conhecido.
+
+**Riscos e mitigação:**
+
+- Esconder uma falha real da FNRH no agrupamento: só a integração desligada agrupa; `FAILED` e `INVALID` com a integração configurada continuam uma pendência por submissão.
 
 **Evidências e handoff:**
 
@@ -1175,7 +1230,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Por que agora:** é o critério da SPEC §9 ("Para a inauguração, o mínimo são as Fases 0, 1 e 2") e a entrada do marco M9.
 
-**Dependências:** E09, E11, E12, E16, E17 (que cobrem transitivamente todas as demais). Não paralelizável.
+**Dependências:** E09, E11, E12, E16, E17, E19 (que cobrem transitivamente todas as demais). Não paralelizável.
 
 **Escopo:**
 
@@ -1243,3 +1298,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-10-29 — protocolo de execução alinhado ao template atual da skill `development-roadmap`: o orquestrador passou de `orquestrador-etapa` para `orquestrador` (`claude --agent orquestrador`), entrou o papel "Revisor de plano" (`revisor-arquitetura`, pré-condição das souls e passo 1 do prompt) e o passo "Plano" diz que o plano passa pela revisão de arquitetura do orquestrador antes de executar. Só "Como usar", "Protocolo de execução" e "Prompt de execução" mudaram; etapas, handoffs e entradas anteriores do histórico seguem como estavam.
 - 2026-11-06 — revisão de arquitetura (`docs/superpowers/specs/2026-11-06-revisao-arquitetura-roadmaps-design.md`). Protocolo e prompt alinhados ao template de 2026-11-05. Novo bloco de prontidão: E14 (migrações fora da `api`, retirada da E11, bloqueada pela Q-06, da qual não depende), E15 (re-cifragem, antes só uma nota da E11), E16 (expurgo dos sensíveis da FNRH, decisão do usuário, trazido do M10) e E17 (cadeia de dependências, com o prazo do `opentelemetry-api`). O gate E13 passou a exigir essas etapas, a homologação da FNRH e a revisão das decisões pendentes. E10 passou a ter revisão humana. Texto do "mecanismo genérico de falha", que não existe, corrigido; serviço `backup` marcado como a criar. O marco ficou com 18 etapas, acima da referência da skill: divisão em dois arquivos oferecida ao usuário, não aplicada. Nenhuma etapa renumerada; tags existentes inalteradas.
 - 2026-11-06 — achados do `revisor-arquitetura` sobre a revisão, corrigidos. Decisões do usuário: conta `WALK_IN` por comanda (E04, D18) e Prometheus com Alertmanager (nova E18, D19). A E11 passou a depender de E15 e E18 e só configura as integrações já homologadas; o gate confere as demais. Novos critérios: restauração utilizável (E10), rollback de versão (E14), teto para a retenção do expurgo (E16), ARI nas pendências do fechamento (E08), A&B no snapshot (E06) e, no gate, no-show homologado, integrações, carga no ambiente final e scanner.
+- 2026-11-21 — pendências do M6 encaminhadas pelo `arquiteto` na sincronização do M7 (skill `development-roadmap`, modo atualização; `main` em `8450920`). Etapa nova **E19** (pendências da FNRH agrupadas no fechamento enquanto a integração estiver desligada), no bloco "Prontidão para operação real", cumprindo a decisão do usuário H24 c do M6; o usuário deixou ao `arquiteto` escolher entre o gate E13 e uma etapa de manutenção, e ficou a etapa própria porque o gate não aceita funcionalidade nova e a E16 (expurgo) tem outro objetivo e é irreversível. O gate E13 passou a depender da E19, a exceção do cabeçalho passou a incluí-la e a definição global de pronto ganhou o item. A **E17** passou a cobrir também o `commons-lang3` 3.16.0 do buildscript e o `logback-core` 1.3.16 do `ktlint` (decisão do usuário H8 b do M7, conferidos com `osv-scanner` na mesma data). O marco passa a ter 19 etapas, acima da referência da skill; a divisão em dois arquivos segue oferecida e não aplicada. O resto do roadmap não foi sincronizado com o código: isso fica para antes do primeiro lote do M8 (regra 2). Nenhuma etapa renumerada; tags existentes inalteradas.
