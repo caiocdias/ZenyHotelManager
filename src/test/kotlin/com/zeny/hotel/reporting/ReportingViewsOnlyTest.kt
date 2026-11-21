@@ -64,6 +64,7 @@ class ReportingViewsOnlyTest(
         queries.workOrdersByStatus(now, now.plusSeconds(1))
         queries.workOrdersByCategory(now, now.plusSeconds(1))
         queries.completedWorkOrders(now, now.plusSeconds(1))
+        queries.dailyStatisticsInput(day, now, now.plusSeconds(1))
     }
 
     private fun withViewsOnlyRole(block: (JdbcClient, ReportingQueries) -> Unit) {
@@ -122,6 +123,7 @@ class ReportingViewsOnlyTest(
                 "workOrdersByStatus",
                 "workOrdersByCategory",
                 "completedWorkOrders",
+                "dailyStatisticsInput",
             )
     }
 }

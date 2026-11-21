@@ -9,7 +9,8 @@ import org.springframework.context.annotation.Import
 
 /**
  * O contexto dos testes das etapas reais do fechamento (M6 E11), com o `@EndOfDayIntegrationTest`: as etapas de
- * produção, sem etapa falsa, mais o relógio mutável, o apoio do `iam`, as sondas do inventário, a [BillingPostProbe] e a [RoomsMarkProbe].
+ * produção, sem etapa falsa, mais o relógio mutável, o apoio do `iam`, as sondas do inventário, a [BillingPostProbe],
+ * a [RoomsMarkProbe] e a [PrintingRenderProbe].
  *
  * As etapas reais agem sobre todo o banco isolado, inclusive o que os testes anteriores deixaram: cada teste fecha a
  * data corrente (`EndOfDayTestRuns.settle`) e olha só os próprios dados.
@@ -28,5 +29,10 @@ class EndOfDayRealStepsTestConfiguration {
         @JvmStatic
         @Bean
         fun roomsMarkProbe(): RoomsMarkProbe = RoomsMarkProbe()
+
+        /** Estático, como a [billingPostProbe]: embrulha o `PrintingApi`. */
+        @JvmStatic
+        @Bean
+        fun printingRenderProbe(): PrintingRenderProbe = PrintingRenderProbe()
     }
 }

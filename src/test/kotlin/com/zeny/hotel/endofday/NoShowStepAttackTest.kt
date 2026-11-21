@@ -224,7 +224,7 @@ class NoShowStepAttackTest(
                 jdbc
                     .sql(
                         "SELECT step_name, kind, reference, message FROM endofday.run_issue " +
-                            "WHERE run_id = :run AND reference = :ref",
+                            "WHERE run_id = :run AND reference = :ref AND step_name <> 'end-of-day-pending'",
                     ).param("run", run.value)
                     .param("ref", refused.id.toString())
                     .query { rs, _ ->
@@ -318,8 +318,10 @@ class NoShowStepAttackTest(
     ): List<Pair<String, String?>> {
         val ids = setup.bookings.map { it.id.toString() }.toSet()
         return jdbc
-            .sql("SELECT kind, reference FROM endofday.run_issue WHERE run_id = :id ORDER BY created_at, id")
-            .param("id", run.value)
+            .sql(
+                "SELECT kind, reference FROM endofday.run_issue " +
+                    "WHERE run_id = :id AND step_name <> 'end-of-day-pending' ORDER BY created_at, id",
+            ).param("id", run.value)
             .query { rs, _ -> rs.getString("kind") to rs.getString("reference") }
             .list()
             .filter { it.second in ids }

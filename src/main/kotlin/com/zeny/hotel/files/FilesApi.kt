@@ -72,6 +72,25 @@ interface FilesApi {
         purpose: FilePurposeCode,
         ownerEntityId: String,
     ): FileContent
+
+    /**
+     * Grava o [content] como um anexo novo da [purpose], já vinculado ao registro dono
+     * [ownerEntityId], na transação de quem chama (E23 do M6): para o conteúdo que o próprio
+     * servidor gera, como o PDF do fechamento, inclusive numa finalidade [FilePurpose.serverOnly].
+     * Confere a finalidade como o upload (tamanho, tipo pela assinatura do conteúdo e extensão do
+     * [name]), cifra o anexo sensível, grava a linha e o objeto (o objeto é apagado se a transação
+     * desfizer) e audita `files.file.store`, sem nome nem conteúdo. O autor ([FileSummary.createdBy])
+     * é o usuário corrente, ou `null` fora de requisição (fechamento automático: trilha do sistema).
+     * Não reencoda imagem (o conteúdo é do servidor). Conteúdo que não confere com a finalidade, ou
+     * finalidade desconhecida, é erro de programação
+     * (`IllegalArgumentException`).
+     */
+    fun store(
+        purpose: FilePurposeCode,
+        ownerEntityId: String,
+        name: String,
+        content: ByteArray,
+    ): FileSummary
 }
 
 /** O anexo e o conteúdo dele; o [toString] não traz o conteúdo. */

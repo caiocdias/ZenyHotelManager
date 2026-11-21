@@ -41,7 +41,8 @@ object FileExamplePermissions : ModulePermissions {
  * documento **sensível** (PDF, JPEG ou PNG de até 64 KB, como o documento de hóspede do M3), uma
  * foto comum (PNG ou JPEG de até 1 KB, para o teste do tamanho) e uma foto **reencodada** (JPEG ou
  * PNG de até 2 MB, regravada sem metadados e com o lado de até 2048 px, como a foto de checklist da
- * E07 do M2).
+ * E07 do M2) e um documento **sensível só do servidor** (PDF de até 64 KB, gravado por
+ * `FilesApi.store`, como o PDF do fechamento da E23 do M6; o upload pela API o recusa).
  */
 object FileExamplePurposes : ModuleFilePurposes {
     override val module = "fileexamples"
@@ -49,6 +50,7 @@ object FileExamplePurposes : ModuleFilePurposes {
     val DOCUMENT = FilePurposeCode("fileexamples.identity-document")
     val PHOTO = FilePurposeCode("fileexamples.photo")
     val REENCODED_PHOTO = FilePurposeCode("fileexamples.reencoded-photo")
+    val SERVER_ONLY_DOCUMENT = FilePurposeCode("fileexamples.server-only-document")
 
     const val DOCUMENT_MAX_SIZE: Long = 64 * 1024
     const val PHOTO_MAX_SIZE: Long = 1024
@@ -83,6 +85,16 @@ object FileExamplePurposes : ModuleFilePurposes {
                 uploadPermission = FileExamplePermissions.PHOTOS_UPLOAD,
                 downloadPermission = FileExamplePermissions.PHOTOS_READ,
                 reencode = ImageReencoding(),
+            ),
+            FilePurpose(
+                SERVER_ONLY_DOCUMENT,
+                "Documento de exemplo, sensível e só do servidor (sem upload pela API)",
+                DOCUMENT_MAX_SIZE,
+                setOf(FileType.PDF),
+                sensitive = true,
+                uploadPermission = FileExamplePermissions.DOCUMENTS_UPLOAD,
+                downloadPermission = FileExamplePermissions.DOCUMENTS_READ,
+                serverOnly = true,
             ),
         )
 }

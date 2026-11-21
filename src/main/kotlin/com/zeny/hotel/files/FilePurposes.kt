@@ -104,6 +104,10 @@ enum class FileType(
  * - [reencode]: se presente, a imagem é decodificada e regravada no servidor antes de ir ao
  *   armazenamento ([ImageReencoding]); só para finalidades que aceitam apenas JPEG e PNG (o boot
  *   recusa WebP e PDF).
+ * - [serverOnly]: finalidade gravada só pelo servidor ([FilesApi.store]), como o PDF do fechamento: o
+ *   upload `POST /api/v1/files` a recusa como finalidade desconhecida (`400 UNKNOWN_FILE_PURPOSE`),
+ *   para qualquer usuário, inclusive o Administrador. A [uploadPermission] continua exigida pelo
+ *   tipo, mas nunca é usada.
  */
 @Suppress("LongParameterList") // os atributos da finalidade
 data class FilePurpose(
@@ -115,6 +119,7 @@ data class FilePurpose(
     val uploadPermission: PermissionCode,
     val downloadPermission: PermissionCode,
     val reencode: ImageReencoding? = null,
+    val serverOnly: Boolean = false,
 ) {
     init {
         require(description.isNotBlank()) { "Finalidade $code sem descrição" }

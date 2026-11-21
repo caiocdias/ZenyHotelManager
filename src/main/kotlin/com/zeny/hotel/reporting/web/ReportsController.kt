@@ -1,5 +1,8 @@
 package com.zeny.hotel.reporting.web
 
+import com.zeny.hotel.reporting.ArchivedReport
+import com.zeny.hotel.reporting.ArchivedReportKind
+import com.zeny.hotel.reporting.application.ArchivedReportsService
 import com.zeny.hotel.reporting.application.AttendantReportRow
 import com.zeny.hotel.reporting.application.CleaningTypeReportRow
 import com.zeny.hotel.reporting.application.DEFAULT_PANEL_DAYS
@@ -54,7 +57,24 @@ class ReportsController(
     private val maintenance: MaintenanceReportService,
     private val dayPanel: DayPanelService,
     private val pending: EndOfDayPendingService,
+    private val archive: ArchivedReportsService,
 ) {
+    @GetMapping("/archive")
+    @Operation(
+        operationId = "getReportsArchive",
+        summary = "Arquivo do fechamento por data",
+        description =
+            "Os documentos arquivados do fechamento da data operacional `date` (hoje, o PDF `DAY_REPORT`), só com os " +
+                "ids: o tipo, o id do anexo e o instante do arquivo; data sem arquivo devolve a lista vazia. O PDF é " +
+                "baixado pela URL do `files` (`GET /api/v1/files/{id}/download-url`), anexo sensível, com a trilha " +
+                "dele; o anexo é gravado só pelo servidor, no fechamento, e nunca por upload. Exige " +
+                "`reporting.archive.read` na consulta e no download.",
+    )
+    fun archive(
+        @Parameter(description = "A data operacional (YYYY-MM-DD).")
+        @RequestParam date: LocalDate,
+    ): ArchivedReportsResponse = ArchivedReportsResponse(date, archive.list(date).map(ArchivedReportResponse::of))
+
     @GetMapping("/day-panel")
     @Operation(
         operationId = "getDayPanel",
@@ -124,6 +144,30 @@ class ReportsController(
         @Parameter(description = "Última data (YYYY-MM-DD), inclusive.")
         @RequestParam to: LocalDate,
     ): MaintenanceReportResponse = MaintenanceReportResponse.of(maintenance.report(from, to))
+}
+
+@Schema(description = "Os documentos arquivados do fechamento de uma data.")
+data class ArchivedReportsResponse(
+    val date: LocalDate,
+    @field:Schema(description = "Um item por tipo de documento arquivado da data, em ordem do tipo.")
+    val reports: List<ArchivedReportResponse>,
+)
+
+@Schema(description = "Um documento arquivado do fechamento.")
+data class ArchivedReportResponse(
+    @field:ExtensibleEnum
+    val kind: ArchivedReportKind,
+    @field:Schema(
+        description =
+            "O anexo (PDF sensível): baixe por `GET /api/v1/files/{id}/download-url`, com a permissão " +
+                "`reporting.archive.read`.",
+    )
+    val fileId: UUID,
+    val createdAt: Instant,
+) {
+    companion object {
+        fun of(report: ArchivedReport) = ArchivedReportResponse(report.kind, report.fileId, report.createdAt)
+    }
 }
 
 @Schema(description = "O relatório de manutenção do período.")

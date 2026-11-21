@@ -127,7 +127,7 @@ flowchart LR
 | `linen` | ROU | Enxoval, lavanderia terceirizada e lavanderia do hóspede | shared, rooms, checklists, inventory, reservations, billing |
 | `pos` | PDV | Pontos de venda, cardápio, comandas, produção e fichas técnicas | shared, hotel, staff, billing, payments, fiscal, inventory, reservations, printing |
 | `events` | EVT | Espaços, eventos, propostas, contratos e BEO | shared, guests, reservations, billing, payments, pos, checklists, files, printing |
-| `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting, notifications |
+| `endofday` | FEC | Fechamento do dia: etapas, pendências e retomada | shared, hotel, rooms, reservations, billing, payments, reporting (só a `ReportingApi`: snapshot, arquivo e pendências do fechamento), notifications |
 | `reporting` | REL | Estatísticas diárias, KPIs, relatórios e arquivo de PDFs do fechamento | shared, hotel, files, printing (estes dois desde a E23), mais as *views* de leitura publicadas pelos módulos (§11) |
 
 O grafo de dependências é **acíclico**, e o teste `ApplicationModules.verify()` falha se surgir um ciclo.
@@ -571,7 +571,7 @@ Uma exceção que escapa de um job, inclusive a falha da trava do ShedLock com o
 
 | Job | Frequência padrão |
 |---|---|
-| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). Etapas, na ordem (M6 E11): `no-show`, `pending-departures`, `room-charges`, `block-release`, `provisional-expiry`, `card-pre-authorizations`, `occupied-rooms-dirty` e, por último, `advance-business-date`. | Diário, no horário do hotel: gatilho de 1 min (`end-of-day-trigger`) que decide pelo `endOfDayTime` no fuso do hotel e pela janela (`zeny.endofday.trigger.catch-up-window`, 24 h por padrão; depois dela, só manual); a execução roda sob a trava global `end-of-day-run` (com *keep-alive*), uma de cada vez, e há uma única execução por data; a `RUNNING` interrompida é retomada, a `FAILED` só pela retomada manual |
+| Fechamento do dia: etapas persistidas, **idempotente e retomável**. Cada etapa checa o que já fez (ex.: diária de `(reserva, data, origem=EOD)` já lançada). Etapas, na ordem (M6 E11 e E13): `no-show`, `pending-departures`, `room-charges`, `block-release`, `provisional-expiry`, `card-pre-authorizations`, `occupied-rooms-dirty`, `daily-statistics` (snapshot diário do `reporting`), `end-of-day-reports` (PDF do dia arquivado pelo `reporting`), `end-of-day-pending` (as pendências do fechamento) e, por último, `advance-business-date`. | Diário, no horário do hotel: gatilho de 1 min (`end-of-day-trigger`) que decide pelo `endOfDayTime` no fuso do hotel e pela janela (`zeny.endofday.trigger.catch-up-window`, 24 h por padrão; depois dela, só manual); a execução roda sob a trava global `end-of-day-run` (com *keep-alive*), uma de cada vez, e há uma única execução por data; a `RUNNING` interrompida é retomada, a `FAILED` só pela retomada manual |
 | Envio de ARI pendente; pull de reservas do channel manager | 1–5 min |
 | Polling de Pix e status fiscal (quando sem webhook) | 30 s–2 min |
 | Reprocessamento de eventos com falha no outbox (backoff de 1 min a 1 h, abandono após 24 h) | 1 min |

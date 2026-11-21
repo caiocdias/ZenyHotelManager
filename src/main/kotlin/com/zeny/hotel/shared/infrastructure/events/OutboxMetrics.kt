@@ -15,6 +15,8 @@ import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Métricas do outbox (`shared.event_publication`, ARCHITECTURE §5 e §16), para alerta:
@@ -44,6 +46,8 @@ class OutboxMetrics(
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    private val refreshLock = ReentrantLock()
+
     @Volatile
     private var snapshot: Map<State, StateSnapshot>? = null
 
@@ -65,16 +69,25 @@ class OutboxMetrics(
         }
     }
 
-    /** Lê o outbox de novo; os gauges passam a mostrar esta leitura. */
+    /**
+     * Lê o outbox de novo; os gauges passam a mostrar esta leitura.
+     *
+     * Os refreshes são serializados, e o instante `now` da idade é capturado já dentro da seção
+     * serializada: o refresh chamado depois sempre lê e publica depois, então uma leitura mais antiga
+     * nunca sobrescreve uma mais nova, e a idade nunca sai menor que a real por um `now` capturado antes
+     * de uma espera.
+     */
     @Scheduled(fixedDelayString = "\${zeny.events.metrics.refresh-interval}")
     fun refresh() {
-        snapshot =
-            try {
-                read()
-            } catch (ex: DataAccessException) {
-                log.warn("Não foi possível ler as métricas do outbox: {}", ExceptionClasses.chain(ex))
-                null
-            }
+        refreshLock.withLock {
+            snapshot =
+                try {
+                    read()
+                } catch (ex: DataAccessException) {
+                    log.warn("Não foi possível ler as métricas do outbox: {}", ExceptionClasses.chain(ex))
+                    null
+                }
+        }
     }
 
     private fun read(): Map<State, StateSnapshot> {

@@ -13,6 +13,8 @@ import com.zeny.hotel.reporting.application.PendingFnrhSubmissionRow
 import com.zeny.hotel.reporting.application.ReportingQueries
 import com.zeny.hotel.reporting.application.RoomCountsRow
 import com.zeny.hotel.reporting.application.WorkOrderCountRow
+import com.zeny.hotel.reporting.domain.DailyStatisticsInput
+import com.zeny.hotel.shared.Money
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -68,4 +70,10 @@ open class FakeReportingQueries : ReportingQueries {
         from: Instant,
         to: Instant,
     ) = CompletedWorkOrdersRow(0, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
+
+    override fun dailyStatisticsInput(
+        date: LocalDate,
+        from: Instant,
+        to: Instant,
+    ) = DailyStatisticsInput(0, 0, 0, 0, 0, 0, 0, 0, 0, Money.ZERO, Money.ZERO, Money.ZERO)
 }

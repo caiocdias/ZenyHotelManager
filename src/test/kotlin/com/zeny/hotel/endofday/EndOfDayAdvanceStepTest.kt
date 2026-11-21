@@ -232,10 +232,14 @@ class EndOfDayAdvanceStepTest(
             .list()
             .filter { it.first == ADVANCE } // as outras etapas reais têm os próprios testes
 
+    /** As pendências da etapa do avanço; as das outras etapas vêm de dados de outros testes do banco isolado. */
     private fun issuesOf(run: EndOfDayRunId): List<Pair<String, String?>> =
         jdbc
-            .sql("SELECT kind, reference FROM endofday.run_issue WHERE run_id = :id ORDER BY created_at, id")
-            .param("id", run.value)
+            .sql(
+                "SELECT kind, reference FROM endofday.run_issue " +
+                    "WHERE run_id = :id AND step_name = :step ORDER BY created_at, id",
+            ).param("id", run.value)
+            .param("step", ADVANCE)
             .query { rs, _ -> rs.getString("kind") to rs.getString("reference") }
             .list()
 

@@ -53,7 +53,7 @@ class LayerArchitectureTest {
     }
 
     @Test
-    fun `reporting depends on no class of another module besides shared and the root of hotel`() {
+    fun `reporting depends on no class of another module besides shared and the roots of hotel, printing and files`() {
         noClasses()
             .that()
             .resideInAPackage("$BASE_PACKAGE.reporting..")
@@ -62,9 +62,13 @@ class LayerArchitectureTest {
                 resideInAPackage("$BASE_PACKAGE..")
                     .and(not(resideInAPackage("$BASE_PACKAGE.reporting..")))
                     .and(not(resideInAPackage("$BASE_PACKAGE.shared..")))
-                    .and(not(resideInAPackage("$BASE_PACKAGE.hotel"))),
-            ).because("o reporting lê só as views report_* dos módulos e usa só shared e a raiz do hotel (M6 E09)")
-            .check(classes)
+                    .and(not(resideInAPackage("$BASE_PACKAGE.hotel")))
+                    .and(not(resideInAPackage("$BASE_PACKAGE.printing")))
+                    .and(not(resideInAPackage("$BASE_PACKAGE.files"))),
+            ).because(
+                "o reporting lê só as views report_* dos módulos e usa só shared e as raízes de hotel, printing e " +
+                    "files (M6 E09 e E23)",
+            ).check(classes)
     }
 
     private companion object {

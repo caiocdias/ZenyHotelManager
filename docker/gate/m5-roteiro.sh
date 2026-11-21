@@ -21,264 +21,23 @@
 set -uo pipefail
 umask 077
 
-if [ "$#" -ne 3 ]; then
-    echo "uso: $0 <base-url> <projeto> <env-file>" >&2
-    exit 2
-fi
-BASE=${1%/}
-PROJECT=$2
-ENV_FILE=$3
-[ -r "$ENV_FILE" ] || { echo "não consigo ler o env: $ENV_FILE" >&2; exit 2; }
-API=$BASE/api/v1
-
+# Os argumentos, as recusas, o check/redact, o HTTP, o psql, o diário do mock, os operadores e a varredura vêm da
+# biblioteca comum dos roteiros (docker/gate/lib-roteiro.sh).
+ROTEIRO=m5
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-ROOT=$(cd "$script_dir/../.." && pwd -P)
+# shellcheck source=docker/gate/lib-roteiro.sh
+. "$script_dir/lib-roteiro.sh" "$@"
+# Os WARN esperados no log da api (docker/gate/README.md, "WARN e ERROR esperados"): as fontes do PDFBox nos PDFs
+# (D-E11-4), a leitura das métricas do fechamento antes do hotel existir (boot de banco novo) e a queda da FNRH da
+# seção 11.
+WARN_ALLOWED=(
+    "org.apache.pdfbox.pdmodel.font.PDType1Font|Using fallback font LiberationSans for base font "
+    "com.zeny.hotel.endofday.infrastructure.EndOfDayMetrics|Não foi possível ler as métricas do fechamento do dia (IllegalStateException)"
+    "com.zeny.hotel.fnrh.infrastructure.SerproFnrhGateway|FNRH registerReservation: falha no envio (ResourceAccessException)"
+    "com.zeny.hotel.fnrh.infrastructure.SerproFnrhGateway|FNRH registerReservation HOMOLOGATION UNAVAILABLE (HTTP -)"
+)
 
-# Os argumentos antes de tocar em qualquer coisa: o projeto do usuário (zeny) nunca, e o env só o do gate-env.sh,
-# fora do projeto e de qualquer repositório git (a mesma regra do gate-env.sh: o docker/.env do usuário fica de fora).
-if ! [[ $PROJECT =~ ^[a-z0-9][a-z0-9_-]*$ ]] || [ "$PROJECT" = zeny ]; then
-    echo "recusado: projeto inválido ou do usuário: $PROJECT (use o -p do gate, ex.: zeny-gate)" >&2
-    exit 2
-fi
-env_real=$(realpath -m -- "$ENV_FILE")
-case "$env_real" in
-    "$ROOT"/*)
-        echo "recusado: o env do gate não pode ficar dentro do projeto ($ROOT)" >&2
-        exit 2
-        ;;
-esac
-guard_dir=$(dirname -- "$env_real")
-while :; do
-    if [ -e "$guard_dir/.git" ]; then
-        echo "recusado: o env do gate não pode ficar dentro de um repositório git ($guard_dir)" >&2
-        exit 2
-    fi
-    [ "$guard_dir" = / ] && break
-    guard_dir=$(dirname -- "$guard_dir")
-done
-
-DC=(docker compose -p "$PROJECT" --env-file "$ENV_FILE" -f "$ROOT/docker/compose.yaml" -f "$ROOT/docker/gate/compose.gate.yaml")
-
-T=$(mktemp -d "${TMPDIR:-/tmp}/m5-roteiro.XXXXXX")
-trap 'rm -rf -- "$T"' EXIT
-
-OUT=${M5_ROTEIRO_OUT:-$(dirname -- "$ENV_FILE")/m5-roteiro.out}
-exec > >(tee -- "$OUT") 2>&1
-
-# --- Conferência, segredos e resumo (um lugar só) ---------------------------------------------------------------
-
-N=0
-F=0
-SECRETS=()
-SECRET_KINDS=()
-
-# secret <valor> [tipo]: guarda um valor que nunca pode sair na tela (segredo ou dado de hóspede): o redact o troca
-# por ***, e a varredura da seção 13 o procura nos logs e na própria saída (e, achando, diz só o tipo).
-secret() {
-    if [ -n "$1" ]; then
-        SECRETS+=("$1")
-        SECRET_KINDS+=("${2:-segredo}")
-    fi
-    return 0
-}
-
-redact() {
-    local s=$1 x
-    for x in "${SECRETS[@]}"; do
-        s=${s//"$x"/***}
-    done
-    printf '%s' "$s"
-}
-
-# check <rótulo> <esperado> <obtido>
-check() {
-    N=$((N + 1))
-    if [ "$2" == "$3" ]; then
-        printf 'OK     %s\n' "$1"
-    else
-        F=$((F + 1))
-        printf 'FALHA  %s\n' "$1"
-        # Redige antes de cortar: um segredo que atravessa o corte nunca sai pela metade.
-        local expected got
-        expected=$(redact "$2")
-        got=$(redact "$3")
-        printf '       esperado: %s\n' "${expected:0:300}"
-        printf '       obtido:   %s\n' "${got:0:300}"
-    fi
-}
-
-# check_http <rótulo> <status esperado>: confere o status da última requisição; na falha, mostra o code do problema.
-check_http() {
-    local got=$ST
-    [ "$got" == "$2" ] || got="$got $(problem_code)"
-    check "$1 → $2" "$2" "$got"
-}
-
-# bool <teste...>: true/false, para conferir condições com o check.
-bool() {
-    if "$@"; then echo true; else echo false; fi
-}
-
-is_uuid() {
-    [[ $1 =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
-}
-
-is_money() {
-    [[ $1 =~ ^[0-9]+\.[0-9]{2}$ ]]
-}
-
-# require_uuid <nome> <valor>: um id só entra no SQL do dono se for um UUID (senão nada roda e a conferência falha).
-require_uuid() {
-    is_uuid "$2" && return 0
-    printf 'id inválido para o SQL: %s\n' "$1" >&2
-    return 1
-}
-
-section() {
-    printf '\n== %s\n' "$1"
-}
-
-summary() {
-    printf '\n%d conferências, %d falhas\n' "$N" "$F"
-    [ "$F" -eq 0 ]
-}
-
-# --- HTTP ---------------------------------------------------------------------------------------------------------
-
-uuid() {
-    local h
-    h=$(openssl rand -hex 16)
-    printf '%s-%s-4%s-%x%s-%s\n' "${h:0:8}" "${h:8:4}" "${h:13:3}" $(((16#${h:16:1} & 3) | 8)) "${h:17:3}" "${h:20:12}"
-}
-
-# O token de <quem> num arquivo de cabeçalho (curl -H @arquivo): nunca em argumento de processo.
-set_token() {
-    if [ "$1" = agent ]; then secret "$2" "token do agente"; else secret "$2" "access token"; fi
-    printf 'Authorization: Bearer %s\n' "$2" >"$T/auth-$1"
-}
-
-# req <método> <caminho ou URL> <quem|-> [arquivo do corpo JSON] [cabeçalho...]
-# Deixa o status em ST, o corpo em $T/body e os cabeçalhos em $T/headers. POST leva Idempotency-Key própria, salvo
-# com NO_IDEM=1 (login, troca de senha e as chamadas do agente).
-req() {
-    local method=$1 path=$2 who=$3 body=${4:-} url
-    shift 3
-    [ "$#" -gt 0 ] && shift
-    case $path in
-        http*) url=$path ;;
-        *) url=$API$path ;;
-    esac
-    local args=(-s --max-time 60 -o "$T/body" -D "$T/headers" -w '%{http_code}' -X "$method")
-    [ "$who" != - ] && args+=(-H "@$T/auth-$who")
-    [ -n "$body" ] && args+=(-H 'Content-Type: application/json' --data-binary "@$body")
-    if [ "$method" = POST ] && [ -z "${NO_IDEM:-}" ]; then
-        args+=(-H "Idempotency-Key: $(uuid)")
-    fi
-    local h
-    for h in "$@"; do
-        args+=(-H "$h")
-    done
-    ST=$(curl "${args[@]}" "$url") || true
-    [ -n "$ST" ] || ST=000
-}
-
-jb() {
-    jq -r "$1" "$T/body" 2>/dev/null
-}
-
-jbc() {
-    jq -c "$1" "$T/body" 2>/dev/null
-}
-
-problem_code() {
-    jq -r '.code // empty' "$T/body" 2>/dev/null
-}
-
-hdr() {
-    grep -i "^$1:" "$T/headers" | tail -n 1 | cut -d: -f2- | sed 's/^ *//' | tr -d '\r'
-}
-
-starts_with_pdf() {
-    [ "$(head -c 5 "$T/body")" = "%PDF-" ]
-}
-
-# --- Banco (psql do dono, SQL pela entrada padrão) e o diário do fnrh-mock ------------------------------------------
-
-# O stderr do psql (e do compose) nunca sai cru: num erro, o psql ecoa o comando (LINE n:, QUERY:), que pode levar
-# um segredo (o token do agente vai no SQL); ele passa pelo redact antes de ir para a saída (e para o .out).
-sql() {
-    local rc
-    "${DC[@]}" exec -T db sh -c 'psql -X -q -At -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
-        2>"$T/sql.err"
-    rc=$?
-    if [ -s "$T/sql.err" ]; then
-        # Redige o stderr inteiro e só depois corta: o corte nunca deixa um pedaço de segredo.
-        local err
-        err=$(redact "$(<"$T/sql.err")")
-        printf 'psql (stderr redigido): %s\n' "${err:0:2000}" >&2
-    fi
-    : >"$T/sql.err"
-    return "$rc"
-}
-
-mock() {
-    "${DC[@]}" exec -T api wget -qO- "http://fnrh-mock:8080/__admin/$1"
-}
-
-# A situação da publicação do evento <tipo> da reserva no listener do fnrh (vazio se não há).
-fnrh_publication() {
-    require_uuid RES_ID "$RES_ID" || return 1
-    sql <<SQL
-SELECT string_agg(status, ',' ORDER BY publication_date) FROM shared.event_publication
-WHERE event_type LIKE '%.$1' AND listener_id LIKE '%fnrh%FnrhSubmissionListeners%'
-  AND serialized_event LIKE '%$RES_ID%';
-SQL
-}
-
-# Espera (até 30 s) a publicação do evento <tipo> da reserva no listener do fnrh ficar COMPLETED.
-await_fnrh_publication() {
-    local deadline=$((SECONDS + 30)) got
-    while :; do
-        got=$(fnrh_publication "$1")
-        [ "$got" = COMPLETED ] || [ "$SECONDS" -ge "$deadline" ] && break
-        sleep 2
-    done
-    printf '%s' "$got"
-}
-
-# As submissões da FNRH da reserva, por ordem de criação: "OPERAÇÃO:SITUAÇÃO,…".
-fnrh_submissions() {
-    req GET "/fnrh/submissions?limit=100" recepcao
-    jq -r --arg r "$RES_ID" \
-        '[.items[] | select(.reservationId == $r)] | sort_by(.createdAt) | map("\(.operation):\(.status)") | join(",")' \
-        "$T/body" 2>/dev/null
-}
-
-# Espera (até 3 min, teto do gate) as submissões da reserva serem <esperado>; devolve as últimas lidas.
-await_fnrh_submissions() {
-    local expected=$1 deadline=$((SECONDS + 180)) got
-    while :; do
-        got=$(fnrh_submissions)
-        [ "$got" = "$expected" ] || [ "$SECONDS" -ge "$deadline" ] && break
-        sleep 5
-    done
-    printf '%s' "$got"
-}
-
-# Os pedidos do diário do mock: total, sem casar, e quantos casam com <método> e o regex do caminho.
-mock_unmatched() {
-    mock requests/unmatched | jq '.requests | length'
-}
-
-mock_count() {
-    mock requests | jq --arg m "$1" --arg p "$2" '[.requests[].request | select(.method == $m and (.url | test($p)))] | length'
-}
-
-mock_all_basic() {
-    mock requests | jq '[.requests[].request | [.headers // {} | to_entries[]
-        | select(.key | ascii_downcase == "authorization") | .value | tostring | startswith("Basic ")] | any]
-        | (length > 0 and all)'
-}
+# --- FNRH e aprovação (só do M5) ----------------------------------------------------------------------------------
 
 # true se o mock recebeu um POST /pessoas com genero_id OUTRO e a descrição de gênero G_DESC (o jq só responde
 # true/false: o corpo, com nome e documento, nunca sai).
@@ -287,10 +46,6 @@ mock_person_other() {
         | select(.method == "POST" and (.url | test("^/FNRH_API/rest/v2/pessoas$")))
         | (.body | fromjson? // {}) | .pessoa // {}
         | select(.genero_id == "OUTRO" and .GeneroDescricao == env.G_DESC)] | length >= 1'
-}
-
-mock_up() {
-    if mock health >/dev/null 2>&1; then echo true; else echo false; fi
 }
 
 # A situação das submissões da FNRH da reserva <id>, em ordem alfabética ("OPERAÇÃO:SITUAÇÃO,…"): o walk-in grava as
@@ -314,19 +69,6 @@ fnrh_pending_count() {
     jq '[.items[] | select(.status == "PENDING")] | length' "$T/body" 2>/dev/null
 }
 
-# poll <esperado> <segundos> <intervalo> <comando...>: repete o comando até a saída ser <esperado> ou o prazo vencer,
-# com a última saída em GOT. Fora de subshell e com o ensure_tokens a cada volta: esperas longas não perdem o token.
-poll() {
-    local expected=$1 deadline=$((SECONDS + $2)) interval=$3
-    shift 3
-    while :; do
-        ensure_tokens
-        GOT=$("$@")
-        [ "$GOT" = "$expected" ] || [ "$SECONDS" -ge "$deadline" ] && break
-        sleep "$interval"
-    done
-}
-
 # "solicitante|aprovador|ação|recurso" da aprovação <id> em iam.approval (o id conferido antes do SQL).
 approval_row() {
     require_uuid approvalId "$1" || return 1
@@ -335,42 +77,8 @@ SELECT requester_id || '|' || approver_id || '|' || action || '|' || resource_re
 SQL
 }
 
-# --- Usuários -----------------------------------------------------------------------------------------------------
-
-LOGIN_AT=0
-declare -A LOGIN_OF PASSWORD_OF
-
-# login <quem> <login> <senha>: deixa o token de <quem> pronto se der 200.
-login() {
-    LOGIN_NAME=$2 LOGIN_PASSWORD=$3 jq -n \
-        '{login: env.LOGIN_NAME, password: env.LOGIN_PASSWORD, device: {id: "gate-m5", name: "Roteiro do gate M5"}}' \
-        >"$T/req.json"
-    NO_IDEM=1 req POST /auth/login - "$T/req.json"
-    if [ "$ST" = 200 ]; then
-        set_token "$1" "$(jb .accessToken)"
-        secret "$(jb .refreshToken)" "refresh token"
-    fi
-}
-
-# change_password <quem> <atual> <nova>
-change_password() {
-    CURRENT=$2 NEW=$3 jq -n '{currentPassword: env.CURRENT, newPassword: env.NEW}' >"$T/req.json"
-    NO_IDEM=1 req POST /auth/password "$1" "$T/req.json"
-}
-
-# O access token vale 15 min: depois de 10, cada operador entra de novo (sem conferência; a sessão é outra).
-ensure_tokens() {
-    [ $((SECONDS - LOGIN_AT)) -lt 600 ] && return
-    local who
-    for who in admin recepcao gerente; do
-        login "$who" "${LOGIN_OF[$who]}" "${PASSWORD_OF[$who]}"
-    done
-    LOGIN_AT=$SECONDS
-}
-
 # --- Dados de teste -----------------------------------------------------------------------------------------------
 
-REQUESTER_CPF=52998224725
 EARLY_FEE=85.00
 LATE_FEE=70.00
 LATE_LIMIT=18:00
@@ -381,61 +89,6 @@ TWO_ADULTS=400.00
 # Uma foto PNG 64×48 lisa (a comprovação do menor).
 PROOF_PNG='iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAQ0lEQVR42u3PQQkAAAgEsItjfwxhLCv4FQYrsEzXaxEQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQuFoFK7EeBoF7bgAAAABJRU5ErkJggg=='
 
-# Um CPF válido sorteado (nunca o CPF solicitante de teste).
-new_cpf() {
-    local d i s r cpf
-    while :; do
-        d=()
-        for i in 0 1 2 3 4 5 6 7 8; do
-            d[i]=$((RANDOM % 10))
-        done
-        s=0
-        for i in 0 1 2 3 4 5 6 7 8; do
-            s=$((s + d[i] * (10 - i)))
-        done
-        r=$((s * 10 % 11))
-        [ "$r" -eq 10 ] && r=0
-        d[9]=$r
-        s=0
-        for i in 0 1 2 3 4 5 6 7 8 9; do
-            s=$((s + d[i] * (11 - i)))
-        done
-        r=$((s * 10 % 11))
-        [ "$r" -eq 10 ] && r=0
-        d[10]=$r
-        cpf=$(printf '%s' "${d[@]}")
-        [ -z "${cpf//${cpf:0:1}/}" ] || [ "$cpf" = "$REQUESTER_CPF" ] || break
-    done
-    printf '%s\n' "$cpf"
-}
-
-cents() {
-    local v=$1
-    echo $((10#${v%.*} * 100 + 10#${v#*.}))
-}
-
-money() {
-    printf '%d.%02d\n' $(($1 / 100)) $(($1 % 100))
-}
-
-# A data operacional (RN-01) lida como <quem>, em BD (fora de subshell: o ST fica para o check_http).
-business_date() {
-    req GET /hotel/business-date "$1"
-    BD=$(jb .businessDate)
-}
-
-is_date() {
-    [[ $1 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]
-}
-
-# housekeeping <UH> <transição>: pelo Gerente, com o If-Match do status da UH.
-housekeeping() {
-    req GET "/rooms/$1/status" gerente
-    local tag
-    tag=$(hdr etag)
-    jq -n --arg t "$2" '{transition: $t}' >"$T/req.json"
-    req POST "/rooms/$1/housekeeping-status" gerente "$T/req.json" "If-Match: $tag"
-}
 
 # "<ocupação> <governança> <hóspedes>" da UH (a vaga com 0 hóspedes).
 room_status() {
@@ -474,37 +127,6 @@ check_in_body() {
                                   relationship: "PAI"}}],
           preAuthorization: {amount: "500.00", expiresAt: $e, authorizationCode: "A1B2C3", cardBrand: "VISA",
                              cardLast4: "1234"}}' >"$T/checkin.json"
-}
-
-pay() {
-    jq -n --arg a "$2" '{method: "CASH", amount: $a, deposit: false}' >"$T/req.json"
-    req POST "/folios/$1/payments" recepcao "$T/req.json"
-}
-
-# new_guest <rótulo ASCII> [perfil extra em JSON]: a Recepcionista cadastra um hóspede adulto brasileiro com CPF
-# sorteado e os dados que a FNRH exige. Nome, CPF e e-mail viram dado de hóspede (secret) e entram no jq pelo ambiente.
-# Deixa o id em GUEST_ID e o status em ST.
-new_guest() {
-    local suffix cpf name email
-    suffix=$(openssl rand -hex 3)
-    cpf=$(new_cpf)
-    name="$1 Gate $suffix"
-    email="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]').$suffix@example.com"
-    secret "$cpf" hóspede
-    secret "${cpf:0:3}.${cpf:3:3}.${cpf:6:3}-${cpf:9:2}" hóspede
-    secret "$name" hóspede
-    secret "$email" hóspede
-    G_NAME=$name G_EMAIL=$email G_CPF=$cpf G_EXTRA=${2:-'{}'} jq -n \
-        '{profile: ({fullName: env.G_NAME, socialName: null, nationality: "BR", birthDate: "1990-07-21",
-            gender: "FEMALE", email: env.G_EMAIL, phone: "+55 11 98765-4321", residenceCountry: "BR",
-            address: {street: "Rua das Acácias", number: "742", complement: "Apto 12", district: "Jardim Paulista",
-                      city: "São Paulo", state: "SP", postalCode: "01407-000", ibgeCityCode: "3550308"},
-            preferences: {floor: "Alto", bed: "Casal", pillow: "Baixo"}, vip: false, notes: "Gate do M5",
-            companyId: null} + (env.G_EXTRA | fromjson)),
-          documents: [{type: "CPF", issuingCountry: null, number: env.G_CPF}],
-          sensitiveData: {raceColor: "BROWN"}}' >"$T/req.json"
-    req POST /guests recepcao "$T/req.json"
-    GUEST_ID=$(jb .id)
 }
 
 # O hóspede <id> como único (e principal) da estadia, sem comprovação de menor.
@@ -557,43 +179,6 @@ new_rooms() {
         check_http "[$tag] UH nova inspecionada pelo Gerente" 200
         check "[$tag] UH nova pronta para check-in" true "$(jb .readyForCheckIn)"
     done
-}
-
-env_value() {
-    grep -m1 "^$1=" "$ENV_FILE" | cut -d= -f2-
-}
-
-# Os segredos do env do gate (banco, MinIO, chaves de cifragem e do JWT): redigidos na saída e procurados na varredura.
-register_env_secrets() {
-    local v
-    secret "$(env_value ZENY_DB_MIGRATION_PASSWORD)" "senha do banco"
-    secret "$(env_value ZENY_DB_PASSWORD)" "senha do banco"
-    secret "$(env_value ZENY_STORAGE_ROOT_PASSWORD)" "senha do MinIO"
-    secret "$(env_value ZENY_STORAGE_SECRET_KEY)" "chave do MinIO"
-    v=$(env_value ZENY_ENCRYPTION_KEYS)
-    secret "${v#*:}" "chave de cifragem"
-    v=$(env_value ZENY_JWT_KEYS)
-    secret "${v#*:}" "chave do JWT"
-}
-
-# leaked_kinds <arquivo>: os tipos (nunca os valores) dos segredos e dados de hóspede achados no arquivo, ou "nenhum".
-# Cada valor vai ao grep por um arquivo de padrões (process substitution), nunca por argumento; o PIN, de 6 dígitos,
-# só como palavra inteira.
-leaked_kinds() {
-    local i opts found=()
-    [ -r "$1" ] || { echo "arquivo ilegível"; return; }
-    for i in "${!SECRETS[@]}"; do
-        opts=-qF
-        [ "${SECRET_KINDS[i]}" = PIN ] && opts=-qwF
-        if grep "$opts" -f <(printf '%s\n' "${SECRETS[i]}") -- "$1"; then
-            found+=("${SECRET_KINDS[i]}")
-        fi
-    done
-    if [ "${#found[@]}" -eq 0 ]; then
-        echo nenhum
-    else
-        printf '%s\n' "${found[@]}" | sort -u | paste -sd, -
-    fi
 }
 
 # ==================================================================================================================
@@ -873,14 +458,17 @@ s4_check_in() {
         secret "${cpf:0:3}.${cpf:3:3}.${cpf:6:3}-${cpf:9:2}" hóspede
         secret "$name" hóspede
         secret "$email" hóspede
-        jq -n --arg name "$name" --arg birth "$birth" --arg email "$email" --arg cpf "$cpf" \
-            '{profile: {fullName: $name, socialName: null, nationality: "BR", birthDate: $birth, gender: "FEMALE",
-                email: $email, phone: "+55 11 98765-4321", residenceCountry: "BR",
-                address: {street: "Rua das Acácias", number: "742", complement: "Apto 12", district: "Jardim Paulista",
-                          city: "São Paulo", state: "SP", postalCode: "01407-000", ibgeCityCode: "3550308"},
+        guest_fixed_secrets "$birth"
+        # Os dados de hóspede entram no jq pelo ambiente, nunca por argumento de processo (como no new_guest).
+        G_NAME=$name G_BIRTH=$birth G_EMAIL=$email G_CPF=$cpf G_PHONE=$GUEST_PHONE G_STREET=$GUEST_STREET \
+            G_POSTAL=$GUEST_POSTAL_CODE jq -n \
+            '{profile: {fullName: env.G_NAME, socialName: null, nationality: "BR", birthDate: env.G_BIRTH,
+                gender: "FEMALE", email: env.G_EMAIL, phone: env.G_PHONE, residenceCountry: "BR",
+                address: {street: env.G_STREET, number: "742", complement: "Apto 12", district: "Jardim Paulista",
+                          city: "São Paulo", state: "SP", postalCode: env.G_POSTAL, ibgeCityCode: "3550308"},
                 preferences: {floor: "Alto", bed: "Casal", pillow: "Baixo"}, vip: false,
                 notes: "Prefere quarto silencioso", companyId: null},
-              documents: [{type: "CPF", issuingCountry: null, number: $cpf}],
+              documents: [{type: "CPF", issuingCountry: null, number: env.G_CPF}],
               sensitiveData: {raceColor: "BROWN"}}' >"$T/req.json"
         req POST /guests recepcao "$T/req.json"
         check_http "[4] hóspede ($who) pela Recepcionista" 201
@@ -1371,28 +959,8 @@ s12_clear_credentials() {
     check "[12] trilha não vazia" true "$(bool [ "${#entries}" -gt 2 ])"
 }
 
-# O começo de todo JWT ({"alg"… em base64url). Fica numa variável: os rótulos das conferências não o levam, senão a
-# varredura da própria saída o acharia nos rótulos.
-JWT_PREFIX=eyJ
-
 s13_leak_sweep() {
-    section "13. Varredura: logs do compose (sem o fnrh-mock) e a própria saída, sem segredo nem dado de hóspede"
-    check "[13] fnrh-mock: nenhum pedido não casado até o fim" 0 "$(mock_unmatched)"
-    check "[13] valores procurados (≥ 40)" true "$(bool [ "${#SECRETS[@]}" -ge 40 ])"
-    local svc rc
-    for svc in api db proxy storage storage-init; do
-        "${DC[@]}" logs --no-color "$svc" >"$T/log-$svc" 2>"$T/compose.out"
-        rc=$?
-        check "[13] logs do $svc lidos" 0 "$rc"
-        check "[13] logs do $svc: nenhum segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/log-$svc")"
-        check "[13] logs do $svc: nenhum JWT (prefixo dos access tokens)" 0 "$(grep -c "$JWT_PREFIX" "$T/log-$svc")"
-    done
-    check "[13] logs da api não vazios" true "$(bool [ -s "$T/log-api" ])"
-    check "[13] logs do db não vazios" true "$(bool [ -s "$T/log-db" ])"
-    rm -f -- "$T"/log-*
-    check "[13] saída do roteiro não vazia" true "$(bool [ -s "$OUT" ])"
-    check "[13] saída do roteiro: nenhum segredo nem dado de hóspede" nenhum "$(leaked_kinds "$OUT")"
-    check "[13] saída do roteiro: nenhum JWT (prefixo dos access tokens)" 0 "$(grep -c "$JWT_PREFIX" "$OUT")"
+    leak_sweep 13 40
 }
 
 # ==================================================================================================================
@@ -1400,10 +968,4 @@ s13_leak_sweep() {
 SECTIONS=(s1_public s2_users s3_setup s4_check_in s5_fnrh s6_registration_card s7_stay s8_check_out
     s9_walk_in_and_undo s10_traces s11_serpro_down s12_clear_credentials s13_leak_sweep)
 
-register_env_secrets
-printf 'Roteiro do gate do M5 em %s (projeto %s), %s\n' "$BASE" "$PROJECT" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-for s in "${SECTIONS[@]}"; do
-    "$s"
-done
-summary
-exit $?
+run_sections

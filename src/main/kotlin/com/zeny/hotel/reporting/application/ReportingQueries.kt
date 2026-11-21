@@ -1,5 +1,6 @@
 package com.zeny.hotel.reporting.application
 
+import com.zeny.hotel.reporting.domain.DailyStatisticsInput
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.LocalDate
@@ -192,4 +193,16 @@ interface ReportingQueries {
         from: Instant,
         to: Instant,
     ): CompletedWorkOrdersRow
+
+    /**
+     * Os números da data [date] para o snapshot diário (D1 da E23): as noites vendidas que hospedam por categoria de
+     * plano, as UHs disponíveis e fora de ordem do inventário, as chegadas, saídas, no-shows e cancelamentos, e as
+     * receitas dos lançamentos da data sem repasse nem impostos. Os cancelamentos são os de `cancelled_at` no
+     * intervalo de instantes [from] (inclusive) a [to] (exclusive), o dia no fuso do hotel.
+     */
+    fun dailyStatisticsInput(
+        date: LocalDate,
+        from: Instant,
+        to: Instant,
+    ): DailyStatisticsInput
 }

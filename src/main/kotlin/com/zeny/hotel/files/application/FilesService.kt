@@ -22,13 +22,11 @@ import com.zeny.hotel.shared.PermissionDeniedException
 import com.zeny.hotel.shared.UserId
 import com.zeny.hotel.shared.UuidV7
 import com.zeny.hotel.shared.isVersion7
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.net.URI
 import java.time.Clock
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -113,7 +111,7 @@ class FilesService(
     private val catalog: FilePurposeCatalog,
     private val files: StoredFiles,
     private val storage: FileStorage,
-    private val objectRemovals: StoredObjectRemovals,
+    private val writer: StoredFileWriter,
     private val cipher: ContentCipher,
     private val tokens: DownloadTokens,
     private val properties: FilesProperties,
@@ -122,12 +120,11 @@ class FilesService(
     private val audit: AuditContext,
     private val clock: Clock,
 ) {
-    private val log = LoggerFactory.getLogger(javaClass)
-
     @Audited(FilesAudit.UPLOAD)
     @Transactional
     fun upload(command: UploadCommand): UploadResult {
-        val purpose = purposeOf(command.purpose)
+        // Finalidade só do servidor: desconhecida para quem envia, antes da permissão (não revela que existe).
+        val purpose = purposeOf(command.purpose).takeUnless { it.serverOnly } ?: unknownPurpose()
         authorization.require(purpose.uploadPermission)
         val actor = currentActor.current()
         val clientFileId = command.clientFileId?.let(::clientFileIdOf)
@@ -146,25 +143,7 @@ class FilesService(
                 ?: command.content
         val upload = if (purpose.reencode != null) received.withContent(content) else received
         val id = clientFileId ?: FileId(UuidV7.generate())
-        val stored = if (purpose.sensitive) cipher.encrypt(content, associatedDataOf(id)) else content
-        val file =
-            StoredFile.create(
-                id = id,
-                purpose = purpose.code,
-                upload = upload,
-                storedSizeBytes = stored.size.toLong(),
-                encryptionKeyId = if (purpose.sensitive) cipher.keyIdOf(stored) else null,
-                createdBy = actor.userId,
-                // Na precisão do banco: a resposta do upload e a da repetição (lida do banco) são iguais.
-                now = clock.instant().truncatedTo(ChronoUnit.MICROS),
-            )
-        audit.created(FilesAudit.FILE, id.value) { file.auditState() }
-        files.add(file)
-        // O objeto depois dos metadados: falha de banco não deixa objeto; falha do armazenamento
-        // desfaz os metadados; e o objeto de uma transação que desfaz depois daqui é apagado.
-        objectRemovals.removeOnRollback(file.objectKey)
-        storage.put(file.objectKey, stored, if (file.sensitive) ENCRYPTED_CONTENT_TYPE else file.contentType)
-        log.info("Anexo {} gravado ({}, {} bytes, sensível: {})", id, purpose.code, file.sizeBytes, file.sensitive)
+        val file = writer.write(id, purpose, upload, content, actor.userId)
         return UploadResult(file.view(), replayed = false)
     }
 
@@ -267,9 +246,12 @@ class FilesService(
         return file to purpose
     }
 
-    private fun purposeOf(code: String): FilePurpose {
-        val purpose = runCatching { FilePurposeCode(code.trim()) }.getOrNull()?.let(catalog::find)
-        if (purpose != null) return purpose
+    private fun purposeOf(code: String): FilePurpose =
+        runCatching {
+            FilePurposeCode(code.trim())
+        }.getOrNull()?.let(catalog::find) ?: unknownPurpose()
+
+    private fun unknownPurpose(): Nothing {
         val message = "Finalidade de anexo desconhecida."
         throw InvalidInputException(
             FilesErrorCodes.UNKNOWN_FILE_PURPOSE,
@@ -300,12 +282,8 @@ class FilesService(
     private fun notFound(): Nothing = throw NotFoundException(FilesErrorCodes.FILE_NOT_FOUND, "Anexo não encontrado.")
 
     private companion object {
-        const val ENCRYPTED_CONTENT_TYPE = "application/octet-stream"
         const val INVALID_URL = "O link de download é inválido. Peça um novo."
         val CANONICAL_UUID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-
-        /** O id do anexo como dado associado: o conteúdo cifrado de um anexo não decifra como outro. */
-        fun associatedDataOf(id: FileId): ByteArray = "files.file:${id.value}".toByteArray(Charsets.US_ASCII)
 
         /** O nome original, se tem a extensão do tipo; senão, `<id>.<extensão>`. */
         fun downloadName(file: StoredFile): String =

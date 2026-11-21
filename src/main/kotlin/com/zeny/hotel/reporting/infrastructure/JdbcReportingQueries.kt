@@ -13,6 +13,8 @@ import com.zeny.hotel.reporting.application.PendingFnrhSubmissionRow
 import com.zeny.hotel.reporting.application.ReportingQueries
 import com.zeny.hotel.reporting.application.RoomCountsRow
 import com.zeny.hotel.reporting.application.WorkOrderCountRow
+import com.zeny.hotel.reporting.domain.DailyStatisticsInput
+import com.zeny.hotel.shared.Money
 import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import java.sql.ResultSet
@@ -328,6 +330,59 @@ class JdbcReportingQueries(
                     rs.getBigDecimal("labor_cost"),
                     rs.getBigDecimal("third_party_cost"),
                     rs.getBigDecimal("parts_cost"),
+                )
+            }.single()
+
+    override fun dailyStatisticsInput(
+        date: LocalDate,
+        from: Instant,
+        to: Instant,
+    ): DailyStatisticsInput =
+        jdbc
+            .sql(
+                """
+                SELECT (SELECT count(*) FILTER (WHERE rate_plan_category = 'NORMAL') FROM reservations.report_room_nights
+                        WHERE stay_date = :date AND sold AND NOT day_use) AS rooms_sold,
+                       (SELECT count(*) FILTER (WHERE rate_plan_category = 'COURTESY') FROM reservations.report_room_nights
+                        WHERE stay_date = :date AND sold AND NOT day_use) AS rooms_complimentary,
+                       (SELECT count(*) FILTER (WHERE rate_plan_category = 'HOUSE_USE') FROM reservations.report_room_nights
+                        WHERE stay_date = :date AND sold AND NOT day_use) AS rooms_house_use,
+                       (SELECT coalesce(sum(total - out_of_order), 0) FROM reservations.report_inventory
+                        WHERE stay_date = :date) AS rooms_available,
+                       (SELECT coalesce(sum(out_of_order), 0) FROM reservations.report_inventory
+                        WHERE stay_date = :date) AS rooms_out_of_order,
+                       (SELECT count(*) FROM reservations.report_reservations
+                        WHERE status IN $SOLD AND arrival = :date) AS arrivals,
+                       (SELECT count(*) FROM reservations.report_reservations
+                        WHERE status IN $SOLD AND departure = :date) AS departures,
+                       (SELECT count(*) FROM reservations.report_reservations
+                        WHERE status = 'NO_SHOW' AND arrival = :date) AS no_shows,
+                       (SELECT count(*) FROM reservations.report_reservations
+                        WHERE status = 'CANCELLED' AND cancelled_at >= :from AND cancelled_at < :to) AS cancellations,
+                       (SELECT coalesce(sum(amount) FILTER (WHERE revenue_group = 'ROOM'), 0)
+                        FROM billing.report_postings WHERE business_date = :date AND NOT pass_through) AS room_revenue,
+                       (SELECT coalesce(sum(amount) FILTER (WHERE revenue_group = 'FOOD_BEVERAGE'), 0)
+                        FROM billing.report_postings WHERE business_date = :date AND NOT pass_through) AS fb_revenue,
+                       (SELECT coalesce(sum(amount) FILTER (WHERE revenue_group NOT IN ('ROOM', 'FOOD_BEVERAGE', 'TAXES')), 0)
+                        FROM billing.report_postings WHERE business_date = :date AND NOT pass_through) AS other_revenue
+                """.trimIndent(),
+            ).param("date", date)
+            .param("from", from.atOffset(ZoneOffset.UTC))
+            .param("to", to.atOffset(ZoneOffset.UTC))
+            .query { rs, _ ->
+                DailyStatisticsInput(
+                    roomsSold = rs.getLong("rooms_sold"),
+                    roomsComplimentary = rs.getLong("rooms_complimentary"),
+                    roomsHouseUse = rs.getLong("rooms_house_use"),
+                    roomsAvailable = rs.getLong("rooms_available"),
+                    roomsOutOfOrder = rs.getLong("rooms_out_of_order"),
+                    arrivals = rs.getLong("arrivals"),
+                    departures = rs.getLong("departures"),
+                    noShows = rs.getLong("no_shows"),
+                    cancellations = rs.getLong("cancellations"),
+                    roomRevenue = Money.of(rs.getBigDecimal("room_revenue")),
+                    foodBeverageRevenue = Money.of(rs.getBigDecimal("fb_revenue")),
+                    otherRevenue = Money.of(rs.getBigDecimal("other_revenue")),
                 )
             }.single()
 

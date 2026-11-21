@@ -462,8 +462,10 @@ class EndOfDayRealRunTest(
     ): List<Pair<String, String?>> {
         val ids = reservations.map { it.toString() }.toSet()
         return jdbc
-            .sql("SELECT kind, reference FROM endofday.run_issue WHERE run_id = :id ORDER BY created_at, id")
-            .param("id", run.value)
+            .sql(
+                "SELECT kind, reference FROM endofday.run_issue " +
+                    "WHERE run_id = :id AND step_name <> 'end-of-day-pending' ORDER BY created_at, id",
+            ).param("id", run.value)
             .query { rs, _ -> rs.getString("kind") to rs.getString("reference") }
             .list()
             .filter { it.second in ids }
@@ -531,6 +533,9 @@ class EndOfDayRealRunTest(
                 "provisional-expiry" to 500,
                 "card-pre-authorizations" to 600,
                 "occupied-rooms-dirty" to 700,
+                "daily-statistics" to 800,
+                "end-of-day-reports" to 900,
+                "end-of-day-pending" to 950,
                 "advance-business-date" to 1000,
             )
         const val ROOM_CHARGES_POSITION = 300

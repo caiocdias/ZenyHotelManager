@@ -116,14 +116,14 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [x] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
 - [x] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
 - [x] OS corretivas são abertas (manual, recepção, governança ou checklist), executadas online e offline, colocam a UH em OOO/OOS e a devolvem como Suja ao concluir.
-- [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
-- [ ] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis.
-- [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
-- [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
-- [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
+- [x] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`. Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): horário `EndOfDayTriggerTest`, `EndOfDayTriggerJobTest`, `EndOfDayScheduleTest`; manual com aprovação e as 11 etapas em ordem `MilestoneM6EndToEndTest` e o roteiro do compose (s5, s7, s15); retomada sem duplicar `EndOfDayResumeApiTest`, `EndOfDayRealRunTest`, `RoomChargesStepTest`, `EndOfDayReportsFailureTest`; `BusinessDateAdvanced` e rotinas do novo dia `MilestoneM6EndToEndTest`, `EndOfDayAdvanceStepTest`.
+- [x] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis. Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): `DayPanelApiTest`, `HousekeepingReportApiTest`, `MaintenanceReportApiTest`, `ReportExportTest`, `EndOfDayPendingApiTest`, `DayReportsArchiveTest`, `EndOfDayReportingStepsTest`; no compose, painel, governança, CSV, XLSX, arquivo e download do PDF (s11, s12).
+- [x] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída. `MilestoneM6EndToEndTest` na cópia limpa e o roteiro `docker/gate/m6-roteiro.sh` no compose a partir dela (313 conferências, 0 falhas).
+- [x] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18). Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): `EndOfDayFnrhNoShowTest` e o de ataque; `EndOfDayMetricsTest` e `EndOfDayMetricsAttackTest` (séries citadas no `docker/prometheus/alerts.yaml`); as regras passaram no `promtool` na E10 (8 regras OK) e o arquivo não mudou desde então (`53fc97a`).
+- [x] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas. Pelos testes das E15, E16 e E17 (critérios verificados nos handoffs delas), verdes na cópia limpa da E12.
 - [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
 - [x] A manutenção transversal da E20 e da E21 está entregue: a entrada é estrita também em query string, caminho, `LocalTime`, número inteiro e UUID, e fora do alcance do banco no corpo; o contrato marca `required` nos requests; deadlock e `lock_timeout` dão `409 CONCURRENT_UPDATE`; nenhum job loga a mensagem da exceção.
-- [ ] Verificação de módulos, build, testes e verificação do contrato passam.
+- [x] Verificação de módulos, build, testes e verificação do contrato passam. Cópia limpa da E12: `clean build` (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi`, `koverVerify`) e `clean test`, 4885 testes, 0 falhas; lockfiles sem diferença; `check-api-breaking.sh main` sem `ERR`.
 
 ## Protocolo de execução
 
@@ -246,14 +246,14 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
 | E09 | Relatórios operacionais e painel do dia | #concluida | E05, E08 | Views `report_*`, painel, relatórios de governança e manutenção, CSV/XLSX, relatório de pendências |
-| E23 | Snapshot diário e arquivo dos PDFs | #pendente | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
-| E13 | Snapshot e arquivo do fechamento | #pendente | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
+| E23 | Snapshot diário e arquivo dos PDFs | #concluida | E09 | `snapshotDailyStatistics` e `archiveDayReports` no `reporting`, gravação pelo servidor na `FilesApi` e `GET /api/v1/reports/archive` |
+| E13 | Snapshot e arquivo do fechamento | #concluida | E23, E11 | Estatísticas e PDFs da data gravados pelo fechamento, antes do avanço |
 
 **Gate**
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #pendente | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #concluida | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -2545,7 +2545,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E23 — Snapshot diário e arquivo dos PDFs — #pendente
+## E23 — Snapshot diário e arquivo dos PDFs — #concluida
 
 **Objetivo:** dar ao `reporting` a API pública que o fechamento (E13) chama: o snapshot `DailyStatistics` da data (SPEC §8.2.9) e o arquivo dos PDFs da data em `files`, com a listagem e o download por URL assinada (H6). Saiu da E09 na divisão da H23 (a).
 
@@ -2565,12 +2565,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15 (H9), conferidos contra dados semeados.
-- [ ] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data, como anexo sensível (cifrado no bucket).
-- [ ] `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas; o download confere a permissão e vai para a trilha.
-- [ ] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
-- [ ] `reporting` continua sem referenciar classes nem tabelas internas de outros módulos (`ModularityTest` e teste de arquitetura).
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15 (H9), conferidos contra dados semeados.
+- [x] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data, como anexo sensível (cifrado no bucket).
+- [x] `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas; o download confere a permissão e vai para a trilha.
+- [x] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
+- [x] `reporting` continua sem referenciar classes nem tabelas internas de outros módulos (`ModularityTest` e teste de arquitetura).
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -2589,16 +2589,85 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e23.md`, com 3 fatias. Revisão de arquitetura: aprovada na rodada 2 (`revisor-arquitetura`, opus).
+  - A rodada 0 bloqueou por 7 Importantes:
+    - finalidade sem upload que mexia no `files` além da `FilesApi`;
+    - fórmulas (`COURTESY`, `sold AND`, fonte única da receita);
+    - corrida e transação do arquivo;
+    - endpoint de estatísticas sem requisito;
+    - Task 3 grande;
+    - critérios sem comando;
+    - gravação sem ator.
+  - A rodada 1 bloqueou por 1 Importante: a guarda de data futura contra as datas de teste.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `1fafc7a` (início e plano) a `d94718a`.
+  - **Task 1** (snapshot): `7f10092`, `c0be713` (testador, `ReportingViewsOnlyTest`) e a rodada 1 em `bbdafcf` (regra única `Occupancy`, arredondamento só no `Money`, recontagem depois do no-show por SQL).
+  - **Task 2** (gravação pelo servidor no `files`): `8ab0e51`.
+  - **Task 3** (PDF, arquivo e consulta): `e12c582` (os Menores da Task 2: `store` recusa finalidade com reencode), `a8c6bae` e `c8e27f9` (testador, listas exatas com `reporting.archive.read`).
+  - **Fim da etapa:** `565470a`, rodada 1 da revisão final:
+    - datas exclusivas e asserções por diferença no teste do snapshot, que colidia com o `BookingsApiTest`;
+    - KDoc da autoespera;
+    - `fileId` como `UUID`;
+    - `loadWithoutAuthorization`.
+    
+
+  - **Testador da etapa:** `a65b11b`, `780acd1` e `0a20877` (`FilesServerStoreAttackTest`, `DailyStatisticsAttackTest`, `ReportingWebAuthorizationTest`, âncora no `DatabaseRolesTest`): verdes, sem defeito.
+  - **Rodada 2 do fim da etapa:** `d94718a` (desenvolvedor): o gate falhou no `OutboxMetricsTest` (idade 359,971 fora de [360, 420]) por uma corrida no `OutboxMetrics.refresh()` do M2, `@Scheduled` e não serializado (um refresh mais antigo que terminava depois sobrescrevia o snapshot do mais novo). O refresh passou a rodar sob um `ReentrantLock`, com o `now` capturado dentro dele, e o `OutboxMetricsOrderingTest` prova a ordem (vermelho antes, verde depois); o `OutboxMetricsTest` não mudou. Antes, `aa1bd81` (orquestrador) só acrescentou o plano da E13.
+- Entregue:
+  - **`ReportingApi`** (raiz do `reporting`, sem permissão; fachada `ReportingApiService` com `TransactionTemplate`, porque escrita de sistema não leva `@Audited`, precedente `PrintingApiService`):
+    - **`snapshotDailyStatistics(date)`:**
+      - roda na transação de quem chama, em READ COMMITTED;
+      - grava `reporting.daily_statistics` com `ON CONFLICT DO NOTHING` e releitura, uma linha por data, sem recálculo;
+      - contagens disjuntas `sold AND NOT day_use` por `NORMAL`/`COURTESY`/`HOUSE_USE`;
+      - disponíveis = `total − out_of_order`;
+      - chegadas e saídas como no painel; no-shows; cancelamentos por `cancelled_at` no fuso do hotel;
+      - receitas por `revenue_group` sem `pass_through` e sem `TAXES`;
+      - ocupação = (vendidas + cortesia) ÷ disponíveis (regra única `Occupancy` com o painel);
+      - ADR e RevPAR pela receita `ROOM` dos lançamentos (`HALF_EVEN`).
+    - **`archiveDayReports(date)`:**
+      - `REQUIRES_NEW` por tipo, com trava consultiva por (data, tipo) antes de conferir;
+      - o snapshot precisa estar confirmado antes (o KDoc explica a autoespera e o `55P03`);
+      - PDF `reporting.day-report` (resumo, painel e pendências do momento, sem nome de hóspede) renderizado pelo `printing`;
+      - gravado por `FilesApi.store` como anexo sensível com o id da linha como dono;
+      - índice `reporting.archived_report`.
+  - **`files`:**
+    - `FilesApi.store(purpose, ownerEntityId, name, content)`: cifra se sensível, SHA-256, apaga no rollback, trilha `files.file.store`, `createdBy` nulo sem ator, recusa reencode;
+    - `FilePurpose.serverOnly`: o `POST /api/v1/files` recusa com `400 UNKNOWN_FILE_PURPOSE` antes da autorização, inclusive para o Administrador;
+    - gravação comum extraída para `StoredFileWriter`.
+  - **Finalidade e permissão:** `reporting.day-report` (PDF, 5 MB, sensível, `serverOnly`, download `reporting.archive.read`); permissão nova `reporting.archive.read` (Gerente, Financeiro).
+  - **`GET /api/v1/reports/archive?date=`:** tipo, id do anexo e criado em; o download sai pela URL do `files`, com trilha.
+  - **Schema `reporting`** (primeira migração do módulo, default só `SELECT, INSERT`, tabelas só de inserção).
+  - **Arestas `reporting → printing` e `reporting → files`** (`ModularityTest` e ArchUnit, só pela raiz).
+- Revisão final: bloqueada por 2 Importantes, ambos corrigidos em `565470a`. Re-revisão escopada `c8e27f9..0a20877`: aprovada com ressalvas, condicionada ao gate. Re-revisão escopada da rodada 2 `aa1bd81..d94718a` (`revisor-seguranca`, opus): **corrigido, aprovado com ressalvas**, sem Crítico nem Importante; Menores no `OutboxMetricsOrderingTest` (afirmar a serialização antes de soltar a 1ª consulta; `isAlive` depois do `join`; mock redefinido dentro do `answers`) e o `withLock` sem prazo (hoje só o `@Scheduled` chama em produção; trocar por `tryLock` se surgir outro chamador); fora do escopo, a consulta do `read()` sem `statement_timeout`. Menores para o handoff: o `shouldNotContain "Ataque"` genérico no `DailyStatisticsAttackTest`, e os dados que esse teste deixa no banco compartilhado (conta aberta com saldo, lançamento ROOM na data corrente).
+- Gate de integração: em `c8e27f9` estourou o limite de 30 min em `:test` sem falha, com a máquina sob carga de outra sessão; a 2ª rodada foi interrompida pela correção, e o gate em `0a20877` pelo usuário desligando a máquina. Na retomada (2026-11-20), em `a135887` (o mesmo código mais o roadmap): (1) 4869 testes, 1 falha de ambiente (`SerproFnrhGatewayAttackTest`: o DNS do WSL, com `search Home 8.8.8.8` no `resolv.conf`, leva 40 s para recusar um host `.invalid`, acima dos 10 s do teste); (2) com o resolvedor ajustado só no processo do Gradle (`LOCALDOMAIN=" "` e `RES_OPTIONS="timeout:1 attempts:1"`, `--no-daemon`), estouro de 40 min sob carga de outra sessão (DesktopFront); (3) com limite de 60 min, 4869 testes e 1 falha, o `OutboxMetricsTest` (rodada 2 acima). **Gate final em `d94718a`: `BUILD SUCCESSFUL in 29m 49s`, 4870 testes, 0 falhas** (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), com o mesmo resolvedor ajustado.
+- Verificação mecânica: `check_test_integrity.py --base 7b57e03`, exit 1, com 1 apontamento `ASSERCAO_REMOVIDA` no `ModularityTest`, julgado justificado pelas revisões (comentário reescrito, asserção ampliada). Na rodada 2: `--base aa1bd81` exit 0; `--base 7b57e03` exit 1, com o mesmo `ASSERCAO_REMOVIDA` e o aviso `MERGE_IGNORADO` (2 merges da `main` na branch), ambos julgados justificados.
+- Scanner: `osv-scanner`, lockfiles sem mudança, 0 Critical e 0 High.
+- `check-api-breaking.sh`: sem `ERR`.
+- Critérios verificados:
+  - snapshot único e Q-15: `DailyStatisticsSnapshotTest` e `DailyStatisticsCalculatorTest`;
+  - PDF uma vez por data, sensível: `DayReportsArchiveTest`;
+  - lista e download com trilha e 403: idem;
+  - §3.1 com `printing` e `files`: já constava, e o `ModularityTest` confere;
+  - `reporting` sem tabela interna: `ReportingViewsOnlyTest` e ArchUnit;
+  - build: gate.
+- Decisões para o usuário (tomadas pela opção recomendada, sob a autorização de 2026-11-19, e revisáveis):
+  - **PDF sensível:** o PDF arquivado continua anexo sensível mesmo sem nome de hóspede (tem códigos de reserva, saldos e ids de operador). A premissa "com nome" da H23 c não se confirmou, porque as views não publicam nome.
+  - **Finalidade só do servidor** (`serverOnly`).
+  - **Lista sem URLs:** a lista do arquivo devolve ids, e o download sai pelo `files` (o roadmap dizia "devolve URLs assinadas").
+  - **ADR:** sai da receita `ROOM` dos lançamentos (inclui day use), um pouco acima da diária média.
+  - **Sem endpoint HTTP do snapshot:** os KPIs são do M10.
+  - **Sem trilha própria:** o snapshot e o índice não têm trilha própria (escrita de sistema; o anexo tem `files.file.store`).
+  - **DNS do WSL nos gates (2026-11-20, do orquestrador):** o `resolv.conf` desta máquina (`nameserver 10.255.255.254`, `search Home 8.8.8.8`) leva 40 s para recusar nome inexistente, e o `SerproFnrhGatewayAttackTest` falha. Os gates desta retomada rodam com `LOCALDOMAIN=" " RES_OPTIONS="timeout:1 attempts:1"` só no processo. Recomendado: corrigir o resolvedor da distro (por exemplo, tirar o `8.8.8.8` da linha `search`), que é configuração da máquina e fica com você.
+- Notas para a próxima etapa (E13):
+  - **Ordem das etapas:** chame `snapshotDailyStatistics` numa etapa e `archiveDayReports` noutra, com commit entre elas. Na mesma transação, o arquivo falha por `lock_timeout` em toda tentativa.
+  - **Fechamento automático:** o arquivo é `REQUIRES_NEW` por tipo e o `files.store` funciona sem ator.
+  - **Painel no PDF:** o painel das UHs no PDF é o da data operacional corrente; vale o da data que fecha enquanto a etapa rodar antes do avanço.
+  - **Duração:** medir a duração do render na métrica da E10.
+  - **Dependências:** o `ArchivedReport.fileId` é `UUID` (sem aresta `endofday → files`).
+- Captura do brain: `00 Inbox/2026-11-20 - ZenyHotelManager - atualização m6-operacao-fechamento E23 - c0ccfce5.md`.
 
 ---
 
-## E13 — Snapshot e arquivo do fechamento — #pendente
+## E13 — Snapshot e arquivo do fechamento — #concluida
 
 **Objetivo:** acrescentar ao fechamento, antes do avanço da data, as etapas de snapshot de `DailyStatistics` e de arquivo dos PDFs da data (RF-FEC-02), pela API pública de `reporting`.
 
@@ -2612,10 +2681,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Depois de um fechamento, o snapshot da data e os PDFs ficam em `reporting`, uma única vez, mesmo com a etapa repetida ou retomada.
-- [ ] Falha na geração do PDF deixa a execução retomável e a data sem avançar (teste).
-- [ ] Um fechamento executado antes desta etapa existir continua válido: datas sem snapshot não quebram o painel nem os relatórios (teste).
-- [ ] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
+- [x] Depois de um fechamento, o snapshot da data e os PDFs ficam em `reporting`, uma única vez, mesmo com a etapa repetida ou retomada.
+- [x] Falha na geração do PDF deixa a execução retomável e a data sem avançar (teste).
+- [x] Um fechamento executado antes desta etapa existir continua válido: datas sem snapshot não quebram o painel nem os relatórios (teste).
+- [x] `endofday` depende só dos módulos permitidos (`ModularityTest`); build, testes e contrato passam.
 
 **Validação obrigatória:**
 
@@ -2634,16 +2703,44 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa: —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e13.md`, com 2 fatias. Revisão de arquitetura: aprovada com notas na rodada 1 (`revisor-arquitetura`, opus). A rodada 0 bloqueou por 3 Importantes: a E23 ainda `#em-andamento` (virou pré-condição de execução), `Riscos:` sem autenticação/autorização e a verificação das fatias sem os testes do fechamento que mudam. Dos Menores, a decisão de pôr as pendências numa etapa própria (950).
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `aa1bd81` (plano) e `3f0ffaa` (início) a `591a4bf`.
+  - **Task 1** (etapas 800 e 900): `30cd5b3`.
+  - **Task 2** (pendências e etapa 950): `bede8c6` (desenvolvedor) e `7cb12be` (testador: 15 testes existentes que afirmavam a lista exata de pendências da execução no banco isolado passam a excluir as da etapa 950, ou a olhar só a etapa que testam; ruling registrada).
+  - **Testador da etapa:** `ac6528e` e `c8baa81` (`EndOfDayReportingIdentityTest`, `EndOfDayPendingFormatTest`, `EndOfDayPreE13VariantsTest`): identidade do snapshot pela linha inteira, formato exato do aviso, saldo ausente em todos os formatos, guarda de `step_name` nulo e execuções paradas antes da etapa.
+  - **Rodada 1 do fim da etapa:** `591a4bf`. O `EndOfDayKeepAliveTest` dependia da hora (o falso da trava partia de 21:00Z e o `KeepAliveLockProvider` compara com o `ClockProvider` real); passou a partir de `ClockProvider.now()`, com o oráculo provado (sem *keep-alive* fica vermelho). KDoc de `loadWithoutAuthorization` e comentário do `ModularityTest`.
+- Entregue:
+  - **Etapas do fechamento** em `endofday/application/steps/`: `daily-statistics` (800, `ReportingApi.snapshotDailyStatistics` na transação da etapa), `end-of-day-reports` (900, `archiveDayReports`, `REQUIRES_NEW` por tipo, que só vê o snapshot já confirmado pela 800) e `end-of-day-pending` (950, uma `EndOfDayIssue` por item de `ReportingApi.endOfDayPendingItems()`: `FOLIO_OPEN_BALANCE`, `CASHIER_SHIFT_OPEN`, `FNRH_SUBMISSION_PENDING`; referência = id; mensagem `"<kind>: <detail>"` só com número, código e status; `NOT_APPLICABLE` sem itens). Nenhuma captura exceção: falha deixa a execução `FAILED` e retomável, com a data parada.
+  - **`ReportingApi.endOfDayPendingItems()`** e os tipos `EndOfDayPendingKind` e `EndOfDayPendingItem`, sem conferir permissão, pela mesma leitura do relatório da E09.
+  - **Dependência:** `endofday → reporting` (só a raiz e as três operações); `ModularityTest` exato; anotação do alcance na linha `endofday` da ARCHITECTURE §3.1; §13 com as 11 etapas; KDoc do contrato de etapa com a exceção 950.
+  - **Sem** endpoint, migração ou mudança no contrato.
+- Revisão final: `revisor-seguranca` (opus) sobre `3f0ffaa..c1e41f3`: **aprovado com ressalvas**, sem Crítico nem Importante. Re-revisão escopada `c1e41f3..591a4bf` (testes do testador e rodada 1): corrigido, aprovado com ressalvas, condicionado ao gate. Menores para o handoff abaixo.
+- Gate de integração: em `c1e41f3` (fim da construção), `BUILD SUCCESSFUL in 22m 13s`, 4878 testes. Em `591a4bf`, o 1º deu 1 falha de ambiente (`SerproFnrhGatewayAttackTest`, `readTimeout` de 100 ms ao WireMock local sob carga de outra sessão), e o 2º **`BUILD SUCCESSFUL in 23m 20s`, 4884 testes, 0 falhas** (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi` e `koverVerify`), com o resolvedor DNS ajustado só no processo (ver E23).
+- Verificação mecânica: `check_test_integrity.py --base 3f0ffaa`, exit 0, sem apontamentos (também por fatia).
+- Scanner: `osv-scanner` 2.7.1 nos 3 lockfiles (431 + 74 + 0 pacotes): 0 Critical, 0 High; os 2 Medium e 3 Low são anteriores. Lockfiles, catálogo e `api/openapi.yaml` sem mudança.
+- Critérios verificados:
+  - snapshot e PDF uma vez, com etapa repetida ou retomada: `EndOfDayReportingStepsTest`, `EndOfDayReportingIdentityTest`;
+  - falha do PDF retomável e data parada: `EndOfDayReportsFailureTest` (sonda `PrintingRenderProbe`, retomada por HTTP com aprovação);
+  - fechamento anterior à etapa e datas sem snapshot: `EndOfDayPreE13RunTest`, `EndOfDayPreE13VariantsTest`;
+  - pendências sem dado pessoal: `EndOfDayPendingItemsTest`, `EndOfDayPendingIssuesTest`, `EndOfDayPendingFormatTest`;
+  - *keep-alive* sob etapa longa: `EndOfDayKeepAliveTest` (obrigação herdada da E10);
+  - `ModularityTest` e build: gate acima.
+- Duração (D4): o `run_step` dá 0 ms nos testes, porque o relógio dos testes fica parado; por relógio de parede, numa data sem movimento, `daily-statistics` ~7 ms e `end-of-day-reports` ~40 ms (render ~20–30 ms). A duração com movimento real entra no `zeny.endofday.run.duration` da E10.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis):
+  - **Terceira operação na aresta `endofday → reporting`** (`endOfDayPendingItems`), contra a letra da nota da E13 ("não amplie além da API de snapshot e arquivo") e a favor do escopo ("pendências da E09 registradas como `EndOfDayIssue`"). O `revisor-arquitetura` julgou que não cabe ao usuário pela §3.1; alternativas descartadas no plano (D3). O `arquiteto` ajusta o texto da nota.
+  - **Pendências também com `endofday.runs.read`:** o subconjunto (sem saldo, sem nome de ponto de caixa, sem `lastFailure`) do relatório de `reporting.pending.read` sai também em `GET …/runs/{id}/issues`; os modelos de role das duas coincidem.
+  - **Etapa própria `end-of-day-pending` (950)**, fora do 100 em 100, registrada no KDoc do contrato.
+  - **FNRH sem integração configurada (Q-12):** as submissões ficam `PENDING` para sempre (`NOT_CONFIGURED`), e cada fechamento levanta uma pendência por submissão acumulada, sem limite. É o comportamento pedido (uma pendência que persiste aparece em cada fechamento), mas vira ruído num hotel sem a FNRH. Recomendado: tratar no M8 (agrupar por tipo com a FNRH desligada) ou na homologação.
+  - **Datas fechadas antes do deploy** ficam sem snapshot e sem PDF, sem recomposição (D5), para os KPIs do M10.
+- Notas para a próxima etapa (E12, gate):
+  - O fechamento real tem 11 etapas (100 a 1000, com 800, 900 e 950); o cenário da Fase 1 deve conferir o snapshot, o `DAY_REPORT` e as pendências da data.
+  - Menores para quem tocar nos testes: o `EndOfDayAdvanceStepTest` passou a olhar só as pendências da etapa de avanço; o `EndOfDayReportingIdentityTest` não afirma a falha antes do `settle`; o `EndOfDayPreE13VariantsTest` não afirma `attempts = 1` das etapas 100–300; os filtros `step_name <> …` descartam nulos (protegidos por guarda); WARN de fonte do PDFBox nos testes; o `SerproFnrhGatewayAttackTest` com `readTimeout` de 100 ms é frágil sob carga.
+  - Os gates desta máquina levam de 21 a 30 min ociosa e até 54 min com outra sessão; use `timeout 3600` e o resolvedor ajustado (E23).
+- Captura do brain: `00 Inbox/2026-11-20 - ZenyHotelManager - atualização m6-operacao-fechamento E13 - a78fbc91.md`.
 
 ---
 
-## E12 — Gate do marco M6 e fim da Fase 1 — #pendente
+## E12 — Gate do marco M6 e fim da Fase 1 — #concluida
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório, que a definição global de pronto do M6 é atendida e que o cenário ponta a ponta da Fase 1 funciona com os módulos reais; deixar o roadmap do M7 pronto para ser sincronizado.
 
@@ -2662,10 +2759,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa.
-- [ ] O teste ponta a ponta da Fase 1 passa usando os módulos reais (só a FNRH em WireMock).
-- [ ] Pendências herdadas (ex.: homologação da FNRH) estão listadas com a ação de desbloqueio.
-- [ ] `docs/roadmaps/README.md` registra a conclusão do M6 e da Fase 1 no histórico de revisões.
+- [x] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa.
+- [x] O teste ponta a ponta da Fase 1 passa usando os módulos reais (só a FNRH em WireMock).
+- [x] Pendências herdadas (ex.: homologação da FNRH) estão listadas com a ação de desbloqueio.
+- [x] `docs/roadmaps/README.md` registra a conclusão do M6 e da Fase 1 no histórico de revisões.
 
 **Validação obrigatória:**
 
@@ -2683,12 +2780,44 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa (marco M7): —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e12.md`, com 3 fatias. Revisão de arquitetura **dispensada** (sem decisão de ARCHITECTURE, contrato, persistência, fronteira ou runtime novo: teste do marco, scripts em `docker/gate/` e READMEs); a revisão final confirmou a dispensa contra o diff.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `23ce09a` (início e plano) a `c34e733`.
+  - **Task 1** (`MilestoneM6EndToEndTest`): `4335e3f` e a rodada 1 `4e0c4e4` (pendências conferidas também pela UH e UH Suja afirmada depois do fechamento de D1; limpeza protegida; turno de caixa fechado).
+  - **Task 2** (roteiro do compose, parte 1): `5852440` e a rodada 1 `6c8d7ea` (biblioteca comum `docker/gate/lib-roteiro.sh` com os controles de segredo e de varredura dos dois roteiros; conferências mais estritas; dados fixos do hóspede na varredura).
+  - **Task 3** (parte 2, WARN e READMEs): `48826c9` e `9775ed1`.
+  - **Testador da etapa:** `3f5c1f2` (check-out antes do pagamento recusado sem gravar nada, diária contra o preço literal, lista inteira das chamadas à FNRH).
+  - **Rodada final:** `c34e733` (`run-gate.sh` recusa com saída 2 quando o `docker` falha, em vez de seguir até o `down -v`; download só da URL do próprio servidor; `WARN` fora da lista permitida ou `ERROR` reprovam o gate; README com cinco operadores; pendências vazias conferidas como 0).
+- Entregue:
+  - `MilestoneM6EndToEndTest` (raiz do pacote de testes, `@EndOfDayIntegrationTest` com as etapas reais, H10): o cenário da Fase 1 em dois fechamentos manuais, com a diária uma vez por noite, as 11 etapas, o snapshot e o `DAY_REPORT` da data, as rotinas de checklist do novo dia (nota herdada do M2), a permanência offline e inspecionada, o check-out com saldo zero, a tarefa de saída inspecionada e as submissões FNRH em WireMock.
+  - `docker/gate/m6-roteiro.sh` (16 seções; cenário, arquivo e PDF, pendências, painel, governança, CSV e XLSX, OS com OOO e aprovação, achado e dano, fechamento de D2 com caixa aberto, varredura e revisão do log), `docker/gate/lib-roteiro.sh` comum aos dois roteiros, `run-gate.sh <workdir> <porta> [projeto] [m5|m6]`; `docker/gate/README.md` com o roteiro do M6 e a tabela dos `WARN` esperados; `README.md` com as 11 etapas do fechamento; `docs/roadmaps/README.md` com a conclusão do M6 e da Fase 1.
+- Revisão final: `revisor-seguranca` (opus) sobre `23ce09a..9775ed1`: **aprovado com ressalvas**, sem Crítico nem Importante, condicionado ao compose da cópia limpa (atendido). Re-revisão escopada `9775ed1..c34e733` (testes do testador e rodada final): corrigido, aprovado com ressalvas, condicionado ao gate em `c34e733` (atendido).
+- Gate e cópia limpa:
+  - **Cópia limpa** (`git archive 9775ed1`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`): `clean build` **BUILD SUCCESSFUL in 31m**, 593 classes, 4885 testes, 0 falhas, 0 erros, 0 pulados; `clean test` 25m 34s, 4885/0; `dependencies --write-locks` sem diferença nos três lockfiles.
+  - **Compose a partir da cópia limpa** (`run-gate.sh … zeny-e12-clean m6`): readiness em ~20 s, **313 conferências, 0 falhas**, 40 `WARN` (39 do PDFBox, fonte substituta, 13 por `DAY_REPORT`; 1 do `EndOfDayMetrics` no boot), 0 `ERROR`, varredura limpa, sobras 0/0/0. Depois da rodada final, no worktree: m6 313/0 e m5 304/0, com a lista permitida de `WARN`, 0 `ERROR` e sobras 0/0/0.
+  - **Gate do projeto no HEAD do lote** (`c34e733`): `BUILD SUCCESSFUL in 24m 32s`, 4885 testes, 0 falhas. Rodado com `LOCALDOMAIN=" " RES_OPTIONS="timeout:1 attempts:1"` e `--no-daemon` (DNS do WSL, ver E23).
+- Verificação mecânica: `check_test_integrity.py --base 23ce09a`, exit 0, sem apontamentos (também por fatia e na rodada final).
+- Scanner: `osv-scanner` 2.7.1 nos 3 lockfiles (431 + 74 + 0 pacotes): 0 Critical, 0 High; 2 Medium e 3 Low anteriores (`commons-lang3` 3.16.0 no buildscript, `opentelemetry-api` 1.62.0, `logback-core` 1.3.16). `check-api-breaking.sh main`: sem `ERR` em `/api/v1`.
+- Critérios verificados:
+  - definição global de pronto marcada item a item com a evidência (topo deste roadmap); o relatório de manutenção e o de pendências da E09 só nos testes (`MaintenanceReportApiTest`, `EndOfDayPendingApiTest`), o compose cobre painel, governança, exportação e arquivo; o alerta do fechamento pela E10 (`promtool`, 8 regras OK) e o `alerts.yaml` sem mudança desde `53fc97a` (sem `promtool` nesta máquina);
+  - teste ponta a ponta com os módulos reais e só a FNRH em WireMock: `MilestoneM6EndToEndTest`, verde na cópia limpa e no gate;
+  - pendências herdadas com a ação de desbloqueio: abaixo;
+  - `docs/roadmaps/README.md` com a conclusão do M6 e da Fase 1.
+- Pendências herdadas (com a ação de desbloqueio):
+  - **M5 E09** (homologação da FNRH), `#bloqueada` pela Q-12: o hotel obter o Cadastur e a credencial da FNRH; cobrada pelo gate de inauguração (M8 E13), antes da operação real.
+  - **M8 E18**: entrega a uma pessoa dos alertas do fechamento (`ZenyEndOfDayFailed`, `ZenyEndOfDayNotRun`); as regras já existem.
+  - **Q-12** e as demais questões abertas da SPEC §10 seguem no `docs/roadmaps/README.md`.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis):
+  - **Inspeção da permanência:** o tipo `STAYOVER` da carga não exige inspeção (D5 da E01); no cenário, a UH chega a Inspecionada pela inspeção voluntária da E05, e a inspeção pela tarefa aparece na saída.
+  - **Biblioteca comum dos roteiros** extraída agora (`lib-roteiro.sh`), com os dois gates rodados de novo, para os controles de segredo não divergirem.
+  - **`WARN` do `EndOfDayMetrics` no boot com banco novo:** o `refresh` agendado roda antes de o hotel existir e cai em `IllegalStateException`; os gauges ficam `NaN` por até 30 s e o alerta (`for: 5m`) não dispara. Recomendado: corrigir numa manutenção (atraso inicial ou hotel não criado tratado como "sem dado", sem `WARN`).
+  - **`endOfDayTime` 06:00 no roteiro**, para o fechamento automático não vencer durante o gate.
+  - Decisões dos handoffs da E23 e da E13 deste lote (PDF sensível sem nome; `serverOnly`; lista do arquivo sem URLs; ADR pela receita `ROOM`; terceira operação na aresta `endofday → reporting`; pendências com `endofday.runs.read`; etapa 950; FNRH sem integração gerando pendência sem limite; DNS do WSL nos gates).
+- Menores para o handoff (sem efeito no produto): a varredura procura bytes crus e não acharia um valor não-ASCII escapado pelo encoder (`Rua das Acácias`); laço de espera próprio e `RES_ID` global no `m6-roteiro.sh`; linhas fora do JSON no log só contadas, sem conferência; `@tsv` dobra barras; Menores herdados do M5 (`gate.env` no mesmo workdir, templating sem escape no mock); WARN de fonte do PDFBox nos testes.
+- Notas para a próxima etapa (marco M7):
+  - Sincronize o roadmap do M7 com o código antes do primeiro lote (regra 2 de `docs/roadmaps/README.md`); a etapa `card-pre-authorizations` (600) do fechamento segue `NOT_APPLICABLE` até a renovação do M7, e as pendências de notas rejeitadas (RF-FEC-04) entram no `ReportingApi.endOfDayPendingItems` quando o `fiscal` existir.
+  - Gate do M7: `run-gate.sh … m7` com um `m7-roteiro.sh` sobre a `lib-roteiro.sh` e a sua lista `WARN_ALLOWED`; o teste do marco no padrão do `MilestoneM6EndToEndTest`.
+  - Os gates nesta máquina levam de 21 a 31 min ociosa e até 54 min com outra sessão; use `timeout 3600`, o resolvedor ajustado e um Gradle ou `docker build` por vez.
+- Captura do brain: `00 Inbox/2026-11-20 - ZenyHotelManager - atualização m6-operacao-fechamento E12 - cd8a9129.md` (fim do M6 e da Fase 1 em `ZenyHotelManager - Estado por marco` e no hub).
 
 ---
 
@@ -2708,3 +2837,5 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-18 — entrevista final do lote: H19 (D7 e D11 da E03, D6 da E02 e H17 confirmadas pelo usuário, com registros a cargo do `arquiteto`).
 - 2026-11-18 — revisão do `arquiteto` (skill `development-roadmap`, modo atualização; `main` em `f992696`), com o código conferido para as etapas tocadas ("Base técnica do próprio M6" em "Contexto confirmado"). **Divisão da E04** (H18 a, H21 a): a E04 manteve o ID com a máquina de estados, as ações online e a conclusão, e a etapa nova **E19** ficou com os comandos offline, o histórico de posse, o conflito RN-22 e o feed; os achados da revisão do plano tentado foram distribuídos entre as duas. E05 e E06 passaram a depender da E19 (H21 e). **Manutenção transversal** (H20 c e d, H21 b a d): etapas novas **E20** (entrada estrita no corpo, na query e no caminho, `LocalTime`, inteiro e UUID estritos e `required` nos requests, com a quebra única do `oasdiff` aceita pelo usuário) e **E21** (`409 CONCURRENT_UPDATE` para `40P01`/`55P03`, logs dos quatro jobs, filtro do ShedLock e `JOSEException` do FCM), no bloco "Manutenção transversal", para rodarem antes da E04. **Early check-in** (H17, H20 a e b): etapa nova **E22** (hora prevista de chegada na reserva e prioridade do early na sugestão), dependente de E03 e E20. Hipóteses novas H20 (decisões do usuário na entrevista desta revisão) e H21 (decisões do `arquiteto`); H17 a H19 anotadas com o encaminhamento. A definição global de pronto ganhou o early, o conflito RN-22 e o item da E20 e da E21; o gate passou a depender de E20, E21 e E22. Revisão humana: sim na E04, na E19 e na E20. Na mesma revisão, a SPEC (§8.2.6 hora prevista de chegada; §8.3 governança sem os eventos de reserva e de check-in, e `HousekeepingTaskCompleted` sem consumidor de status; §8.4 `ASSIGNED → PENDING`) e a ARCHITECTURE (§6.1 sem o "atualizar plano do dia"; §7 com a regra da H16 e a exceção D11, o `required` com a quebra única e o `409 CONCURRENT_UPDATE`) foram alinhadas, e o `docs/roadmaps/README.md` passou a contar 22 etapas no M6. Nenhuma etapa concluída mudou de tag ou conteúdo; nenhuma foi renumerada nem removida.
 - 2026-11-19 — entrevista de abertura do lote E22–E23 (`orquestrador`): H23 decidida pelo usuário (divisão da E09 na E09 e na etapa nova **E23**, snapshot diário e arquivo dos PDFs; fastexcel para o XLSX; PDFs arquivados como anexo sensível). A E13 passa a depender da E23 (e não mais direto da E09). O M6 passa a ter 23 etapas. Nenhuma tag mudou.
+- 2026-11-20 — fim do lote E22–E23 (`orquestrador`), encerrado a pedido do usuário: E22, E07, E08 e E09 `#concluida`; E23 `#em-andamento` (código, testes e revisão final concluídos, falta o gate do HEAD da branch). As decisões da H23 são do usuário; as demais, do orquestrador pela opção recomendada (autorização do usuário em 2026-11-19), estão nos handoffs.
+- 2026-11-20 — fim do lote E23–E12 (`orquestrador`): E23, E13 e E12 `#concluida`; o M6 e a Fase 1 concluídos, salvo a revisão humana da E12. Decisões do orquestrador pela opção recomendada nos handoffs; nenhuma outra etapa mudou de tag.
