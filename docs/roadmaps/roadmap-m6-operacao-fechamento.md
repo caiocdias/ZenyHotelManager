@@ -116,14 +116,14 @@ Fechar a Fase 1 da SPEC: o hotel opera a hospedagem. A governança gera, distrib
 - [x] Tarefas do dia são geradas automaticamente (saídas, permanências, chegadas, faxinas programadas e avulsas), distribuídas por sugestão de créditos (com as chegadas e o early check-in primeiro, pela hora prevista de chegada da reserva), publicadas, executadas online e offline (com o conflito RN-22 registrado e sinalizado) e inspecionadas, com o status da UH seguindo §8.4.
 - [x] Achados e perdidos e danos são registrados; dano aprovado é lançado na conta do hóspede.
 - [x] OS corretivas são abertas (manual, recepção, governança ou checklist), executadas online e offline, colocam a UH em OOO/OOS e a devolvem como Suja ao concluir.
-- [ ] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`.
-- [ ] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis.
-- [ ] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída.
-- [ ] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18).
-- [ ] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas.
+- [x] O fechamento do dia roda no horário configurado e manualmente com step-up, executa as etapas de RF-FEC-02 na ordem, retoma de onde parou sem duplicar lançamentos e avança a data operacional publicando `BusinessDateAdvanced`. Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): horário `EndOfDayTriggerTest`, `EndOfDayTriggerJobTest`, `EndOfDayScheduleTest`; manual com aprovação e as 11 etapas em ordem `MilestoneM6EndToEndTest` e o roteiro do compose (s5, s7, s15); retomada sem duplicar `EndOfDayResumeApiTest`, `EndOfDayRealRunTest`, `RoomChargesStepTest`, `EndOfDayReportsFailureTest`; `BusinessDateAdvanced` e rotinas do novo dia `MilestoneM6EndToEndTest`, `EndOfDayAdvanceStepTest`.
+- [x] Painel do dia, relatórios operacionais de governança e manutenção, exportação CSV/XLSX, relatório de pendências e PDFs arquivados por data estão disponíveis. Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): `DayPanelApiTest`, `HousekeepingReportApiTest`, `MaintenanceReportApiTest`, `ReportExportTest`, `EndOfDayPendingApiTest`, `DayReportsArchiveTest`, `EndOfDayReportingStepsTest`; no compose, painel, governança, CSV, XLSX, arquivo e download do PDF (s11, s12).
+- [x] Cenário ponta a ponta da Fase 1 passa: reserva → check-in → diária lançada no fechamento → limpeza da permanência → check-out → limpeza de saída. `MilestoneM6EndToEndTest` na cópia limpa e o roteiro `docker/gate/m6-roteiro.sh` no compose a partir dela (313 conferências, 0 falhas).
+- [x] No-show do fechamento gera submissão na FNRH; a falha ou a ausência de um fechamento dispara a regra de alerta (a entrega é da M8 E18). Evidência na cópia limpa da E12 (`git archive 9775ed1`: `clean build` e `clean test`, 4885 testes, 0 falhas): `EndOfDayFnrhNoShowTest` e o de ataque; `EndOfDayMetricsTest` e `EndOfDayMetricsAttackTest` (séries citadas no `docker/prometheus/alerts.yaml`); as regras passaram no `promtool` na E10 (8 regras OK) e o arquivo não mudou desde então (`53fc97a`).
+- [x] A manutenção herdada do M5 está entregue: a ficha mostra os rótulos de motivo de viagem e meio de transporte, `frontdesk.stays.checkin` descreve a ficha, as escritas de restrição e mesclagem do `guests` devolvem o corpo mínimo sem `guests.profiles.read` e as dívidas de teste da M5 E01 e da M5 E08 estão resolvidas. Pelos testes das E15, E16 e E17 (critérios verificados nos handoffs delas), verdes na cópia limpa da E12.
 - [x] A manutenção transversal da E18 está entregue: um cursor com chave de data ou de instante fora do alcance do PostgreSQL dá `400 INVALID_CURSOR`; uma exceção *checked* desfaz a transação e a escrita; datas e instantes fora do ISO-8601 são recusados no campo; e os jobs logam só a classe da exceção.
 - [x] A manutenção transversal da E20 e da E21 está entregue: a entrada é estrita também em query string, caminho, `LocalTime`, número inteiro e UUID, e fora do alcance do banco no corpo; o contrato marca `required` nos requests; deadlock e `lock_timeout` dão `409 CONCURRENT_UPDATE`; nenhum job loga a mensagem da exceção.
-- [ ] Verificação de módulos, build, testes e verificação do contrato passam.
+- [x] Verificação de módulos, build, testes e verificação do contrato passam. Cópia limpa da E12: `clean build` (inclui `ModularityTest`, ArchUnit, detekt, ktlint, `checkOpenApi`, `koverVerify`) e `clean test`, 4885 testes, 0 falhas; lockfiles sem diferença; `check-api-breaking.sh main` sem `ERR`.
 
 ## Protocolo de execução
 
@@ -253,7 +253,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 | ID | Etapa | Estado | Dependências | Entrega principal |
 |---|---|---|---|---|
-| E12 | Gate do marco M6 e fim da Fase 1 | #em-andamento | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
+| E12 | Gate do marco M6 e fim da Fase 1 | #concluida | E06, E13, E14, E15, E16, E17, E18, E20, E21, E22 | Definição global de pronto e cenário ponta a ponta da Fase 1 |
 
 ---
 
@@ -2565,12 +2565,12 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15 (H9), conferidos contra dados semeados.
-- [ ] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data, como anexo sensível (cifrado no bucket).
-- [ ] `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas; o download confere a permissão e vai para a trilha.
-- [ ] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
-- [ ] `reporting` continua sem referenciar classes nem tabelas internas de outros módulos (`ModularityTest` e teste de arquitetura).
-- [ ] Build, testes e verificação do contrato passam.
+- [x] `snapshotDailyStatistics(date)` chamado duas vezes deixa um único registro; cortesia e uso da casa seguem Q-15 (H9), conferidos contra dados semeados.
+- [x] `archiveDayReports(date)` renderiza os PDFs via `printing` e os guarda em `files` uma única vez por data, como anexo sensível (cifrado no bucket).
+- [x] `GET /api/v1/reports/archive?date=…` os lista e devolve URLs assinadas; o download confere a permissão e vai para a trilha.
+- [x] A tabela da ARCHITECTURE §3.1 lista `printing` e `files` entre as dependências de `reporting`.
+- [x] `reporting` continua sem referenciar classes nem tabelas internas de outros módulos (`ModularityTest` e teste de arquitetura).
+- [x] Build, testes e verificação do contrato passam.
 
 **Validação obrigatória:**
 
@@ -2740,7 +2740,7 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 ---
 
-## E12 — Gate do marco M6 e fim da Fase 1 — #em-andamento
+## E12 — Gate do marco M6 e fim da Fase 1 — #concluida
 
 **Objetivo:** confirmar, a partir de uma cópia limpa do repositório, que a definição global de pronto do M6 é atendida e que o cenário ponta a ponta da Fase 1 funciona com os módulos reais; deixar o roadmap do M7 pronto para ser sincronizado.
 
@@ -2759,10 +2759,10 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Critérios de aceite:**
 
-- [ ] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa.
-- [ ] O teste ponta a ponta da Fase 1 passa usando os módulos reais (só a FNRH em WireMock).
-- [ ] Pendências herdadas (ex.: homologação da FNRH) estão listadas com a ação de desbloqueio.
-- [ ] `docs/roadmaps/README.md` registra a conclusão do M6 e da Fase 1 no histórico de revisões.
+- [x] Todos os itens da "Definição global de pronto" marcados, cada um com evidência numa cópia limpa.
+- [x] O teste ponta a ponta da Fase 1 passa usando os módulos reais (só a FNRH em WireMock).
+- [x] Pendências herdadas (ex.: homologação da FNRH) estão listadas com a ação de desbloqueio.
+- [x] `docs/roadmaps/README.md` registra a conclusão do M6 e da Fase 1 no histórico de revisões.
 
 **Validação obrigatória:**
 
@@ -2780,12 +2780,43 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 
 **Evidências e handoff:**
 
-- Plano: —
-- Commits: —
-- Revisão final: —
-- Critérios verificados: —
-- Decisões para o usuário: —
-- Notas para a próxima etapa (marco M7): —
+- Plano: `docs/superpowers/plans/2026-11-20-m6-operacao-fechamento-e12.md`, com 3 fatias. Revisão de arquitetura **dispensada** (sem decisão de ARCHITECTURE, contrato, persistência, fronteira ou runtime novo: teste do marco, scripts em `docker/gate/` e READMEs); a revisão final confirmou a dispensa contra o diff.
+- Commits: branch `roadmap/m6-operacao-fechamento`, de `23ce09a` (início e plano) a `c34e733`.
+  - **Task 1** (`MilestoneM6EndToEndTest`): `4335e3f` e a rodada 1 `4e0c4e4` (pendências conferidas também pela UH e UH Suja afirmada depois do fechamento de D1; limpeza protegida; turno de caixa fechado).
+  - **Task 2** (roteiro do compose, parte 1): `5852440` e a rodada 1 `6c8d7ea` (biblioteca comum `docker/gate/lib-roteiro.sh` com os controles de segredo e de varredura dos dois roteiros; conferências mais estritas; dados fixos do hóspede na varredura).
+  - **Task 3** (parte 2, WARN e READMEs): `48826c9` e `9775ed1`.
+  - **Testador da etapa:** `3f5c1f2` (check-out antes do pagamento recusado sem gravar nada, diária contra o preço literal, lista inteira das chamadas à FNRH).
+  - **Rodada final:** `c34e733` (`run-gate.sh` recusa com saída 2 quando o `docker` falha, em vez de seguir até o `down -v`; download só da URL do próprio servidor; `WARN` fora da lista permitida ou `ERROR` reprovam o gate; README com cinco operadores; pendências vazias conferidas como 0).
+- Entregue:
+  - `MilestoneM6EndToEndTest` (raiz do pacote de testes, `@EndOfDayIntegrationTest` com as etapas reais, H10): o cenário da Fase 1 em dois fechamentos manuais, com a diária uma vez por noite, as 11 etapas, o snapshot e o `DAY_REPORT` da data, as rotinas de checklist do novo dia (nota herdada do M2), a permanência offline e inspecionada, o check-out com saldo zero, a tarefa de saída inspecionada e as submissões FNRH em WireMock.
+  - `docker/gate/m6-roteiro.sh` (16 seções; cenário, arquivo e PDF, pendências, painel, governança, CSV e XLSX, OS com OOO e aprovação, achado e dano, fechamento de D2 com caixa aberto, varredura e revisão do log), `docker/gate/lib-roteiro.sh` comum aos dois roteiros, `run-gate.sh <workdir> <porta> [projeto] [m5|m6]`; `docker/gate/README.md` com o roteiro do M6 e a tabela dos `WARN` esperados; `README.md` com as 11 etapas do fechamento; `docs/roadmaps/README.md` com a conclusão do M6 e da Fase 1.
+- Revisão final: `revisor-seguranca` (opus) sobre `23ce09a..9775ed1`: **aprovado com ressalvas**, sem Crítico nem Importante, condicionado ao compose da cópia limpa (atendido). Re-revisão escopada `9775ed1..c34e733` (testes do testador e rodada final): corrigido, aprovado com ressalvas, condicionado ao gate em `c34e733` (atendido).
+- Gate e cópia limpa:
+  - **Cópia limpa** (`git archive 9775ed1`, `GRADLE_USER_HOME` novo, `--no-daemon --no-build-cache`): `clean build` **BUILD SUCCESSFUL in 31m**, 593 classes, 4885 testes, 0 falhas, 0 erros, 0 pulados; `clean test` 25m 34s, 4885/0; `dependencies --write-locks` sem diferença nos três lockfiles.
+  - **Compose a partir da cópia limpa** (`run-gate.sh … zeny-e12-clean m6`): readiness em ~20 s, **313 conferências, 0 falhas**, 40 `WARN` (39 do PDFBox, fonte substituta, 13 por `DAY_REPORT`; 1 do `EndOfDayMetrics` no boot), 0 `ERROR`, varredura limpa, sobras 0/0/0. Depois da rodada final, no worktree: m6 313/0 e m5 304/0, com a lista permitida de `WARN`, 0 `ERROR` e sobras 0/0/0.
+  - **Gate do projeto no HEAD do lote** (`c34e733`): `BUILD SUCCESSFUL in 24m 32s`, 4885 testes, 0 falhas. Rodado com `LOCALDOMAIN=" " RES_OPTIONS="timeout:1 attempts:1"` e `--no-daemon` (DNS do WSL, ver E23).
+- Verificação mecânica: `check_test_integrity.py --base 23ce09a`, exit 0, sem apontamentos (também por fatia e na rodada final).
+- Scanner: `osv-scanner` 2.7.1 nos 3 lockfiles (431 + 74 + 0 pacotes): 0 Critical, 0 High; 2 Medium e 3 Low anteriores (`commons-lang3` 3.16.0 no buildscript, `opentelemetry-api` 1.62.0, `logback-core` 1.3.16). `check-api-breaking.sh main`: sem `ERR` em `/api/v1`.
+- Critérios verificados:
+  - definição global de pronto marcada item a item com a evidência (topo deste roadmap); o relatório de manutenção e o de pendências da E09 só nos testes (`MaintenanceReportApiTest`, `EndOfDayPendingApiTest`), o compose cobre painel, governança, exportação e arquivo; o alerta do fechamento pela E10 (`promtool`, 8 regras OK) e o `alerts.yaml` sem mudança desde `53fc97a` (sem `promtool` nesta máquina);
+  - teste ponta a ponta com os módulos reais e só a FNRH em WireMock: `MilestoneM6EndToEndTest`, verde na cópia limpa e no gate;
+  - pendências herdadas com a ação de desbloqueio: abaixo;
+  - `docs/roadmaps/README.md` com a conclusão do M6 e da Fase 1.
+- Pendências herdadas (com a ação de desbloqueio):
+  - **M5 E09** (homologação da FNRH), `#bloqueada` pela Q-12: o hotel obter o Cadastur e a credencial da FNRH; cobrada pelo gate de inauguração (M8 E13), antes da operação real.
+  - **M8 E18**: entrega a uma pessoa dos alertas do fechamento (`ZenyEndOfDayFailed`, `ZenyEndOfDayNotRun`); as regras já existem.
+  - **Q-12** e as demais questões abertas da SPEC §10 seguem no `docs/roadmaps/README.md`.
+- Decisões para o usuário (tomadas pela opção recomendada e revisáveis):
+  - **Inspeção da permanência:** o tipo `STAYOVER` da carga não exige inspeção (D5 da E01); no cenário, a UH chega a Inspecionada pela inspeção voluntária da E05, e a inspeção pela tarefa aparece na saída.
+  - **Biblioteca comum dos roteiros** extraída agora (`lib-roteiro.sh`), com os dois gates rodados de novo, para os controles de segredo não divergirem.
+  - **`WARN` do `EndOfDayMetrics` no boot com banco novo:** o `refresh` agendado roda antes de o hotel existir e cai em `IllegalStateException`; os gauges ficam `NaN` por até 30 s e o alerta (`for: 5m`) não dispara. Recomendado: corrigir numa manutenção (atraso inicial ou hotel não criado tratado como "sem dado", sem `WARN`).
+  - **`endOfDayTime` 06:00 no roteiro**, para o fechamento automático não vencer durante o gate.
+  - Decisões dos handoffs da E23 e da E13 deste lote (PDF sensível sem nome; `serverOnly`; lista do arquivo sem URLs; ADR pela receita `ROOM`; terceira operação na aresta `endofday → reporting`; pendências com `endofday.runs.read`; etapa 950; FNRH sem integração gerando pendência sem limite; DNS do WSL nos gates).
+- Menores para o handoff (sem efeito no produto): a varredura procura bytes crus e não acharia um valor não-ASCII escapado pelo encoder (`Rua das Acácias`); laço de espera próprio e `RES_ID` global no `m6-roteiro.sh`; linhas fora do JSON no log só contadas, sem conferência; `@tsv` dobra barras; Menores herdados do M5 (`gate.env` no mesmo workdir, templating sem escape no mock); WARN de fonte do PDFBox nos testes.
+- Notas para a próxima etapa (marco M7):
+  - Sincronize o roadmap do M7 com o código antes do primeiro lote (regra 2 de `docs/roadmaps/README.md`); a etapa `card-pre-authorizations` (600) do fechamento segue `NOT_APPLICABLE` até a renovação do M7, e as pendências de notas rejeitadas (RF-FEC-04) entram no `ReportingApi.endOfDayPendingItems` quando o `fiscal` existir.
+  - Gate do M7: `run-gate.sh … m7` com um `m7-roteiro.sh` sobre a `lib-roteiro.sh` e a sua lista `WARN_ALLOWED`; o teste do marco no padrão do `MilestoneM6EndToEndTest`.
+  - Os gates nesta máquina levam de 21 a 31 min ociosa e até 54 min com outra sessão; use `timeout 3600`, o resolvedor ajustado e um Gradle ou `docker build` por vez.
 
 ---
 
@@ -2806,3 +2837,4 @@ Ao parar, responda com: etapas concluídas e o resultado da revisão final de ca
 - 2026-11-18 — revisão do `arquiteto` (skill `development-roadmap`, modo atualização; `main` em `f992696`), com o código conferido para as etapas tocadas ("Base técnica do próprio M6" em "Contexto confirmado"). **Divisão da E04** (H18 a, H21 a): a E04 manteve o ID com a máquina de estados, as ações online e a conclusão, e a etapa nova **E19** ficou com os comandos offline, o histórico de posse, o conflito RN-22 e o feed; os achados da revisão do plano tentado foram distribuídos entre as duas. E05 e E06 passaram a depender da E19 (H21 e). **Manutenção transversal** (H20 c e d, H21 b a d): etapas novas **E20** (entrada estrita no corpo, na query e no caminho, `LocalTime`, inteiro e UUID estritos e `required` nos requests, com a quebra única do `oasdiff` aceita pelo usuário) e **E21** (`409 CONCURRENT_UPDATE` para `40P01`/`55P03`, logs dos quatro jobs, filtro do ShedLock e `JOSEException` do FCM), no bloco "Manutenção transversal", para rodarem antes da E04. **Early check-in** (H17, H20 a e b): etapa nova **E22** (hora prevista de chegada na reserva e prioridade do early na sugestão), dependente de E03 e E20. Hipóteses novas H20 (decisões do usuário na entrevista desta revisão) e H21 (decisões do `arquiteto`); H17 a H19 anotadas com o encaminhamento. A definição global de pronto ganhou o early, o conflito RN-22 e o item da E20 e da E21; o gate passou a depender de E20, E21 e E22. Revisão humana: sim na E04, na E19 e na E20. Na mesma revisão, a SPEC (§8.2.6 hora prevista de chegada; §8.3 governança sem os eventos de reserva e de check-in, e `HousekeepingTaskCompleted` sem consumidor de status; §8.4 `ASSIGNED → PENDING`) e a ARCHITECTURE (§6.1 sem o "atualizar plano do dia"; §7 com a regra da H16 e a exceção D11, o `required` com a quebra única e o `409 CONCURRENT_UPDATE`) foram alinhadas, e o `docs/roadmaps/README.md` passou a contar 22 etapas no M6. Nenhuma etapa concluída mudou de tag ou conteúdo; nenhuma foi renumerada nem removida.
 - 2026-11-19 — entrevista de abertura do lote E22–E23 (`orquestrador`): H23 decidida pelo usuário (divisão da E09 na E09 e na etapa nova **E23**, snapshot diário e arquivo dos PDFs; fastexcel para o XLSX; PDFs arquivados como anexo sensível). A E13 passa a depender da E23 (e não mais direto da E09). O M6 passa a ter 23 etapas. Nenhuma tag mudou.
 - 2026-11-20 — fim do lote E22–E23 (`orquestrador`), encerrado a pedido do usuário: E22, E07, E08 e E09 `#concluida`; E23 `#em-andamento` (código, testes e revisão final concluídos, falta o gate do HEAD da branch). As decisões da H23 são do usuário; as demais, do orquestrador pela opção recomendada (autorização do usuário em 2026-11-19), estão nos handoffs.
+- 2026-11-21 — fim do lote E23–E12 (`orquestrador`): E23, E13 e E12 `#concluida`; o M6 e a Fase 1 concluídos, salvo a revisão humana da E12. Decisões do orquestrador pela opção recomendada nos handoffs; nenhuma outra etapa mudou de tag.
