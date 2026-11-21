@@ -27,6 +27,15 @@ ROTEIRO=m5
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 # shellcheck source=docker/gate/lib-roteiro.sh
 . "$script_dir/lib-roteiro.sh" "$@"
+# Os WARN esperados no log da api (docker/gate/README.md, "WARN e ERROR esperados"): as fontes do PDFBox nos PDFs
+# (D-E11-4), a leitura das métricas do fechamento antes do hotel existir (boot de banco novo) e a queda da FNRH da
+# seção 11.
+WARN_ALLOWED=(
+    "org.apache.pdfbox.pdmodel.font.PDType1Font|Using fallback font LiberationSans for base font "
+    "com.zeny.hotel.endofday.infrastructure.EndOfDayMetrics|Não foi possível ler as métricas do fechamento do dia (IllegalStateException)"
+    "com.zeny.hotel.fnrh.infrastructure.SerproFnrhGateway|FNRH registerReservation: falha no envio (ResourceAccessException)"
+    "com.zeny.hotel.fnrh.infrastructure.SerproFnrhGateway|FNRH registerReservation HOMOLOGATION UNAVAILABLE (HTTP -)"
+)
 
 # --- FNRH e aprovação (só do M5) ----------------------------------------------------------------------------------
 

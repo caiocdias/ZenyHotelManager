@@ -28,6 +28,12 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 . "$script_dir/lib-roteiro.sh" "$@"
 # Os seis operadores do roteiro, renovados pelo ensure_tokens.
 OPERATORS=(admin recepcao gerente governanta camareira manutencao)
+# Os WARN esperados no log da api (docker/gate/README.md, "WARN e ERROR esperados"): as fontes do PDFBox nos
+# DAY_REPORT (D-E11-4) e a leitura das métricas do fechamento antes do hotel existir, no boot de banco novo.
+WARN_ALLOWED=(
+    "org.apache.pdfbox.pdmodel.font.PDType1Font|Using fallback font LiberationSans for base font "
+    "com.zeny.hotel.endofday.infrastructure.EndOfDayMetrics|Não foi possível ler as métricas do fechamento do dia (IllegalStateException)"
+)
 
 # --- Dados de teste -----------------------------------------------------------------------------------------------
 
@@ -801,22 +807,31 @@ SQL
     token=${token%%&*}
     secret "$token" "token de download"
     secret "$url" "token de download"
-    local own_url=false
-    [ -n "$token" ] && [ "$token" != "$url" ] && [[ $url == */api/v1/files/$file_id/content\?* ]] && own_url=true
+    # Só a URL do próprio servidor (relativa ou no BASE do gate) recebe o token: outra origem nunca é chamada.
+    local own_url=false path="/api/v1/files/$file_id/content?"
+    [ -n "$token" ] && [ "$token" != "$url" ] && { [[ $url == "$path"* ]] || [[ $url == "$BASE$path"* ]]; } &&
+        own_url=true
     check "[11] URL do próprio servidor (anexo sensível), com token" true "$own_url"
-    [[ $url == http* ]] || url=$BASE$url
-    download "$url"
+    if [ "$own_url" = true ]; then
+        [[ $url == http* ]] || url=$BASE$url
+        download "$url"
+    else
+        ST="não baixado (URL fora do servidor do gate)"
+        : >"$T/body"
+        : >"$T/headers"
+    fi
     check_http "[11] download do DAY_REPORT pela URL, sem token de acesso" 200
     check "[11] download em application/pdf" application/pdf "$(hdr content-type | cut -d';' -f1)"
     check "[11] o conteúdo é um PDF" true "$(bool starts_with_pdf)"
 
     local run
+    # No cenário, D0 e D1 fecham sem pendência (a pendência com conteúdo é a da seção 15).
+    local day=D0
     for run in "$RUN_D0" "$RUN_D1"; do
         req GET "/end-of-day/runs/$run/issues?limit=100" gerente
-        check_http "[11] pendências da execução" 200
-        check "[11] pendências só da execução" true "$(jq --arg r "$run" '[.items[] | .runId == $r] | all' "$T/body")"
-        printf 'pendências da execução: %s\n' "$(jb '[.items[].kind] | group_by(.) | map("\(.[0]) \(length)") | join(", ")')"
-        check "[11] pendências sem segredo nem dado de hóspede" nenhum "$(leaked_kinds "$T/body")"
+        check_http "[11] pendências da execução de $day" 200
+        check "[11] execução de $day sem pendência (0 itens)" 0 "$(jb '.items | length')"
+        day=D1
     done
 }
 

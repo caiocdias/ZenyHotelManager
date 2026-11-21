@@ -44,16 +44,21 @@ fi
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 ROOT=$(cd "$script_dir/../.." && pwd -P)
 
+# leftovers: "contêineres N, volumes N, redes N" do projeto. Cada consulta roda numa variável, com o código de saída
+# conferido: se o docker falhar, a função falha (saída 1) em vez de imprimir um 0 que esconderia um projeto existente.
 leftovers() {
-    local label="label=com.docker.compose.project=$PROJECT"
+    local label="label=com.docker.compose.project=$PROJECT" containers volumes networks
+    containers=$(docker ps -aq --filter "$label") || return 1
+    volumes=$(docker volume ls -q --filter "$label") || return 1
+    networks=$(docker network ls -q --filter "$label") || return 1
     printf 'contêineres %s, volumes %s, redes %s' \
-        "$(docker ps -aq --filter "$label" | wc -l)" \
-        "$(docker volume ls -q --filter "$label" | wc -l)" \
-        "$(docker network ls -q --filter "$label" | wc -l)"
+        "$(printf '%s' "$containers" | grep -c .)" \
+        "$(printf '%s' "$volumes" | grep -c .)" \
+        "$(printf '%s' "$networks" | grep -c .)"
 }
 
-# Antes de gerar o env e de armar o trap: um projeto já existente fica intocado.
-existing=$(leftovers) || { echo "não consegui consultar o docker" >&2; exit 2; }
+# Antes de gerar o env e de armar o trap: um projeto já existente fica intocado, e um docker que não responde recusa.
+existing=$(leftovers) || { echo "recusado: não consegui consultar o docker" >&2; exit 2; }
 if [ "$existing" != "contêineres 0, volumes 0, redes 0" ]; then
     echo "recusado: o projeto $PROJECT já existe ($existing); use outro nome ou derrube-o antes" >&2
     exit 2
@@ -71,7 +76,13 @@ cleanup() {
     "${DC[@]}" down -v --remove-orphans
     echo "down exit=$?"
     rm -f -- "$ENV_FILE"
-    echo "sobras: $(leftovers)"
+    local left
+    if left=$(leftovers); then
+        echo "sobras: $left"
+    else
+        echo "sobras: não consegui consultar o docker (confira o projeto $PROJECT à mão)"
+        rc=2
+    fi
     exit "$rc"
 }
 trap cleanup EXIT
